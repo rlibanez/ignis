@@ -188,7 +188,19 @@ function restoreDatabase(source, dataRoot) {
     checkIntegrity(db);
     if (validateMigrations(db) !== migrations.length)
       throw new Error("Backup schema is not current");
-    backupDatabase(db, path.join(directory, "identity.sqlite"));
+    const destination = path.join(directory, "identity.sqlite");
+    backupDatabase(db, destination);
+    // Restoring an older snapshot must not resurrect browser sessions revoked since backup.
+    const restored = new DatabaseSync(destination);
+    try {
+      transaction(restored, () => {
+        restored.exec(
+          "DELETE FROM sessions; UPDATE users SET auth_version = auth_version + 1",
+        );
+      });
+    } finally {
+      restored.close();
+    }
   } catch (error) {
     fs.rmSync(directory, { recursive: true, force: true });
     throw error;

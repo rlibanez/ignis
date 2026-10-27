@@ -80,4 +80,68 @@ module.exports = [
       CREATE INDEX oidc_identities_user ON oidc_identities(user_id);
     `,
   },
+  {
+    version: 3,
+    sql: `
+      -- v1/v2 sessions were storage fixtures, never issued by an authentication service.
+      -- Revoke them rather than inventing provenance or authentication times.
+      DROP TABLE sessions;
+      CREATE TABLE sessions (
+        token_hash TEXT PRIMARY KEY CHECK(length(token_hash) = 64 AND token_hash NOT GLOB '*[^0-9a-f]*'),
+        id TEXT NOT NULL UNIQUE,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        auth_version INTEGER NOT NULL CHECK(auth_version > 0),
+        created_at INTEGER NOT NULL CHECK(created_at >= 0),
+        last_activity INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        idle_timeout_ms INTEGER NOT NULL CHECK(idle_timeout_ms > 0),
+        method TEXT NOT NULL CHECK(method IN ('local', 'oidc')),
+        issuer TEXT,
+        subject TEXT,
+        authenticated_at INTEGER NOT NULL CHECK(authenticated_at >= 0 AND authenticated_at <= created_at),
+        CHECK(last_activity >= created_at AND expires_at > last_activity),
+        CHECK((method = 'local' AND issuer IS NULL AND subject IS NULL) OR
+          (method = 'oidc' AND length(issuer) > 0 AND length(subject) BETWEEN 1 AND 255
+           AND issuer IS NOT NULL AND subject IS NOT NULL))
+      ) STRICT;
+      CREATE INDEX sessions_user ON sessions(user_id);
+      CREATE INDEX sessions_expiry ON sessions(expires_at);
+      CREATE TRIGGER revoke_user_sessions AFTER UPDATE OF role, status ON users
+      WHEN OLD.role != NEW.role OR OLD.status != NEW.status
+      BEGIN
+        UPDATE users SET auth_version = auth_version + 1 WHERE id = NEW.id;
+        DELETE FROM sessions WHERE user_id = NEW.id;
+      END;
+      CREATE TRIGGER revoke_local_insert AFTER INSERT ON local_credentials
+      BEGIN
+        UPDATE users SET auth_version = auth_version + 1 WHERE id = NEW.user_id;
+        DELETE FROM sessions WHERE user_id = NEW.user_id;
+      END;
+      CREATE TRIGGER revoke_local_update AFTER UPDATE ON local_credentials
+      BEGIN
+        UPDATE users SET auth_version = auth_version + 1 WHERE id IN (OLD.user_id, NEW.user_id);
+        DELETE FROM sessions WHERE user_id IN (OLD.user_id, NEW.user_id);
+      END;
+      CREATE TRIGGER revoke_local_delete AFTER DELETE ON local_credentials
+      BEGIN
+        UPDATE users SET auth_version = auth_version + 1 WHERE id = OLD.user_id;
+        DELETE FROM sessions WHERE user_id = OLD.user_id;
+      END;
+      CREATE TRIGGER revoke_oidc_insert AFTER INSERT ON oidc_identities
+      BEGIN
+        UPDATE users SET auth_version = auth_version + 1 WHERE id = NEW.user_id;
+        DELETE FROM sessions WHERE user_id = NEW.user_id;
+      END;
+      CREATE TRIGGER revoke_oidc_update AFTER UPDATE ON oidc_identities
+      BEGIN
+        UPDATE users SET auth_version = auth_version + 1 WHERE id IN (OLD.user_id, NEW.user_id);
+        DELETE FROM sessions WHERE user_id IN (OLD.user_id, NEW.user_id);
+      END;
+      CREATE TRIGGER revoke_oidc_delete AFTER DELETE ON oidc_identities
+      BEGIN
+        UPDATE users SET auth_version = auth_version + 1 WHERE id = OLD.user_id;
+        DELETE FROM sessions WHERE user_id = OLD.user_id;
+      END;
+    `,
+  },
 ];

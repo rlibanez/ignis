@@ -59,7 +59,7 @@ describe("identity persistence", () => {
     expect(db.prepare("SELECT id FROM vaults").get().id).toBe(vault.id);
     expect(
       db.prepare("SELECT count(*) AS n FROM schema_migrations").get().n,
-    ).toBe(2);
+    ).toBe(3);
     if (process.platform !== "win32") {
       expect(fs.statSync(path.join(root, "data/auth")).mode & 0o777).toBe(
         0o700,
@@ -201,7 +201,7 @@ describe("identity persistence", () => {
   it("has session uniqueness, user references and timestamp constraints", () => {
     const user = bootstrapAdmin(db, "Admin", fixtureHash);
     const insert = db.prepare(
-      "INSERT INTO sessions VALUES (?, ?, 1, 100, 100, ?)",
+      "INSERT INTO sessions VALUES (?, hex(randomblob(16)), ?, 1, 100, 100, ?, 50, 'local', NULL, NULL, 100)",
     );
     insert.run("a".repeat(64), user.id, 200);
     expect(() => insert.run("a".repeat(64), user.id, 200)).toThrow();
@@ -227,7 +227,7 @@ describe("migration and crash recovery", () => {
   it("rolls back every statement of a failed migration", () => {
     const migrations = require("./schema");
     migrations.push({
-      version: 3,
+      version: 4,
       sql: "CREATE TABLE incomplete(id TEXT); INVALID SQL;",
     });
     db.close();
@@ -245,7 +245,7 @@ describe("migration and crash recovery", () => {
     ).toBeUndefined();
     expect(
       db.prepare("SELECT count(*) AS n FROM schema_migrations").get().n,
-    ).toBe(2);
+    ).toBe(3);
   });
 
   it("recovers after a process exits in an uncommitted write transaction", async () => {
@@ -311,7 +311,7 @@ describe("bootstrap credentials and CLI", () => {
 });
 
 describe("authentication methods independent of users", () => {
-  it("migrates v1 credentials without changing users, sessions or memberships", () => {
+  it("migrates v1 credentials and memberships while revoking legacy sessions", () => {
     const filename = path.join(root, "legacy/auth/identity.sqlite");
     fs.mkdirSync(path.dirname(filename), { recursive: true });
     const legacy = new DatabaseSync(filename);
@@ -347,8 +347,8 @@ describe("authentication methods independent of users", () => {
         upgraded.prepare("SELECT user_id FROM memberships").get().user_id,
       ).toBe("existing");
       expect(
-        upgraded.prepare("SELECT user_id FROM sessions").get().user_id,
-      ).toBe("existing");
+        upgraded.prepare("SELECT user_id FROM sessions").get(),
+      ).toBeUndefined();
       expect(() => bootstrapAdmin(upgraded, "second", fixtureHash)).toThrow(
         /already/,
       );
