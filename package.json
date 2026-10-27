@@ -11,6 +11,7 @@
     "build": "node build.js",
     "dev:server": "node apps/ignis-server/server/index.js",
     "dev": "npm run build && npm run dev:server",
+    "auth": "node apps/ignis-server/server/auth/cli.js",
     "docker:build": "node apps/ignis-server/scripts/build-image.js",
     "lint": "oxlint packages apps/ignis-server/server --max-warnings 0 && node scripts/check-error-leaks.mjs",
     "test": "vitest run",
