@@ -1,0 +1,20 @@
+services:
+  ignis:
+    image: rlibanez/ignis:dev
+    build:
+      context: .
+      dockerfile: apps/ignis-server/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      # match these to your host user (run: id)
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+    volumes:
+      - ./vaults/dev:/vaults
+      - ./data/dev:/app/data
+      - obsidian-app:/app/obsidian-app
+    restart: unless-stopped
+
+volumes:
+  obsidian-app:

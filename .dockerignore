@@ -11,3 +11,5 @@ data
 tmp
 **/dist
 apps/ignis-server/server/build-info.json
+.env
+.env.*
