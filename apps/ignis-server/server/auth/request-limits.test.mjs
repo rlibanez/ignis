@@ -25,3 +25,11 @@ it("limits global login pressure even when both IP and account vary", () => {
     expect(limits.login(`ip-${i}`, `user-${i}`)).toBe(true);
   expect(limits.login("new-ip", "new-user")).toBe(false);
 });
+it("bounds setup globally across IPs and recovers after the setup window", () => {
+  let at = 0;
+  const limits = createRequestLimits({ now: () => at });
+  for (let i = 0; i < 20; i++) expect(limits.setup(`ip-${i}`)).toBe(true);
+  expect(limits.setup("another")).toBe(false);
+  at = 15 * 60000;
+  expect(limits.setup("another")).toBe(true);
+});

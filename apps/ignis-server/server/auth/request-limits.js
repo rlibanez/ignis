@@ -36,6 +36,11 @@ function createRequestLimits({ now = Date.now, capacity = 10000 } = {}) {
         ["login-ip:" + key(ip), 10, 15 * 60000],
         ["login-account:" + key(login), 10, 15 * 60000],
       ]),
+    setup: (ip) =>
+      allow([
+        ["setup-global", 20, 15 * 60000],
+        ["setup-ip:" + key(ip), 5, 15 * 60000],
+      ]),
     upgrade: (ip) =>
       allow([
         ["ws-global", 300, 60000],

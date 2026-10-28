@@ -7,6 +7,9 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     environment:
+      IGNIS_PASSWORD_MIN_LENGTH: ${IGNIS_PASSWORD_MIN_LENGTH:-8}
+      IGNIS_PASSWORD_MIN_SPECIAL_CHARS: ${IGNIS_PASSWORD_MIN_SPECIAL_CHARS:-0}
+      IGNIS_INITIAL_ADMIN_KEY: ${IGNIS_INITIAL_ADMIN_KEY:-}
       IGNIS_PUBLIC_ORIGIN: ${IGNIS_PUBLIC_ORIGIN:-http://localhost:8080}
       IGNIS_ALLOW_HTTP_LOOPBACK: ${IGNIS_ALLOW_HTTP_LOOPBACK:-true}
       IGNIS_TRUSTED_PROXIES: ${IGNIS_TRUSTED_PROXIES:-[]}
@@ -14,8 +17,8 @@ services:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-1000}
     volumes:
-      - ./vaults/dev:/vaults
-      - ./data/dev:/app/data
+      - ./vaults:/vaults
+      - ./data:/app/data
       - obsidian-app:/app/obsidian-app
     restart: unless-stopped
 

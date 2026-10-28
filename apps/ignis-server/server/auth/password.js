@@ -1,3 +1,7 @@
+const {
+  readPasswordPolicy,
+  meetsPasswordPolicy,
+} = require("./password-policy");
 const { randomBytes, scrypt, timingSafeEqual } = require("node:crypto");
 const { promisify } = require("node:util");
 const derive = promisify(scrypt);
@@ -35,10 +39,10 @@ async function deriveBounded(password, salt) {
   }
 }
 
-async function hashPassword(password) {
-  if (!validInput(password) || [...password].length < 15) {
+async function hashPassword(password, policy = readPasswordPolicy()) {
+  if (!validInput(password) || !meetsPasswordPolicy(password, policy)) {
     throw new Error(
-      "Password must contain at least 15 characters and at most 1024 bytes",
+      `Password must contain at least ${policy.minLength} characters and ${policy.minSpecialChars} punctuation or symbol characters, and at most ${policy.maxBytes} bytes`,
     );
   }
   const salt = randomBytes(16);

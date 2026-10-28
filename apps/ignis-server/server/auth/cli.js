@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-// Offline administration only. No HTTP routes use this store until auth is implemented.
+// Local administration shares the identity store and password policy with web setup.
 const path = require("node:path");
 const fs = require("node:fs");
 const readline = require("node:readline");
 const { Writable } = require("node:stream");
 const { openDatabase, backupDatabase, restoreDatabase } = require("./database");
 const { bootstrapAdmin, normalizeLogin, registerVault } = require("./store");
+const { readPasswordPolicy } = require("./password-policy");
 const { hashPassword } = require("./password");
 
 function question(prompt, hidden = false) {
@@ -80,11 +81,15 @@ async function main(args = process.argv.slice(2)) {
       ) {
         throw new Error("Administrator bootstrap has already been completed");
       }
+      const policy = readPasswordPolicy();
       const login = normalizeLogin(await question("Administrator login: "));
-      let password = await question("Password (15+ characters): ", true);
+      let password = await question(
+        `Password (${policy.minLength}+ characters, ${policy.minSpecialChars}+ punctuation/symbols): `,
+        true,
+      );
       let confirmation = await question("Confirm password: ", true);
       if (password !== confirmation) throw new Error("Passwords do not match");
-      const hash = await hashPassword(password);
+      const hash = await hashPassword(password, policy);
       password = confirmation = null;
       const user = bootstrapAdmin(db, login, hash);
       console.log(`Administrator created: ${user.login} (${user.id})`);
@@ -117,9 +122,6 @@ async function main(args = process.argv.slice(2)) {
         }),
       );
     }
-    console.log(
-      "Phase 1 storage only: HTTP and WebSocket authentication is NOT enabled.",
-    );
   } finally {
     db.close();
   }

@@ -1,4 +1,17 @@
 const express = require("express");
+const fs = require("node:fs");
+const path = require("node:path");
+const { createInitialAdminSetup } = require("./initial-admin");
+const setupAssets = new Map(
+  [
+    ["/setup", ["text/html", "setup.html"]],
+    ["/auth/setup.js", ["text/javascript", "setup.js"]],
+    ["/auth/setup.css", ["text/css", "setup.css"]],
+  ].map(([url, [type, file]]) => [
+    url,
+    { type, content: fs.readFileSync(path.join(__dirname, "web", file)) },
+  ]),
+);
 const { openDatabase } = require("./database");
 const { createSessionService } = require("./sessions");
 const { createSessionCookies } = require("./session-cookies");
@@ -42,6 +55,12 @@ function createAuthBoundary({
     db.close();
     throw error;
   }
+
+  const setup = createInitialAdminSetup(db, {
+    keyDigest: config.initialAdminKeyDigest,
+    passwordPolicy: config.passwordPolicy,
+    initialized,
+  });
 
   function transportAllowed(req) {
     if (req.headers.host?.toLowerCase() !== publicUrl.host.toLowerCase())
@@ -203,7 +222,11 @@ function createAuthBoundary({
   async function authEndpoint(req, res, pathname) {
     const session = getSession(req);
     if (req.method === "GET" && pathname === "/api/auth/status") {
-      return res.json({ initialized: initialized(), setupAvailable: false });
+      return res.json({
+        initialized: initialized(),
+        setupAvailable: setup.available(),
+        ...(setup.available() ? { passwordPolicy: config.passwordPolicy } : {}),
+      });
     }
     if (req.method === "GET" && pathname === "/api/auth/csrf") {
       const token = csrf.issue(req, res, session);
@@ -218,11 +241,23 @@ function createAuthBoundary({
     }
     if (
       req.method !== "POST" ||
-      !["/api/auth/login", "/api/auth/logout"].includes(pathname)
+      !["/api/auth/login", "/api/auth/logout", "/api/auth/setup"].includes(
+        pathname,
+      )
     )
       return safe(res, 404, "Not found");
     if (!originAllowed(req, true) || !csrf.valid(req, session))
       return safe(res, 403, "Request rejected");
+    if (pathname === "/api/auth/setup") {
+      if (!limits.setup(req.ip)) {
+        res.set("Retry-After", "900");
+        return safe(res, 429, "Too many requests");
+      }
+      const result = await setup.create(req.body);
+      if (result.error) return safe(res, result.status, result.error);
+      csrf.consume(req);
+      return res.status(201).json({ initialized: true });
+    }
     if (pathname === "/api/auth/logout") {
       sessions.revoke(cookies.read(req.headers.cookie));
       csrf.consume(req);
@@ -267,6 +302,22 @@ function createAuthBoundary({
         return safe(res, 403, "Request rejected");
       const pathname = canonicalRequestPath(req);
       if (!pathname) return safe(res, 400, "Invalid request");
+      if (["GET", "HEAD"].includes(req.method) && setupAssets.has(pathname)) {
+        if (!limits.publicRequest(req.ip))
+          return safe(res, 429, "Too many requests");
+        const asset = setupAssets.get(pathname);
+        res.set(
+          "Content-Security-Policy",
+          "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+        );
+        return res.type(asset.type).send(asset.content);
+      }
+      if (
+        ["GET", "HEAD"].includes(req.method) &&
+        pathname === "/" &&
+        !initialized()
+      )
+        return res.redirect(303, "/setup");
       if (pathname.startsWith("/api/auth/")) {
         if (!limits.publicRequest(req.ip))
           return safe(res, 429, "Too many requests");

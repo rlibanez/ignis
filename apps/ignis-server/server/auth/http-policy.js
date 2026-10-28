@@ -1,6 +1,8 @@
+const { readPasswordPolicy } = require("./password-policy");
 const fs = require("node:fs");
 const path = require("node:path");
 const net = require("node:net");
+const { readInitialAdminKey } = require("./initial-admin");
 
 const ROUTES = new Set([
   ...["stat", "readFile", "access", "tree", "download", "download-zip"].map(
@@ -86,6 +88,8 @@ function readAuthConfig(env = process.env) {
     publicOrigin: origin.origin,
     allowHttpLoopback: env.IGNIS_ALLOW_HTTP_LOOPBACK === "true",
     trustedProxies,
+    passwordPolicy: readPasswordPolicy(env),
+    initialAdminKeyDigest: readInitialAdminKey(env),
   };
 }
 
