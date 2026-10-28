@@ -166,6 +166,7 @@ app.use(express.static(config.obsidianAssetsPath));
 const server = http.createServer(app);
 
 async function start() {
+  await auth.initialize();
   getObsidianTerms();
   await initPlugins({ app, config, wss, watcher });
   const bundledPluginDirs = getBundledPluginDirs();
@@ -253,7 +254,7 @@ async function gracefulShutdown(signal) {
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
-start().catch(() => {
-  console.error("[ignis] Startup failed; server remains closed");
+start().catch((error) => {
+  console.error(require("./auth/oidc/startup-error").startupErrorMessage(error));
   process.exit(1);
 });

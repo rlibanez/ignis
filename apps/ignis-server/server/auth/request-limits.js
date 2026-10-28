@@ -36,6 +36,16 @@ function createRequestLimits({ now = Date.now, capacity = 10000 } = {}) {
         ["login-ip:" + key(ip), 10, 15 * 60000],
         ["login-account:" + key(login), 10, 15 * 60000],
       ]),
+    oidcStart: (ip) =>
+      allow([
+        ["oidc-start-global", 60, 60000],
+        ["oidc-start-ip:" + key(ip), 10, 900000],
+      ]),
+    oidcCallback: (ip) =>
+      allow([
+        ["oidc-callback-global", 120, 60000],
+        ["oidc-callback-ip:" + key(ip), 30, 900000],
+      ]),
     setup: (ip) =>
       allow([
         ["setup-global", 20, 15 * 60000],

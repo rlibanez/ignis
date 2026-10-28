@@ -32,7 +32,9 @@ async function createOidcLogin(
           nonce: attempt.nonce,
           code_challenge: attempt.codeChallenge,
           code_challenge_method: "S256",
-          ...(freshAuthentication ? { prompt: "login", max_age: "0" } : {}),
+          // Request the same freshness window enforced below. Authentik 2026.8.4
+          // ignores max_age=0 and prompt=login can cause two consecutive logins.
+          ...(freshAuthentication ? { max_age: "30" } : {}),
         });
         return { url: url.href, cookie: attempt.cookie };
       } catch {
@@ -76,6 +78,8 @@ async function createOidcLogin(
           expectedNonce: attempt.nonce,
           pkceCodeVerifier: attempt.verifier,
           idTokenExpected: true,
+          // Keep the existing SDK ceiling: zero plus its configured 30s
+          // clock tolerance; the explicit check below also caps age at 30s.
           ...(freshAuthentication ? { maxAge: 0 } : {}),
         });
         const claims = tokens.claims();

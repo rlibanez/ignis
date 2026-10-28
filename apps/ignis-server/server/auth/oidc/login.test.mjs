@@ -463,8 +463,8 @@ it("manually links after fresh provider authentication and revokes old sessions"
     const a = await attempt(f.wrapper, {
       claims: { auth_time: Math.floor(Date.now() / 1000) },
     });
-    expect(a.authorize.searchParams.get("prompt")).toBe("login");
-    expect(a.authorize.searchParams.get("max_age")).toBe("0");
+    expect(a.authorize.searchParams.get("prompt")).toBeNull();
+    expect(a.authorize.searchParams.get("max_age")).toBe("30");
     await expect(
       f.manual.complete(a.callback, a.cookie, "wrong-token"),
     ).rejects.toThrow();
@@ -491,7 +491,15 @@ it("manually links after fresh provider authentication and revokes old sessions"
     f.db.close();
   }
 });
-it.each([undefined, 1, 9999999999])(
+it.each([
+  undefined,
+  null,
+  "123",
+  1,
+  9999999999,
+  Math.floor(Date.now() / 1000) - 31,
+  Math.floor(Date.now() / 1000) + 60,
+])(
   "rejects manual linking without fresh auth_time: %s",
   async (authTime) => {
     const f = await manualFixture();
@@ -603,4 +611,32 @@ it("email changes invalidate existing sessions and stale sessions cannot start m
   } finally {
     f.db.close();
   }
+});
+
+it("reuses a recent provider authentication for manual linking", async () => {
+  const f = await manualFixture();
+  try {
+    const a = await attempt(f.wrapper, {
+      claims: { auth_time: Math.floor(Date.now() / 1000) - 20 },
+    });
+    const result = await f.manual.complete(a.callback, a.cookie, f.issued.token);
+    expect(result.userId).toBe("local");
+    expect(f.sessions.resolve(result.authentication.token).user.id).toBe("local");
+    expect(f.sessions.resolve(f.issued.token)).toBeNull();
+  } finally {
+    f.db.close();
+  }
+});
+
+it("does not require recent provider authentication for ordinary OIDC login", async () => {
+  const login = await flow();
+  const a = await attempt(login, {
+    claims: { auth_time: Math.floor(Date.now() / 1000) - 3600 },
+  });
+  expect(a.authorize.searchParams.has("prompt")).toBe(false);
+  expect(a.authorize.searchParams.has("max_age")).toBe(false);
+  await expect(complete(login, a)).resolves.toEqual({
+    issuer: origin,
+    subject: "external-user",
+  });
 });

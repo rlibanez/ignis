@@ -6,6 +6,7 @@ const setupAssets = new Map(
   [
     ["/setup", ["text/html", "setup.html"]],
     ["/login", ["text/html", "login.html"]],
+    ["/account", ["text/html", "login.html"]],
     ["/auth/login.js", ["text/javascript", "login.js"]],
     ["/auth/client.js", ["text/javascript", "client.js"]],
     ["/auth/setup.js", ["text/javascript", "setup.js"]],
@@ -29,12 +30,24 @@ function createAuthBoundary({
   staticRoots = [],
   now = Date.now,
   sessionOptions = {},
+  oidcEnv = process.env,
+  oidcDependencies,
 }) {
   const cookies = createSessionCookies(config); // Validate before opening/listening.
   const publicUrl = new URL(config.publicOrigin);
   const db = openDatabase(dataRoot);
   const sessions = createSessionService(db, { ...sessionOptions, now });
   const csrf = createCsrf(config, { now });
+  let oidc = null;
+  let initialization;
+  function initialize() {
+    initialization ||= require("./oidc/runtime")
+      .createOidcRuntime(db, config, sessions, oidcEnv, oidcDependencies)
+      .then((value) => {
+        oidc = value;
+      });
+    return initialization;
+  }
   const limits = createRequestLimits({ now });
   const socketEntries = new Map();
   let trustProxy = () => false;
@@ -236,6 +249,7 @@ function createAuthBoundary({
     if (req.method === "GET" && pathname === "/api/auth/status") {
       return res.json({
         initialized: initialized(),
+        ...(oidc && initialized() ? { oidcAvailable: true } : {}),
         setupAvailable: setup.available(),
         ...(setup.available() ? { passwordPolicy: config.passwordPolicy } : {}),
       });
@@ -252,8 +266,83 @@ function createAuthBoundary({
             user: session.user,
             sessionId: session.id,
             expiresAt: session.expiresAt,
+            oidcLinked: !!oidc?.linked(session.user.id),
+            canLinkOidc:
+              !!oidc &&
+              !oidc.linked(session.user.id) &&
+              now() - session.authenticatedAt < 300000,
           })
         : safe(res, 401, "Authentication required");
+    }
+    if (pathname === "/api/auth/oidc/callback" && req.method === "GET") {
+      if (!oidc || !initialized()) return safe(res, 404, "Not found");
+      if (!limits.oidcCallback(req.ip))
+        return safe(res, 429, "Too many requests");
+      try {
+        const previous = cookies.read(req.headers.cookie);
+        const result = await oidc.complete(
+          config.publicOrigin + req.url,
+          previous,
+          req.headers.cookie,
+        );
+        sessions.revoke(previous);
+        csrf.consume(req);
+        const authentication = result.authentication;
+        db.prepare("INSERT INTO audit_events VALUES (?, ?, ?, ?, ?)").run(
+          require("node:crypto").randomUUID(),
+          authentication.session.user.id,
+          "oidc-login",
+          authentication.session.user.id,
+          now(),
+        );
+        res.append(
+          "Set-Cookie",
+          cookies.serialize(
+            authentication.token,
+            authentication.session.expiresAt,
+            now(),
+          ),
+        );
+        sweepSockets();
+        return res.redirect(
+          303,
+          result.kind === "link"
+            ? "/account?oidc=linked"
+            : "/login?oidc=success",
+        );
+      } catch {
+        // Never render provider errors, code, state, URLs or claims.
+        return res.redirect(303, "/login?oidc=failed");
+      }
+    }
+    if (
+      pathname === "/api/auth/oidc/start" ||
+      pathname === "/api/auth/oidc/link"
+    ) {
+      if (!oidc || !initialized() || req.method !== "POST")
+        return safe(res, 404, "Not found");
+      if (!originAllowed(req, true) || !csrf.valid(req, session))
+        return safe(res, 403, "Request rejected");
+      if (!limits.oidcStart(req.ip)) return safe(res, 429, "Too many requests");
+      const kind = pathname.endsWith("/link") ? "link" : "login";
+      if (kind === "link" && (!session || oidc.linked(session.user.id)))
+        return safe(res, 403, "Account linking unavailable");
+      try {
+        const result = await oidc.begin(
+          kind,
+          cookies.read(req.headers.cookie),
+          req.headers.cookie,
+        );
+        csrf.consume(req);
+        res.append("Set-Cookie", result.cookie);
+        return res.json({ authorizationUrl: result.url });
+      } catch {
+        return safe(
+          res,
+          403,
+          "OIDC request unavailable; sign in again if linking an account",
+        );
+      }
     }
     if (
       req.method !== "POST" ||
@@ -314,7 +403,11 @@ function createAuthBoundary({
     res.set("Referrer-Policy", "no-referrer");
     res.set("X-Frame-Options", "DENY");
     try {
-      if (!transportAllowed(req) || !originAllowed(req))
+      // Only the exact GET callback may arrive cross-site from the provider.
+      const callback =
+        req.method === "GET" &&
+        req.url.split("?")[0] === "/api/auth/oidc/callback";
+      if (!transportAllowed(req) || (!callback && !originAllowed(req)))
         return safe(res, 403, "Request rejected");
       const pathname = canonicalRequestPath(req);
       if (!pathname) return safe(res, 400, "Invalid request");
@@ -455,9 +548,18 @@ function createAuthBoundary({
     clearInterval(poll);
     clearInterval(cleanup);
     for (const ws of socketEntries.keys()) ws.terminate();
+    oidc?.clear();
     db.close();
   }
-  return { install, revalidate, errorHandler, wsSecurity, close, staticRoots };
+  return {
+    initialize,
+    install,
+    revalidate,
+    errorHandler,
+    wsSecurity,
+    close,
+    staticRoots,
+  };
 }
 
 module.exports = { createAuthBoundary };

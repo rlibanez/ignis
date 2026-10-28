@@ -12,9 +12,10 @@ async function createOidcAccountLogin(
   const login = await createOidcLogin(config, configuration, cookiePolicy);
   return Object.freeze({
     begin: login.begin,
-    async complete(callback, cookieHeader) {
+    async complete(callback, cookieHeader, { isCurrent = () => true } = {}) {
       try {
         const identity = await login.complete(callback, cookieHeader);
+        if (!isCurrent()) throw new Error();
         resolveOidcAccount(db, config, identity);
         const authentication = sessions.issueForVerifiedOidcIdentity({
           issuer: identity.issuer,

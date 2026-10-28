@@ -266,6 +266,7 @@
     </div>
     <div class="footer-right">
       {#if window.__ignisAuth}
+        <Button variant="ghost" on:click={() => window.location.assign("/account")}>Account</Button>
         <Button variant="ghost" on:click={() => window.__ignisAuth.logout()}>Sign out</Button>
       {/if}
       <Button variant="ghost" on:click={showCreateDialog}>
