@@ -159,4 +159,10 @@ module.exports = [
       END;
     `,
   },
+  {
+    version: 5,
+    sql: `
+      CREATE UNIQUE INDEX oidc_identities_user_issuer ON oidc_identities(user_id, issuer);
+    `,
+  },
 ];
