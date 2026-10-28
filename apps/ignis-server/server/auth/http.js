@@ -7,7 +7,11 @@ const setupAssets = new Map(
     ["/setup", ["text/html", "setup.html"]],
     ["/login", ["text/html", "login.html"]],
     ["/account", ["text/html", "login.html"]],
+    ["/admin/users", ["text/html", "users.html"]],
+    ["/auth/users.js", ["text/javascript", "users.js"]],
+    ["/auth/users.css", ["text/css", "users.css"]],
     ["/auth/login.js", ["text/javascript", "login.js"]],
+    ["/auth/account.css", ["text/css", "account.css"]],
     ["/auth/client.js", ["text/javascript", "client.js"]],
     ["/auth/setup.js", ["text/javascript", "setup.js"]],
     ["/auth/setup.css", ["text/css", "setup.css"]],
@@ -16,6 +20,10 @@ const setupAssets = new Map(
     { type, content: fs.readFileSync(path.join(__dirname, "web", file)) },
   ]),
 );
+setupAssets.set("/favicon.png", {
+  type: "image/png",
+  content: fs.readFileSync(path.join(__dirname, "../../../../images/favicon.png")),
+});
 const { openDatabase } = require("./database");
 const { createSessionService } = require("./sessions");
 const { createSessionCookies } = require("./session-cookies");
@@ -253,8 +261,18 @@ function createAuthBoundary({
       if (!session) return safe(res, 401, "Authentication required");
       if (!initialized() || session.user.role !== "admin")
         return safe(res, 403, "Administrator access required");
+      if (req.headers["x-ignis-context"] &&
+          req.headers["x-ignis-context"] !== session.id)
+        return safe(res, 409, "Session changed");
       if (req.method === "GET")
-        return res.json({ users: listUsers(db, session.user.id) });
+        return res.json({
+          users: listUsers(db, session.user.id).map((user) => ({
+            ...user,
+            oidcLinked: oidc ? !!oidc.linked(user.id) : null,
+          })),
+          oidcAvailable: !!oidc,
+          passwordPolicy: config.passwordPolicy,
+        });
       if (!originAllowed(req, true) || !csrf.valid(req, session))
         return safe(res, 403, "Request rejected");
       const isCurrent = (withinTransaction = false) => {
@@ -266,7 +284,9 @@ function createAuthBoundary({
           now() >= current.authenticatedAt &&
           now() - current.authenticatedAt < 300000;
       };
-      if (!isCurrent()) return safe(res, 403, "Sign in again before creating users");
+      if (!isCurrent()) return res.status(403).json({
+        error: "Sign in again before creating users", code: "REAUTH_REQUIRED",
+      });
       if (!limits.createUser(session.user.id))
         return safe(res, 429, "Too many requests");
       const body = req.body;
@@ -290,7 +310,7 @@ function createAuthBoundary({
     if (req.method === "GET" && pathname === "/api/auth/status") {
       return res.json({
         initialized: initialized(),
-        ...(oidc && initialized() ? { oidcAvailable: true } : {}),
+        ...(oidc && initialized() ? { oidcAvailable: true, oidcButtonText: config.oidcButtonText } : {}),
         setupAvailable: setup.available(),
         ...(setup.available() ? { passwordPolicy: config.passwordPolicy } : {}),
       });
@@ -308,6 +328,8 @@ function createAuthBoundary({
             sessionId: session.id,
             expiresAt: session.expiresAt,
             oidcLinked: !!oidc?.linked(session.user.id),
+            recentAuthentication: now() >= session.authenticatedAt &&
+              now() - session.authenticatedAt < 300000,
             canLinkOidc:
               !!oidc &&
               !oidc.linked(session.user.id) &&
@@ -368,6 +390,10 @@ function createAuthBoundary({
       const kind = pathname.endsWith("/link") ? "link" : "login";
       if (kind === "link" && (!session || oidc.linked(session.user.id)))
         return safe(res, 403, "Account linking unavailable");
+      if (kind === "link" && now() - session.authenticatedAt >= 300000)
+        return res.status(403).json({
+          error: "Sign in again before linking an account", code: "REAUTH_REQUIRED",
+        });
       try {
         const result = await oidc.begin(
           kind,
@@ -458,7 +484,7 @@ function createAuthBoundary({
         const asset = setupAssets.get(pathname);
         res.set(
           "Content-Security-Policy",
-          "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+          "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
         );
         return res.type(asset.type).send(asset.content);
       }

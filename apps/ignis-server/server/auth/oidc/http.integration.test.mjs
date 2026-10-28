@@ -289,6 +289,10 @@ it("manually links an administrator only from its existing recent session", asyn
       })
     ).status,
   ).toBe(200);
+  const listing = (await request("/api/auth/users", jar)).json();
+  expect(listing.oidcAvailable).toBe(true);
+  const before = listing.users;
+  expect(before.find((user) => user.login === "admin").oidcLinked).toBe(false);
   const oldToken = jar["ignis-dev-session"];
   const start = await post("/api/auth/oidc/link", jar);
   expect(start.status).toBe(200);
@@ -303,6 +307,11 @@ it("manually links an administrator only from its existing recent session", asyn
   );
   expect(result.headers.location).toBe("/account?oidc=linked");
   expect(jar["ignis-dev-session"]).not.toBe(oldToken);
+  const after = (await request("/api/auth/users", jar)).json().users;
+  expect(after.find((user) => user.login === "admin").oidcLinked).toBe(true);
+  for (const user of after) {
+    expect(Object.keys(user).sort()).toEqual(["id", "login", "oidcLinked", "role", "status"]);
+  }
   expect((await request("/api/auth/session", jar)).json()).toMatchObject({
     user: { role: "admin" },
     oidcLinked: true,
@@ -390,5 +399,18 @@ it("does not accept a fabricated callback or redirect to an attacker destination
   );
   expect(result.headers.location).toBe("/login?oidc=failed");
   expect(result.headers["set-cookie"]).toBeUndefined();
+  expect(tokenRequests).toBe(0);
+});
+
+it("asks for reauthentication before starting a link with an old local authentication", async () => {
+  const jar = {};
+  await post("/api/auth/login", jar, {
+    login: "admin", password: "synthetic-passphrase",
+  });
+  db.exec("UPDATE sessions SET authenticated_at = authenticated_at - 300001");
+  const result = await post("/api/auth/oidc/link", jar);
+  expect(result.status).toBe(403);
+  expect(result.json().code).toBe("REAUTH_REQUIRED");
+  expect(result.json()).not.toHaveProperty("authorizationUrl");
   expect(tokenRequests).toBe(0);
 });

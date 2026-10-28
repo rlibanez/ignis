@@ -7,7 +7,13 @@
   const linkButton = document.getElementById("link-oidc");
   const accountPage = location.pathname === "/account";
   let oidcAvailable = false;
+  const requested = new URL(location.href).searchParams.get("reauth");
+  const intent = ["users", "link"].includes(requested) ? requested : null;
+  const destination = (value) => value === "users" ? "/admin/users" : "/account";
+  const reauthDialog = document.getElementById("reauth-dialog");
+  document.getElementById("cancel-reauth").addEventListener("click", () => reauthDialog.close());
   if (accountPage) {
+    document.body.classList.add("account-page");
     document.title = "Account – Ignis";
     document.querySelector("h1").textContent = "Account";
   }
@@ -20,7 +26,14 @@
         link ? "/api/auth/oidc/link" : "/api/auth/oidc/start",
         {},
       );
+      if (response.status === 403 &&
+          (await response.clone().json()).code === "REAUTH_REQUIRED") {
+        oidcButton.disabled = linkButton.disabled = false;
+        reauthDialog.showModal();
+        return;
+      }
       if (!response.ok) throw new Error();
+      if (!link && intent) sessionStorage.setItem("ignis-reauth-return", intent);
       const url = new URL((await response.json()).authorizationUrl);
       if (url.protocol !== "https:" || url.username || url.password)
         throw new Error();
@@ -88,7 +101,8 @@
         return;
       }
       const session = await response.json();
-      if (accountPage) location.replace("/account");
+      if (intent) location.replace(destination(intent));
+      else if (accountPage) location.replace("/account");
       else if (session.user.role === "admin") location.replace("/");
       else {
         form.hidden = true;
@@ -129,7 +143,10 @@
       }
       oidcAvailable = installation.oidcAvailable === true;
       oidcButton.hidden = !oidcAvailable;
+      oidcButton.textContent = installation.oidcButtonText || "Sign in with OpenID Connect";
       const outcome = new URL(location.href).searchParams.get("oidc");
+      const returnIntent = outcome === "success" ? sessionStorage.getItem("ignis-reauth-return") : null;
+      sessionStorage.removeItem("ignis-reauth-return");
       if (outcome) history.replaceState(null, "", location.pathname);
       if (["success", "linked"].includes(outcome)) {
         channel?.postMessage("lock");
@@ -141,6 +158,11 @@
       });
       if (current.ok) {
         const session = await current.json();
+        if (intent) form.elements.login.value = session.user.login;
+        if (outcome === "success" && ["users", "link"].includes(returnIntent)) {
+          location.replace(destination(returnIntent));
+          return;
+        }
         if (outcome === "success" && session.user.role === "admin") {
           location.replace("/");
           return;
@@ -152,31 +174,41 @@
           `Signed in as ${session.user.login}.`;
         document.getElementById("open-ignis").hidden =
           session.user.role !== "admin";
+        document.getElementById("manage-users").hidden = session.user.role !== "admin";
         linkButton.hidden =
           !accountPage || !oidcAvailable || session.oidcLinked;
-        linkButton.disabled = !session.canLinkOidc;
+        linkButton.disabled = false;
         if (accountPage) {
           form.elements.login.value = session.user.login;
           button.textContent = "Sign in again";
-          oidcButton.textContent = "Sign in again with OpenID Connect";
         }
         document.getElementById("link-help").textContent = session.canLinkOidc
           ? "You will authenticate with your identity provider to link this account."
           : "Sign in again before linking. You will also authenticate with your identity provider.";
         document.getElementById("link-help").hidden = linkButton.hidden;
         status.textContent =
-          session.oidcLinked && accountPage
-            ? "Your OpenID Connect account is linked."
-            : session.user.role === "admin"
-              ? "You are signed in."
-              : "Signed in. Vault access for non-administrator accounts is not available yet.";
-      } else if (current.status === 401)
+          session.user.role === "admin"
+            ? accountPage ? "" : "You are signed in."
+            : "Signed in. Vault access for non-administrator accounts is not available yet.";
+      } else if (current.status === 401) {
+        if (accountPage) {
+          location.replace("/login");
+          return;
+        }
         status.textContent = "Enter your Ignis account credentials.";
+      }
       else throw new Error();
       if (outcome === "failed")
         status.textContent =
           "OpenID Connect sign-in failed. Please start again or contact your administrator.";
-      form.hidden = false;
+      if (intent && outcome !== "failed") {
+        status.textContent = intent === "users"
+          ? "Sign in again to create users. You will return to user management afterwards."
+          : "Sign in again before linking your OpenID Connect account.";
+        document.querySelector("h1").textContent = "Sign in again";
+      }
+      form.hidden = accountPage;
+      if (accountPage) oidcButton.hidden = true;
     } catch {
       status.textContent = "Unable to check installation. Reload to try again.";
     }

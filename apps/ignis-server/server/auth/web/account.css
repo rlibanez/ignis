@@ -1,0 +1,26 @@
+.account-page main { max-width: 34rem; }
+.account-page #status:empty { display: none; }
+.account-page #account-status { color: light-dark(#515766, #c6c9d3); margin: .5rem 0 1.5rem; }
+.account-actions { display: grid; grid-template-columns: 1fr; gap: .75rem; }
+.account-button {
+  display: flex; justify-content: center; align-items: center;
+  box-sizing: border-box; padding: .85rem 1rem; border-radius: .45rem;
+  background: #6846be; color: #fff; text-decoration: none;
+  text-align: center; font-weight: 650; border: 1px solid transparent;
+}
+.account-button.secondary { background: transparent; color: inherit; border-color: light-dark(#898d99, #777d8d); }
+.account-button:hover { filter: brightness(1.12); }
+.account-button:focus-visible, summary:focus-visible { outline: 3px solid #a48be8; outline-offset: 3px; }
+.account-page #sign-out {
+  margin-top: 1.75rem;
+  color: light-dark(#a12436, #ffb4bd);
+  background: light-dark(#fcecef, #3b242c);
+  border: 1px solid light-dark(#d89ca6, #81505c);
+}
+.account-page #sign-out:hover { background: light-dark(#f7dce2, #4b2b35); }
+@media (max-width: 400px) {
+  .account-actions { grid-template-columns: 1fr; }
+}
+
+#reauth-dialog { max-width: 28rem; width: calc(100% - 4rem); border: 1px solid #777d8d; border-radius: .65rem; padding: 1.5rem; background: light-dark(#fff, #202229); color: inherit; }
+#reauth-dialog::backdrop { background: #080b1480; }

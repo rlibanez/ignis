@@ -613,19 +613,62 @@ describe("user administration HTTP", () => {
     const listed = await request("/api/auth/users", { jar });
     expect(listed.status).toBe(200);
     for (const row of (await listed.json()).users)
-      expect(Object.keys(row).sort()).toEqual(["id", "login", "role", "status"]);
+      expect(Object.keys(row).sort()).toEqual(["id", "login", "oidcLinked", "role", "status"]);
+    expect((await listed.json()).oidcAvailable).toBe(false);
+    expect((await listed.json()).users.every((row) => row.oidcLinked === null)).toBe(true);
     const normalJar = await login("new-user");
     expect((await request("/api/vault/list", { jar: normalJar })).status).toBe(403);
   });
 
   it("rejects stale admin authentication before creating an account", async () => {
     const jar = await login();
+    expect((await (await request("/api/auth/session", { jar })).json()).recentAuthentication).toBe(true);
     clock += 300001;
+    expect((await (await request("/api/auth/session", { jar })).json()).recentAuthentication).toBe(false);
     const result = await request("/api/auth/users", {
       jar, method: "POST", headers: { "x-ignis-csrf": await csrf(jar) },
       body: { login: "new-user", password: PASSWORD },
     });
     expect(result.status).toBe(403);
+    expect((await result.json()).code).toBe("REAUTH_REQUIRED");
     expect(db.prepare("SELECT id FROM users WHERE login='new-user'").get()).toBeUndefined();
   });
+});
+
+it("rejects user administration from a stale browser context", async () => {
+  const jar = await login();
+  const headers = { "x-ignis-context": "previous-session" };
+  expect((await request("/api/auth/users", { jar, headers })).status).toBe(409);
+  expect((await request("/api/auth/users", {
+    jar, method: "POST",
+    headers: { ...headers, "x-ignis-csrf": await csrf(jar) },
+    body: { login: "new-user", password: PASSWORD },
+  })).status).toBe(409);
+  expect(db.prepare("SELECT id FROM users WHERE login='new-user'").get()).toBeUndefined();
+});
+
+it("serves the administrative UI without embedding account data", async () => {
+  const page = await request("/admin/users");
+  expect(page.status).toBe(200);
+  expect(page.headers.get("cache-control")).toBe("no-store");
+  expect(page.headers.get("content-security-policy")).toContain("script-src 'self'");
+  expect(await page.text()).toContain('id="administration" hidden');
+  expect((await request("/auth/users.js")).status).toBe(200);
+  expect((await request("/api/auth/users")).status).toBe(401);
+});
+
+it("serves the shared favicon anonymously for authentication and administration pages", async () => {
+  for (const route of ["/setup", "/login", "/account", "/admin/users"]) {
+    const page = await request(route);
+    expect(await page.text()).toContain('rel="icon" type="image/png" href="/favicon.png"');
+    expect(page.headers.get("content-security-policy")).toContain("img-src 'self'");
+  }
+  const icon = await request("/favicon.png");
+  expect(icon.status).toBe(200);
+  expect(icon.headers.get("content-type")).toContain("image/png");
+  expect(Number(icon.headers.get("content-length"))).toBe(
+    fs.statSync(new URL("../../../../images/favicon.png", import.meta.url)).size,
+  );
+  expect((await request("/favicon.png", { method: "HEAD" })).status).toBe(200);
+  expect((await request("/images/favicon.png")).status).toBe(401);
 });

@@ -2,9 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sign in to Ignis</title>
     <link rel="stylesheet" href="/auth/setup.css" />
+    <link rel="stylesheet" href="/auth/account.css" />
     <script src="/auth/login.js" defer></script>
   </head>
   <body>
@@ -14,7 +16,10 @@
       <p id="status" role="status" aria-live="polite">Checking installation…</p>
       <section id="account" hidden>
         <p id="account-status"></p>
-        <p><a id="open-ignis" href="/" hidden>Open Ignis</a></p>
+        <nav class="account-actions" aria-label="Account navigation">
+          <a id="open-ignis" class="account-button" href="/" hidden>Open Ignis</a>
+          <a id="manage-users" class="account-button secondary" href="/admin/users" hidden>Manage users</a>
+        </nav>
         <button id="link-oidc" hidden>Link OpenID Connect account</button>
         <p id="link-help" class="help" hidden>
           Sign in again before linking. You will also authenticate with your
@@ -44,6 +49,12 @@
       <button id="oidc-sign-in" hidden>Sign in with OpenID Connect</button>
       <p><a id="manage-account" href="/account" hidden>Manage account</a></p>
       <button id="sign-out" hidden>Sign out</button>
+      <dialog id="reauth-dialog" aria-labelledby="reauth-title">
+        <h2 id="reauth-title">Sign in again to continue</h2>
+        <p>Linking an OpenID Connect account requires a recent sign-in. Sign in again, then return to Account and retry linking.</p>
+        <a class="account-button" href="/login?reauth=link">Sign in again</a>
+        <button id="cancel-reauth" type="button">Cancel</button>
+      </dialog>
       <noscript>JavaScript is required to sign in.</noscript>
     </main>
   </body>

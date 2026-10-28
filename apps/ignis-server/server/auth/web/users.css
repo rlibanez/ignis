@@ -1,0 +1,63 @@
+.users-page { max-width: 58rem; }
+.users-page h1 { margin-bottom: .5rem; }
+#status { color: light-dark(#515766, #b1b7c6); min-height: 1.5em; }
+.panel {
+  background: light-dark(#fff, #202229);
+  border: 1px solid light-dark(#d9dbe3, #373a45);
+  border-radius: .85rem;
+  padding: 1.5rem;
+  margin-top: 1.5rem;
+}
+.panel h2 { margin: 0 0 1rem; font-size: 1.15rem; }
+.table-scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; text-align: left; }
+thead { color: light-dark(#515766, #b1b7c6); font-size: .8rem; }
+th, td { padding: .9rem .75rem; border-bottom: 1px solid light-dark(#e6e7ed, #373a45); }
+tbody th { font-weight: 600; overflow-wrap: anywhere; min-width: 8rem; }
+tbody tr:last-child > * { border-bottom: 0; }
+tbody tr:hover { background: light-dark(#f6f5fb, #272933); }
+.badge { display: inline-block; padding: .25rem .6rem; border-radius: 1rem; font-size: .8rem; background: light-dark(#eeebf7, #343044); white-space: nowrap; }
+.actions, .actions-heading { text-align: right; white-space: nowrap; }
+.icon-button { display: inline-flex; align-items: center; justify-content: center; width: 2.5rem; height: 2.5rem; padding: .5rem; margin: 0 0 0 .3rem; background: transparent; color: inherit; border: 1px solid light-dark(#b9bdc9, #696d7b); }
+.icon-button:disabled { cursor: not-allowed; opacity: .55; }
+.icon-button svg { width: 1.1rem; height: 1.1rem; }
+.action-help { margin-top: .75rem; }
+#create-user { max-width: 34rem; }
+footer { margin-top: 1.5rem; }
+.secondary-button { display: inline-block; box-sizing: border-box; padding: .8rem 1.25rem; border: 1px solid light-dark(#898d99, #777d8d); border-radius: .45rem; color: inherit; text-decoration: none; font-weight: 600; }
+.secondary-button:hover { background: light-dark(#e8e5f2, #30323d); }
+.secondary-button:focus-visible, .table-scroll:focus-visible { outline: 3px solid #a48be8; outline-offset: 3px; }
+@media (max-width: 480px) {
+  .panel { padding: 1rem; }
+  th, td { padding: .7rem .4rem; }
+  .secondary-button { width: 100%; text-align: center; }
+}
+.panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+.panel-heading h2 { margin: 0; }
+#add-user { width: auto; margin: 0; padding: .65rem 1rem; white-space: nowrap; }
+#create-dialog {
+  box-sizing: border-box;
+  width: min(36rem, calc(100% - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  border: 1px solid light-dark(#d9dbe3, #474a55);
+  border-radius: .85rem;
+  padding: 1.75rem;
+  background: light-dark(#fff, #202229);
+  color: inherit;
+  box-shadow: 0 1.5rem 5rem #0006;
+}
+#create-dialog::backdrop { background: #080b1480; backdrop-filter: blur(3px); }
+#create-dialog h2 { margin-top: 0; }
+#create-status:empty { display: none; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: .75rem; margin-top: 1.5rem; }
+.dialog-actions button { width: auto; margin: 0; }
+.cancel-button { background: transparent; color: inherit; border: 1px solid light-dark(#898d99, #777d8d); }
+@media (max-width: 480px) {
+  #create-dialog { padding: 1.25rem; }
+  .dialog-actions button { flex: 1; }
+}
+
+#status:empty { display: none; }
+#reauth-dialog { max-width: 28rem; width: calc(100% - 4rem); border: 1px solid #777d8d; border-radius: .65rem; padding: 1.5rem; background: light-dark(#fff, #202229); color: inherit; }
+#reauth-dialog::backdrop { background: #080b1480; }

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Users – Ignis</title>
+    <link rel="stylesheet" href="/auth/setup.css" />
+    <link rel="stylesheet" href="/auth/users.css" />
+    <script src="/auth/users.js" defer></script>
+  </head>
+  <body>
+    <main class="users-page">
+      <p class="brand">IGNIS</p>
+      <h1>Users</h1>
+      <p id="status" role="status" aria-live="polite">Checking access…</p>
+      <section id="administration" hidden>
+        <section class="panel" aria-labelledby="accounts-heading">
+          <div class="panel-heading"><h2 id="accounts-heading">Accounts</h2><button id="add-user" type="button">Add user</button></div>
+          <div class="table-scroll" role="region" aria-label="User accounts" tabindex="0">
+            <table>
+              <thead><tr><th scope="col">Username</th><th scope="col">Role</th><th scope="col">Status</th><th id="oidc-column" scope="col" hidden>OpenID Connect</th><th scope="col" class="actions-heading">Actions</th></tr></thead>
+              <tbody id="users"></tbody>
+            </table>
+          </div>
+          <p class="help action-help">Editing and deletion are not available yet.</p>
+        </section>
+        <dialog id="create-dialog" aria-labelledby="create-heading">
+        <h2 id="create-heading">Create user</h2>
+        <p class="help">New accounts are normal users. Vault access is not available for them yet.</p>
+        <p id="policy" class="help"></p>
+        <p id="create-status" role="status" aria-live="polite"></p>
+        <form id="create-user">
+          <label for="new-login">Username</label>
+          <input id="new-login" name="login" required minlength="3" maxlength="64"
+            pattern="[a-zA-Z0-9][a-zA-Z0-9._\-]{2,63}" autocomplete="off" />
+          <p class="help">3–64 ASCII letters, digits, dots, underscores or hyphens. Start with a letter or digit.</p>
+          <label for="new-password">Password</label>
+          <input id="new-password" name="password" type="password" required maxlength="1024" autocomplete="new-password" />
+          <label for="confirm-password">Confirm password</label>
+          <input id="confirm-password" name="confirmation" type="password" required maxlength="1024" autocomplete="new-password" />
+          <div class="dialog-actions"><button id="cancel-create" type="button" class="cancel-button">Cancel</button><button type="submit">Create user</button></div>
+        </form>
+        </dialog>
+      </section>
+      <footer><a class="secondary-button" href="/account">Back to account</a></footer>
+      <dialog id="reauth-dialog" aria-labelledby="reauth-title">
+        <h2 id="reauth-title">Sign in again to add users</h2>
+        <p>Creating an account requires a sign-in within the last five minutes. Sign in again, then return here to add the user. No account has been created.</p>
+        <a class="secondary-button" href="/login?reauth=users">Sign in again</a>
+        <button id="cancel-reauth" type="button">Cancel</button>
+      </dialog>
+      <noscript>JavaScript is required to manage users.</noscript>
+    </main>
+  </body>
+</html>
