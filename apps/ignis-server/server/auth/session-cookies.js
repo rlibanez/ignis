@@ -5,7 +5,7 @@ function createSessionCookies({
   allowHttpLoopback = false,
   purpose = "session",
 }) {
-  if (!["session", "csrf"].includes(purpose))
+  if (!["session", "csrf", "oidc"].includes(purpose))
     throw new Error("Invalid cookie purpose");
   const origin = new URL(publicOrigin);
   const secure = origin.protocol === "https:";
