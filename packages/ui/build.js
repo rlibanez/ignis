@@ -1,6 +1,7 @@
 const esbuild = require("esbuild");
 const sveltePlugin = require("esbuild-svelte");
 const path = require("path");
+const compilerOptions = require("./compiler-options");
 
 module.exports = esbuild.build({
   entryPoints: [path.join(__dirname, "src", "index.js")],
@@ -12,6 +13,6 @@ module.exports = esbuild.build({
   target: ["chrome90"],
   mainFields: ["svelte", "browser", "module", "main"],
   conditions: ["svelte", "browser"],
-  plugins: [sveltePlugin({ compilerOptions: { css: "injected" } })],
+  plugins: [sveltePlugin({ compilerOptions })],
   logLevel: "info",
 });
