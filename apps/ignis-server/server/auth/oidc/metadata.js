@@ -16,7 +16,19 @@ function validateOidcMetadata(input, config, allowedOrigins = []) {
     if (url.protocol !== "https:" || url.origin !== origin) fail();
     origins.add(origin);
   }
+  // This profile does not implement mandatory PAR or signed Request Objects.
+  for (const key of [
+    "require_pushed_authorization_requests",
+    "require_signed_request_object",
+  ]) {
+    if (input[key] !== undefined && input[key] !== false) fail();
+  }
   const result = { issuer: config.issuer };
+  const responseIssuer = input.authorization_response_iss_parameter_supported;
+  if (responseIssuer !== undefined) {
+    if (typeof responseIssuer !== "boolean") fail();
+    result.authorization_response_iss_parameter_supported = responseIssuer;
+  }
   for (const key of ["authorization_endpoint", "token_endpoint", "jwks_uri"]) {
     const value = input[key];
     let url;
