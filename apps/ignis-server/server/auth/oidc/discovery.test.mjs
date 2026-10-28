@@ -158,6 +158,7 @@ it("restricts subsequent library calls to validated endpoints and methods", asyn
   ])
     await expect(fetcher(url, init)).rejects.toThrow();
   expect(requests).toHaveLength(0);
+  serve({ keys: [{ kty: "EC", kid: "synthetic" }] });
   await fetcher(origin + "/keys");
   expect(requests[0]).toMatchObject({
     path: "/keys",

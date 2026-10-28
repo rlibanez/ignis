@@ -1,3 +1,4 @@
+const { createJwksFetch } = require("./jwks");
 const { createOidcTransport } = require("./transport");
 const { validateOidcMetadata } = require("./metadata");
 
@@ -68,10 +69,13 @@ async function initializeOidcClient(
         grant_types: ["authorization_code"],
         token_endpoint_auth_method: "client_secret_basic",
         id_token_signed_response_alg: "RS256",
+        [client.clockTolerance]: 30,
       },
       client.ClientSecretBasic(config.clientSecret),
     );
     configuration.timeout = timeoutMs / 1000;
+    client.enableNonRepudiationChecks(configuration);
+    const fetchKeys = createJwksFetch(transport);
     const tokenUrl = new URL(metadata.token_endpoint).href;
     const keysUrl = new URL(metadata.jwks_uri).href;
     configuration[client.customFetch] = async (input, init = {}) => {
@@ -90,7 +94,7 @@ async function initializeOidcClient(
       // Client credentials belong only to the token endpoint, never to JWKS.
       if (method === "GET" && new Headers(init.headers).has("authorization"))
         throw new Error("OIDC endpoint request rejected");
-      return transport(input, init);
+      return method === "GET" ? fetchKeys(input, init) : transport(input, init);
     };
     return configuration;
   } catch {
