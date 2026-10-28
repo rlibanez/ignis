@@ -6,7 +6,7 @@ async function createOidcLogin(
   config,
   configuration,
   cookiePolicy,
-  { now = Date.now } = {},
+  { now = Date.now, freshAuthentication = false } = {},
 ) {
   const client = await import("openid-client");
   if (
@@ -27,11 +27,12 @@ async function createOidcLogin(
           redirect_uri: config.redirectUri,
           response_type: "code",
           response_mode: "query",
-          scope: "openid",
+          scope: config.scope,
           state: attempt.state,
           nonce: attempt.nonce,
           code_challenge: attempt.codeChallenge,
           code_challenge_method: "S256",
+          ...(freshAuthentication ? { prompt: "login", max_age: "0" } : {}),
         });
         return { url: url.href, cookie: attempt.cookie };
       } catch {
@@ -75,12 +76,17 @@ async function createOidcLogin(
           expectedNonce: attempt.nonce,
           pkceCodeVerifier: attempt.verifier,
           idTokenExpected: true,
+          ...(freshAuthentication ? { maxAge: 0 } : {}),
         });
         const claims = tokens.claims();
         const seconds = now() / 1000;
         if (
           attempt.expiresAt <= now() ||
           !claims ||
+          (freshAuthentication &&
+            (!Number.isFinite(claims.auth_time) ||
+              claims.auth_time > seconds + 30 ||
+              claims.auth_time < seconds - 30)) ||
           claims.iss !== config.issuer ||
           typeof claims.sub !== "string" ||
           !/^[\x20-\x7e]{1,255}$/.test(claims.sub) ||
@@ -111,7 +117,20 @@ async function createOidcLogin(
               throw fail();
           }
         }
-        return Object.freeze({ issuer: claims.iss, subject: claims.sub });
+        const identity = { issuer: claims.iss, subject: claims.sub };
+        if (
+          config.scope.split(" ").includes("profile") &&
+          typeof claims.preferred_username === "string"
+        )
+          identity.preferredUsername = claims.preferred_username;
+        if (
+          config.scope.split(" ").includes("email") &&
+          typeof claims.email === "string"
+        ) {
+          identity.email = claims.email;
+          identity.emailVerified = claims.email_verified === true;
+        }
+        return Object.freeze(identity);
       } catch {
         throw fail();
       }

@@ -1,4 +1,5 @@
 import { it, expect, beforeAll, afterAll, vi } from "vitest";
+import { DatabaseSync } from "node:sqlite";
 import https from "node:https";
 import fs from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
@@ -389,5 +390,217 @@ it("rejects expired and cleared transactions without exchange", async () => {
     expect(tokenRequests).toBe(0);
   } finally {
     spy.mockRestore();
+  }
+});
+
+it("returns only requested matching claims and requires boolean email verification", async () => {
+  await flow();
+  const scoped = {
+    ...config,
+    clientSecret: config.clientSecret,
+    scope: "openid profile email",
+  };
+  const instance = await initializeOidcClient(
+    scoped,
+    { ca: cert, privateAddresses: { [origin]: ["127.0.0.1"] } },
+    { lookup: (_h, _o, cb) => cb(null, [{ address: "127.0.0.1", family: 4 }]) },
+  );
+  const login = await createOidcLogin(scoped, instance, policy);
+  expect(
+    await complete(
+      login,
+      await attempt(login, {
+        claims: {
+          preferred_username: "person",
+          email: "person@example.com",
+          email_verified: "true",
+          roles: ["admin"],
+        },
+      }),
+    ),
+  ).toEqual({
+    issuer: origin,
+    subject: "external-user",
+    preferredUsername: "person",
+    email: "person@example.com",
+    emailVerified: false,
+  });
+});
+async function manualFixture() {
+  await flow();
+  const db = new DatabaseSync(":memory:");
+  for (const migration of require("../schema")) db.exec(migration.sql);
+  db.prepare(
+    "INSERT INTO users(id,login,role,created_at) VALUES ('local','local','admin',0)",
+  ).run();
+  db.prepare(
+    "INSERT INTO oidc_identities VALUES ('https://previous.example','old','local',0)",
+  ).run();
+  const sessions = require("../sessions").createSessionService(db);
+  const issued = sessions.issueForVerifiedOidcIdentity({
+    issuer: "https://previous.example",
+    subject: "old",
+    authenticatedAt: Date.now(),
+  });
+  const instance = await initializeOidcClient(
+    config,
+    { ca: cert, privateAddresses: { [origin]: ["127.0.0.1"] } },
+    { lookup: (_h, _o, cb) => cb(null, [{ address: "127.0.0.1", family: 4 }]) },
+  );
+  const manual = await require("./manual-link").createManualOidcLink(
+    db,
+    config,
+    instance,
+    policy,
+    sessions,
+  );
+  const wrapper = { begin: (cookie) => manual.begin(issued.token, cookie) };
+  return { db, sessions, issued, manual, wrapper };
+}
+it("manually links after fresh provider authentication and revokes old sessions", async () => {
+  const f = await manualFixture();
+  try {
+    const a = await attempt(f.wrapper, {
+      claims: { auth_time: Math.floor(Date.now() / 1000) },
+    });
+    expect(a.authorize.searchParams.get("prompt")).toBe("login");
+    expect(a.authorize.searchParams.get("max_age")).toBe("0");
+    await expect(
+      f.manual.complete(a.callback, a.cookie, "wrong-token"),
+    ).rejects.toThrow();
+    const result = await f.manual.complete(
+      a.callback,
+      a.cookie,
+      f.issued.token,
+    );
+    expect(result.userId).toBe("local");
+    expect(result.authentication.token).not.toBe(f.issued.token);
+    expect(f.sessions.resolve(result.authentication.token).user.id).toBe(
+      "local",
+    );
+    expect(
+      f.db
+        .prepare("SELECT user_id FROM oidc_identities WHERE issuer=?")
+        .get(origin).user_id,
+    ).toBe("local");
+    expect(f.sessions.resolve(f.issued.token)).toBeNull();
+    await expect(
+      f.manual.complete(a.callback, a.cookie, f.issued.token),
+    ).rejects.toThrow();
+  } finally {
+    f.db.close();
+  }
+});
+it.each([undefined, 1, 9999999999])(
+  "rejects manual linking without fresh auth_time: %s",
+  async (authTime) => {
+    const f = await manualFixture();
+    try {
+      const a = await attempt(f.wrapper, { claims: { auth_time: authTime } });
+      await expect(
+        f.manual.complete(a.callback, a.cookie, f.issued.token),
+      ).rejects.toThrow();
+      expect(
+        f.db
+          .prepare("SELECT count(*) n FROM oidc_identities WHERE issuer=?")
+          .get(origin).n,
+      ).toBe(0);
+    } finally {
+      f.db.close();
+    }
+  },
+);
+it("rejects manual linking when the local session changes during the provider round trip", async () => {
+  const f = await manualFixture();
+  try {
+    const a = await attempt(f.wrapper, {
+      claims: { auth_time: Math.floor(Date.now() / 1000) },
+    });
+    f.sessions.revoke(f.issued.token);
+    await expect(
+      f.manual.complete(a.callback, a.cookie, f.issued.token),
+    ).rejects.toThrow();
+    expect(tokenRequests).toBe(0);
+  } finally {
+    f.db.close();
+  }
+});
+
+it("provisions from verified claims and issues an opaque normal-user session", async () => {
+  await flow();
+  const db = new DatabaseSync(":memory:");
+  try {
+    for (const m of require("../schema")) db.exec(m.sql);
+    db.prepare(
+      "INSERT INTO users(id,login,role,created_at) VALUES ('setup-admin','setup-admin','admin',0)",
+    ).run();
+    const scoped = {
+      ...config,
+      clientSecret: config.clientSecret,
+      scope: "openid profile email",
+      autoProvision: true,
+      accountLinking: "disabled",
+    };
+    const instance = await initializeOidcClient(
+      scoped,
+      { ca: cert, privateAddresses: { [origin]: ["127.0.0.1"] } },
+      {
+        lookup: (_h, _o, cb) => cb(null, [{ address: "127.0.0.1", family: 4 }]),
+      },
+    );
+    const sessions = require("../sessions").createSessionService(db);
+    const login = await require("./account-login").createOidcAccountLogin(
+      db,
+      scoped,
+      instance,
+      policy,
+      sessions,
+    );
+    const a = await attempt(login, {
+      claims: {
+        preferred_username: "newuser",
+        email: "new@example.com",
+        email_verified: true,
+        roles: ["admin"],
+      },
+    });
+    const result = await complete(login, a);
+    expect(result.token).toMatch(/^[a-f0-9]{64}$/);
+    expect(sessions.resolve(result.token).user).toMatchObject({
+      login: "newuser",
+      role: "user",
+    });
+    expect(JSON.stringify(result)).not.toContain("synthetic-access");
+    db.prepare("UPDATE users SET status='disabled' WHERE role='user'").run();
+    const b = await attempt(login, {
+      claims: { preferred_username: "newuser" },
+    });
+    await expect(complete(login, b)).rejects.toThrow();
+    expect(
+      db.prepare("SELECT count(*) n FROM users WHERE role='user'").get().n,
+    ).toBe(1);
+  } finally {
+    db.close();
+  }
+});
+it("email changes invalidate existing sessions and stale sessions cannot start manual linking", async () => {
+  const f = await manualFixture();
+  try {
+    const old = f.sessions.issueForVerifiedOidcIdentity({
+      issuer: "https://previous.example",
+      subject: "old",
+      authenticatedAt: Date.now() - 300001,
+    });
+    await expect(f.manual.begin(old.token)).rejects.toThrow();
+    require("../email").setUserEmail(
+      f.db,
+      "local",
+      "admin@example.com",
+      "admin_confirmed",
+    );
+    expect(f.sessions.resolve(f.issued.token)).toBeNull();
+    await expect(f.manual.begin(f.issued.token)).rejects.toThrow();
+  } finally {
+    f.db.close();
   }
 });

@@ -78,7 +78,8 @@ function validateOidcMetadata(input, config, allowedOrigins = []) {
   if (input.code_challenge_methods_supported !== undefined)
     capability("code_challenge_methods_supported", "S256");
   if (input.scopes_supported !== undefined)
-    capability("scopes_supported", "openid");
+    for (const scope of (config.scope ?? "openid").split(" "))
+      capability("scopes_supported", scope);
   const subjects = input.subject_types_supported;
   if (
     !Array.isArray(subjects) ||

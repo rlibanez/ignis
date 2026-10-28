@@ -7,6 +7,7 @@ const { Writable } = require("node:stream");
 const { openDatabase, backupDatabase, restoreDatabase } = require("./database");
 const { bootstrapAdmin, normalizeLogin, registerVault } = require("./store");
 const { readPasswordPolicy } = require("./password-policy");
+const { setUserEmail } = require("./email");
 const { hashPassword } = require("./password");
 
 function question(prompt, hidden = false) {
@@ -49,12 +50,13 @@ async function main(args = process.argv.slice(2)) {
     bootstrap: 0,
     status: 0,
     "register-vault": 2,
+    "set-email": 3,
     backup: 1,
     restore: 1,
   };
   if (!Object.hasOwn(arity, command) || rest.length !== arity[command]) {
     throw new Error(
-      "Usage: npm run auth -- init|bootstrap|status|register-vault <directory> <owner-login>|backup <absolute-file>|restore <absolute-file>",
+      "Usage: npm run auth -- init|bootstrap|status|set-email <login> <email|-> <unverified|admin_confirmed>|register-vault <directory> <owner-login>|backup <absolute-file>|restore <absolute-file>",
     );
   }
   const root = path.resolve(__dirname, "../../../..");
@@ -93,6 +95,13 @@ async function main(args = process.argv.slice(2)) {
       password = confirmation = null;
       const user = bootstrapAdmin(db, login, hash);
       console.log(`Administrator created: ${user.login} (${user.id})`);
+    } else if (command === "set-email") {
+      const user = db
+        .prepare("SELECT id FROM users WHERE login = ?")
+        .get(normalizeLogin(rest[0]));
+      if (!user) throw new Error("User not found");
+      setUserEmail(db, user.id, rest[1] === "-" ? null : rest[1], rest[2]);
+      console.log("User email updated; existing sessions revoked if changed.");
     } else if (command === "register-vault") {
       const owner = db
         .prepare("SELECT id FROM users WHERE login = ?")

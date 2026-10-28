@@ -15,7 +15,12 @@ async function initializeOidcClient(
       config.idTokenAlgorithm !== "RS256" ||
       config.codeChallengeMethod !== "S256" ||
       config.responseType !== "code" ||
-      config.scope !== "openid" ||
+      ![
+        "openid",
+        "openid profile",
+        "openid email",
+        "openid profile email",
+      ].includes(config.scope) ||
       typeof config.clientSecret !== "string" ||
       !config.clientSecret.length
     )

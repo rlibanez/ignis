@@ -144,4 +144,19 @@ module.exports = [
       END;
     `,
   },
+  {
+    version: 4,
+    sql: `
+      ALTER TABLE users ADD COLUMN email TEXT CHECK(email IS NULL OR (length(email) BETWEEN 3 AND 254 AND email = lower(email)));
+      ALTER TABLE users ADD COLUMN email_trust TEXT NOT NULL DEFAULT 'unverified'
+        CHECK(email_trust IN ('unverified', 'admin_confirmed', 'oidc_verified') AND (email IS NOT NULL OR email_trust = 'unverified'));
+      CREATE UNIQUE INDEX users_email ON users(email) WHERE email IS NOT NULL;
+      CREATE TRIGGER revoke_email_update AFTER UPDATE OF email, email_trust ON users
+      WHEN OLD.email IS NOT NEW.email OR OLD.email_trust != NEW.email_trust
+      BEGIN
+        UPDATE users SET auth_version = auth_version + 1 WHERE id = NEW.id;
+        DELETE FROM sessions WHERE user_id = NEW.id;
+      END;
+    `,
+  },
 ];

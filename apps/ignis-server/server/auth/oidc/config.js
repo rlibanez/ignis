@@ -65,6 +65,24 @@ function readOidcConfig(env = process.env, transport) {
     /[\p{Cc}]/u.test(secret)
   )
     throw new Error("Invalid OIDC client secret");
+  const autoProvision = env.IGNIS_OIDC_AUTO_PROVISION ?? "false";
+  const accountLinking = env.IGNIS_OIDC_ACCOUNT_LINKING ?? "disabled";
+  if (!["true", "false"].includes(autoProvision))
+    throw new Error("Invalid IGNIS_OIDC_AUTO_PROVISION");
+  if (
+    ![
+      "disabled",
+      "preferred_username",
+      "verified_email",
+      "preferred_username_and_verified_email",
+    ].includes(accountLinking)
+  )
+    throw new Error("Invalid IGNIS_OIDC_ACCOUNT_LINKING");
+  const scopes = ["openid"];
+  if (autoProvision === "true" || accountLinking.includes("preferred_username"))
+    scopes.push("profile");
+  if (autoProvision === "true" || accountLinking.includes("verified_email"))
+    scopes.push("email");
   const config = {
     issuer,
     clientId,
@@ -72,7 +90,9 @@ function readOidcConfig(env = process.env, transport) {
       .href,
     clientAuthentication: "client_secret_basic",
     responseType: "code",
-    scope: "openid",
+    scope: scopes.join(" "),
+    autoProvision: autoProvision === "true",
+    accountLinking,
     codeChallengeMethod: "S256",
     idTokenAlgorithm: "RS256",
   };
