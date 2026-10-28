@@ -17,8 +17,8 @@
       if (!response.ok) throw new Error();
       const state = await response.json();
       if (state.initialized) {
-        status.textContent =
-          "Initial setup is complete. This page cannot create additional accounts. You can close this page.";
+        document.getElementById("sign-in").hidden = false;
+        status.textContent = "Initial setup is complete. Sign in to continue.";
       } else if (!state.setupAvailable) {
         status.textContent =
           "Web setup is disabled. Ask the server operator to configure an installation key or create the first administrator using the local CLI.";

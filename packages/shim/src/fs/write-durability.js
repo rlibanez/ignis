@@ -11,6 +11,7 @@ const BACKOFF_MS = [1000, 2000, 4000, 8000, 16000, 30000];
 
 const MAX_ATTEMPTS = 8;
 
+let suspended = false;
 let transport = null;
 let listenersBound = false;
 let silentByDefault = false;
@@ -66,6 +67,7 @@ export function initWriteDurability(t, serializeFn) {
 
 // Attempt every queued write.
 function flushOnUnload() {
+  if (suspended) return;
   if (!transport) {
     return;
   }
@@ -161,6 +163,7 @@ function emitFailureChange() {
 }
 
 function scheduleRetry(path, gen) {
+  if (suspended) return;
   const entry = entries.get(path);
 
   if (!entry || entry.gen !== gen) {
@@ -174,6 +177,7 @@ function scheduleRetry(path, gen) {
 }
 
 function attempt(path, gen) {
+  if (suspended) return;
   const entry = entries.get(path);
 
   if (!entry || entry.gen !== gen || !transport) {
@@ -182,6 +186,7 @@ function attempt(path, gen) {
 
   // Serialize behind any in-flight write; if a newer write superseded us while queued, skip the send.
   serialize(path, () => {
+    if (suspended) return Promise.reject(new Error("Session locked"));
     const current = entries.get(path);
 
     if (!current || current.gen !== gen) {
@@ -248,6 +253,7 @@ function attempt(path, gen) {
 // Track one write; the caller reports the outcome on the returned handle.
 // The captured gen is checked on both outcome paths, so a superseded write never mutates a newer entry; opts.silent suppresses surfacing.
 export function trackWrite(path, opts) {
+  if (suspended) throw new Error("Session locked");
   // A fresh write to a given-up path retires its failure, so any surface showing it must reconcile.
   const prev = entries.get(path);
   const supersededFailure = !!(
@@ -261,6 +267,8 @@ export function trackWrite(path, opts) {
   const gen = ++genCounter;
   const entry = {
     gen,
+    data: opts?.data,
+    encoding: opts?.encoding,
     status: "inflight",
     silent: silentByDefault || !!(opts && opts.silent),
     overThreshold: false,
@@ -411,6 +419,7 @@ export function getDetail() {
 }
 
 export function retryAll() {
+  if (suspended) return;
   for (const [path, entry] of entries) {
     if (entry.status === "failed" && !entry.silent) {
       entry.status = "retrying";
@@ -429,6 +438,7 @@ export function _size() {
 
 // Test-only: clear all timers, state, and subscribers.
 export function _reset() {
+  suspended = false;
   for (const entry of entries.values()) {
     clearTimeout(entry.startTimer);
     clearTimeout(entry.retryTimer);
@@ -442,4 +452,22 @@ export function _reset() {
   stateSubs.clear();
   failureSubs.clear();
   failureChangeSubs.clear();
+}
+
+export function snapshotPending() {
+  return [...entries]
+    .filter(([, entry]) => entry.data != null)
+    .map(([path, entry]) => ({
+      path,
+      encoding: entry.encoding,
+      data:
+        typeof entry.data === "string" ? entry.data : Array.from(entry.data),
+    }));
+}
+export function suspendWrites() {
+  suspended = true;
+  for (const entry of entries.values()) {
+    clearTimeout(entry.startTimer);
+    clearTimeout(entry.retryTimer);
+  }
 }

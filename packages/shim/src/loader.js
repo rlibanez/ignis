@@ -1,3 +1,4 @@
+import { snapshotBuffered, suspendCoalescer } from "./fs/write-coalescer.js";
 import { installRequire } from "./require.js";
 import { installGlobals } from "./globals/index.js";
 import { installCssOverrides } from "./css-overrides.js";
@@ -26,6 +27,8 @@ import {
   listFailed,
   retryAll,
   getDetail,
+  snapshotPending,
+  suspendWrites,
 } from "./fs/write-durability.js";
 
 // __IGNIS_VERSION__ (semver) and __IGNIS_BUILD__ are replaced at build time.
@@ -41,6 +44,11 @@ installIgnisApi(wsClient, {
   listFailed,
   retryAll,
   getDetail,
+  snapshotPending: () => [...snapshotPending(), ...snapshotBuffered()],
+});
+window.addEventListener("ignis:auth-lost", () => {
+  suspendWrites();
+  suspendCoalescer();
 });
 
 const BRIDGE_MANIFEST = {

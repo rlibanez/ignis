@@ -167,3 +167,22 @@ describe("unload flush", () => {
     expect(transport.writeFile).not.toHaveBeenCalled();
   });
 });
+
+it("retains unconfirmed data but suppresses retries and unload flush after session loss", async () => {
+  const track = wd.trackWrite("private.md", {
+    data: "unconfirmed",
+    encoding: "utf-8",
+  });
+  expect(wd.snapshotPending()).toEqual([
+    { path: "private.md", data: "unconfirmed", encoding: "utf-8" },
+  ]);
+  wd.suspendWrites();
+  track.failure("unconfirmed", "utf-8", null);
+  firePagehide();
+  fireHidden();
+  wd.retryAll();
+  await vi.advanceTimersByTimeAsync(60000);
+  expect(transport.writeFile).not.toHaveBeenCalled();
+  expect(() => wd.trackWrite("new.md")).toThrow("Session locked");
+  expect(wd.snapshotPending()).toHaveLength(1);
+});

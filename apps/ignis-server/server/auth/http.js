@@ -5,6 +5,9 @@ const { createInitialAdminSetup } = require("./initial-admin");
 const setupAssets = new Map(
   [
     ["/setup", ["text/html", "setup.html"]],
+    ["/login", ["text/html", "login.html"]],
+    ["/auth/login.js", ["text/javascript", "login.js"]],
+    ["/auth/client.js", ["text/javascript", "client.js"]],
     ["/auth/setup.js", ["text/javascript", "setup.js"]],
     ["/auth/setup.css", ["text/css", "setup.css"]],
   ].map(([url, [type, file]]) => [
@@ -122,8 +125,11 @@ function createAuthBoundary({
         return false;
       const url = new URL(req.url, publicUrl.origin);
       if (
-        [...url.searchParams.keys()].some((key) => key !== "vault") ||
-        url.searchParams.getAll("vault").length !== 1
+        [...url.searchParams.keys()].some(
+          (key) => !["vault", "context"].includes(key),
+        ) ||
+        url.searchParams.getAll("vault").length !== 1 ||
+        url.searchParams.getAll("context").length > 1
       )
         return false;
       const token = cookies.read(req.headers.cookie);
@@ -133,7 +139,13 @@ function createAuthBoundary({
           .length >= 8
       )
         return false;
-      return initialized() && getSession(req)?.user.role === "admin";
+      const session = getSession(req);
+      return (
+        initialized() &&
+        session?.user.role === "admin" &&
+        (!url.searchParams.has("context") ||
+          url.searchParams.get("context") === session.id)
+      );
     },
     attach(ws, req) {
       const token = cookies.read(req.headers.cookie);
@@ -236,7 +248,11 @@ function createAuthBoundary({
     }
     if (req.method === "GET" && pathname === "/api/auth/session") {
       return session
-        ? res.json({ user: session.user, expiresAt: session.expiresAt })
+        ? res.json({
+            user: session.user,
+            sessionId: session.id,
+            expiresAt: session.expiresAt,
+          })
         : safe(res, 401, "Authentication required");
     }
     if (
@@ -342,7 +358,21 @@ function createAuthBoundary({
       if (!initialized())
         return safe(res, 401, "Initial administrator required");
       const session = getSession(req);
-      if (!session) return safe(res, 401, "Authentication required");
+      if (!session) {
+        if (
+          ["GET", "HEAD"].includes(req.method) &&
+          ["/", "/index.html"].includes(pathname)
+        )
+          return res.redirect(303, "/login");
+        return safe(res, 401, "Authentication required");
+      }
+      if (
+        req.headers["x-ignis-context"] &&
+        req.headers["x-ignis-context"] !== session.id
+      )
+        return res
+          .status(409)
+          .json({ error: "Session changed", code: "AUTH_CONTEXT_CHANGED" });
       if (session.user.role !== "admin")
         return safe(res, 403, "Administrator access required");
       if (!permittedResource(req.method, pathname, staticRoots))

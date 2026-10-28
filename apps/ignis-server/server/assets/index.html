@@ -42,11 +42,27 @@
 </div>
 <script>window.__obsidianTerms = __OBSIDIAN_TERMS__;</script>
 <!-- Ignis shims: must run before any Obsidian code. -->
-<script type="text/javascript" src="__SHIM_LOADER_SRC__"></script>
-<script type="text/javascript" src="__IGNIS_UI_SRC__"></script>
+<script src="/auth/client.js"></script>
 <!-- Obsidian scripts injected dynamically to avoid touching their files. -->
 <script>
-(function () {
+(async function () {
+  try {
+    await window.__ignisAuth.ready;
+    async function load(src) {
+      await new Promise(function (resolve, reject) {
+        var script = document.createElement("script");
+        script.src = src;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+    await load("__SHIM_LOADER_SRC__");
+    await load("__IGNIS_UI_SRC__");
+  } catch {
+    window.__ignisAuth?.lock("Unable to start Ignis. Sign in again to continue.");
+    return;
+  }
   var scripts = __OBSIDIAN_SCRIPTS__;
   var label = document.getElementById("ignis-status-label");
   var status = document.getElementById("ignis-status");

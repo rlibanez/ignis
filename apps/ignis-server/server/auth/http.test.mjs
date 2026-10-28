@@ -232,7 +232,9 @@ describe("HTTP boundary", () => {
         method,
         ...(method === "POST" ? { body: {} } : {}),
       });
-      expect(response.status, route).toBe(401);
+      expect(response.status, route).toBe(
+        ["/", "/index.html"].includes(route) ? 303 : 401,
+      );
       expect(response.headers.get("cache-control")).toBe("no-store");
     }
   });
@@ -531,4 +533,50 @@ it("maps mounted static resources without allowing traversal or unknown API rout
     permittedResource("GET", "/assets/../data/auth/identity.sqlite", roots),
   ).toBe(false);
   expect(permittedResource("GET", "/api/unclassified", roots)).toBe(false);
+});
+
+it("rejects requests and sockets carrying a previous browser session context", async () => {
+  const jar = await login();
+  const session = await (await request("/api/auth/session", { jar })).json();
+  expect(
+    (
+      await request("/api/vault/list", {
+        jar,
+        headers: { "x-ignis-context": session.sessionId },
+      })
+    ).status,
+  ).toBe(200);
+  const stale = await request("/api/fs/writeFile", {
+    jar,
+    method: "POST",
+    body: {},
+    headers: {
+      "x-ignis-context": "previous-session",
+      "x-ignis-csrf": await csrf(jar),
+    },
+  });
+  expect(stale.status).toBe(409);
+  expect((await stale.json()).code).toBe("AUTH_CONTEXT_CHANGED");
+  const req = {
+    headers: {
+      host: "localhost:8080",
+      origin: ORIGIN,
+      cookie: Object.entries(jar)
+        .map(([k, v]) => `${k}=${v}`)
+        .join("; "),
+    },
+    socket: { remoteAddress: "127.0.0.1" },
+    url: "/ws?vault=vault&context=old",
+  };
+  expect(boundary.wsSecurity.verify(req)).toBe(false);
+  req.url = "/ws?vault=vault&context=" + session.sessionId;
+  expect(boundary.wsSecurity.verify(req)).toBe(true);
+});
+it("serves login assets without exposing the app to unauthenticated clients", async () => {
+  for (const route of ["/login", "/auth/login.js", "/auth/client.js"]) {
+    const response = await request(route);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+  }
+  expect((await request("/")).headers.get("location")).toBe("/login");
 });

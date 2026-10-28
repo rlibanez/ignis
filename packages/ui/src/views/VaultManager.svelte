@@ -194,6 +194,7 @@
 
 <Modal
   title="Vault Manager"
+  overlayClass="vault-manager-overlay"
   width="600px"
   bind:this={modalRef}
   on:escape={onEscape}
@@ -264,6 +265,9 @@
       {/if}
     </div>
     <div class="footer-right">
+      {#if window.__ignisAuth}
+        <Button variant="ghost" on:click={() => window.__ignisAuth.logout()}>Sign out</Button>
+      {/if}
       <Button variant="ghost" on:click={showCreateDialog}>
         <svelte:fragment slot="icon">
           <Plus size="1rem" />

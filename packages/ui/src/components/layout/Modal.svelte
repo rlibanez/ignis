@@ -3,6 +3,7 @@
   import { X } from "lucide-svelte";
 
   export let title = "";
+  export let overlayClass = "";
   export let width = "600px";
   export let closeOnOverlayClick = true;
 
@@ -36,7 +37,7 @@
 
 <!-- svelte-ignore a11y-no-static-element-interactions -->
 <div
-  class="modal-overlay"
+  class="modal-overlay {overlayClass}"
   bind:this={overlayEl}
   on:click={onOverlayClick}
   on:keydown={onKeydown}

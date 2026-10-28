@@ -106,6 +106,10 @@ it("protects real server routes, persists auth and does not log request secrets"
   fs.mkdirSync(path.join(root, "vaults", "Team"), { recursive: true });
   fs.mkdirSync(path.join(root, "assets"));
   fs.writeFileSync(
+    path.join(root, "assets", "index.html"),
+    '<script src="app.js"></script>',
+  );
+  fs.writeFileSync(
     path.join(root, "vaults", "Team", "note.md"),
     "private-note-marker",
   );
@@ -142,6 +146,20 @@ it("protects real server routes, persists auth and does not log request secrets"
       },
     );
     expect(login.status).toBe(200);
+    const appPage = await request(port, "/", jar);
+    // A clean source checkout may run npm test before building the browser bundles.
+    if (
+      fs.existsSync("packages/ui/dist/ignis-ui.js") &&
+      fs.existsSync("packages/shim/dist/shim-loader.js")
+    ) {
+      expect(appPage.status).toBe(200);
+      expect(appPage.text).toContain("/auth/client.js");
+      expect(appPage.text).toMatch(/ignis-ui\.js\?v=[^" ]+-[a-f0-9]{16}/);
+      expect(appPage.text).toMatch(/shim-loader\.js\?v=[^" ]+-[a-f0-9]{16}/);
+      expect(appPage.text).not.toContain("__IGNIS_UI_SRC__");
+    } else {
+      expect(appPage.status).toBe(500);
+    }
     expect(
       (await request(port, "/api/fs/readFile?vault=Team&path=note.md", jar))
         .text,
