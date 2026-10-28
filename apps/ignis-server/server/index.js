@@ -1,6 +1,9 @@
 const express = require("express");
 const path = require("path");
 const compression = require("compression");
+const http = require("node:http");
+const { createAuthBoundary } = require("./auth/http");
+const { readAuthConfig } = require("./auth/http-policy");
 const config = require("./config");
 const settings = require("./settings");
 const { cacheControlFor } = require("./static/cache-headers");
@@ -37,12 +40,18 @@ obCli.init({
 
 const REPO_ROOT = path.join(__dirname, "..", "..", "..");
 
-const ANSI_RED = "\x1b[31m";
-const ANSI_YELLOW = "\x1b[33m";
-const ANSI_GREEN = "\x1b[32m";
-const ANSI_RESET = "\x1b[0m";
-
 const app = express();
+const auth = createAuthBoundary({
+  dataRoot: config.dataRoot,
+  config: readAuthConfig(),
+  staticRoots: [
+    { root: path.join(__dirname, "assets"), mount: "/assets/" },
+    path.join(REPO_ROOT, "packages", "ui", "dist"),
+    path.join(REPO_ROOT, "packages", "shim", "dist"),
+    config.obsidianAssetsPath,
+  ],
+});
+auth.install(app);
 
 // Reject oversized requests by Content-Length before parsing.
 app.use((req, res, next) => {
@@ -56,34 +65,8 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json({ limit: settings.MAX_BODY_BACKSTOP }));
+app.use(auth.revalidate);
 app.use(compression());
-
-// logger middleware
-app.use((req, res, next) => {
-  const start = Date.now();
-  const origEnd = res.end;
-
-  res.end = function (...args) {
-    const duration = Date.now() - start;
-    const status = res.statusCode;
-
-    const color =
-      status >= 500 ? ANSI_RED : status >= 400 ? ANSI_YELLOW : ANSI_GREEN;
-
-    const path =
-      req.originalUrl.length > 80
-        ? req.originalUrl.slice(0, 80) + "..."
-        : req.originalUrl;
-
-    console.log(
-      `${color}${req.method} ${status}${ANSI_RESET} ${path} (${duration}ms)`,
-    );
-
-    origEnd.apply(this, args);
-  };
-
-  next();
-});
 
 const fsRoutes = require("./routes/fs");
 const vaultRoutes = require("./routes/vault");
@@ -180,34 +163,33 @@ app.use(express.static(path.join(REPO_ROOT, "packages", "shim", "dist")));
 
 app.use(express.static(config.obsidianAssetsPath));
 
-const server = app.listen(config.port, async () => {
-  console.log(`[ignis] Server running on http://localhost:${config.port}`);
-  console.log(`[ignis] Vault root: ${config.vaultRoot}`);
-  console.log(`[ignis] Vaults: ${Object.keys(config.vaults).join(", ")}`);
+const server = http.createServer(app);
 
+async function start() {
   getObsidianTerms();
-
   await initPlugins({ app, config, wss, watcher });
-
   const bundledPluginDirs = getBundledPluginDirs();
-
   for (const { distDir } of bundledPluginDirs) {
+    auth.staticRoots.push(distDir);
     app.use(express.static(distDir));
   }
-
+  app.use(auth.errorHandler);
   await migratePluginsFromAllVaults(config.vaultRoot, [
     BRIDGE_PLUGIN_ID,
     ...bundledPluginDirs.map((d) => d.bundledPluginId),
   ]);
-
+  server.listen(config.port, () =>
+    console.log(`[ignis] Server running on port ${server.address().port}`),
+  );
   bootstrapCache
     .warmUp()
-    .catch((e) => console.warn("[bootstrap] warm-up error:", e.message));
-});
+    .catch(() => console.warn("[bootstrap] warm-up failed"));
+}
 
 const wss = setupWebSocket(server, {
   getVaultPath: config.getVaultPath,
   originAllowlist: settings.get("wsOrigins"),
+  security: auth.wsSecurity,
 });
 vaultLifecycle.setWss(wss);
 
@@ -254,6 +236,8 @@ async function gracefulShutdown(signal) {
 
   await flushAll();
   await shutdownPlugins();
+  auth.close();
+  wss.close();
 
   server.close(() => {
     console.log("[ignis] Server closed");
@@ -268,3 +252,8 @@ async function gracefulShutdown(signal) {
 
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
+start().catch(() => {
+  console.error("[ignis] Startup failed; server remains closed");
+  process.exit(1);
+});

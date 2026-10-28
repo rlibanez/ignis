@@ -1,0 +1,534 @@
+import { describe, it, expect, beforeAll, beforeEach, afterEach } from "vitest";
+import { createRequire } from "node:module";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import http from "node:http";
+import { once } from "node:events";
+const require = createRequire(import.meta.url);
+const express = require("express");
+const { WebSocket } = require("ws");
+const { setupWebSocket, watcher } = require("@ignis/server-core");
+const { createAuthBoundary } = require("./http");
+const { readAuthConfig, permittedResource } = require("./http-policy");
+const { openDatabase } = require("./database");
+const { bootstrapAdmin } = require("./store");
+const { hashPassword } = require("./password");
+const ORIGIN = "http://localhost:8080";
+const PASSWORD = "synthetic integration passphrase";
+let root, db, boundary, server, wss, base, hash, clock, beforeRouting;
+beforeAll(async () => {
+  hash = await hashPassword(PASSWORD);
+});
+beforeEach(async () => {
+  root = fs.mkdtempSync(path.join(os.tmpdir(), "ignis-http-auth-"));
+  fs.mkdirSync(path.join(root, "vault"));
+  fs.writeFileSync(path.join(root, "vault", "note.md"), "private note");
+  db = openDatabase(path.join(root, "data"));
+  bootstrapAdmin(db, "admin", hash);
+  db.prepare(
+    "INSERT INTO users(id,login,role,created_at) VALUES ('normal','normal','user',1)",
+  ).run();
+  db.prepare("INSERT INTO local_credentials VALUES ('normal',?,1)").run(hash);
+  clock = Date.now();
+  const app = express();
+  boundary = createAuthBoundary({
+    dataRoot: path.join(root, "data"),
+    config: readAuthConfig({
+      IGNIS_PUBLIC_ORIGIN: ORIGIN,
+      IGNIS_ALLOW_HTTP_LOOPBACK: "true",
+    }),
+    now: () => clock,
+  });
+  beforeRouting = () => {};
+  boundary.install(app);
+  app.use(express.json());
+  app.use((req, res, next) => {
+    beforeRouting();
+    next();
+  });
+  app.use(boundary.revalidate);
+  app.get("/api/vault/list", (req, res) => res.json(["private vault"]));
+  app.post("/api/fs/writeFile", (req, res) => res.json({ ok: true }));
+  app.get("/api/settings", () => {
+    throw new Error("secret internal failure");
+  });
+  app.get("/api/new-unclassified", (req, res) =>
+    res.send("should never be reached"),
+  );
+  app.get("/api/ext/unknown/secret", (req, res) =>
+    res.send("should never be reached"),
+  );
+  app.use(boundary.errorHandler);
+  server = http.createServer(app);
+  wss = setupWebSocket(server, {
+    getVaultPath: (id) => (id === "vault" ? path.join(root, "vault") : null),
+    security: boundary.wsSecurity,
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  base = `http://127.0.0.1:${server.address().port}`;
+});
+afterEach(async () => {
+  boundary.close();
+  for (const ws of wss.clients) ws.terminate();
+  wss.close();
+  await new Promise((resolve) => server.close(resolve));
+  watcher.stopWatching("vault");
+  db.close();
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+async function request(
+  route,
+  { jar = {}, method = "GET", headers = {}, body } = {},
+) {
+  const result = await new Promise((resolve, reject) => {
+    const req = http.request(
+      base + route,
+      {
+        method,
+        headers: {
+          host: "localhost:8080",
+          origin: ORIGIN,
+          cookie: Object.entries(jar)
+            .map(([k, v]) => `${k}=${v}`)
+            .join("; "),
+          ...(body !== undefined ? { "content-type": "application/json" } : {}),
+          ...headers,
+        },
+      },
+      (res) => {
+        const chunks = [];
+        res.on("data", (chunk) => chunks.push(chunk));
+        res.on("end", () => {
+          const text = Buffer.concat(chunks).toString();
+          const parsed = new Headers();
+          for (let i = 0; i < res.rawHeaders.length; i += 2)
+            parsed.append(res.rawHeaders[i], res.rawHeaders[i + 1]);
+          resolve({
+            status: res.statusCode,
+            headers: parsed,
+            text: async () => text,
+            json: async () => JSON.parse(text),
+          });
+        });
+      },
+    );
+    req.on("error", reject);
+    if (body !== undefined)
+      req.write(typeof body === "string" ? body : JSON.stringify(body));
+    req.end();
+  });
+  for (const value of result.headers.getSetCookie()) {
+    const [key, token] = value.split(";")[0].split("=");
+    jar[key] = token;
+  }
+  return result;
+}
+async function csrf(jar) {
+  const response = await request("/api/auth/csrf", { jar });
+  expect(response.status).toBe(200);
+  return (await response.json()).csrfToken;
+}
+async function login(user = "admin", password = PASSWORD) {
+  const jar = {};
+  const token = await csrf(jar);
+  const result = await request("/api/auth/login", {
+    jar,
+    method: "POST",
+    body: { login: user, password },
+    headers: { "x-ignis-csrf": token },
+  });
+  expect(result.status).toBe(200);
+  expect(await result.json()).not.toHaveProperty("token");
+  return jar;
+}
+function connect(jar = {}, origin = ORIGIN) {
+  return new WebSocket(base.replace("http:", "ws:") + "/ws?vault=vault", {
+    headers: {
+      host: "localhost:8080",
+      origin,
+      cookie: Object.entries(jar)
+        .map(([k, v]) => `${k}=${v}`)
+        .join("; "),
+    },
+  });
+}
+async function rejectedSocket(jar, origin) {
+  const ws = connect(jar, origin);
+  const result = await new Promise((resolve) => {
+    ws.on("unexpected-response", (req, res) => {
+      res.resume();
+      resolve(res.statusCode);
+      ws.terminate();
+    });
+    ws.on("error", () => {});
+  });
+  return result;
+}
+
+describe("HTTP boundary", () => {
+  it("rechecks revocation after body parsing and before route execution", async () => {
+    const jar = await login();
+    const token = await csrf(jar);
+    beforeRouting = () => db.prepare("DELETE FROM sessions").run();
+    const response = await request("/api/fs/writeFile", {
+      jar,
+      method: "POST",
+      body: {},
+      headers: { "x-ignis-csrf": token },
+    });
+    expect(response.status).toBe(401);
+  });
+  it("stops response chunks after session revocation", async () => {
+    const jar = await login();
+    const identity = await (await request("/api/auth/session", { jar })).json();
+    const session = db
+      .prepare("SELECT id FROM sessions WHERE user_id = ?")
+      .get(identity.user.id);
+    const req = {
+      headers: {
+        cookie: Object.entries(jar)
+          .map(([k, v]) => `${k}=${v}`)
+          .join("; "),
+      },
+      auth: { id: session.id },
+    };
+    const output = [];
+    let destroyed = false;
+    const res = {
+      write: (chunk) => {
+        output.push(chunk);
+        return true;
+      },
+      end: () => {},
+      destroy: () => {
+        destroyed = true;
+      },
+    };
+    boundary.revalidate(req, res, () => {});
+    expect(res.write("authorized chunk")).toBe(true);
+    db.prepare("DELETE FROM sessions").run();
+    expect(res.write("must not escape")).toBe(false);
+    expect(destroyed).toBe(true);
+    expect(output).toEqual(["authorized chunk"]);
+  });
+  it("blocks every anonymous data surface, including methods and direct resources", async () => {
+    for (const [method, route] of [
+      ["GET", "/"],
+      ["HEAD", "/index.html"],
+      ["GET", "/app.js"],
+      ["GET", "/api/bootstrap"],
+      ["GET", "/api/fs/readFile?path=note.md"],
+      ["GET", "/vault-files/vault/note.md"],
+      ["GET", "/api/fs/download-zip"],
+      ["POST", "/api/fs/batch-read"],
+      ["POST", "/api/proxy"],
+      ["GET", "/api/settings"],
+      ["GET", "/api/plugins"],
+      ["GET", "/api/ext/headless-sync/status"],
+    ]) {
+      const response = await request(route, {
+        method,
+        ...(method === "POST" ? { body: {} } : {}),
+      });
+      expect(response.status, route).toBe(401);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+    }
+  });
+  it("allows local login and admin reads, but leaves normal accounts without data access", async () => {
+    const admin = await login();
+    expect((await request("/api/vault/list", { jar: admin })).status).toBe(200);
+    const normal = await login("normal");
+    expect((await request("/api/auth/session", { jar: normal })).status).toBe(
+      200,
+    );
+    for (const route of [
+      "/",
+      "/api/vault/list",
+      "/api/settings",
+      "/vault-files/vault/note.md",
+    ]) {
+      expect((await request(route, { jar: normal })).status).toBe(403);
+    }
+  });
+  it("requires same-origin CSRF proof bound to the current browser and session", async () => {
+    const jar = await login();
+    const token = await csrf(jar);
+    const mutation = {
+      jar,
+      method: "POST",
+      body: {},
+      headers: { "x-ignis-csrf": token },
+    };
+    expect((await request("/api/fs/writeFile", mutation)).status).toBe(200);
+    expect(
+      (await request("/api/fs/writeFile", { ...mutation, headers: {} })).status,
+    ).toBe(403);
+    expect(
+      (
+        await request("/api/fs/writeFile", {
+          ...mutation,
+          headers: { ...mutation.headers, origin: "https://evil.example" },
+        })
+      ).status,
+    ).toBe(403);
+    const other = await login();
+    expect(
+      (await request("/api/fs/writeFile", { ...mutation, jar: other })).status,
+    ).toBe(403);
+    expect(
+      (
+        await request("/api/auth/login", {
+          method: "POST",
+          body: { login: "admin", password: PASSWORD },
+        })
+      ).status,
+    ).toBe(403);
+  });
+  it("logout revokes the bearer and prelogin CSRF cannot be replayed after authentication", async () => {
+    const jar = await login();
+    const saved = { ...jar };
+    const token = await csrf(jar);
+    const result = await request("/api/auth/logout", {
+      jar,
+      method: "POST",
+      body: {},
+      headers: { "x-ignis-csrf": token },
+    });
+    expect(result.status).toBe(204);
+    expect(jar["ignis-dev-session"]).toBe("");
+    expect((await request("/api/vault/list", { jar: saved })).status).toBe(401);
+  });
+  it("denies unclassified routes and sanitizes unexpected errors", async () => {
+    const jar = await login();
+    for (const route of [
+      "/api/new-unclassified",
+      "/api/ext/unknown/secret",
+      "/api/auth/callback",
+    ]) {
+      expect((await request(route, { jar })).status).toBe(404);
+    }
+    const error = await request("/api/settings", { jar });
+    expect(error.status).toBe(500);
+    expect(await error.text()).not.toContain("secret internal");
+  });
+  it("does not trust forwarded host/proto to override the configured origin", async () => {
+    const result = await request("/api/auth/status", {
+      headers: {
+        host: "evil.example",
+        "x-forwarded-host": "localhost:8080",
+        "x-forwarded-proto": "https",
+      },
+    });
+    expect(result.status).toBe(403);
+    expect(
+      (await request("/api/auth/status", { headers: { origin: "null" } }))
+        .status,
+    ).toBe(403);
+  });
+  it("rejects malformed JSON, oversized login bodies and non-JSON requests without leaks", async () => {
+    const jar = {};
+    const token = await csrf(jar);
+    for (const [body, status, headers] of [
+      ["{bad", 400, {}],
+      ["x".repeat(9000), 413, {}],
+      [
+        "login=admin",
+        415,
+        { "content-type": "application/x-www-form-urlencoded" },
+      ],
+    ]) {
+      const res = await request("/api/auth/login", {
+        jar,
+        method: "POST",
+        body,
+        headers: { "x-ignis-csrf": token, ...headers },
+      });
+      expect(res.status).toBe(status);
+      expect(await res.text()).not.toContain(body.slice(0, 20));
+    }
+  });
+  it("limits attempts across accounts despite spoofed forwarding headers", async () => {
+    const jar = {};
+    const token = await csrf(jar);
+    for (let i = 0; i < 10; i++) {
+      const res = await request("/api/auth/login", {
+        jar,
+        method: "POST",
+        body: { login: `missing${i}`, password: "" },
+        headers: { "x-ignis-csrf": token, "x-forwarded-for": `192.0.2.${i}` },
+      });
+      expect(res.status).toBe(401);
+    }
+    const limited = await request("/api/auth/login", {
+      jar,
+      method: "POST",
+      body: { login: "admin", password: PASSWORD },
+      headers: { "x-ignis-csrf": token },
+    });
+    expect(limited.status).toBe(429);
+  });
+  it("expires HTTP sessions and rejects disabled users", async () => {
+    const jar = await login("normal");
+    db.exec("UPDATE users SET status = 'disabled' WHERE id = 'normal'");
+    expect((await request("/api/auth/session", { jar })).status).toBe(401);
+    const admin = await login();
+    clock += 30 * 60000;
+    expect((await request("/api/vault/list", { jar: admin })).status).toBe(401);
+  });
+});
+
+describe("WebSocket boundary", () => {
+  it("rejects anonymous, non-admin and foreign-origin handshakes", async () => {
+    expect(await rejectedSocket({})).toBe(401);
+    expect(await rejectedSocket(await login("normal"))).toBe(401);
+    expect(await rejectedSocket(await login(), "https://evil.example")).toBe(
+      401,
+    );
+  });
+  it("blocks outgoing messages immediately after revocation and closes the connection", async () => {
+    const ws = connect(await login());
+    await once(ws, "open");
+    let received = false;
+    ws.on("message", () => {
+      received = true;
+    });
+    const closed = once(ws, "close");
+    db.exec(
+      "UPDATE users SET auth_version = auth_version + 1 WHERE login = 'admin'",
+    );
+    wss.broadcastToVault("vault", {
+      type: "modified",
+      path: "must-not-arrive.md",
+    });
+    await closed;
+    expect(received).toBe(false);
+  });
+  it("closes idle sockets on revocation without waiting for traffic", async () => {
+    const ws = connect(await login());
+    await once(ws, "open");
+    const closed = once(ws, "close");
+    db.exec("DELETE FROM sessions");
+    await closed;
+  });
+  it("validates each incoming message and rejects unknown channels", async () => {
+    const ws = connect(await login());
+    await once(ws, "open");
+    const message = once(ws, "message");
+    ws.send(JSON.stringify({ type: "subscribe-channel", channel: "metadata" }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    wss
+      .channel("metadata")
+      .broadcastToVault("vault", { type: "revision", etag: "ok" });
+    expect(JSON.parse((await message)[0].toString()).etag).toBe("ok");
+    const closed = once(ws, "close");
+    ws.send(JSON.stringify({ type: "subscribe-channel", channel: "unknown" }));
+    await closed;
+  });
+});
+
+it("requires an explicit origin and narrow proxy configuration", () => {
+  expect(() => readAuthConfig({})).toThrow();
+  for (const value of ["true", "1", '["all"]', '["127.0.0.1/99"]']) {
+    expect(() =>
+      readAuthConfig({
+        IGNIS_PUBLIC_ORIGIN: ORIGIN,
+        IGNIS_TRUSTED_PROXIES: value,
+      }),
+    ).toThrow();
+  }
+  expect(
+    readAuthConfig({
+      IGNIS_PUBLIC_ORIGIN: "https://ignis.example",
+      IGNIS_TRUSTED_PROXIES: '["127.0.0.1/32"]',
+    }).trustedProxies,
+  ).toEqual(["127.0.0.1/32"]);
+});
+
+describe("startup and proxy policy", () => {
+  it("blocks uninitialized installations and invalid bootstrap state", async () => {
+    const emptyRoot = path.join(root, "empty");
+    const pending = createAuthBoundary({
+      dataRoot: emptyRoot,
+      config: readAuthConfig({
+        IGNIS_PUBLIC_ORIGIN: ORIGIN,
+        IGNIS_ALLOW_HTTP_LOOPBACK: "true",
+      }),
+    });
+    const app = express();
+    pending.install(app);
+    const listener = app.listen(0, "127.0.0.1");
+    await once(listener, "listening");
+    const previous = base;
+    base = `http://127.0.0.1:${listener.address().port}`;
+    try {
+      const status = await request("/api/auth/status");
+      expect(await status.json()).toEqual({
+        initialized: false,
+        setupAvailable: false,
+      });
+      expect((await request("/api/vault/list")).status).toBe(401);
+    } finally {
+      base = previous;
+      pending.close();
+      await new Promise((resolve) => listener.close(resolve));
+    }
+    const inconsistent = openDatabase(emptyRoot);
+    inconsistent.exec(
+      "INSERT INTO users(id,login,role,created_at) VALUES ('broken','broken','user',1)",
+    );
+    inconsistent.close();
+    expect(() =>
+      createAuthBoundary({
+        dataRoot: emptyRoot,
+        config: readAuthConfig({
+          IGNIS_PUBLIC_ORIGIN: ORIGIN,
+          IGNIS_ALLOW_HTTP_LOOPBACK: "true",
+        }),
+      }),
+    ).toThrow();
+  });
+  it("only trusts TLS forwarding from an explicitly trusted peer", async () => {
+    for (const trusted of [[], ["127.0.0.1/32"]]) {
+      const b = createAuthBoundary({
+        dataRoot: path.join(root, "data"),
+        config: readAuthConfig({
+          IGNIS_PUBLIC_ORIGIN: "https://ignis.example",
+          IGNIS_TRUSTED_PROXIES: JSON.stringify(trusted),
+        }),
+      });
+      const app = express();
+      b.install(app);
+      const listener = app.listen(0, "127.0.0.1");
+      await once(listener, "listening");
+      const previous = base;
+      base = `http://127.0.0.1:${listener.address().port}`;
+      try {
+        const response = await request("/api/auth/status", {
+          headers: {
+            host: "ignis.example",
+            origin: "https://ignis.example",
+            "x-forwarded-proto": "https",
+          },
+        });
+        expect(response.status).toBe(trusted.length ? 200 : 403);
+      } finally {
+        base = previous;
+        b.close();
+        await new Promise((resolve) => listener.close(resolve));
+      }
+    }
+  });
+});
+
+it("maps mounted static resources without allowing traversal or unknown API routes", () => {
+  const roots = [{ root: path.join(root, "vault"), mount: "/assets/" }];
+  expect(permittedResource("GET", "/assets/note.md", roots)).toBe(true);
+  expect(permittedResource("GET", "/note.md", roots)).toBe(false);
+  expect(permittedResource("POST", "/assets/note.md", roots)).toBe(false);
+  expect(
+    permittedResource("GET", "/assets/../data/auth/identity.sqlite", roots),
+  ).toBe(false);
+  expect(permittedResource("GET", "/api/unclassified", roots)).toBe(false);
+});

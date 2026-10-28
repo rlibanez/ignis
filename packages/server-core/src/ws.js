@@ -24,7 +24,7 @@ function heartbeatSweep(clients) {
 }
 
 function setupWebSocket(server, opts = {}) {
-  const { getVaultPath, originAllowlist } = opts;
+  const { getVaultPath, originAllowlist, security } = opts;
 
   if (typeof getVaultPath !== "function") {
     throw new Error("setupWebSocket: opts.getVaultPath is required");
@@ -32,7 +32,24 @@ function setupWebSocket(server, opts = {}) {
 
   const originSet = toOriginSet(originAllowlist);
 
-  const wss = new WebSocketServer({ server, path: "/ws" });
+  const wss = new WebSocketServer({
+    server,
+    path: "/ws",
+    maxPayload: 64 * 1024,
+    verifyClient: security
+      ? (info, done) => {
+          try {
+            done(
+              security.verify(info.req) === true,
+              401,
+              "Authentication required",
+            );
+          } catch {
+            done(false, 503, "Authentication unavailable");
+          }
+        }
+      : undefined,
+  });
 
   // Global message handlers: type -> handler(msg, ws).
   wss.messageHandlers = new Map();
@@ -134,6 +151,15 @@ function setupWebSocket(server, opts = {}) {
   };
 
   wss.on("connection", (ws, req) => {
+    if (security) {
+      try {
+        security.attach(ws, req);
+      } catch {
+        ws.terminate();
+        return;
+      }
+      if (ws.readyState !== ws.OPEN) return;
+    }
     if (originSet) {
       const origin = req.headers.origin;
 
@@ -180,15 +206,32 @@ function setupWebSocket(server, opts = {}) {
 
     // Dispatch incoming messages to registered handlers.
     ws.on("message", (data) => {
+      if (security?.receive && !security.receive(ws)) {
+        ws.terminate();
+        return;
+      }
       let msg;
 
       try {
         msg = JSON.parse(data);
-      } catch (e) {
-        console.warn("[ws] failed to parse incoming message:", e.message);
+      } catch {
+        console.warn("[ws] Invalid JSON message");
         return;
       }
 
+      if (security) {
+        try {
+          if (!security.message(ws, msg)) {
+            ws.close(4003, "Message not allowed");
+            return;
+          }
+        } catch {
+          ws.terminate();
+          return;
+        }
+      }
+
+      if (!msg || typeof msg !== "object" || Array.isArray(msg)) return;
       // Built-in channel-subscription tracking. Plugins don't register handlers for these types.
       if (msg.type === "subscribe-channel" && typeof msg.channel === "string") {
         addClientChannel(ws, msg.channel);

@@ -1,6 +1,12 @@
 // Pure transport helpers. publicOrigin must come from trusted deployment configuration,
 // never Host / X-Forwarded-* headers. Wiring to Express and CSRF belongs to phase 2A.2.
-function createSessionCookies({ publicOrigin, allowHttpLoopback = false }) {
+function createSessionCookies({
+  publicOrigin,
+  allowHttpLoopback = false,
+  purpose = "session",
+}) {
+  if (!["session", "csrf"].includes(purpose))
+    throw new Error("Invalid cookie purpose");
   const origin = new URL(publicOrigin);
   const secure = origin.protocol === "https:";
   const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(
@@ -19,7 +25,7 @@ function createSessionCookies({ publicOrigin, allowHttpLoopback = false }) {
       "Sessions require HTTPS; HTTP is only allowed explicitly on loopback",
     );
   }
-  const name = secure ? "__Host-ignis-session" : "ignis-dev-session";
+  const name = `${secure ? "__Host-ignis" : "ignis-dev"}-${purpose}`;
   const attributes = `Path=/; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}`;
   function serialize(token, expiresAt, now = Date.now()) {
     if (
