@@ -62,3 +62,14 @@ it("rolls back account and credentials when audit insertion fails", async () => 
   expect(db.prepare("SELECT count(*) n FROM users").get().n).toBe(3);
   expect(db.prepare("SELECT count(*) n FROM local_credentials").get().n).toBe(0);
 });
+
+it("rejects a session revoked while password hashing is in flight", async () => {
+  let active = true;
+  const pending = createLocalUser(db, "admin", "new-user", password, undefined, {
+    isCurrent: () => active,
+  });
+  active = false;
+  await expect(pending).rejects.toThrow("Administrator session required");
+  expect(db.prepare("SELECT count(*) n FROM users").get().n).toBe(3);
+  expect(db.prepare("SELECT count(*) n FROM audit_events").get().n).toBe(0);
+});

@@ -211,10 +211,10 @@ function createSessionService(
     }
     return row;
   }
-  function resolve(token, { touch = false } = {}) {
+  function resolve(token, { touch = false, withinTransaction = false } = {}) {
     const hash = tokenHash(token);
     if (!hash) return null;
-    return transaction(db, () => {
+    const read = () => {
       const at = time();
       const row = find(hash, at);
       if (!row) return null;
@@ -225,7 +225,9 @@ function createSessionService(
         row.last_activity = at;
       }
       return publicSession(row);
-    });
+    };
+    // Internal callers may already hold the same database write transaction.
+    return withinTransaction ? read() : transaction(db, read);
   }
   function rotate(token) {
     const hash = tokenHash(token);

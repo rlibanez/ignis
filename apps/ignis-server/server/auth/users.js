@@ -13,13 +13,15 @@ function authorize(db, actorId) {
   ) throw new Error("Administrator required");
 }
 
-async function createLocalUser(db, actorId, login, password, policy = readPasswordPolicy()) {
+async function createLocalUser(db, actorId, login, password, policy = readPasswordPolicy(), { isCurrent = () => true } = {}) {
   authorize(db, actorId);
+  if (!isCurrent()) throw new Error("Administrator session required");
   login = normalizeLogin(login);
   const hash = await hashPassword(password, policy);
   return transaction(db, () => {
     // Authorization can change while password hashing is in flight.
     authorize(db, actorId);
+    if (!isCurrent(true)) throw new Error("Administrator session required");
     if (!db.prepare("SELECT 1 FROM users WHERE role = 'admin' AND status = 'active'").get())
       throw new Error("Create the first administrator before adding users");
     if (db.prepare("SELECT 1 FROM users WHERE login = ?").get(login))

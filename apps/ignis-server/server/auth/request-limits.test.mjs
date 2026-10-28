@@ -33,3 +33,15 @@ it("bounds setup globally across IPs and recovers after the setup window", () =>
   at = 15 * 60000;
   expect(limits.setup("another")).toBe(true);
 });
+
+it("bounds user creation per administrator and globally, then recovers", () => {
+  let at = 0;
+  const limits = createRequestLimits({ now: () => at });
+  for (const actor of ["a", "b", "c"]) {
+    for (let i = 0; i < 10; i++) expect(limits.createUser(actor)).toBe(true);
+    expect(limits.createUser(actor)).toBe(false);
+  }
+  expect(limits.createUser("d")).toBe(false);
+  at = 60000;
+  expect(limits.createUser("a")).toBe(true);
+});

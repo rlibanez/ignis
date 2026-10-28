@@ -46,6 +46,11 @@ function createRequestLimits({ now = Date.now, capacity = 10000 } = {}) {
         ["oidc-callback-global", 120, 60000],
         ["oidc-callback-ip:" + key(ip), 30, 900000],
       ]),
+    createUser: (actorId) =>
+      allow([
+        ["create-user-global", 30, 60000],
+        ["create-user-actor:" + key(actorId), 10, 60000],
+      ]),
     setup: (ip) =>
       allow([
         ["setup-global", 20, 15 * 60000],

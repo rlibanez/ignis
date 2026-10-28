@@ -580,3 +580,52 @@ it("serves login assets without exposing the app to unauthenticated clients", as
   }
   expect((await request("/")).headers.get("location")).toBe("/login");
 });
+
+describe("user administration HTTP", () => {
+  it("denies anonymous and normal users both listing and creation", async () => {
+    for (const jar of [{}, await login("normal")]) {
+      const expected = Object.keys(jar).length ? 403 : 401;
+      expect((await request("/api/auth/users", { jar })).status).toBe(expected);
+      expect((await request("/api/auth/users", {
+        jar, method: "POST", body: { login: "new-user", password: PASSWORD },
+      })).status).toBe(expected);
+    }
+  });
+
+  it("creates a normal user with CSRF and lists only public account fields", async () => {
+    const jar = await login();
+    const body = { login: "new-user", password: PASSWORD };
+    expect((await request("/api/auth/users", {
+      jar, method: "POST", body,
+    })).status).toBe(403);
+    const headers = { "x-ignis-csrf": await csrf(jar) };
+    expect((await request("/api/auth/users", {
+      jar, method: "POST", headers: { ...headers, origin: "https://evil.example" }, body,
+    })).status).toBe(403);
+    expect((await request("/api/auth/users", {
+      jar, method: "POST", headers, body: { ...body, role: "admin" },
+    })).status).toBe(400);
+    const created = await request("/api/auth/users", { jar, method: "POST", headers, body });
+    expect(created.status).toBe(201);
+    const { user } = await created.json();
+    expect(user.role).toBe("user");
+    expect(db.prepare("SELECT count(*) n FROM memberships WHERE user_id=?").get(user.id).n).toBe(0);
+    const listed = await request("/api/auth/users", { jar });
+    expect(listed.status).toBe(200);
+    for (const row of (await listed.json()).users)
+      expect(Object.keys(row).sort()).toEqual(["id", "login", "role", "status"]);
+    const normalJar = await login("new-user");
+    expect((await request("/api/vault/list", { jar: normalJar })).status).toBe(403);
+  });
+
+  it("rejects stale admin authentication before creating an account", async () => {
+    const jar = await login();
+    clock += 300001;
+    const result = await request("/api/auth/users", {
+      jar, method: "POST", headers: { "x-ignis-csrf": await csrf(jar) },
+      body: { login: "new-user", password: PASSWORD },
+    });
+    expect(result.status).toBe(403);
+    expect(db.prepare("SELECT id FROM users WHERE login='new-user'").get()).toBeUndefined();
+  });
+});

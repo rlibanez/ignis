@@ -23,6 +23,7 @@ const { createCsrf } = require("./csrf");
 const { createRequestLimits } = require("./request-limits");
 const { canonicalRequestPath, permittedResource } = require("./http-policy");
 const { normalizeLogin } = require("./store");
+const { createLocalUser, listUsers } = require("./users");
 
 function createAuthBoundary({
   dataRoot,
@@ -246,6 +247,46 @@ function createAuthBoundary({
 
   async function authEndpoint(req, res, pathname) {
     const session = getSession(req);
+    if (pathname === "/api/auth/users") {
+      if (!["GET", "POST"].includes(req.method))
+        return safe(res, 404, "Not found");
+      if (!session) return safe(res, 401, "Authentication required");
+      if (!initialized() || session.user.role !== "admin")
+        return safe(res, 403, "Administrator access required");
+      if (req.method === "GET")
+        return res.json({ users: listUsers(db, session.user.id) });
+      if (!originAllowed(req, true) || !csrf.valid(req, session))
+        return safe(res, 403, "Request rejected");
+      const isCurrent = (withinTransaction = false) => {
+        const current = sessions.resolve(cookies.read(req.headers.cookie), {
+          withinTransaction,
+        });
+        return current?.id === session.id &&
+          current.user.role === "admin" &&
+          now() >= current.authenticatedAt &&
+          now() - current.authenticatedAt < 300000;
+      };
+      if (!isCurrent()) return safe(res, 403, "Sign in again before creating users");
+      if (!limits.createUser(session.user.id))
+        return safe(res, 429, "Too many requests");
+      const body = req.body;
+      if (!body || Array.isArray(body) ||
+          Object.keys(body).some((key) => !["login", "password"].includes(key)) ||
+          typeof body.login !== "string" || typeof body.password !== "string")
+        return safe(res, 400, "Expected login and password only");
+      try {
+        const user = await createLocalUser(
+          db, session.user.id, body.login, body.password,
+          config.passwordPolicy, { isCurrent },
+        );
+        csrf.consume(req);
+        return res.status(201).json({ user });
+      } catch (error) {
+        if (!isCurrent()) return safe(res, 403, "Administrator session required");
+        return safe(res, error.code === "AUTH_BUSY" ? 429 : 400,
+          "User creation failed; check login availability and password policy");
+      }
+    }
     if (req.method === "GET" && pathname === "/api/auth/status") {
       return res.json({
         initialized: initialized(),
