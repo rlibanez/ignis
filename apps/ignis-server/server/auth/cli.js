@@ -9,11 +9,12 @@ const { bootstrapAdmin, normalizeLogin, registerVault } = require("./store");
 const { readPasswordPolicy } = require("./password-policy");
 const { setUserEmail } = require("./email");
 const { hashPassword } = require("./password");
+const { createLocalUser, listUsers } = require("./users");
 
 function question(prompt, hidden = false) {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     return Promise.reject(
-      new Error("Bootstrap requires an interactive terminal"),
+      new Error("Password input requires an interactive terminal"),
     );
   }
   return new Promise((resolve, reject) => {
@@ -49,6 +50,8 @@ async function main(args = process.argv.slice(2)) {
     init: 0,
     bootstrap: 0,
     status: 0,
+    "create-user": 0,
+    "list-users": 0,
     "register-vault": 2,
     "set-email": 3,
     backup: 1,
@@ -56,7 +59,7 @@ async function main(args = process.argv.slice(2)) {
   };
   if (!Object.hasOwn(arity, command) || rest.length !== arity[command]) {
     throw new Error(
-      "Usage: npm run auth -- init|bootstrap|status|set-email <login> <email|-> <unverified|admin_confirmed>|register-vault <directory> <owner-login>|backup <absolute-file>|restore <absolute-file>",
+      "Usage: npm run auth -- init|bootstrap|status|create-user|list-users|set-email <login> <email|-> <unverified|admin_confirmed>|register-vault <directory> <owner-login>|backup <absolute-file>|restore <absolute-file>",
     );
   }
   const root = path.resolve(__dirname, "../../../..");
@@ -95,6 +98,25 @@ async function main(args = process.argv.slice(2)) {
       password = confirmation = null;
       const user = bootstrapAdmin(db, login, hash);
       console.log(`Administrator created: ${user.login} (${user.id})`);
+    } else if (command === "create-user") {
+      if (!db.prepare(
+        "SELECT 1 FROM users WHERE role = 'admin' AND status = 'active'",
+      ).get()) {
+        throw new Error("Create the first administrator before adding users");
+      }
+      const policy = readPasswordPolicy();
+      const login = normalizeLogin(await question("User login: "));
+      let password = await question(
+        `Password (${policy.minLength}+ characters, ${policy.minSpecialChars}+ punctuation/symbols): `,
+        true,
+      );
+      let confirmation = await question("Confirm password: ", true);
+      if (password !== confirmation) throw new Error("Passwords do not match");
+      const user = await createLocalUser(db, null, login, password, policy);
+      password = confirmation = null;
+      console.log(`User created: ${user.login} (${user.id})`);
+    } else if (command === "list-users") {
+      console.log(JSON.stringify(listUsers(db, null), null, 2));
     } else if (command === "set-email") {
       const user = db
         .prepare("SELECT id FROM users WHERE login = ?")
