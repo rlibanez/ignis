@@ -12,6 +12,11 @@ async function fetchJson(url, options) {
 }
 
 export const vaultService = {
+  browserVaultId(reference) {
+    const auth = window.__ignisAuth;
+    if (auth?.blocked || !auth?.userId || !reference) return null;
+    return "ignis-v1:" + encodeURIComponent(auth.userId) + ":" + encodeURIComponent(reference);
+  },
   rememberedVault() {
     const auth = window.__ignisAuth;
     if (auth?.blocked || !auth?.userId) return null;
@@ -87,9 +92,9 @@ export const vaultService = {
       body: JSON.stringify({ name, ...(ownerId === undefined ? {} : { ownerId }) }),
     });
 
+    const list = await this.listVaults();
     this.setVaultTrust(name);
-
-    return this.listVaults();
+    return list;
   },
 
   createVaultSync(name) {
@@ -127,7 +132,7 @@ export const vaultService = {
       window.__currentVaultId = newName;
 
       if (window.__vaultConfig) {
-        window.__vaultConfig.id = newName;
+        window.__vaultConfig.id = this.browserVaultId(this.getCurrentVaultReference());
       }
 
       history.replaceState(null, "", "/?vault=" + encodeURIComponent(this.getCurrentVaultReference()));
@@ -173,17 +178,22 @@ export const vaultService = {
   },
 
   setVaultTrust(vaultId, trusted = true) {
-    localStorage.setItem("enable-plugin-" + vaultId, String(trusted));
+    const storageId = this.browserVaultId(this.referenceFor(vaultId));
+    if (!storageId) return;
+    localStorage.setItem("enable-plugin-" + storageId, String(trusted));
   },
 
   _migrateLocalStorage(oldId, newId) {
     const pluginKey = "enable-plugin-";
 
-    const oldVal = localStorage.getItem(pluginKey + oldId);
+    const reference = this.referenceFor(oldId);
+    const oldStorageId = this.browserVaultId(reference);
+    const newStorageId = this.browserVaultId(reference === oldId ? newId : reference);
+    const oldVal = oldStorageId ? localStorage.getItem(pluginKey + oldStorageId) : null;
 
-    if (oldVal !== null) {
-      localStorage.setItem(pluginKey + newId, oldVal);
-      localStorage.removeItem(pluginKey + oldId);
+    if (oldVal !== null && newStorageId && newStorageId !== oldStorageId) {
+      localStorage.setItem(pluginKey + newStorageId, oldVal);
+      localStorage.removeItem(pluginKey + oldStorageId);
     }
 
     if (this.rememberedVault() === oldId) {

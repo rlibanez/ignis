@@ -61,6 +61,9 @@ describe("resolveVaultId", () => {
     applyVaultInfo({ id: "Notes", uuid: "stable-uuid" });
     expect(globalThis.__currentVaultId).toBe("Notes");
     expect(globalThis.__currentVaultUuid).toBe("stable-uuid");
+    expect(globalThis.__vaultConfig.id).toBe("ignis-v1:test-user:stable-uuid");
+    applyVaultInfo({ id: "Renamed", uuid: "stable-uuid" });
+    expect(globalThis.__vaultConfig.id).toBe("ignis-v1:test-user:stable-uuid");
     expect(storage.get("ignis:last-vault:test-user")).toBe("stable-uuid");
     applyVaultInfo({ id: "Legacy" });
     expect(globalThis.__currentVaultUuid).toBeNull();

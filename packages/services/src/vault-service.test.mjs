@@ -85,3 +85,32 @@ it("keeps browser storage optional without falling back to a shared selection", 
   expect(vaultService.rememberedVault()).toBeNull();
   expect(() => vaultService.rememberVault("vault")).not.toThrow();
 });
+
+it("separates browser cache and trust identities by account and stable vault reference", () => {
+  const data = new Map([["enable-plugin-Notes", "true"]]);
+  const auth = { userId: "alice" };
+  vi.stubGlobal("window", { __ignisAuth: auth, __currentVaultId: "Notes", __currentVaultUuid: "vault-uuid" });
+  vi.stubGlobal("localStorage", { getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, value), removeItem: key => data.delete(key) });
+  const first = vaultService.browserVaultId("vault-uuid");
+  vaultService.setVaultTrust("Notes");
+  expect(data.get("enable-plugin-" + first)).toBe("true");
+  auth.userId = "bob";
+  expect(vaultService.browserVaultId("vault-uuid")).not.toBe(first);
+  expect(data.has("enable-plugin-" + vaultService.browserVaultId("vault-uuid"))).toBe(false);
+  auth.userId = "alice";
+  vaultService._migrateLocalStorage("Notes", "Renamed");
+  expect(data.get("enable-plugin-" + first)).toBe("true");
+  expect(vaultService.browserVaultId("replacement-uuid")).not.toBe(first);
+  auth.blocked = true;
+  expect(vaultService.browserVaultId("vault-uuid")).toBeNull();
+  vaultService.setVaultTrust("Notes", false);
+  expect(data.get("enable-plugin-" + first)).toBe("true");
+});
+
+it("does not collide when account and vault identifiers contain separators", () => {
+  const auth = { userId: "a:b" };
+  vi.stubGlobal("window", { __ignisAuth: auth });
+  const first = vaultService.browserVaultId("c");
+  auth.userId = "a";
+  expect(vaultService.browserVaultId("b:c")).not.toBe(first);
+});

@@ -77,3 +77,11 @@ describe("vault switcher catalog", () => {
     expect(ipcRenderer.sendSync("vault-list")).toEqual({});
   });
 });
+
+it("does not start Obsidian with a shared default browser identity", () => {
+  expect(() => ipcRenderer.sendSync("vault")).toThrow("Authenticated vault identity required");
+  window.__vaultConfig = { id: "ignis-v1:account:vault", path: "/" };
+  expect(ipcRenderer.sendSync("vault")).toEqual(window.__vaultConfig);
+  window.__ignisAuth = { blocked: true };
+  expect(() => ipcRenderer.sendSync("vault")).toThrow("Authenticated vault identity required");
+});

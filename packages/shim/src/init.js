@@ -108,6 +108,8 @@ function fetchBootstrap() {
 }
 
 export function applyVaultInfo(info) {
+  const browserId = vaultService.browserVaultId(info.uuid || info.id);
+  if (!browserId) throw new Error("Authenticated vault identity required");
   window.__currentVaultId = info.id;
   window.__currentVaultUuid = info.uuid || null;
   vaultService.rememberVault(vaultService.getCurrentVaultReference());
@@ -119,7 +121,7 @@ export function applyVaultInfo(info) {
   window.__obsidianVersion = info.version || "0.0.0";
 
   window.__vaultConfig = {
-    id: info.id,
+    id: browserId,
     path: "/",
   };
 

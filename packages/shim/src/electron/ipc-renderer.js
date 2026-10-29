@@ -5,7 +5,12 @@ import { sendRequest } from "../util/send-request.js";
 const listeners = new Map();
 
 const syncHandlers = {
-  vault: () => window.__vaultConfig || { id: "default-vault", path: "/" },
+  vault: () => {
+    if (!window.__vaultConfig || window.__ignisAuth?.blocked) {
+      throw new Error("Authenticated vault identity required");
+    }
+    return window.__vaultConfig;
+  },
   version: () => window.__obsidianVersion || "0.0.0",
   "is-dev": () => false,
   "is-quitting": () => false,
