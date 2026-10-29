@@ -121,7 +121,7 @@ it("creates isolated bootstrap snapshots with no shared configuration or cross-r
   const service = require("./vault-config").createVaultConfigService(db,vaultRoot,sessions);
   save(alice,'{"spellcheck":true,"secret":"hidden"}');
   const first = service.snapshot(alice,vault.id);
-  expect(Object.keys(first)).toHaveLength(4);
+  expect(Object.keys(first)).toHaveLength(5);
   expect(first[".obsidian/app.json"].content).toBe('{"spellcheck":true}');
   first[".obsidian/app.json"].content = "tampered";
   expect(service.snapshot(alice,vault.id)[".obsidian/app.json"].content).toBe('{"spellcheck":true}');
@@ -135,4 +135,14 @@ it("explicitly disables bundled default-on plugins outside the reviewed minimal 
   expect(Object.entries(value).filter(([,enabled])=>enabled).map(([id])=>id).sort()).toEqual(["file-explorer","global-search","switcher"]);
   for (const id of ["canvas","bases","bookmarks","daily-notes","templates","file-recovery","sync","publish","webviewer"])
     expect(value[id]).toBe(false);
+});
+it("persists projected workspace per user and rejects stale layout saves",()=>{
+ const config=require("./vault-config").createVaultConfigService(db,vaultRoot,sessions);
+ const target={reference:vault.id,path:".obsidian/workspace.json"};
+ expect(config.read(alice,target).revision).toBe(0);
+ const content=JSON.stringify({main:{id:"note",type:"leaf",state:{type:"markdown",state:{file:"Welcome.md",html:"discard"}}},active:"note"});
+ config.write(alice,{...target,content,expectedRevision:0});
+ expect(config.read(alice,target).content).not.toContain("discard");
+ expect(config.read(bob,target).content).toBe("{}");
+ expect(()=>config.write(alice,{...target,content,expectedRevision:0})).toThrow(expect.objectContaining({code:"PREFERENCES_CONFLICT"}));
 });

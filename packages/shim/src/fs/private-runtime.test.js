@@ -6,7 +6,7 @@ import { createFdOps } from "./fd.js";
 import { MetadataCache } from "./metadata-cache.js";
 import { ContentCache } from "./content-cache.js";
 const context = ()=>({vault:"uuid",sessionId:"session"});
-const snapshot = Object.fromEntries(["app.json","appearance.json","core-plugins.json","community-plugins.json"].map(name=>[".obsidian/"+name,{content:"{}",writable:true}]));
+const snapshot = Object.fromEntries(["app.json","appearance.json","core-plugins.json","community-plugins.json","workspace.json"].map(name=>[".obsidian/"+name,{content:"{}",writable:true}]));
 const boot = ()=>({configurationMode:"private",vault:{uuid:"uuid"},tree:{".obsidian/secret.json":{type:"file"}},privateConfiguration:snapshot});
 it("activates the same gateway in factories created before bootstrap",async()=>{
   const config = {readSync:vi.fn(()=>"private"),read:vi.fn(async()=>"private")};

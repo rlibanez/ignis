@@ -34,6 +34,8 @@ function projectPreferences(path, input) {
     // Shared CSS is code; private data cannot enable themes or snippets.
     result.cssTheme = "";
     result.enabledCssSnippets = [];
+  } else if (path === ".obsidian/workspace.json") {
+    return require("./workspace-config").projectWorkspace(input);
   } else fail("UNSUPPORTED_CONFIGURATION");
   return result;
 }
@@ -46,14 +48,14 @@ function createVaultConfigService(db, vaultRoot, sessions) {
       preferences.read(token, { reference, path: ".obsidian/app.json" });
       return { content: JSON.stringify(fixed.get(path)), revision: 0, writable: false };
     }
-    if (![".obsidian/app.json", ".obsidian/appearance.json"].includes(path)) fail("UNSUPPORTED_CONFIGURATION");
+    if (![".obsidian/app.json", ".obsidian/appearance.json", ".obsidian/workspace.json"].includes(path)) fail("UNSUPPORTED_CONFIGURATION");
     const stored = preferences.read(token, { reference, path });
     let value;
     try { value = JSON.parse(stored.content); } catch { fail("INVALID_CONFIGURATION"); }
     return { content: JSON.stringify(projectPreferences(path, value)), revision: stored.revision, writable: true };
   }
   function write(token, { reference, path, content, expectedRevision } = {}) {
-    if (![".obsidian/app.json", ".obsidian/appearance.json"].includes(path)) fail("UNSUPPORTED_CONFIGURATION");
+    if (![".obsidian/app.json", ".obsidian/appearance.json", ".obsidian/workspace.json"].includes(path)) fail("UNSUPPORTED_CONFIGURATION");
     if (typeof content !== "string" || Buffer.byteLength(content) > 1048576) fail("INVALID_CONFIGURATION");
     let value;
     try { value = JSON.parse(content); } catch { fail("INVALID_CONFIGURATION"); }
@@ -66,7 +68,7 @@ function createVaultConfigService(db, vaultRoot, sessions) {
   function snapshot(token, reference) {
     // Fresh objects on every request; never reuse another caller's projection.
     return Object.fromEntries([
-      ".obsidian/app.json", ".obsidian/appearance.json", ...fixed.keys(),
+      ".obsidian/app.json", ".obsidian/appearance.json", ".obsidian/workspace.json", ...fixed.keys(),
     ].map(path => [path, read(token, { reference, path })]));
   }
   return Object.freeze({ read, write, snapshot });

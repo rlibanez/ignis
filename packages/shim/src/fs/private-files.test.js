@@ -103,7 +103,7 @@ it("derives private metadata without trusting shared metadata and without readin
 it("lists only projected configuration without exposing shared plugin names",async()=>{
   const {sync,async,metadata} = setup();
   metadata.set(".obsidian/plugins/secret/main.js",{type:"file"});
-  const expected = ["app.json","appearance.json","core-plugins.json","community-plugins.json"];
+  const expected = ["app.json","appearance.json","core-plugins.json","community-plugins.json","workspace.json"];
   expect(sync.readdirSync(".obsidian")).toEqual(expected);
   expect(await async.readdir(".obsidian")).toEqual(expected);
   expect(()=>sync.readdirSync(file)).toThrow(expect.objectContaining({code:"ENOTDIR"}));
@@ -162,9 +162,9 @@ it("rejects mutation aliases that resolve into or out of private configuration",
 it("projects a separate tree without shared configuration metadata or plugin names",()=>{
   const {adapter} = setup();
   const original = {"note.md":{type:"file",size:20},".obsidian/plugins/secret/main.js":{type:"file",size:100},".OBSIDIAN/app.json":{type:"file",size:900}};
-  const snapshot = Object.fromEntries(["app.json","appearance.json","core-plugins.json","community-plugins.json"].map(name=>[".obsidian/"+name,{content:'{}',writable:false}]));
+  const snapshot = Object.fromEntries(["app.json","appearance.json","core-plugins.json","community-plugins.json","workspace.json"].map(name=>[".obsidian/"+name,{content:'{}',writable:false}]));
   const projected = adapter.projectTree(original,snapshot);
-  expect(Object.keys(projected)).toHaveLength(6);
+  expect(Object.keys(projected)).toHaveLength(7);
   expect(projected[".obsidian/app.json"].size).toBe(2);
   expect(projected).not.toHaveProperty(".obsidian/plugins/secret/main.js");
   projected["note.md"].size=3;

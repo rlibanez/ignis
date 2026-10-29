@@ -2,7 +2,7 @@ import { normalize } from "../util/path.js";
 
 const files = new Set([
   ".obsidian/app.json", ".obsidian/appearance.json",
-  ".obsidian/core-plugins.json", ".obsidian/community-plugins.json",
+  ".obsidian/core-plugins.json", ".obsidian/community-plugins.json", ".obsidian/workspace.json",
 ]);
 // Obsidian treats ENOENT as an absent optional configuration, using its defaults.
 // These files remain unavailable for writes until their schemas are reviewed.
