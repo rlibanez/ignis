@@ -64,6 +64,9 @@ function registerVault(db, vaultRoot, directory, ownerId) {
   ) {
     throw new Error("Vault directory must be one visible directory name");
   }
+  const rootStat = fs.lstatSync(vaultRoot);
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink())
+    throw new Error("Vault root must be a real directory");
   const location = path.join(vaultRoot, directory);
   const stat = fs.lstatSync(location);
   if (!stat.isDirectory() || stat.isSymbolicLink())
@@ -74,6 +77,8 @@ function registerVault(db, vaultRoot, directory, ownerId) {
       .get(ownerId);
     if (!owner) throw new Error("Owner must be an active user");
     const id = randomUUID();
+    if (db.prepare("SELECT 1 FROM vaults WHERE id=? OR directory=?").get(directory, id))
+      throw new Error("Vault ID and directory alias conflict");
     db.prepare(
       "INSERT INTO vaults(id, name, directory, status, created_at) VALUES (?, ?, ?, 'active', ?)",
     ).run(id, directory, directory, Date.now());

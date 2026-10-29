@@ -797,6 +797,12 @@ function createAuthBoundary({
         return safe(res, 401, "Authentication required");
       if (!initialized() || current.user.role !== "admin")
         return safe(res, 403, "Administrator access required");
+      const pathname = canonicalRequestPath(req);
+      if (pathname?.startsWith("/api/fs/") || pathname === "/api/bootstrap" ||
+          ["/api/vault/info", "/api/vault/refresh", "/api/vault/rename", "/api/vault/remove"].includes(pathname)) {
+        try { require("./vault-selection").selectVaultReference(req.query, req.body); }
+        catch { return safe(res, 400, "Invalid or conflicting vault selection"); }
+      }
       req.auth = current;
       // A download may outlive its session. Do not emit further chunks after revocation.
       for (const method of ["write", "end"]) {

@@ -187,6 +187,8 @@ describe("HTTP boundary", () => {
       .prepare("SELECT id FROM sessions WHERE user_id = ?")
       .get(identity.user.id);
     const req = {
+      url: "/api/fs/download?vault=vault",
+      query: { vault: "vault" },
       headers: {
         cookie: Object.entries(jar)
           .map(([k, v]) => `${k}=${v}`)
@@ -1034,4 +1036,16 @@ it("requires confirmed, recent and context-bound administrator requests to chang
   expect((await request("/api/auth/users", { jar: promoted })).status).toBe(401);
   clock += 300001;
   expect((await request(path, { jar, method: "POST", body, headers: { ...headers, "x-ignis-csrf": await csrf(jar) } })).status).toBe(403);
+});
+
+it("rejects duplicate, malformed and conflicting vault selectors after parsing without opening normal-user access", async () => {
+  const jar = await login();
+  for (const query of ["vault=a&vault=b", "vault[]=a", "vault=", "vault=..%2Fother"])
+    expect((await request("/api/fs/readFile?" + query, { jar })).status).toBe(400);
+  expect((await request("/api/fs/writeFile?vault=first", { jar, method: "POST", body: { vault: "second", path: "note.md", data: "test" },
+    headers: { "x-ignis-csrf": await csrf(jar) } })).status).toBe(400);
+  expect((await request("/api/fs/writeFile?vault=first", { jar, method: "POST", body: { vault: "first", path: "note.md", data: "test" },
+    headers: { "x-ignis-csrf": await csrf(jar) } })).status).toBe(200);
+  const normal = await login("normal");
+  expect((await request("/api/fs/readFile?vault=first", { jar: normal })).status).toBe(403);
 });

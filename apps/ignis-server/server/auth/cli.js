@@ -52,6 +52,8 @@ async function main(args = process.argv.slice(2)) {
     status: 0,
     "create-user": 0,
     "list-users": 0,
+    "list-vaults": 0,
+    "resolve-vault": 1,
     "reset-password": 1,
     "register-vault": 2,
     "set-email": 3,
@@ -60,7 +62,7 @@ async function main(args = process.argv.slice(2)) {
   };
   if (!Object.hasOwn(arity, command) || rest.length !== arity[command]) {
     throw new Error(
-      "Usage: npm run auth -- init|bootstrap|status|create-user|list-users|reset-password <login>|set-email <login> <email|-> <unverified|admin_confirmed>|register-vault <directory> <owner-login>|backup <absolute-file>|restore <absolute-file>",
+      "Usage: npm run auth -- init|bootstrap|status|create-user|list-users|list-vaults|resolve-vault <id-or-directory>|reset-password <login>|set-email <login> <email|-> <unverified|admin_confirmed>|register-vault <directory> <owner-login>|backup <absolute-file>|restore <absolute-file>",
     );
   }
   const root = path.resolve(__dirname, "../../../..");
@@ -124,6 +126,11 @@ async function main(args = process.argv.slice(2)) {
       const result = require("./password-reset").issuePasswordReset(db, null, user.id);
       console.log(`Temporary password (shown once): ${result.secret}`);
       console.log(`Expires: ${new Date(result.expiresAt).toISOString()}. Sign in with your username and this temporary password to choose a new password.`);
+    } else if (command === "list-vaults") {
+      console.log(JSON.stringify(require("./vault-catalog").listRegisteredVaults(db), null, 2));
+    } else if (command === "resolve-vault") {
+      const vault = require("./vault-catalog").resolveRegisteredVault(db, process.env.VAULT_ROOT || path.join(root, "vaults"), rest[0]);
+      console.log(JSON.stringify({ id: vault.id, name: vault.name, directory: vault.directory, status: vault.status }, null, 2));
     } else if (command === "list-users") {
       console.log(JSON.stringify(listUsers(db, null), null, 2));
     } else if (command === "set-email") {
