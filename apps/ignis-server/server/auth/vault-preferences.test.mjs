@@ -102,3 +102,17 @@ it("limits total bytes and nested JSON without affecting another user", () => {
   expect(() => save(bob,JSON.stringify(deep))).toThrow(expect.objectContaining({code:"INVALID_PREFERENCES"}));
   expect(save(bob,'{"value":1}')).toEqual({revision:1});
 });
+it("projects private configuration without serving shared code, paths or arbitrary stored fields", () => {
+  const config = require("./vault-config").createVaultConfigService(db,vaultRoot,sessions);
+  save(alice,'{"spellcheck":true,"secret":"private","attachmentFolderPath":"hidden"}');
+  expect(JSON.parse(config.read(alice,target()).content)).toEqual({spellcheck:true});
+  expect(JSON.parse(config.read(bob,target()).content)).toEqual({});
+  const plugins = {reference:vault.id,path:".obsidian/community-plugins.json"};
+  expect(config.read(alice,plugins)).toEqual({content:"[]",revision:0,writable:false});
+  expect(() => config.write(alice,{...plugins,content:'["evil"]',expectedRevision:0})).toThrow();
+  config.write(alice,{...target(),content:'{"spellcheck":false,"token":"discard"}',expectedRevision:1});
+  expect(preferences.read(alice,target()).content).toBe('{"spellcheck":false}');
+  expect(() => config.write(alice,{...target(),content:'{}',expectedRevision:1})).toThrow(expect.objectContaining({code:"PREFERENCES_CONFLICT"}));
+  db.prepare("DELETE FROM memberships WHERE user_id='alice'").run();
+  expect(() => config.read(alice,plugins)).toThrow();
+});
