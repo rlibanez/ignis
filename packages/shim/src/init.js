@@ -282,7 +282,8 @@ export function initialize() {
   if (bootstrap) {
     applyVaultInfo(bootstrap.vault);
     window.__vaultList = bootstrap.vaultList;
-    applyTree(bootstrap.tree);
+    const tree = fsShim._configurePrivateFiles(bootstrap);
+    applyTree(tree);
     fsShim._watcherClient.setTreeEtag(bootstrap.etag);
     applyCoreSyncGuard(bootstrap.plugins);
     bootstrapVirtualPlugins = bootstrap.virtualPlugins || [];
@@ -293,9 +294,9 @@ export function initialize() {
     // The bulk slice streams afterward without blocking boot.
     const { priority } = prefetchVaultContent(
       vaultService.getCurrentVaultReference(),
-      bootstrap.tree,
+      tree,
       fsShim._contentCache,
-      { onProgress: updateBootProgress },
+      { onProgress: updateBootProgress, privateFiles: fsShim._privateFiles },
     );
 
     window.__ignisBooting = true;

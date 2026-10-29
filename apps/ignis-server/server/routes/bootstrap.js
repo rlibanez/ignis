@@ -28,10 +28,11 @@ router.get("/", async (req, res) => {
     const tree = require("../vault/resource-policy").filterTree(req, config.getVaultPath(vaultId), entry.response.tree);
     // Never put a caller-specific projection back into the shared cache.
     entry = { ...entry, response: { ...entry.response, tree }, compressed: {} };
-    // This data is informational until the client read/write overlay is installed.
+    // Administrators retain shared configuration. Normal-user access remains gated.
     // It must stay outside the shared entry and its compressed variants.
     const privateConfiguration = req.privateVaultConfiguration?.(vaultId);
     if (privateConfiguration) entry.response.privateConfiguration = privateConfiguration;
+    entry.response.configurationMode = req.auth?.user.role === "user" ? "private" : "shared";
     entry.response.vault = { ...entry.response.vault, uuid: req.vaultUUID?.(vaultId) };
     entry.response.vaultList = entry.response.vaultList.map(vault => ({ ...vault, uuid: req.vaultUUID?.(vault.id) }));
 

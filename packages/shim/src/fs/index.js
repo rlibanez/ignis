@@ -1,3 +1,4 @@
+import { createPrivateRuntime } from "./private-runtime.js";
 import { MetadataCache } from "./metadata-cache.js";
 import { ContentCache } from "./content-cache.js";
 import { transport } from "./transport.js";
@@ -17,13 +18,18 @@ import {
 import { hasUnconfirmedWrite } from "./write-coalescer.js";
 import { wsClient } from "../ws-client.js";
 
+const privateRuntime = createPrivateRuntime(() => ({
+  sessionId: window.__ignisAuth?.blocked ? null : window.__ignisAuth?.sessionId,
+  vault: window.__currentVaultUuid,
+}));
+const privateFiles = privateRuntime.gateway;
 const metadataCache = new MetadataCache();
 const contentCache = new ContentCache();
 
 contentCache.retainWhile(hasUnconfirmedWrite);
 
-const fsPromises = createFsPromises(metadataCache, contentCache, transport);
-const fsSync = createFsSync(metadataCache, contentCache, transport);
+const fsPromises = createFsPromises(metadataCache, contentCache, transport, privateFiles);
+const fsSync = createFsSync(metadataCache, contentCache, transport, privateFiles);
 const fsWatch = createFsWatch(transport);
 const watcherClient = createWatcherClient(
   metadataCache,
@@ -31,8 +37,9 @@ const watcherClient = createWatcherClient(
   fsWatch,
   wsClient,
   transport,
+  privateFiles,
 );
-const fdOps = createFdOps(metadataCache, contentCache, transport);
+const fdOps = createFdOps(metadataCache, contentCache, transport, privateFiles);
 const fsCallbacks = createFsCallbacks(fsPromises);
 
 export const fsShim = {
@@ -79,6 +86,8 @@ export const fsShim = {
     contentCache.invalidate(resolvePath(path));
   },
 
+  _configurePrivateFiles: privateRuntime.configure,
+  _privateFiles: privateFiles,
   _metadataCache: metadataCache,
   _contentCache: contentCache,
   _watcherClient: watcherClient,
