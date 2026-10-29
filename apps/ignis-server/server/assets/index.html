@@ -60,15 +60,17 @@
     const uiSrc = "__IGNIS_UI_SRC__";
     const params = new URLSearchParams(location.search);
     let showManager = params.get("manager") === "1";
-    if (!showManager && window.__ignisAuth.role === "user") {
+    if (!showManager) {
       const reference = params.get("vault");
       const response = await fetch("/api/vault/info" + (reference ? "?vault=" + encodeURIComponent(reference) : ""), { cache: "no-store" });
       if (response.status === 404) showManager = true;
       else {
         if (!response.ok) throw new Error("Vault selection unavailable");
         const info = await response.json();
-        if (!info.uuid) throw new Error("Registered vault required");
-        params.set("vault", info.uuid);
+        if (window.__ignisAuth.role === "user" && !info.uuid) throw new Error("Registered vault required");
+        const selected = info.uuid || info.id;
+        if (!selected) throw new Error("Vault identity required");
+        params.set("vault", selected);
         history.replaceState(null, "", location.pathname + "?" + params.toString());
       }
     }

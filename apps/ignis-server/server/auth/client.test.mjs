@@ -224,14 +224,14 @@ it("pins the account identity and hides it when the session is locked", async ()
   expect(f.window.__ignisAuth.userId).toBeNull();
 });
 
-it("shows the manager for unavailable user vaults without loading Obsidian", async () => {
+it("shows the manager for empty installations and unavailable vaults for either role", async () => {
   const html = fs.readFileSync(new URL("../assets/index.html", import.meta.url), "utf8");
   const script = html.match(/<script>\s*(\(async function[\s\S]*?)<\/script>/)[1];
-  for (const search of ["", "?vault=foreign"]) {
+  for (const [role, search] of [["admin", ""], ["admin", "?vault=removed"], ["user", ""], ["user", "?vault=foreign"]]) {
     const loaded = [];
     let opened = false;
     await vm.runInNewContext(script, {
-      window: { __ignisAuth: { role: "user", ready: Promise.resolve() }, IgnisUI: { showVaultManager() { opened = true; } } },
+      window: { __ignisAuth: { role, ready: Promise.resolve() }, IgnisUI: { showVaultManager() { opened = true; } } },
       location: { search }, URLSearchParams,
       fetch: async () => ({ status: 404 }),
       document: { createElement: () => ({}), head: { appendChild(script) { loaded.push(script.src); script.onload(); } }, getElementById: () => ({ remove() {} }) },
@@ -248,5 +248,29 @@ it("leaves a revoked session even when clearing browser storage fails", async ()
     expect(f.events.indexOf("storage-clear")).toBeLessThan(f.events.indexOf("ignis:auth-lost"));
     expect(f.events).toContain("redirect");
     expect(f.window.__ignisAuth.blocked).toBe(true);
+  }
+});
+
+it("preserves legacy administrator vaults and does not treat server failures as an empty installation", async () => {
+  const html = fs.readFileSync(new URL("../assets/index.html", import.meta.url), "utf8");
+  const script = html.match(/<script>\s*(\(async function[\s\S]*?)<\/script>/)[1];
+  for (const status of [200, 403, 500]) {
+    const loaded = [];
+    let target;
+    let locked = false;
+    await vm.runInNewContext(script, {
+      window: { __ignisAuth: { role: "admin", ready: Promise.resolve(), lock() { locked = true; } } },
+      location: { search: "", pathname: "/" }, URLSearchParams,
+      history: { replaceState(_state, _title, url) { target = url; } },
+      fetch: async () => ({ status, ok: status === 200, json: async () => ({ id: "Legacy" }) }),
+      document: { createElement: () => ({}), head: { appendChild(script) {
+        loaded.push(script.src);
+        // Stop at the loader: this test validates selection, not Obsidian itself.
+        script.onerror(new Error("End of fixture"));
+      } } },
+    });
+    expect(loaded).toEqual(status === 200 ? ["__SHIM_LOADER_SRC__"] : []);
+    expect(target).toBe(status === 200 ? "/?vault=Legacy" : undefined);
+    expect(locked).toBe(true);
   }
 });
