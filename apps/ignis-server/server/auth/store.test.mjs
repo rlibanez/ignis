@@ -59,7 +59,7 @@ describe("identity persistence", () => {
     expect(db.prepare("SELECT id FROM vaults").get().id).toBe(vault.id);
     expect(
       db.prepare("SELECT count(*) AS n FROM schema_migrations").get().n,
-    ).toBe(8);
+    ).toBe(9);
     if (process.platform !== "win32") {
       expect(fs.statSync(path.join(root, "data/auth")).mode & 0o777).toBe(
         0o700,
@@ -245,7 +245,7 @@ describe("migration and crash recovery", () => {
     ).toBeUndefined();
     expect(
       db.prepare("SELECT count(*) AS n FROM schema_migrations").get().n,
-    ).toBe(8);
+    ).toBe(9);
   });
 
   it("recovers after a process exits in an uncommitted write transaction", async () => {

@@ -97,8 +97,8 @@ export const vaultService = {
     return this.listVaults();
   },
 
-  async deleteVault(id) {
-    await fetchJson(API_BASE + "/remove?vault=" + encodeURIComponent(id), {
+  async deleteVault(id, uuid) {
+    const result = await fetchJson(API_BASE + "/remove?vault=" + encodeURIComponent(uuid || id), {
       method: "DELETE",
     });
 
@@ -106,15 +106,16 @@ export const vaultService = {
 
     await this.listVaults();
 
-    return { wasCurrentVault };
+    return { wasCurrentVault, cleanupPending: result.cleanupPending === true };
   },
 
   deleteVaultSync(id) {
+    const reference = window.__vaultList?.find(vault => vault.id === id)?.uuid || id;
     const xhr = new XMLHttpRequest();
 
     xhr.open(
       "DELETE",
-      API_BASE + "/remove?vault=" + encodeURIComponent(id),
+      API_BASE + "/remove?vault=" + encodeURIComponent(reference),
       false,
     );
 

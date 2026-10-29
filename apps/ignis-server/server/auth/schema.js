@@ -204,4 +204,25 @@ module.exports = [
       BEGIN SELECT RAISE(ABORT, 'Vault name reserved'); END;
     `,
   },
+  {
+    version: 9,
+    sql: `
+      CREATE TABLE vault_deletions (
+        vault_id TEXT PRIMARY KEY,
+        source TEXT NOT NULL,
+        trash_name TEXT NOT NULL UNIQUE,
+        device TEXT NOT NULL,
+        inode TEXT NOT NULL,
+        state TEXT NOT NULL CHECK(state IN ('pending','retired','purged')),
+        created_at INTEGER NOT NULL
+      ) STRICT;
+      CREATE UNIQUE INDEX pending_vault_deletion ON vault_deletions(source) WHERE state='pending';
+      CREATE TRIGGER reserve_deleted_identity_insert BEFORE INSERT ON vaults
+      WHEN EXISTS (SELECT 1 FROM vault_deletions WHERE vault_id=NEW.id OR vault_id=NEW.directory OR (state='pending' AND source=NEW.directory))
+      BEGIN SELECT RAISE(ABORT, 'Vault identity reserved'); END;
+      CREATE TRIGGER reserve_deleted_identity_update BEFORE UPDATE OF directory ON vaults
+      WHEN EXISTS (SELECT 1 FROM vault_deletions WHERE vault_id=NEW.directory OR (state='pending' AND source=NEW.directory))
+      BEGIN SELECT RAISE(ABORT, 'Vault identity reserved'); END;
+    `,
+  },
 ];

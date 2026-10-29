@@ -55,8 +55,11 @@ function createAuthBoundary({
   let oidc = null;
   let initialization;
   function initialize() {
-    initialization ||= Promise.resolve().then(() => {
-      if (vaultRoot) require("./vault-creation").quarantinePendingVaults(db);
+    initialization ||= Promise.resolve().then(async () => {
+      if (vaultRoot) {
+        require("./vault-creation").quarantinePendingVaults(db);
+        await require("./vault-deletion").purgeRetiredVaults(db, vaultRoot);
+      }
       return require("./oidc/runtime").createOidcRuntime(db, config, sessions, oidcEnv, oidcDependencies);
     })
       .then((value) => {
@@ -807,10 +810,20 @@ function createAuthBoundary({
         catch { return safe(res, 400, "Invalid or conflicting vault selection"); }
       }
       if (vaultRoot) {
+        req.vaultUUID = directory => db.prepare("SELECT id FROM vaults WHERE directory=? AND status='active'").get(directory)?.id;
         if (pathname === "/api/vault/remove") {
           const reference = require("./vault-selection").selectVaultReference(req.query, req.body);
-          if (db.prepare("SELECT 1 FROM vaults WHERE id=? OR directory=?").get(reference, reference))
-            return safe(res, 409, "Registered vault removal is not available yet");
+          if (db.prepare("SELECT 1 FROM vault_deletions WHERE vault_id=? AND state!='pending'").get(reference))
+            return safe(res, 410, "Vault already removed");
+          if (db.prepare("SELECT 1 FROM vaults WHERE id=? OR directory=?").get(reference, reference)) {
+            req.deleteRegisteredVault = lifecycle => require("./vault-deletion").deleteRegisteredVault(db, vaultRoot, current.user.id, reference, {
+              ...lifecycle,
+              isCurrent: withinTransaction => {
+                const session = sessions.resolve(cookies.read(req.headers.cookie), { withinTransaction });
+                return session?.id === current.id && session.user.role === "admin";
+              },
+            });
+          }
         }
         if (pathname === "/api/vault/rename") {
           const reference = require("./vault-selection").selectVaultReference(req.query, req.body);

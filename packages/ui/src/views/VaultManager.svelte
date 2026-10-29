@@ -30,6 +30,7 @@
   let dialogValue = "";
   let errorMessage = "";
   let pendingReload = false;
+  let deletedCurrentVault = false;
   let version = "";
 
   const menuItems = [
@@ -155,15 +156,19 @@
 
   async function onDeleteConfirm() {
     try {
-      const { wasCurrentVault } = await vaultService.deleteVault(
+      const { wasCurrentVault, cleanupPending } = await vaultService.deleteVault(
         targetVault.id,
+        targetVault.uuid,
       );
 
       closeDialog();
 
       vaults = await vaultService.listVaults();
 
-      if (wasCurrentVault) {
+      if (cleanupPending) {
+        deletedCurrentVault = wasCurrentVault;
+        activeDialog = "cleanup";
+      } else if (wasCurrentVault) {
         vaultService.openVault("");
       }
     } catch (err) {
@@ -320,7 +325,7 @@
   <ConfirmDialog
     title="Delete Confirmation"
     message={deleteMessage}
-    description="This action cannot be undone. All notes and linked files within this vault will be permanently removed from your system."
+    description={targetVault.uuid ? "This removes the vault and its access permissions. Its files will be permanently deleted. Interrupted file cleanup is retried on restart." : "This action cannot be undone. All notes and linked files within this vault will be permanently removed from your system."}
     confirmText="Confirm Delete"
     confirmVariant="danger"
     on:confirm={onDeleteConfirm}
@@ -333,6 +338,18 @@
       <Check size="0.875rem" />
     </svelte:fragment>
   </ConfirmDialog>
+{/if}
+
+{#if activeDialog === "cleanup"}
+  <MessageDialog
+    title="Vault removed"
+    message="The vault has been removed from Ignis. File cleanup is pending and will be retried on restart."
+    on:confirm={() => {
+      closeDialog();
+      if (deletedCurrentVault) vaultService.openVault("");
+      deletedCurrentVault = false;
+    }}
+  />
 {/if}
 
 {#if activeDialog === "error"}

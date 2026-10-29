@@ -120,6 +120,9 @@ it("protects real server routes, persists auth and does not log request secrets"
   fs.mkdirSync(path.join(root, "vaults", "Interrupted", ".obsidian", "plugins", "ignis-bridge"), { recursive: true });
   fs.writeFileSync(path.join(root, "vaults", "Interrupted", ".obsidian", "plugins", "ignis-bridge", "keep"), "preserve");
   fs.symlinkSync(path.join(root, "vaults", "Interrupted"), path.join(root, "vaults", "Alias"));
+  fs.mkdirSync(path.join(root, "vaults", ".ignis-trash", "preserved"), { recursive: true });
+  fs.writeFileSync(path.join(root, "vaults", ".ignis-trash", "preserved", "keep"), "staged-private-marker");
+  fs.symlinkSync(path.join(root, "vaults", ".ignis-trash", "preserved"), path.join(root, "vaults", "TrashAlias"));
   db.close();
   const processState = await launch(root);
   try {
@@ -176,11 +179,15 @@ it("protects real server routes, persists auth and does not log request secrets"
     );
     expect((await request(port, "/api/vault/list", jar)).status).toBe(200);
     const visibleVaults = JSON.parse((await request(port, "/api/vault/list", jar)).text);
-    expect(visibleVaults.some(vault => ["Interrupted", "Alias"].includes(vault.id))).toBe(false);
+    expect(visibleVaults.some(vault => ["Interrupted", "Alias", ".ignis-trash", "TrashAlias"].includes(vault.id))).toBe(false);
     expect((await request(port, "/vault-files/Alias/.obsidian/plugins/ignis-bridge/keep", jar)).status).toBe(404);
     expect((await request(port, "/api/vault/info?vault=Interrupted", jar)).status).toBe(404);
     expect((await request(port, "/vault-files/Interrupted/.obsidian/plugins/ignis-bridge/keep", jar)).status).toBe(404);
     expect(fs.readFileSync(path.join(root, "vaults", "Interrupted", ".obsidian", "plugins", "ignis-bridge", "keep"), "utf8")).toBe("preserve");
+    expect((await request(port, "/vault-files/TrashAlias/keep", jar)).status).toBe(404);
+    expect((await request(port, "/vault-files/.ignis-trash/preserved/keep", jar)).status).toBe(404);
+    expect((await request(port, "/api/fs/readFile?vault=TrashAlias&path=keep", jar)).status).toBe(404);
+    expect(fs.readFileSync(path.join(root, "vaults", ".ignis-trash", "preserved", "keep"), "utf8")).toBe("staged-private-marker");
     const createCsrf = JSON.parse((await request(port, "/api/auth/csrf", jar)).text).csrfToken;
     expect((await request(port, "/api/vault/create", jar, { method: "POST", body: { name: "Created" } })).status).toBe(403);
     expect((await request(port, "/api/vault/create", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { name: "Created", ownerId: "other" } })).status).toBe(400);
@@ -202,6 +209,20 @@ it("protects real server routes, persists auth and does not log request secrets"
     expect(fs.existsSync(path.join(root, "vaults", "Renamed", ".obsidian"))).toBe(true);
     expect(fs.existsSync(path.join(root, "vaults", "Created"))).toBe(false);
     expect((await request(port, "/api/vault/remove?vault=Renamed", jar, { method: "DELETE", headers: { "x-ignis-csrf": createCsrf } })).status).toBe(409);
+    const listed = JSON.parse((await request(port, "/api/vault/list", jar)).text);
+    expect(listed.find(vault => vault.id === "Renamed").uuid).toBe(result.uuid);
+    const removeUrl = "/api/vault/remove?vault=" + result.uuid;
+    expect((await request(port, removeUrl, jar, { method: "DELETE" })).status).toBe(403);
+    const removed = await request(port, removeUrl, jar, { method: "DELETE", headers: { "x-ignis-csrf": createCsrf } });
+    expect(removed.status).toBe(200);
+    expect(JSON.parse(removed.text)).toMatchObject({ uuid: result.uuid, cleanupPending: false });
+    expect(fs.existsSync(path.join(root, "vaults", "Renamed"))).toBe(false);
+    const replacement = await request(port, "/api/vault/create", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { name: "Renamed" } });
+    expect(replacement.status).toBe(200);
+    expect(JSON.parse(replacement.text).uuid).not.toBe(result.uuid);
+    expect((await request(port, removeUrl, jar, { method: "DELETE", headers: { "x-ignis-csrf": createCsrf } })).status).toBe(410);
+    expect(fs.existsSync(path.join(root, "vaults", "Renamed"))).toBe(true);
+
 
     const csrf = JSON.parse(
       (await request(port, "/api/auth/csrf", jar)).text,

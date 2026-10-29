@@ -42,6 +42,7 @@ router.get("/list", (req, res) => {
   const list = Object.entries(config.vaults).map(([id, vaultPath]) => ({
     id,
     name: id,
+    ...(req.vaultUUID?.(id) ? { uuid: req.vaultUUID(id) } : {}),
     path: vaultPath,
   }));
 
@@ -205,6 +206,40 @@ router.post("/rename", async (req, res) => {
 // DELETE /api/vault/remove?vault=<id> - remove a vault from disk
 router.delete("/remove", async (req, res) => {
   const vaultId = req.query.vault;
+  if (req.deleteRegisteredVault) {
+    if (Object.keys(req.query).some(key => key !== "vault") || (req.body && Object.keys(req.body).length))
+      return res.status(400).json({ error: "Invalid deletion request" });
+    try {
+      const result = await req.deleteRegisteredVault({
+        assertReady: id => {
+          if (require("../plugin-system/manager").getDiscoveredPlugins().some(plugin => plugin.enabledVaults.includes(id)))
+            throw Object.assign(new Error("Disable server plugins before deleting"), { code: "VAULT_BUSY" });
+        },
+        quiesce: async (id, vaultPath) => {
+          treeReconcile.cancelVault(id);
+          await quiesceRegisteredVault(id, vaultPath);
+        },
+        invalidate: id => {
+          treeReconcile.cancelVault(id);
+          bootstrapCache.invalidateVault(id);
+          const trustedVaults = settings.get("trustedVaults");
+          if (trustedVaults.includes(id)) settings.update({ trustedVaults: trustedVaults.filter(value => value !== id) });
+        },
+      });
+      config.refreshVaults();
+      return res.json({ ok: true, uuid: result.id, cleanupPending: result.cleanupPending });
+    } catch (error) {
+      config.refreshVaults();
+      const messages = {
+        VAULT_ID_REQUIRED: "Reload the vault list before deleting this vault",
+        VAULT_BUSY: "Disable server plugins for this vault before deleting it",
+        VAULT_ALIAS: "Remove legacy symlink aliases to this vault before deleting it",
+      };
+      const statuses = { VAULT_ID_REQUIRED: 409, VAULT_BUSY: 409, VAULT_ALIAS: 409, VAULT_UNAVAILABLE: 409, VAULT_STATE_CHANGED: 409, SESSION_CHANGED: 401 };
+      return res.status(statuses[error.code] || 503).json({ error: messages[error.code] || "Vault deletion could not be completed" });
+    }
+  }
+
   const vaultPath = config.getVaultPath(vaultId);
 
   if (!vaultPath) {

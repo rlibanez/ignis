@@ -44,7 +44,8 @@ async function renameRegisteredVault(db, root, actor, reference, name, {
     rejectLegacyAliases(root, vault);
     assertReady(vault.directory);
     if (typeof quiesce !== "function" || typeof invalidate !== "function") fail("VAULT_STATE_CHANGED");
-    if (db.prepare("SELECT 1 FROM vaults WHERE directory=? OR id=?").get(name, name) ||
+    if (db.prepare("SELECT 1 FROM vault_deletions WHERE vault_id=? OR (state='pending' AND source=?)").get(name, name) ||
+        db.prepare("SELECT 1 FROM vaults WHERE directory=? OR id=?").get(name, name) ||
         db.prepare("SELECT 1 FROM vault_renames WHERE source=? OR target=?").get(name, name)) fail("VAULT_EXISTS");
     absent(io, path.join(root, name));
     identity = io.lstatSync(vault.path);
@@ -88,4 +89,4 @@ async function renameRegisteredVault(db, root, actor, reference, name, {
     throw error;
   }
 }
-module.exports = { renameRegisteredVault };
+module.exports = { renameRegisteredVault, rejectLegacyAliases };
