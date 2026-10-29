@@ -44,3 +44,87 @@ it("blocks parallel operations on one file and refuses writes to server-owned li
   await pending;
   await expect(client.write(".obsidian/community-plugins.json","[]")).rejects.toMatchObject({code:"CONFIGURATION_READ_REQUIRED"});
 });
+
+function synchronousClient(replies) {
+  const calls = [];
+  const createXHR = () => {
+    const call = {headers:{}};
+    calls.push(call);
+    return {
+      open(method,url,async) { Object.assign(call,{method,url,async}); },
+      setRequestHeader(name,value) { call.headers[name]=value; },
+      send(body) {
+        call.body = body;
+        const reply = replies.shift();
+        if (reply instanceof Error) throw reply;
+        reply.action?.();
+        this.status = reply.status ?? 200;
+        this.responseText = reply.raw ?? JSON.stringify(reply.data);
+      },
+    };
+  };
+  return {calls,client:createPrivateConfiguration({...current,currentContext:()=>current,request,createXHR})};
+}
+const settings = revision => ({content:'{}',revision,writable:true});
+it("shares revisions across synchronous and asynchronous operations",async()=>{
+  const {client,calls} = synchronousClient([{data:settings(4)},{data:{revision:6}}]);
+  expect(client.readSync(".obsidian/app.json")).toBe('{}');
+  request.mockResolvedValueOnce(response({revision:5}));
+  await client.write(".obsidian/app.json","{}");
+  expect(JSON.parse(request.mock.calls[0][1].body).expectedRevision).toBe(4);
+  client.writeSync(".obsidian/app.json","{}");
+  expect(JSON.parse(calls[1].body)).toEqual({vault:"stable-uuid",path:".obsidian/app.json",content:"{}",expectedRevision:5});
+  expect(calls[0].async).toBe(false);
+  expect(calls[0].headers["x-ignis-context"]).toBe("session-a");
+  expect(new URL(calls[0].url).searchParams.get("vault")).toBe("stable-uuid");
+});
+it("blocks sync operations while an async write is outstanding",async()=>{
+  const {client,calls} = synchronousClient([{data:settings(0)}]);
+  client.readSync(".obsidian/app.json");
+  let finish;
+  request.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+  const pending = client.write(".obsidian/app.json","{}");
+  expect(()=>client.readSync(".obsidian/app.json")).toThrow(expect.objectContaining({code:"CONFIGURATION_BUSY"}));
+  expect(()=>client.writeSync(".obsidian/app.json","{}")).toThrow(expect.objectContaining({code:"CONFIGURATION_BUSY"}));
+  expect(calls).toHaveLength(1);
+  finish(response({revision:1}));
+  await pending;
+});
+it.each([
+  {status:409,data:{code:"PREFERENCES_CONFLICT",error:"Conflict"}},
+  {status:0,data:{revision:1}},
+  {raw:"not json"},
+  {data:{revision:40}},
+  new Error("Lost connection"),
+])("does not retry synchronous writes after a conflict or uncertain response: %j",async failure=>{
+  const {client,calls} = synchronousClient([{data:settings(0)},failure]);
+  client.readSync(".obsidian/app.json");
+  expect(()=>client.writeSync(".obsidian/app.json","{}")).toThrow();
+  expect(()=>client.writeSync(".obsidian/app.json","{}")).toThrow(expect.objectContaining({code:"CONFIGURATION_READ_REQUIRED"}));
+  await expect(client.write(".obsidian/app.json","{}")).rejects.toMatchObject({code:"CONFIGURATION_READ_REQUIRED"});
+  expect(calls).toHaveLength(2);
+  expect(request).not.toHaveBeenCalled();
+});
+it("invalidates a previously readable revision after a failed refresh",async()=>{
+  const {client} = synchronousClient([{data:settings(0)},{raw:"broken"}]);
+  client.readSync(".obsidian/app.json");
+  expect(()=>client.readSync(".obsidian/app.json")).toThrow();
+  await expect(client.write(".obsidian/app.json","{}")).rejects.toMatchObject({code:"CONFIGURATION_READ_REQUIRED"});
+  request.mockResolvedValueOnce(response(settings(3))).mockRejectedValueOnce(new Error("offline"));
+  await client.read(".obsidian/app.json");
+  await expect(client.read(".obsidian/app.json")).rejects.toThrow("offline");
+  expect(()=>client.writeSync(".obsidian/app.json","{}")).toThrow(expect.objectContaining({code:"CONFIGURATION_READ_REQUIRED"}));
+});
+it("discards a synchronous response if the context changes during the request",()=>{
+  const {client,calls} = synchronousClient([{data:settings(0),action:()=>{current={...current,vault:"other-uuid"};}}]);
+  expect(()=>client.readSync(".obsidian/app.json")).toThrow(expect.objectContaining({code:"AUTH_CONTEXT_CHANGED"}));
+  expect(()=>client.writeSync(".obsidian/app.json","{}")).toThrow(expect.objectContaining({code:"AUTH_CONTEXT_CHANGED"}));
+  expect(calls).toHaveLength(1);
+});
+it("rejects sync writes for server-owned files and exhausted revisions",()=>{
+  const {client} = synchronousClient([{data:{content:"[]",revision:0,writable:false}},{data:settings(Number.MAX_SAFE_INTEGER)}]);
+  client.readSync(".obsidian/community-plugins.json");
+  expect(()=>client.writeSync(".obsidian/community-plugins.json","[]")).toThrow();
+  client.readSync(".obsidian/app.json");
+  expect(()=>client.writeSync(".obsidian/app.json","{}")).toThrow();
+});
