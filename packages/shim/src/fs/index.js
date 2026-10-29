@@ -1,3 +1,4 @@
+import { createPrivateConflictNotice } from "./private-conflict-notice.js";
 import { createPrivateRuntime } from "./private-runtime.js";
 import { MetadataCache } from "./metadata-cache.js";
 import { ContentCache } from "./content-cache.js";
@@ -18,10 +19,15 @@ import {
 import { hasUnconfirmedWrite } from "./write-coalescer.js";
 import { wsClient } from "../ws-client.js";
 
-const privateRuntime = createPrivateRuntime(() => ({
+const privateContext = () => ({
   sessionId: window.__ignisAuth?.blocked ? null : window.__ignisAuth?.sessionId,
   vault: window.__currentVaultUuid,
-}));
+});
+let privateNotice;
+const privateRuntime = createPrivateRuntime(privateContext, undefined, event => {
+  privateNotice ||= createPrivateConflictNotice(privateContext);
+  privateNotice(event);
+});
 const privateFiles = privateRuntime.gateway;
 const metadataCache = new MetadataCache();
 const contentCache = new ContentCache();

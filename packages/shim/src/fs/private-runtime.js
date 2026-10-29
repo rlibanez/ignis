@@ -2,7 +2,7 @@ import { createPrivateConfiguration } from "./private-configuration.js";
 import { createPrivateFiles } from "./private-files.js";
 
 // One gateway is passed to every FS factory before boot. Activation is one-shot.
-export function createPrivateRuntime(currentContext, makeConfiguration = createPrivateConfiguration) {
+export function createPrivateRuntime(currentContext, makeConfiguration = createPrivateConfiguration, onWriteFailure) {
   let adapter = null;
   let configured = false;
   let blocked = false;
@@ -28,7 +28,7 @@ export function createPrivateRuntime(currentContext, makeConfiguration = createP
     const context = currentContext();
     if (!context?.sessionId || !context.vault || context.vault !== bootstrap.vault?.uuid)
       throw new Error("Private configuration context unavailable");
-    const candidate = createPrivateFiles(makeConfiguration({...context,currentContext}));
+    const candidate = createPrivateFiles(makeConfiguration({...context,currentContext,...(onWriteFailure ? {onWriteFailure} : {})}));
     const tree = candidate.projectTree(bootstrap.tree,bootstrap.privateConfiguration);
     adapter = candidate;
     blocked = false;

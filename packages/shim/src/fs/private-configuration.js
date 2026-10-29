@@ -1,7 +1,11 @@
 // Explicit configuration transport. The FS overlay is not enabled yet.
 // Lifetime is one authenticated session and one stable vault UUID.
-export function createPrivateConfiguration({ vault, sessionId, currentContext, request = fetch, createXHR = () => new XMLHttpRequest() }) {
+export function createPrivateConfiguration({ vault, sessionId, currentContext, request = fetch, createXHR = () => new XMLHttpRequest(), onWriteFailure = () => {} }) {
   const states = new Map();
+  function report(path,content,error) {
+    // UI failures must never turn a rejected write into a successful one.
+    try { onWriteFailure({vault,sessionId,path,content,code:error.code || "CONFIGURATION_UNAVAILABLE"}); } catch {}
+  }
   function context() {
     const current = currentContext();
     if (!sessionId || !vault || !current || current.sessionId !== sessionId || current.vault !== vault)
@@ -74,6 +78,7 @@ export function createPrivateConfiguration({ vault, sessionId, currentContext, r
     } catch (error) {
       // A lost response may mean the write succeeded. Never retry blindly.
       value.blocked = true;
+      report(path,content,error);
       throw error;
     } finally { value.busy = false; }
   }
@@ -105,7 +110,7 @@ export function createPrivateConfiguration({ vault, sessionId, currentContext, r
     requireWritable(value);
     value.busy = true;
     try { return acceptWrite(value,exchangeSync("POST",path,{content,expectedRevision:value.revision})); }
-    catch (error) { value.blocked = true; throw error; }
+    catch (error) { value.blocked = true; report(path,content,error); throw error; }
     finally { value.busy = false; }
   }
   // Metadata must not advance the revision that authorizes a later save.

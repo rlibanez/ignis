@@ -140,3 +140,11 @@ it("metadata inspection does not adopt a newer revision or clear a write conflic
   await client.inspect(".obsidian/app.json");
   await expect(client.write(".obsidian/app.json","{}")).rejects.toMatchObject({code:"CONFIGURATION_READ_REQUIRED"});
 });
+it("reports failed settings writes even when the Obsidian caller suppresses the rejection",async()=>{
+ const notify=vi.fn();
+ const c=createPrivateConfiguration({...current,currentContext:()=>current,request,onWriteFailure:notify});
+ request.mockResolvedValueOnce(response(settings(0))).mockResolvedValueOnce(response({code:"PREFERENCES_CONFLICT"},false));
+ await c.read(".obsidian/app.json");
+ await c.write(".obsidian/app.json",'{"showLineNumber":true}').catch(()=>{});
+ expect(notify).toHaveBeenCalledWith({...current,path:".obsidian/app.json",content:'{"showLineNumber":true}',code:"PREFERENCES_CONFLICT"});
+});
