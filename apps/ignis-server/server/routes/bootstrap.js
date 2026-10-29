@@ -18,12 +18,16 @@ router.get("/", async (req, res) => {
   }
 
   try {
-    const entry = await getOrBuild(vaultId);
+    let entry = await getOrBuild(vaultId);
 
     if (!entry) {
       return res.status(404).json({ error: "Vault not found" });
     }
 
+    req._vaultId = vaultId;
+    const tree = require("../vault/resource-policy").filterTree(req, config.getVaultPath(vaultId), entry.response.tree);
+    // Never put a caller-specific projection back into the shared cache.
+    entry = { ...entry, response: { ...entry.response, tree }, compressed: {} };
     entry.response.vault = { ...entry.response.vault, uuid: req.vaultUUID?.(vaultId) };
     entry.response.vaultList = entry.response.vaultList.map(vault => ({ ...vault, uuid: req.vaultUUID?.(vault.id) }));
 

@@ -125,6 +125,8 @@ app.use("/vault-files", (req, res, next) => {
     // resolved stays null and gets handled by static handler
   }
 
+  if (resolved && req.authorizeVaultFile && !req.authorizeVaultFile(vaultId, "content.read", path.relative(vaultPath, resolved).split(path.sep).join("/")))
+    return res.status(404).json({ error: "Resource unavailable" });
   const buffered = resolved ? writeCoalescer.getPending(resolved) : null;
 
   // Serve buffered content if exists.

@@ -864,6 +864,7 @@ function createAuthBoundary({
               error.code === "INVALID_VAULT_SELECTION" ? "Invalid or conflicting vault selection" : "Vault unavailable");
           }
         }
+        const fileChecks = new Map();
         req.authorizeVaultFile = (directory, capability, relativePath) => {
           const identity = db.prepare("SELECT id FROM vaults WHERE directory=?").get(directory);
           // Legacy folders remain administrator-only; membership access will
@@ -877,7 +878,12 @@ function createAuthBoundary({
             return decision.allowed && decision.sessionId === current.id;
           };
           if (!check()) return false;
-          req.revalidateVaultFile = check;
+          if (!fileChecks.has(reference)) fileChecks.set(reference, new Map());
+          fileChecks.get(reference).set(JSON.stringify([capability, relativePath]), { capability, path: relativePath });
+          req.revalidateVaultFile = () => [...fileChecks].every(([id, operations]) => {
+            const decision = vaultAccess.checkMany(cookies.read(req.headers.cookie), id, [...operations.values()]);
+            return decision.allowed && decision.sessionId === current.id;
+          });
           return true;
         };
         req.vaultOwners = () => db.prepare("SELECT id,login FROM users WHERE status='active' ORDER BY login,id").all();

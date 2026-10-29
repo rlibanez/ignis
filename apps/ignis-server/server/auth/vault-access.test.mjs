@@ -84,3 +84,14 @@ it("fails closed on storage failures without disclosing database errors", () => 
   const failing = createVaultAccessService({ exec() { throw new Error("private storage path"); } }, vaultRoot, sessions);
   expect(() => failing.check(alice, read(a.id))).toThrow("Authorization unavailable");
 });
+
+it("rejects aliases to protected data, including links in parent directories", () => {
+  const directory = path.join(vaultRoot, "A");
+  fs.mkdirSync(path.join(directory, ".obsidian"));
+  fs.writeFileSync(path.join(directory, ".obsidian", "secret.json"), "secret");
+  fs.symlinkSync(path.join(directory, ".obsidian"), path.join(directory, "alias"));
+  for (const token of [alice, admin]) {
+    expect(access.check(token, { ...read(a.id), path: "alias/secret.json" })).toEqual({ allowed: false });
+    expect(access.check(token, { ...read(a.id), capability: "content.list", path: "alias" })).toEqual({ allowed: false });
+  }
+});

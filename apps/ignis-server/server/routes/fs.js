@@ -25,6 +25,11 @@ const {
 const bootstrapCache = require("../cache");
 
 const router = express.Router();
+const { permit, permitSubtree, filterTree } = require("../vault/resource-policy");
+function checkedMutation(req, action) {
+  if (req.revalidateVaultFile && !req.revalidateVaultFile()) throw new Error("Resource unavailable");
+  return action();
+}
 
 // Resolve the vault root for a request. Reads vault ID from query or body.
 function getVaultRoot(req, res) {
@@ -143,6 +148,8 @@ function guardPath(req, res, source = "query") {
   }
   const fileCapabilities = {
     "/readFile": "content.read", "/download": "content.read",
+    "/stat": "content.list", "/access": "content.list", "/download-zip": "content.list",
+    "/mkdir": "content.write", "/unlink": "content.write", "/rmdir": "content.write", "/rm": "content.write",
     "/writeFile": "content.write", "/appendFile": "content.write", "/utimes": "content.write",
   };
   const capability = fileCapabilities[req.route?.path];
@@ -314,7 +321,7 @@ router.post("/mkdir", async (req, res) => {
 
   try {
     await supersedePending(resolved, () =>
-      fs.promises.mkdir(resolved, { recursive: !!req.body.recursive }),
+      checkedMutation(req, () => fs.promises.mkdir(resolved, { recursive: !!req.body.recursive })),
     );
 
     const rel = toRelative(req._vaultRoot, resolved);
@@ -351,10 +358,13 @@ router.post("/rename", async (req, res) => {
   }
 
   try {
+    if (!await permitSubtree(req, vaultRoot, oldResolved, "content.write", newResolved) ||
+        !await permitSubtree(req, vaultRoot, newResolved, "content.write"))
+      return res.status(404).json({ error: "Resource unavailable" });
     await flushPendingSubtree(oldResolved);
     // Drop the destination's buffer so a stale write cannot land on the renamed file.
     await supersedePending(newResolved, () =>
-      fs.promises.rename(oldResolved, newResolved),
+      checkedMutation(req, () => fs.promises.rename(oldResolved, newResolved)),
     );
 
     res.json({ ok: true });
@@ -392,9 +402,11 @@ router.post("/copyFile", async (req, res) => {
   }
 
   try {
+    if (!permit(req, vaultRoot, srcResolved, "content.read") || !permit(req, vaultRoot, destResolved, "content.write"))
+      return res.status(404).json({ error: "Resource unavailable" });
     await flushPending(srcResolved);
     await supersedePending(destResolved, () =>
-      fs.promises.copyFile(srcResolved, destResolved),
+      checkedMutation(req, () => fs.promises.copyFile(srcResolved, destResolved)),
     );
 
     res.json({ ok: true });
@@ -420,7 +432,7 @@ router.delete("/unlink", async (req, res) => {
 
   try {
     await supersedePending(resolved, () =>
-      fs.promises.unlink(resolved).catch((e) => {
+      checkedMutation(req, () => fs.promises.unlink(resolved)).catch((e) => {
         // already gone counts as deleted
         if (e.code !== "ENOENT") {
           throw e;
@@ -445,7 +457,7 @@ router.delete("/rmdir", async (req, res) => {
   }
 
   try {
-    await supersedePendingSubtree(resolved, () => fs.promises.rmdir(resolved));
+    await supersedePendingSubtree(resolved, () => checkedMutation(req, () => fs.promises.rmdir(resolved)));
 
     const rel = toRelative(req._vaultRoot, resolved);
 
@@ -467,7 +479,9 @@ router.delete("/rm", async (req, res) => {
 
   try {
     const recursive = req.query.recursive === "true";
-    const remove = () => fs.promises.rm(resolved, { recursive });
+    if (recursive && !await permitSubtree(req, req._vaultRoot, resolved, "content.write"))
+      return res.status(404).json({ error: "Resource unavailable" });
+    const remove = () => checkedMutation(req, () => fs.promises.rm(resolved, { recursive }));
 
     if (recursive) {
       await supersedePendingSubtree(resolved, remove);
@@ -569,7 +583,7 @@ router.post("/batch-read", async (req, res) => {
     paths.map(async (relPath) => {
       const resolved = resolveVaultPath(vaultRoot, relPath);
 
-      if (!resolved) {
+      if (!resolved || !permit(req, vaultRoot, resolved, "content.read")) {
         return;
       }
 
@@ -616,14 +630,18 @@ router.get("/tree", async (req, res) => {
       return res.status(404).json({ error: "Vault not found" });
     }
 
+    const tree = filterTree(req, vaultRoot, entry.response.tree);
+    const etag = req.authorizeVaultFile
+      ? '"' + require("node:crypto").createHash("sha256").update(JSON.stringify([entry.etag, tree])).digest("hex") + '"'
+      : entry.etag;
     res.setHeader("Cache-Control", "no-store");
-    res.setHeader("ETag", entry.etag);
+    res.setHeader("ETag", etag);
 
-    if (req.headers["if-none-match"] === entry.etag) {
+    if (req.headers["if-none-match"] === etag) {
       return res.status(304).end();
     }
 
-    res.json(entry.response.tree);
+    res.json(tree);
   } catch (e) {
     res.status(500).json(sanitizeError(e));
   }
@@ -704,7 +722,8 @@ router.get("/download-zip", async (req, res) => {
     archive.pipe(res);
     // Skip symlinked entries so the zip cannot carry a link that escapes the vault on extraction.
     archive.directory(resolved, folderName, (entry) =>
-      entry.stats && entry.stats.isSymbolicLink() ? false : entry,
+      (entry.stats && entry.stats.isSymbolicLink()) ||
+      !permit(req, req._vaultRoot, path.resolve(resolved, entry.name), entry.stats?.isDirectory() ? "content.list" : "content.read") ? false : entry,
     );
     archive.finalize();
   } catch (e) {

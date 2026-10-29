@@ -41,12 +41,13 @@ function vaultCapabilityAllowed({ status, instanceRole, membership, capability, 
   const admin = instanceRole === "admin";
   if (instanceCapabilities.has(capability)) return admin;
   if (ownerCapabilities.has(capability)) return admin || membership === "owner";
-  if (!["content.read", "content.write"].includes(capability)) return false;
+  if (!["content.read", "content.write", "content.list"].includes(capability)) return false;
   const kind = classifyVaultPath(path);
-  if (["invalid", "reserved", "root"].includes(kind)) return false;
+  if (["invalid", "reserved"].includes(kind)) return false;
+  if (kind === "root") return capability === "content.list" && (admin || roles.has(membership));
   if (admin) return true;
   if (!roles.has(membership) || kind !== "content") return false;
-  return capability === "content.read" || ["editor", "owner"].includes(membership);
+  return capability !== "content.write" || ["editor", "owner"].includes(membership);
 }
 
 module.exports = { classifyVaultPath, vaultCapabilityAllowed };

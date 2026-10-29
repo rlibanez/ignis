@@ -243,6 +243,11 @@ it("protects real server routes, persists auth and does not log request secrets"
     expect(created.status).toBe(200);
     const result = JSON.parse(created.text);
     expect(result.id).toBe("Created"); expect(result.uuid).toMatch(/^[a-f0-9-]{36}$/);
+    const mixedDir = path.join(root, "vaults", "Created", "Mixed");
+    fs.mkdirSync(path.join(mixedDir, ".ignis-secret"), { recursive: true });
+    fs.writeFileSync(path.join(mixedDir, "public.md"), "public data");
+    fs.writeFileSync(path.join(mixedDir, ".ignis-secret", "unique-private.md"), "secret data");
+
     const checkDb = openDatabase(path.join(root, "data"));
     try {
       expect(checkDb.prepare("SELECT v.status,u.login,m.role FROM vaults v JOIN memberships m ON m.vault_id=v.id JOIN users u ON u.id=m.user_id WHERE v.id=?").get(result.uuid))
@@ -254,6 +259,26 @@ it("protects real server routes, persists auth and does not log request secrets"
     expect(uuidBootstrap.status).toBe(200);
     expect(JSON.parse(uuidBootstrap.text).vault).toMatchObject({ id: "Created", uuid: result.uuid });
     expect(JSON.parse(uuidBootstrap.text).vaultList.find(v => v.id === "Created").uuid).toBe(result.uuid);
+    expect(JSON.parse(uuidBootstrap.text).tree).toHaveProperty("Mixed/public.md");
+    expect(Object.keys(JSON.parse(uuidBootstrap.text).tree).some(p => p.includes(".ignis-secret"))).toBe(false);
+    const treeResult = await request(port, `/api/fs/tree?vault=${result.uuid}`, jar);
+    expect(treeResult.status).toBe(200);
+    expect(treeResult.text).not.toContain("unique-private.md");
+    const batch = await request(port, `/api/fs/batch-read?vault=${result.uuid}`, jar, {
+      method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { paths: ["Mixed/public.md", "Mixed/.ignis-secret/unique-private.md"] },
+    });
+    expect(JSON.parse(batch.text).files).toEqual({ "Mixed/public.md": "public data" });
+    const zip = await request(port, `/api/fs/download-zip?vault=${result.uuid}&path=Mixed`, jar);
+    expect(zip.status).toBe(200);
+    expect(zip.text).toContain("public.md");
+    expect(zip.text).not.toContain("unique-private.md");
+    const recursiveDelete = await request(port, `/api/fs/rm?vault=${result.uuid}&path=Mixed&recursive=true`, jar, { method: "DELETE", headers: { "x-ignis-csrf": createCsrf } });
+    expect(recursiveDelete.status).toBe(404);
+    const move = await request(port, `/api/fs/rename?vault=${result.uuid}`, jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { oldPath: "Mixed", newPath: "Moved" } });
+    expect(move.status).toBe(404);
+    expect(fs.readFileSync(path.join(mixedDir, "public.md"), "utf8")).toBe("public data");
+    expect(fs.existsSync(path.join(root, "vaults", "Created", "Moved"))).toBe(false);
+
     // Registered file routes run the capability evaluator, including admin requests.
     for (const endpoint of ["writeFile", "appendFile", "utimes"]) {
       const deniedFile = await request(port, `/api/fs/${endpoint}?vault=${result.uuid}`, jar, {
