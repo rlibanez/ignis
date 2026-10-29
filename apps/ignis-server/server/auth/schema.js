@@ -186,4 +186,22 @@ module.exports = [
       ) STRICT;
     `,
   },
+  {
+    version: 8,
+    sql: `
+      CREATE TABLE vault_renames (
+        vault_id TEXT PRIMARY KEY REFERENCES vaults(id) ON DELETE CASCADE,
+        source TEXT NOT NULL UNIQUE,
+        target TEXT NOT NULL UNIQUE,
+        created_at INTEGER NOT NULL,
+        CHECK(source != target)
+      ) STRICT;
+      CREATE TRIGGER reserve_rename_insert BEFORE INSERT ON vaults
+      WHEN EXISTS (SELECT 1 FROM vault_renames WHERE source=NEW.directory OR target=NEW.directory OR target=NEW.id)
+      BEGIN SELECT RAISE(ABORT, 'Vault name reserved'); END;
+      CREATE TRIGGER reserve_rename_update BEFORE UPDATE OF directory ON vaults
+      WHEN EXISTS (SELECT 1 FROM vault_renames WHERE vault_id!=NEW.id AND (source=NEW.directory OR target=NEW.directory))
+      BEGIN SELECT RAISE(ABORT, 'Vault name reserved'); END;
+    `,
+  },
 ];

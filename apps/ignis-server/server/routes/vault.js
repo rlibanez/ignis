@@ -5,7 +5,7 @@ const path = require("path");
 const bootstrapCache = require("../cache");
 const settings = require("../settings");
 const treeReconcile = require("../cache/reconcile");
-const { withWatcherStopped } = require("../vault/lifecycle");
+const { withWatcherStopped, quiesceRegisteredVault } = require("../vault/lifecycle");
 const { sanitizeError } = require("@ignis/server-core");
 
 const router = express.Router();
@@ -120,6 +120,36 @@ router.post("/rename", async (req, res) => {
 
   if (!isValidVaultName(newName)) {
     return res.status(400).json({ error: "Invalid vault name" });
+  }
+
+  if (req.renameRegisteredVault) {
+    if (!req.body || Array.isArray(req.body) || Object.keys(req.body).some(key => !["vault", "name"].includes(key)))
+      return res.status(400).json({ error: "Invalid rename request" });
+    try {
+      const vault = await req.renameRegisteredVault(newName, {
+        assertReady: id => {
+          if (require("../plugin-system/manager").getDiscoveredPlugins().some(plugin => plugin.enabledVaults.includes(id)))
+            throw Object.assign(new Error("Disable server plugins before renaming"), { code: "VAULT_BUSY" });
+        },
+        quiesce: async (id, vaultPath) => {
+          treeReconcile.cancelVault(id);
+          await quiesceRegisteredVault(id, vaultPath);
+        },
+        invalidate: (oldId, newId) => {
+          treeReconcile.cancelVault(oldId);
+          bootstrapCache.invalidateVault(oldId);
+          bootstrapCache.invalidateVault(newId);
+          const trustedVaults = settings.get("trustedVaults");
+          if (trustedVaults.includes(oldId)) settings.update({ trustedVaults: trustedVaults.map(id => id === oldId ? newId : id) });
+        },
+      });
+      config.refreshVaults();
+      return res.json({ ok: true, id: vault.directory, uuid: vault.id, path: vault.path });
+    } catch (error) {
+      config.refreshVaults();
+      const statuses = { VAULT_ALIAS: 409, VAULT_BUSY: 409, INVALID_VAULT_NAME: 400, VAULT_UNAVAILABLE: 409, VAULT_EXISTS: 409, SESSION_CHANGED: 401, VAULT_STATE_CHANGED: 409 };
+      return res.status(statuses[error.code] || 503).json({ error: error.code === "VAULT_EXISTS" ? "Vault already exists" : error.code === "VAULT_BUSY" ? "Disable server plugins for this vault before renaming it" : error.code === "VAULT_ALIAS" ? "Remove legacy symlink aliases to this vault before renaming it" : "Vault rename could not be completed" });
+    }
   }
 
   const vaultPath = config.getVaultPath(vaultId);

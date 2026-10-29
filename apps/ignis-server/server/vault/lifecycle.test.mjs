@@ -16,8 +16,8 @@ const VAULT_ID = "lifecycle";
 const vaultPath = path.join(VAULT_ROOT, VAULT_ID);
 fs.mkdirSync(vaultPath, { recursive: true });
 
-const { setWss, withWatcherStopped } = require("./lifecycle");
-const { watcher } = require("@ignis/server-core");
+const { setWss, withWatcherStopped, quiesceRegisteredVault, trackRouterWork } = require("./lifecycle");
+const { watcher, writeCoalescer } = require("@ignis/server-core");
 
 function recordingWss() {
   const bounced = [];
@@ -30,6 +30,8 @@ function recordingWss() {
 afterEach(async () => {
   setWss(null);
   await watcher._reset();
+  writeCoalescer._reset();
+  writeCoalescer.configure({ writeCoalesceMs: 0 });
 });
 
 afterAll(() => {
@@ -88,4 +90,29 @@ describe("withWatcherStopped", () => {
       }),
     ).rejects.toThrow("boom");
   });
+});
+
+it("waits for handler completion then flushes buffered writes before moving a vault", async () => {
+  const bounced = recordingWss();
+  writeCoalescer.configure({ writeCoalesceMs: 60000 });
+  const file = path.join(vaultPath, "buffer.md");
+  await writeCoalescer.writeCoalesced(file, "first", "utf-8");
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const entry = { handle: async () => {
+    await gate;
+    await writeCoalescer.writeCoalesced(file, "latest", "utf-8");
+  } };
+  trackRouterWork({ stack: [{ route: { stack: [entry] } }] });
+  const work = entry.handle({}, {}, error => { throw error; });
+  let finished = false;
+  const stop = quiesceRegisteredVault(VAULT_ID, vaultPath).then(() => { finished = true; });
+  await Promise.resolve();
+  expect(finished).toBe(false);
+  expect(bounced).toEqual([VAULT_ID]);
+  release();
+  await work; await stop;
+  expect(fs.readFileSync(file, "utf8")).toBe("latest");
+  expect(writeCoalescer.getPending(file)).toBeNull();
+  expect(watcher.stopWatching(VAULT_ID)).toBeUndefined();
 });

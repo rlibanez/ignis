@@ -24,7 +24,8 @@ function createRegisteredVault(db, root, actor, name, { isCurrent, io = fs } = {
   // Durable reservation before touching disk. Pending entries are hidden from discovery.
   transaction(db, () => {
     authorize();
-    if (db.prepare("SELECT 1 FROM vaults WHERE directory=? OR id=? OR directory=?").get(name, name, id)) fail("VAULT_EXISTS");
+    if (db.prepare("SELECT 1 FROM vault_renames WHERE source=? OR target=?").get(name, name) ||
+        db.prepare("SELECT 1 FROM vaults WHERE directory=? OR id=? OR directory=?").get(name, name, id)) fail("VAULT_EXISTS");
     db.prepare("INSERT INTO vaults(id,name,directory,status,created_at) VALUES (?,?,?,'pending',?)").run(id, name, name, Date.now());
     db.prepare("INSERT INTO memberships VALUES (?,?,'owner')").run(id, actor);
     audit(db, actor, "begin-create-vault", id);
@@ -79,6 +80,7 @@ function quarantinePendingVaults(db) {
   });
 }
 function directoryAvailable(db, directory, root) {
+  if (db.prepare("SELECT 1 FROM vault_renames WHERE source=? OR target=?").get(directory, directory)) return false;
   const row = db.prepare("SELECT status FROM vaults WHERE directory=?").get(directory);
   if (row && row.status !== "active") return false;
   if (!root) return true;
@@ -87,7 +89,7 @@ function directoryAvailable(db, directory, root) {
   try { candidate = fs.realpathSync(path.join(root, directory)); }
   catch (error) { return error.code === "ENOENT" && !row; }
   const realRoot = fs.realpathSync(root);
-  for (const blocked of db.prepare("SELECT directory FROM vaults WHERE status!='active'").all()) {
+  for (const blocked of db.prepare("SELECT directory FROM vaults WHERE status!='active' UNION SELECT source AS directory FROM vault_renames UNION SELECT target AS directory FROM vault_renames").all()) {
     const blockedPath = path.resolve(realRoot, blocked.directory);
     if (candidate === blockedPath || candidate.startsWith(blockedPath + path.sep) || blockedPath.startsWith(candidate + path.sep)) return false;
   }

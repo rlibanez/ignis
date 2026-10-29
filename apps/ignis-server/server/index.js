@@ -85,6 +85,10 @@ const vaultLifecycle = require("./vault/lifecycle");
 
 app.use("/assets", express.static(path.join(__dirname, "assets")));
 
+// Wait for in-flight file/plugin/bootstrap handlers before a registered rename.
+for (const router of [fsRoutes, pluginRoutes, bootstrapRoutes]) {
+  require("./vault/lifecycle").trackRouterWork(router);
+}
 app.use("/api/fs", fsRoutes);
 app.use("/api/vault", vaultRoutes);
 app.use("/api/proxy", proxyRoutes);

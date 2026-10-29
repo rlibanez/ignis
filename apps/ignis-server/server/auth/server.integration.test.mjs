@@ -195,8 +195,13 @@ it("protects real server routes, persists auth and does not log request secrets"
     } finally { checkDb.close(); }
     expect(fs.existsSync(path.join(root, "vaults", "Created", ".obsidian"))).toBe(true);
     expect((await request(port, "/api/vault/create", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { name: "Created" } })).status).toBe(409);
-    expect((await request(port, "/api/vault/rename", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { vault: "Created", name: "Renamed" } })).status).toBe(409);
-    expect((await request(port, "/api/vault/remove?vault=Created", jar, { method: "DELETE", headers: { "x-ignis-csrf": createCsrf } })).status).toBe(409);
+    expect((await request(port, "/api/vault/rename", jar, { method: "POST", body: { vault: "Created", name: "Renamed" } })).status).toBe(403);
+    const renamed = await request(port, "/api/vault/rename", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { vault: "Created", name: "Renamed" } });
+    expect(renamed.status).toBe(200);
+    expect(JSON.parse(renamed.text)).toMatchObject({ id: "Renamed", uuid: result.uuid });
+    expect(fs.existsSync(path.join(root, "vaults", "Renamed", ".obsidian"))).toBe(true);
+    expect(fs.existsSync(path.join(root, "vaults", "Created"))).toBe(false);
+    expect((await request(port, "/api/vault/remove?vault=Renamed", jar, { method: "DELETE", headers: { "x-ignis-csrf": createCsrf } })).status).toBe(409);
 
     const csrf = JSON.parse(
       (await request(port, "/api/auth/csrf", jar)).text,
