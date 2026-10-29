@@ -45,3 +45,19 @@ it("bounds user creation per administrator and globally, then recovers", () => {
   at = 60000;
   expect(limits.createUser("a")).toBe(true);
 });
+
+it("separates assets and auth reads from sensitive request budgets and expires them", () => {
+  let at = 0;
+  const limits = createRequestLimits({ now: () => at });
+  for (let i = 0; i < 600; i++) expect(limits.staticRequest("ip")).toBe(true);
+  expect(limits.staticRequest("ip")).toBe(false);
+  for (let i = 0; i < 300; i++) expect(limits.authRead("ip")).toBe(true);
+  expect(limits.authRead("ip")).toBe(false);
+  expect(limits.publicRequest("ip")).toBe(true);
+  for (let i = 0; i < 10; i++) expect(limits.oidcStart("ip")).toBe(true);
+  expect(limits.oidcStart("ip")).toBe(false);
+  at = 60000;
+  expect(limits.staticRequest("ip")).toBe(true);
+  expect(limits.authRead("ip")).toBe(true);
+  expect(limits.oidcStart("ip")).toBe(false);
+});

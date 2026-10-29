@@ -31,7 +31,7 @@ const { createCsrf } = require("./csrf");
 const { createRequestLimits } = require("./request-limits");
 const { canonicalRequestPath, permittedResource } = require("./http-policy");
 const { normalizeLogin } = require("./store");
-const { createLocalUser, listUsers } = require("./users");
+const { createLocalUser, listUsers, changeUserStatus, revokeUserSessions } = require("./users");
 
 function createAuthBoundary({
   dataRoot,
@@ -61,7 +61,14 @@ function createAuthBoundary({
   const socketEntries = new Map();
   let trustProxy = () => false;
   const json = express.json({ limit: "8kb", strict: true });
-  const safe = (res, status, error) => res.status(status).json({ error });
+  const safe = (res, status, error) => res.status(status).json({
+    error,
+    ...(status === 429 ? {
+      message: res.getHeader("Retry-After") === "60"
+        ? "Temporary request limit reached. Wait one minute before trying again. Avoid repeatedly reloading the page."
+        : "Too many requests or authentication attempts. Access is temporarily limited. Wait before trying again; repeated attempts will not bypass this limit.",
+    } : {}),
+  });
   function initialized() {
     const marked = !!db.prepare("SELECT 1 FROM bootstrap_state").get();
     const users = db.prepare("SELECT count(*) n FROM users").get().n;
@@ -255,8 +262,11 @@ function createAuthBoundary({
 
   async function authEndpoint(req, res, pathname) {
     const session = getSession(req);
-    if (pathname === "/api/auth/users") {
-      if (!["GET", "POST"].includes(req.method))
+    if (["/api/auth/users", "/api/auth/users/status", "/api/auth/users/revoke-sessions", "/api/auth/users/unlink-oidc"].includes(pathname)) {
+      const changingStatus = pathname.endsWith("/status");
+      const unlinkingOidc = pathname.endsWith("/unlink-oidc");
+      const revokingSessions = pathname.endsWith("/revoke-sessions");
+      if (!["GET", "POST"].includes(req.method) || ((changingStatus || revokingSessions || unlinkingOidc) && req.method !== "POST"))
         return safe(res, 404, "Not found");
       if (!session) return safe(res, 401, "Authentication required");
       if (!initialized() || session.user.role !== "admin")
@@ -285,11 +295,62 @@ function createAuthBoundary({
           now() - current.authenticatedAt < 300000;
       };
       if (!isCurrent()) return res.status(403).json({
-        error: "Sign in again before creating users", code: "REAUTH_REQUIRED",
+        error: "Sign in again before managing users", code: "REAUTH_REQUIRED",
       });
       if (!limits.createUser(session.user.id))
         return safe(res, 429, "Too many requests");
       const body = req.body;
+      if (revokingSessions || unlinkingOidc) {
+        if (!body || Array.isArray(body) || Object.keys(body).some((key) => key !== "userId") ||
+            typeof body.userId !== "string" || !body.userId || body.userId.length > 64)
+          return safe(res, 400, "Expected userId only");
+        try {
+          if (unlinkingOidc && !oidc) return safe(res, 404, "OpenID Connect unavailable");
+          const result = unlinkingOidc
+            ? oidc.unlink(session.user.id, body.userId, { isCurrent })
+            : revokeUserSessions(db, session.user.id, body.userId, { isCurrent });
+          const signedOut = body.userId === session.user.id;
+          csrf.consume(req);
+          if (signedOut) res.append("Set-Cookie", cookies.clear());
+          sweepSockets();
+          return res.json({ ...result, signedOut });
+        } catch (error) {
+          if (error.code === "USER_NOT_FOUND") return safe(res, 404, "User not found");
+          if (error.code === "LOCAL_PASSWORD_REQUIRED")
+            return res.status(400).json({ error: "A local password is required before unlinking.", code: error.code });
+          if (error.code === "OIDC_NOT_LINKED")
+            return res.status(409).json({ error: "Account is no longer linked. Reload the list.", code: error.code });
+          throw error;
+        }
+      }
+      if (changingStatus) {
+        if (!body || Array.isArray(body) ||
+            Object.keys(body).some((key) => !["userId", "status", "expectedStatus"].includes(key)) ||
+            typeof body.userId !== "string" || body.userId.length > 64 ||
+            !["active", "disabled"].includes(body.status) ||
+            !["active", "disabled"].includes(body.expectedStatus))
+          return safe(res, 400, "Invalid user status request");
+        try {
+          const user = changeUserStatus(
+            db, session.user.id, body.userId, body.status, body.expectedStatus, { isCurrent },
+          );
+          csrf.consume(req);
+          sweepSockets();
+          return res.json({ user });
+        } catch (error) {
+          const messages = {
+            USER_NOT_FOUND: [404, "User not found"],
+            USER_STATE_CHANGED: [409, "Account changed. Reload the list and try again."],
+            LAST_ADMIN: [400, "The last active administrator cannot be disabled."],
+            SELF_DISABLE: [400, "You cannot disable your own account."],
+          };
+          if (Object.hasOwn(messages, error.code)) {
+            const [status, message] = messages[error.code];
+            return res.status(status).json({ error: message, code: error.code });
+          }
+          throw error;
+        }
+      }
       if (!body || Array.isArray(body) ||
           Object.keys(body).some((key) => !["login", "password"].includes(key)) ||
           typeof body.login !== "string" || typeof body.password !== "string")
@@ -403,7 +464,9 @@ function createAuthBoundary({
         csrf.consume(req);
         res.append("Set-Cookie", result.cookie);
         return res.json({ authorizationUrl: result.url });
-      } catch {
+      } catch (error) {
+        if (error.code === "OIDC_UNAVAILABLE")
+          return safe(res, 503, "OpenID Connect is unavailable; try again later");
         return safe(
           res,
           403,
@@ -470,17 +533,25 @@ function createAuthBoundary({
     res.set("Referrer-Policy", "no-referrer");
     res.set("X-Frame-Options", "DENY");
     try {
-      // Only the exact GET callback may arrive cross-site from the provider.
+      // Redirect chains retain cross-site Fetch Metadata. Allow only top-level
+      // navigation to the public auth HTML; API and mutation checks remain strict.
       const callback =
         req.method === "GET" &&
         req.url.split("?")[0] === "/api/auth/oidc/callback";
-      if (!transportAllowed(req) || (!callback && !originAllowed(req)))
+      const authNavigation =
+        req.method === "GET" &&
+        ["/login", "/account"].includes(req.url.split("?")[0]) &&
+        req.headers["sec-fetch-mode"] === "navigate" &&
+        req.headers["sec-fetch-dest"] === "document";
+      if (!transportAllowed(req) || (!callback && !authNavigation && !originAllowed(req)))
         return safe(res, 403, "Request rejected");
       const pathname = canonicalRequestPath(req);
       if (!pathname) return safe(res, 400, "Invalid request");
       if (["GET", "HEAD"].includes(req.method) && setupAssets.has(pathname)) {
-        if (!limits.publicRequest(req.ip))
+        if (!limits.staticRequest(req.ip)) {
+          res.set("Retry-After", "60");
           return safe(res, 429, "Too many requests");
+        }
         const asset = setupAssets.get(pathname);
         res.set(
           "Content-Security-Policy",
@@ -495,8 +566,12 @@ function createAuthBoundary({
       )
         return res.redirect(303, "/setup");
       if (pathname.startsWith("/api/auth/")) {
-        if (!limits.publicRequest(req.ip))
+        const authRead = req.method === "GET" &&
+          ["/api/auth/status", "/api/auth/session", "/api/auth/csrf"].includes(pathname);
+        if (!(authRead ? limits.authRead(req.ip) : limits.publicRequest(req.ip))) {
+          res.set("Retry-After", "60");
           return safe(res, 429, "Too many requests");
+        }
         if (req.method === "POST" && !req.is("application/json"))
           return safe(res, 415, "JSON required");
         return json(req, res, (error) => {

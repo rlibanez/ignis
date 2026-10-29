@@ -55,25 +55,36 @@ async function createOidcRuntime(
 ) {
   const config = readOidcConfig(env, cookiePolicy);
   if (!config) return null;
-  const configuration = await initializeOidcClient(
-    config,
-    readNetworkOptions(env),
-    dependencies,
-  );
-  const login = await createOidcAccountLogin(
-    db,
-    config,
-    configuration,
-    cookiePolicy,
-    sessions,
-  );
-  const manual = await createManualOidcLink(
-    db,
-    config,
-    configuration,
-    cookiePolicy,
-    sessions,
-  );
+  const network = readNetworkOptions(env);
+  // Validate local policy now, without contacting the provider.
+  require("./transport").createOidcTransport({
+    ...network,
+    origins: [new URL(config.issuer).origin, ...network.allowedOrigins],
+  }, dependencies);
+  let login, manual, initializing, closed = false;
+  const ready = async () => {
+    if (closed) throw new Error("OIDC unavailable");
+    if (login) return;
+    if (!initializing) {
+      initializing = (async () => {
+        const configuration = await initializeOidcClient(config, network, dependencies);
+        const nextLogin = await createOidcAccountLogin(db, config, configuration, cookiePolicy, sessions);
+        const nextManual = await createManualOidcLink(db, config, configuration, cookiePolicy, sessions);
+        if (closed) {
+          nextLogin.clear();
+          nextManual.clear();
+          throw new Error("OIDC unavailable");
+        }
+        login = nextLogin;
+        manual = nextManual;
+      })().catch(() => {
+        const error = new Error("OpenID Connect is unavailable; try again later");
+        error.code = "OIDC_UNAVAILABLE";
+        throw error;
+      }).finally(() => { initializing = null; });
+    }
+    await initializing;
+  };
   const bindingCookie = require("../session-cookies").createSessionCookies({
     ...cookiePolicy,
     purpose: "oidc",
@@ -85,6 +96,9 @@ async function createOidcRuntime(
       if (entry.until <= Date.now()) pending.delete(id);
   };
   return {
+    unlink(actorId, userId, options) {
+      return require("../users").unlinkUserOidc(db, actorId, userId, config.issuer, options);
+    },
     linked(userId) {
       return !!db
         .prepare("SELECT 1 FROM oidc_identities WHERE user_id=? AND issuer=?")
@@ -95,11 +109,15 @@ async function createOidcRuntime(
       if (pending.size >= 1000 || !["login", "link"].includes(kind))
         throw new Error("OIDC unavailable");
       const sessionId = sessions.resolve(sessionToken)?.id ?? null;
+      await ready();
+      if ((sessions.resolve(sessionToken)?.id ?? null) !== sessionId)
+        throw new Error("OIDC unavailable");
       const result =
         kind === "link"
           ? await manual.begin(sessionToken, cookie)
           : await login.begin(cookie);
       if (
+        closed ||
         pending.size >= 1000 ||
         (sessions.resolve(sessionToken)?.id ?? null) !== sessionId
       )
@@ -143,9 +161,10 @@ async function createOidcRuntime(
       return { authentication: result, kind: entry.kind };
     },
     clear() {
+      closed = true;
       pending.clear();
-      login.clear();
-      manual.clear();
+      login?.clear();
+      manual?.clear();
     },
   };
 }

@@ -672,3 +672,130 @@ it("serves the shared favicon anonymously for authentication and administration 
   expect((await request("/favicon.png", { method: "HEAD" })).status).toBe(200);
   expect((await request("/images/favicon.png")).status).toBe(401);
 });
+
+describe("account status administration", () => {
+  async function update(jar, body, headers = {}) {
+    return request("/api/auth/users/status", {
+      jar, method: "POST", body,
+      headers: { "x-ignis-csrf": await csrf(jar), ...headers },
+    });
+  }
+  it("revokes target sessions, blocks login and permits reactivation without restoring sessions", async () => {
+    const admin = await login();
+    const normal = await login("normal");
+    const body = { userId: "normal", status: "disabled", expectedStatus: "active" };
+    expect((await update(admin, body)).status).toBe(200);
+    expect((await request("/api/auth/session", { jar: normal })).status).toBe(401);
+    const denied = await request("/api/auth/login", {
+      jar: normal, method: "POST", headers: { "x-ignis-csrf": await csrf(normal) },
+      body: { login: "normal", password: PASSWORD },
+    });
+    expect(denied.status).toBe(401);
+    expect((await update(admin, body)).status).toBe(409);
+    expect((await update(admin, { ...body, status: "active", expectedStatus: "disabled" })).status).toBe(200);
+    expect((await request("/api/auth/session", { jar: normal })).status).toBe(401);
+    await login("normal");
+  });
+  it("enforces authorization, CSRF, origin, freshness and strict request fields", async () => {
+    const body = { userId: "normal", status: "disabled", expectedStatus: "active" };
+    expect((await update({}, body)).status).toBe(401);
+    expect((await update(await login("normal"), body)).status).toBe(403);
+    const admin = await login();
+    expect((await request("/api/auth/users/status", { jar: admin, method: "POST", body })).status).toBe(403);
+    expect((await update(admin, body, { origin: "https://evil.example" })).status).toBe(403);
+    expect((await update(admin, { ...body, role: "admin" })).status).toBe(400);
+    expect((await update(admin, { ...body, status: "deleted" })).status).toBe(400);
+    clock += 300001;
+    const expired = await update(admin, body);
+    expect(expired.status).toBe(403);
+    expect((await expired.json()).code).toBe("REAUTH_REQUIRED");
+    expect(db.prepare("SELECT status FROM users WHERE id='normal'").get().status).toBe("active");
+  });
+  it("protects the last administrator and closes sockets for a disabled administrator", async () => {
+    const admin = await login();
+    const id = db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
+    const last = await update(admin, { userId: id, status: "disabled", expectedStatus: "active" });
+    expect((await last.json()).code).toBe("LAST_ADMIN");
+    db.prepare("INSERT INTO users(id,login,role,created_at) VALUES ('second','second','admin',1)").run();
+    db.prepare("INSERT INTO local_credentials VALUES ('second',?,1)").run(hash);
+    const second = await login("second");
+    const ws = connect(second);
+    await once(ws, "open");
+    const closed = once(ws, "close");
+    expect((await update(admin, { userId: "second", status: "disabled", expectedStatus: "active" })).status).toBe(200);
+    await closed;
+    expect((await request("/api/auth/session", { jar: second })).status).toBe(401);
+  });
+});
+
+describe("administrative session revocation", () => {
+  async function revoke(jar, body, headers = {}) {
+    return request("/api/auth/users/revoke-sessions", {
+      jar, method: "POST", body,
+      headers: { "x-ignis-csrf": await csrf(jar), ...headers },
+    });
+  }
+  it("closes another user's sessions while preserving the operator and allowing new sign-ins", async () => {
+    const admin = await login();
+    const one = await login("normal");
+    const two = await login("normal");
+    const result = await revoke(admin, { userId: "normal" });
+    expect(result.status).toBe(200);
+    expect(await result.json()).toEqual({ revokedSessions: 2, signedOut: false });
+    for (const jar of [one, two])
+      expect((await request("/api/auth/session", { jar })).status).toBe(401);
+    expect((await request("/api/auth/session", { jar: admin })).status).toBe(200);
+    await login("normal");
+  });
+  it("allows the last administrator to revoke itself and closes its sockets", async () => {
+    const admin = await login();
+    const otherSession = await login();
+    const id = db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
+    const ws = connect(admin);
+    await once(ws, "open");
+    const closed = once(ws, "close");
+    const result = await revoke(admin, { userId: id });
+    expect(result.status).toBe(200);
+    expect((await result.json()).signedOut).toBe(true);
+    expect(result.headers.getSetCookie().some(value => value.includes("Max-Age=0"))).toBe(true);
+    await closed;
+    for (const jar of [admin, otherSession])
+      expect((await request("/api/auth/session", { jar })).status).toBe(401);
+    await login();
+  });
+  it("requires admin, CSRF, origin, matching context, recent sign-in and an exact payload", async () => {
+    const body = { userId: "normal" };
+    expect((await revoke({}, body)).status).toBe(401);
+    expect((await revoke(await login("normal"), body)).status).toBe(403);
+    const admin = await login();
+    expect((await request("/api/auth/users/revoke-sessions", { jar: admin, method: "POST", body })).status).toBe(403);
+    expect((await revoke(admin, body, { origin: "https://evil.example" })).status).toBe(403);
+    expect((await revoke(admin, body, { "x-ignis-context": "old" })).status).toBe(409);
+    expect((await revoke(admin, { ...body, role: "admin" })).status).toBe(400);
+    expect((await revoke(admin, { userId: "missing" })).status).toBe(404);
+    clock += 300001;
+    const stale = await revoke(admin, body);
+    expect(stale.status).toBe(403);
+    expect((await stale.json()).code).toBe("REAUTH_REQUIRED");
+  });
+});
+
+it("keeps login assets and password login available after auth-read exhaustion", async () => {
+  for (let i = 0; i < 300; i++)
+    expect((await request("/api/auth/status")).status).toBe(200);
+  const limited = await request("/api/auth/session");
+  expect(limited.status).toBe(429);
+  expect(limited.headers.get("retry-after")).toBe("60");
+  for (const route of ["/login?oidc=success", "/account?oidc=linked", "/auth/login.js", "/auth/client.js", "/favicon.png"])
+    expect((await request(route)).status).toBe(200);
+  clock += 60000;
+  const jar = await login();
+  expect((await request("/api/auth/session", { jar })).status).toBe(200);
+});
+
+it("static page traffic cannot exhaust the session and CSRF budget", async () => {
+  for (let i = 0; i < 75; i++)
+    expect((await request("/login")).status).toBe(200);
+  const jar = await login();
+  expect((await request("/api/auth/session", { jar })).status).toBe(200);
+});

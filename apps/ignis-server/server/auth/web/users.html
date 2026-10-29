@@ -23,7 +23,7 @@
               <tbody id="users"></tbody>
             </table>
           </div>
-          <p class="help action-help">Editing and deletion are not available yet.</p>
+          <p class="help action-help">Editing supports account activation and deactivation. Deletion is not available yet.</p>
         </section>
         <dialog id="create-dialog" aria-labelledby="create-heading">
         <h2 id="create-heading">Create user</h2>
@@ -44,9 +44,42 @@
         </dialog>
       </section>
       <footer><a class="secondary-button" href="/account">Back to account</a></footer>
+      <dialog id="edit-dialog" aria-labelledby="edit-heading">
+        <h2 id="edit-heading">Edit user <span id="edit-user-name"></span></h2>
+        <form id="edit-user">
+          <label for="user-status">Account status</label>
+          <select id="user-status" name="status">
+            <option value="active">Active</option>
+            <option value="disabled">Disabled</option>
+          </select>
+          <p class="help">Disabling an account blocks sign-in and revokes its Ignis sessions. Its files and OpenID Connect link are kept. Enabling it requires a new sign-in.</p>
+          <p id="edit-status" role="status" aria-live="polite"></p>
+          <section class="session-actions" aria-label="Session management">
+            <button id="revoke-sessions" type="button" class="warning-button">Close all sessions</button>
+            <div id="revoke-confirmation" hidden>
+              <p id="revoke-warning">Close all Ignis sessions for this user? Their account remains active. This does not sign them out of their OpenID Connect provider.</p>
+              <button id="confirm-revoke" type="button" class="warning-button">Confirm closing sessions</button>
+              <button id="cancel-revoke" type="button" class="cancel-button">Keep sessions</button>
+            </div>
+          </section>
+          <section id="unlink-section" class="session-actions" aria-label="OpenID Connect linking" hidden>
+            <button id="unlink-oidc" type="button" class="cancel-button">Unlink OpenID Connect</button>
+            <div id="unlink-confirmation" hidden>
+              <p>Remove this account's link to the configured provider and close all its Ignis sessions? A local password is required to retain access. If this is your account, you will be signed out.</p>
+              <p class="help">The provider account is not deleted. Automatic account linking, if enabled, may link it again on a later OpenID Connect sign-in.</p>
+              <button id="confirm-unlink" type="button">Confirm unlinking</button>
+              <button id="cancel-unlink" type="button" class="cancel-button">Keep link</button>
+            </div>
+          </section>
+          <div class="dialog-actions">
+            <button id="cancel-edit" type="button" class="cancel-button">Cancel</button>
+            <button type="submit">Save changes</button>
+          </div>
+        </form>
+      </dialog>
       <dialog id="reauth-dialog" aria-labelledby="reauth-title">
-        <h2 id="reauth-title">Sign in again to add users</h2>
-        <p>Creating an account requires a sign-in within the last five minutes. Sign in again, then return here to add the user. No account has been created.</p>
+        <h2 id="reauth-title">Sign in again to manage users</h2>
+        <p>Managing accounts requires a sign-in within the last five minutes. Sign in again, then return here to repeat the action. No changes have been made.</p>
         <a class="secondary-button" href="/login?reauth=users">Sign in again</a>
         <button id="cancel-reauth" type="button">Cancel</button>
       </dialog>

@@ -73,3 +73,113 @@ it("rejects a session revoked while password hashing is in flight", async () => 
   expect(db.prepare("SELECT count(*) n FROM users").get().n).toBe(3);
   expect(db.prepare("SELECT count(*) n FROM audit_events").get().n).toBe(0);
 });
+
+const { changeUserStatus } = require("./users");
+it("changes status atomically, revokes sessions and retains credentials and OIDC bindings", async () => {
+  const user = await createLocalUser(db, "admin", "target", password);
+  db.prepare("INSERT INTO oidc_identities VALUES ('https://provider.example','subject',?,0)").run(user.id);
+  const sessions = require("./sessions").createSessionService(db);
+  const local = await sessions.loginLocal("target", password);
+  const external = sessions.issueForVerifiedOidcIdentity({
+    issuer: "https://provider.example", subject: "subject", authenticatedAt: Date.now(),
+  });
+  changeUserStatus(db, "admin", user.id, "disabled", "active");
+  expect(sessions.resolve(local.token)).toBeNull();
+  expect(sessions.resolve(external.token)).toBeNull();
+  expect(await sessions.loginLocal("target", password)).toBeNull();
+  expect(db.prepare("SELECT count(*) n FROM oidc_identities WHERE user_id=?").get(user.id).n).toBe(1);
+  changeUserStatus(db, "admin", user.id, "active", "disabled");
+  expect(sessions.resolve(local.token)).toBeNull();
+  expect(await sessions.loginLocal("target", password)).not.toBeNull();
+  expect(db.prepare("SELECT action FROM audit_events WHERE action IN ('disable-user','enable-user') ORDER BY rowid").all().map(x => x.action)).toEqual(["disable-user", "enable-user"]);
+});
+it("rejects unauthorized, stale, self-disabling and last-admin status changes", () => {
+  expect(() => changeUserStatus(db, "normal", "other", "disabled", "active")).toThrow();
+  expect(() => changeUserStatus(db, undefined, "normal", "disabled", "active")).toThrow();
+  expect(() => changeUserStatus(db, "admin", "normal", "disabled", "active", { isCurrent: () => false })).toThrow();
+  expect(() => changeUserStatus(db, "admin", "admin", "disabled", "active")).toThrow();
+  changeUserStatus(db, "admin", "other", "disabled", "active");
+  expect(() => changeUserStatus(db, null, "admin", "disabled", "active")).toThrow();
+  expect(() => changeUserStatus(db, "other", "normal", "disabled", "active")).toThrow();
+});
+it("rejects stale status snapshots and rolls back on audit failure", () => {
+  expect(() => changeUserStatus(db, "admin", "normal", "active", "disabled")).toThrow();
+  expect(() => changeUserStatus(db, "admin", "missing", "active", "disabled")).toThrow();
+  const before = db.prepare("SELECT auth_version FROM users WHERE id='normal'").get().auth_version;
+  db.exec("CREATE TRIGGER fail_status_audit BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END");
+  expect(() => changeUserStatus(db, "admin", "normal", "disabled", "active")).toThrow();
+  expect(db.prepare("SELECT status,auth_version FROM users WHERE id='normal'").get()).toEqual({ status: "active", auth_version: before });
+});
+
+const { revokeUserSessions } = require("./users");
+it("revokes all local and OIDC sessions without changing account status or credentials", async () => {
+  const user = await createLocalUser(db, "admin", "revoke-target", password);
+  db.prepare("INSERT INTO oidc_identities VALUES ('https://provider.example','revoke-sub',?,0)").run(user.id);
+  const sessions = require("./sessions").createSessionService(db);
+  const local = await sessions.loginLocal(user.login, password);
+  const oidc = sessions.issueForVerifiedOidcIdentity({
+    issuer: "https://provider.example", subject: "revoke-sub", authenticatedAt: Date.now(),
+  });
+  expect(revokeUserSessions(db, "admin", user.id).revokedSessions).toBe(2);
+  expect(sessions.resolve(local.token)).toBeNull();
+  expect(sessions.resolve(oidc.token)).toBeNull();
+  expect(db.prepare("SELECT status FROM users WHERE id=?").get(user.id).status).toBe("active");
+  expect(await sessions.loginLocal(user.login, password)).not.toBeNull();
+});
+it("allows last-admin self-revocation and audits even when no sessions exist", () => {
+  db.exec("UPDATE users SET status='disabled' WHERE id='other'");
+  const before = db.prepare("SELECT auth_version FROM users WHERE id='admin'").get().auth_version;
+  expect(revokeUserSessions(db, "admin", "admin").revokedSessions).toBe(0);
+  expect(db.prepare("SELECT role,status,auth_version FROM users WHERE id='admin'").get()).toEqual({
+    role: "admin", status: "active", auth_version: before + 1,
+  });
+  expect(db.prepare("SELECT actor_id,action,resource_id FROM audit_events").get()).toEqual({
+    actor_id: "admin", action: "revoke-user-sessions", resource_id: "admin",
+  });
+});
+it("rejects unauthorized revocation and rolls back if auditing fails", () => {
+  expect(() => revokeUserSessions(db, "normal", "admin")).toThrow();
+  expect(() => revokeUserSessions(db, undefined, "admin")).toThrow();
+  expect(() => revokeUserSessions(db, "admin", "normal", { isCurrent: () => false })).toThrow();
+  expect(() => revokeUserSessions(db, "admin", "missing")).toThrow();
+  const before = db.prepare("SELECT auth_version FROM users WHERE id='normal'").get().auth_version;
+  db.exec("CREATE TRIGGER fail_revocation_audit BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END");
+  expect(() => revokeUserSessions(db, "admin", "normal")).toThrow();
+  expect(db.prepare("SELECT auth_version FROM users WHERE id='normal'").get().auth_version).toBe(before);
+});
+
+const { unlinkUserOidc } = require("./users");
+it("unlinks only the configured issuer, revokes sessions and retains local access", async () => {
+  const user = await createLocalUser(db, "admin", "unlink-target", password);
+  for (const issuer of ["https://current.example", "https://other.example"])
+    db.prepare("INSERT INTO oidc_identities VALUES (?, 'subject', ?, 0)").run(issuer, user.id);
+  const sessions = require("./sessions").createSessionService(db);
+  const local = await sessions.loginLocal(user.login, password);
+  const external = sessions.issueForVerifiedOidcIdentity({
+    issuer: "https://current.example", subject: "subject", authenticatedAt: Date.now(),
+  });
+  expect(unlinkUserOidc(db, "admin", user.id, "https://current.example")).toEqual({ unlinked: true });
+  expect(sessions.resolve(local.token)).toBeNull();
+  expect(sessions.resolve(external.token)).toBeNull();
+  expect(db.prepare("SELECT issuer FROM oidc_identities WHERE user_id=?").all(user.id)).toEqual([{ issuer: "https://other.example" }]);
+  expect(await sessions.loginLocal(user.login, password)).not.toBeNull();
+  expect(db.prepare("SELECT action FROM audit_events WHERE action='unlink-oidc-user'").get().action).toBe("unlink-oidc-user");
+});
+it("rejects removing the only login method and unauthorized or stale actors", () => {
+  db.exec("INSERT INTO oidc_identities VALUES ('https://current.example','subject','normal',0)");
+  expect(() => unlinkUserOidc(db, "admin", "normal", "https://current.example")).toThrow();
+  expect(() => unlinkUserOidc(db, "normal", "normal", "https://current.example")).toThrow();
+  expect(() => unlinkUserOidc(db, undefined, "normal", "https://current.example")).toThrow();
+  expect(() => unlinkUserOidc(db, "admin", "normal", "https://current.example", { isCurrent: () => false })).toThrow();
+  expect(db.prepare("SELECT count(*) n FROM oidc_identities").get().n).toBe(1);
+});
+it("rolls back unlink and session revocation if the audit write fails", async () => {
+  const user = await createLocalUser(db, "admin", "rollback-target", password);
+  db.prepare("INSERT INTO oidc_identities VALUES ('https://current.example','subject',?,0)").run(user.id);
+  const sessions = require("./sessions").createSessionService(db);
+  const local = await sessions.loginLocal(user.login, password);
+  db.exec("CREATE TRIGGER fail_unlink_audit BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END");
+  expect(() => unlinkUserOidc(db, "admin", user.id, "https://current.example")).toThrow();
+  expect(sessions.resolve(local.token)).not.toBeNull();
+  expect(db.prepare("SELECT count(*) n FROM oidc_identities").get().n).toBe(1);
+});

@@ -17,6 +17,7 @@
     document.title = "Account – Ignis";
     document.querySelector("h1").textContent = "Account";
   }
+  const rateLimitMessage = "Too many requests or sign-in attempts. Access is temporarily limited. Wait before trying again and avoid repeatedly reloading the page.";
   async function beginOidc(link) {
     oidcButton.disabled = linkButton.disabled = true;
     try {
@@ -26,6 +27,11 @@
         link ? "/api/auth/oidc/link" : "/api/auth/oidc/start",
         {},
       );
+      if (response.status === 429) {
+        status.textContent = rateLimitMessage;
+        oidcButton.disabled = linkButton.disabled = false;
+        return;
+      }
       if (response.status === 403 &&
           (await response.clone().json()).code === "REAUTH_REQUIRED") {
         oidcButton.disabled = linkButton.disabled = false;
@@ -56,6 +62,7 @@
       cache: "no-store",
       credentials: "same-origin",
     });
+    if (csrf.status === 429) return csrf;
     if (!csrf.ok) throw new Error();
     return fetch(path, {
       method: "POST",
@@ -96,7 +103,7 @@
       if (!response.ok) {
         status.textContent =
           response.status === 429
-            ? "Too many attempts. Wait before trying again."
+            ? rateLimitMessage
             : "Sign-in failed. Check your credentials and try again.";
         return;
       }
@@ -133,14 +140,21 @@
     }
   });
   async function start() {
+    let installationChecked = false;
     try {
       const response = await fetch("/api/auth/status", { cache: "no-store" });
+      if (response.status === 429) {
+        status.textContent = "Too many requests. Wait one minute before reloading this page. Your account has not been disabled.";
+        return;
+      }
       if (!response.ok) throw new Error();
       const installation = await response.json();
       if (!installation.initialized) {
         location.replace("/setup");
         return;
       }
+      installationChecked = true;
+      form.hidden = accountPage;
       oidcAvailable = installation.oidcAvailable === true;
       oidcButton.hidden = !oidcAvailable;
       oidcButton.textContent = installation.oidcButtonText || "Sign in with OpenID Connect";
@@ -183,9 +197,9 @@
           button.textContent = "Sign in again";
         }
         document.getElementById("link-help").textContent = session.canLinkOidc
-          ? "You will authenticate with your identity provider to link this account."
+          ? ""
           : "Sign in again before linking. You will also authenticate with your identity provider.";
-        document.getElementById("link-help").hidden = linkButton.hidden;
+        document.getElementById("link-help").hidden = linkButton.hidden || session.canLinkOidc;
         status.textContent =
           session.user.role === "admin"
             ? accountPage ? "" : "You are signed in."
@@ -197,20 +211,27 @@
         }
         status.textContent = "Enter your Ignis account credentials.";
       }
-      else throw new Error();
+      else {
+        status.textContent = current.status === 429
+          ? "Too many requests. Wait one minute before trying again. Avoid repeatedly reloading the page."
+          : "Unable to check your session. Reload or sign in again.";
+        return;
+      }
       if (outcome === "failed")
         status.textContent =
           "OpenID Connect sign-in failed. Please start again or contact your administrator.";
       if (intent && outcome !== "failed") {
         status.textContent = intent === "users"
-          ? "Sign in again to create users. You will return to user management afterwards."
+          ? "Sign in again to manage users. You will return to user management afterwards."
           : "Sign in again before linking your OpenID Connect account.";
         document.querySelector("h1").textContent = "Sign in again";
       }
       form.hidden = accountPage;
       if (accountPage) oidcButton.hidden = true;
     } catch {
-      status.textContent = "Unable to check installation. Reload to try again.";
+      status.textContent = installationChecked
+        ? "Unable to check your session. Reload or sign in again."
+        : "Unable to check installation. Reload to try again.";
     }
   }
   window.addEventListener("pagehide", () => {

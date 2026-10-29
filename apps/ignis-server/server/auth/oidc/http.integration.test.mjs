@@ -29,6 +29,7 @@ let idp,
   tokenRequests,
   callbackClaims;
 const codes = new Map();
+let providerUnavailable = false, discoveryRequests = 0;
 beforeAll(async () => {
   hash = await hashPassword("synthetic-passphrase");
   pair = await generateKeyPair("RS256");
@@ -43,6 +44,12 @@ beforeAll(async () => {
     async (req, res) => {
       res.setHeader("content-type", "application/json");
       if (req.url === "/.well-known/openid-configuration") {
+        discoveryRequests++;
+        if (providerUnavailable) {
+          res.writeHead(503);
+          res.end("{}");
+          return;
+        }
         res.end(
           JSON.stringify({
             issuer,
@@ -131,6 +138,8 @@ beforeEach(async () => {
   db = openDatabase(root);
   bootstrapAdmin(db, "admin", hash);
   tokenRequests = 0;
+  providerUnavailable = true;
+  discoveryRequests = 0;
   callbackClaims = {};
   codes.clear();
   boundary = createAuthBoundary({
@@ -145,6 +154,8 @@ beforeEach(async () => {
     },
   });
   await boundary.initialize();
+  expect(discoveryRequests).toBe(0);
+  providerUnavailable = false;
   const app = express();
   boundary.install(app);
   app.get("/api/vault/list", (_req, res) => res.json([]));
@@ -231,6 +242,13 @@ it("performs cross-site callback, provisions a normal account and sets only an o
   });
   expect(result.status).toBe(303);
   expect(result.headers.location).toBe("/login?oidc=success");
+  const landing = await request(result.headers.location, jar, "GET", undefined, {
+    "sec-fetch-site": "cross-site",
+    "sec-fetch-mode": "navigate",
+    "sec-fetch-dest": "document",
+  });
+  expect(landing.status).toBe(200);
+  expect(landing.headers["content-type"]).toContain("text/html");
   expect(result.headers["set-cookie"].join(";")).toContain("HttpOnly");
   expect(result.text).not.toContain("SYNTHETIC");
   expect(jar["ignis-dev-session"]).toMatch(/^[a-f0-9]{64}$/);
@@ -306,6 +324,13 @@ it("manually links an administrator only from its existing recent session", asyn
     { "sec-fetch-site": "cross-site" },
   );
   expect(result.headers.location).toBe("/account?oidc=linked");
+  const landing = await request(result.headers.location, jar, "GET", undefined, {
+    "sec-fetch-site": "cross-site",
+    "sec-fetch-mode": "navigate",
+    "sec-fetch-dest": "document",
+  });
+  expect(landing.status).toBe(200);
+  expect(landing.headers["content-type"]).toContain("text/html");
   expect(jar["ignis-dev-session"]).not.toBe(oldToken);
   const after = (await request("/api/auth/users", jar)).json().users;
   expect(after.find((user) => user.login === "admin").oidcLinked).toBe(true);
@@ -413,4 +438,78 @@ it("asks for reauthentication before starting a link with an old local authentic
   expect(result.json().code).toBe("REAUTH_REQUIRED");
   expect(result.json()).not.toHaveProperty("authorizationUrl");
   expect(tokenRequests).toBe(0);
+});
+
+it("lets the administrator unlink its own current provider and sign in locally again", async () => {
+  const jar = {};
+  await post("/api/auth/login", jar, { login: "admin", password: "synthetic-passphrase" });
+  const start = await post("/api/auth/oidc/link", jar);
+  await request(providerCallback(start.json().authorizationUrl), jar, "GET", undefined, { "sec-fetch-site": "cross-site" });
+  const user = (await request("/api/auth/session", jar)).json().user;
+  expect((await request("/api/auth/session", jar)).json().oidcLinked).toBe(true);
+  const result = await post("/api/auth/users/unlink-oidc", jar, { userId: user.id });
+  expect(result.status).toBe(200);
+  expect(result.json()).toEqual({ unlinked: true, signedOut: true });
+  expect((await request("/api/auth/session", jar)).status).toBe(401);
+  expect(db.prepare("SELECT count(*) n FROM oidc_identities WHERE user_id=? AND issuer=?").get(user.id, issuer).n).toBe(0);
+  expect((await post("/api/auth/login", jar, { login: "admin", password: "synthetic-passphrase" })).status).toBe(200);
+  expect((await request("/api/auth/session", jar)).json().oidcLinked).toBe(false);
+});
+it("protects external-only accounts and rejects untrusted unlink input", async () => {
+  const jar = {};
+  await post("/api/auth/login", jar, { login: "admin", password: "synthetic-passphrase" });
+  db.exec("INSERT INTO users(id,login,role,created_at) VALUES ('external-only','external-only','user',0)");
+  db.prepare("INSERT INTO oidc_identities VALUES (?, 'external-only', 'external-only', 0)").run(issuer);
+  const body = { userId: "external-only" };
+  const rejected = await post("/api/auth/users/unlink-oidc", jar, body);
+  expect(rejected.status).toBe(400);
+  expect(rejected.json().code).toBe("LOCAL_PASSWORD_REQUIRED");
+  expect((await post("/api/auth/users/unlink-oidc", {}, body)).status).toBe(401);
+  expect((await post("/api/auth/users/unlink-oidc", jar, { ...body, issuer: "https://other.example" })).status).toBe(400);
+  db.exec("UPDATE sessions SET authenticated_at = authenticated_at - 300001");
+  const stale = await post("/api/auth/users/unlink-oidc", jar, body);
+  expect(stale.status).toBe(403);
+  expect(stale.json().code).toBe("REAUTH_REQUIRED");
+  expect(db.prepare("SELECT count(*) n FROM oidc_identities WHERE user_id='external-only'").get().n).toBe(1);
+});
+
+it("keeps local access during a provider outage and recovers without restarting", async () => {
+  providerUnavailable = true;
+  const jar = {};
+  expect((await post("/api/auth/login", jar, {
+    login: "admin", password: "synthetic-passphrase",
+  })).status).toBe(200);
+  const failed = await post("/api/auth/oidc/link", jar);
+  expect(failed.status).toBe(503);
+  expect(failed.json().error).toBe("OpenID Connect is unavailable; try again later");
+  expect((await request("/api/auth/users", jar)).status).toBe(200);
+  expect((await post("/api/auth/oidc/start", {})).status).toBe(503);
+  providerUnavailable = false;
+  const linked = await post("/api/auth/oidc/link", jar);
+  expect(linked.status).toBe(200);
+  expect((await request(providerCallback(linked.json().authorizationUrl), jar)).status).toBe(303);
+});
+
+it("does not contact discovery for unsolicited callbacks", async () => {
+  await request("/api/auth/oidc/callback?state=" + "a".repeat(43) + "&code=invalid");
+  expect(discoveryRequests).toBe(0);
+});
+
+it("shares initialization between concurrent OIDC attempts", async () => {
+  const results = await Promise.all(Array.from({ length: 3 }, () => post("/api/auth/oidc/start", {})));
+  expect(results.map((result) => result.status)).toEqual([200, 200, 200]);
+  expect(discoveryRequests).toBe(1);
+});
+
+it("limits cross-site landing exceptions to public top-level GET documents", async () => {
+  const headers = { "sec-fetch-site": "cross-site", "sec-fetch-mode": "navigate", "sec-fetch-dest": "document" };
+  for (const route of ["/api/auth/session", "/api/auth/csrf", "/api/auth/users", "/api/vault/list", "/account/", "/login/"]) {
+    expect((await request(route, {}, "GET", undefined, headers)).status).toBe(403);
+  }
+  for (const route of ["/login", "/account"]) {
+    expect((await request(route, {}, "POST", {}, headers)).status).toBe(403);
+    expect((await request(route, {}, "GET", undefined, { ...headers, "sec-fetch-dest": "iframe" })).status).toBe(403);
+    expect((await request(route, {}, "GET", undefined, { ...headers, "sec-fetch-mode": "cors" })).status).toBe(403);
+    expect((await request(route, {}, "GET", undefined, { ...headers, host: "wrong.invalid" })).status).toBe(403);
+  }
 });

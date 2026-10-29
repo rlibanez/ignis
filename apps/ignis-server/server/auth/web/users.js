@@ -8,16 +8,63 @@
   const addButton = document.getElementById("add-user");
   const cancelButton = document.getElementById("cancel-create");
   const createStatus = document.getElementById("create-status");
+  const editDialog = document.getElementById("edit-dialog");
+  const editForm = document.getElementById("edit-user");
+  const editButton = editForm.querySelector('button[type="submit"]');
+  const editCancel = document.getElementById("cancel-edit");
+  const editStatus = document.getElementById("edit-status");
+  const revokeButton = document.getElementById("revoke-sessions");
+  const revokeConfirmation = document.getElementById("revoke-confirmation");
+  const confirmRevoke = document.getElementById("confirm-revoke");
+  const cancelRevoke = document.getElementById("cancel-revoke");
+  revokeButton.addEventListener("click", () => {
+    if (locked || editBusy || !editing) return;
+    document.getElementById("revoke-warning").textContent = editing.id === currentUserId
+      ? "Close all your Ignis sessions, including this one? You will need to sign in again. Your account and provider session are kept."
+      : "Close all Ignis sessions for this user? Their account status and provider session are kept. They can sign in again if the account is active.";
+    unlinkConfirmation.hidden = true;
+    revokeConfirmation.hidden = false;
+    confirmRevoke.focus();
+  });
+  cancelRevoke.addEventListener("click", () => {
+    revokeConfirmation.hidden = true;
+    revokeButton.focus();
+  });
+  const unlinkSection = document.getElementById("unlink-section");
+  const unlinkButton = document.getElementById("unlink-oidc");
+  const unlinkConfirmation = document.getElementById("unlink-confirmation");
+  const confirmUnlink = document.getElementById("confirm-unlink");
+  const cancelUnlink = document.getElementById("cancel-unlink");
+  unlinkButton.addEventListener("click", () => {
+    if (locked || editBusy || !editing) return;
+    revokeConfirmation.hidden = true;
+    unlinkConfirmation.hidden = false;
+    confirmUnlink.focus();
+  });
+  cancelUnlink.addEventListener("click", () => {
+    if (editBusy) return;
+    unlinkConfirmation.hidden = true;
+    unlinkButton.focus();
+  });
+  let editing = null;
+  let editBusy = false;
+  let currentUserId;
+  editCancel.addEventListener("click", () => editDialog.close());
+  editDialog.addEventListener("cancel", (event) => {
+    if (editBusy) event.preventDefault();
+  });
+  editDialog.addEventListener("close", () => { editing = null; revokeConfirmation.hidden = unlinkConfirmation.hidden = true; });
   const reauthDialog = document.getElementById("reauth-dialog");
   document.getElementById("cancel-reauth").addEventListener("click", () => reauthDialog.close());
   function requireReauthentication() {
     if (locked) return;
     clearPasswords();
     if (dialog.open) dialog.close();
+    if (editDialog.open) editDialog.close();
     if (!reauthDialog.open) reauthDialog.showModal();
   }
-  addButton.addEventListener("click", async () => {
-    if (locked || button.disabled) return;
+  async function checkRecentSession() {
+    if (locked) return false;
     try {
       const response = await request("/api/auth/session");
       if (locked) return;
@@ -30,7 +77,11 @@
       if (!locked) status.textContent = "Unable to check your session. Please try again.";
       return;
     }
-    if (locked || dialog.open) return;
+    return !locked;
+  }
+  addButton.addEventListener("click", async () => {
+    if (locked || button.disabled || !await checkRecentSession()) return;
+    if (dialog.open || editDialog.open) return;
     form.reset();
     createStatus.textContent = "";
     dialog.showModal();
@@ -53,6 +104,7 @@
   function lock() {
     locked = true;
     if (dialog.open) dialog.close();
+    if (editDialog.open) editDialog.close();
     if (reauthDialog.open) reauthDialog.close();
     area.hidden = true;
     list.replaceChildren();
@@ -74,6 +126,10 @@
       requireReauthentication();
       return response;
     }
+    if (response.status === 409 &&
+        (await response.clone().json()).code === "USER_STATE_CHANGED") return response;
+    if (response.status === 409 &&
+        (await response.clone().json()).code === "OIDC_NOT_LINKED") return response;
     if ([401, 403, 409].includes(response.status)) {
       lock();
       throw new Error();
@@ -110,9 +166,23 @@
         const action = document.createElement("button");
         action.type = "button";
         action.className = "icon-button";
-        action.disabled = true;
-        action.title = `${name} — not available yet`;
-        action.setAttribute("aria-label", `${name} ${user.login} — not available yet`);
+        action.disabled = name === "Delete";
+        action.title = name === "Edit" ? "Edit account status" : "Delete — not available yet";
+        action.setAttribute("aria-label", `${name} ${user.login}${name === "Delete" ? " — not available yet" : ""}`);
+        if (name === "Edit") action.addEventListener("click", async () => {
+          if (!await checkRecentSession() || editDialog.open || dialog.open) return;
+          editing = user;
+          unlinkSection.hidden = user.oidcLinked !== true;
+          unlinkConfirmation.hidden = true;
+          revokeConfirmation.hidden = true;
+          document.getElementById("edit-user-name").textContent = user.login;
+          editForm.elements.status.value = user.status;
+          const ownAccount = user.id === currentUserId;
+          editForm.elements.status.disabled = ownAccount;
+          editButton.disabled = ownAccount;
+          editStatus.textContent = ownAccount ? "You cannot disable your own account." : "";
+          editDialog.showModal();
+        });
         const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
         for (const [key, value] of Object.entries({
           viewBox: "0 0 24 24", fill: "none", stroke: "currentColor",
@@ -172,6 +242,99 @@
       button.disabled = cancelButton.disabled = false;
     }
   });
+  editForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (locked || editButton.disabled || !editing) return;
+    const target = editing;
+    const nextStatus = editForm.elements.status.value;
+    editBusy = true;
+    editButton.disabled = editCancel.disabled = revokeButton.disabled = true;
+    let saved = false;
+    try {
+      const csrf = await request("/api/auth/csrf");
+      if (!csrf.ok || locked) throw new Error();
+      const response = await request("/api/auth/users/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Ignis-Csrf": (await csrf.json()).csrfToken },
+        body: JSON.stringify({ userId: target.id, status: nextStatus, expectedStatus: target.status }),
+      });
+      if (locked || !editDialog.open) return;
+      if (!response.ok) {
+        const data = await response.json();
+        const messages = {
+          LAST_ADMIN: "The last active administrator cannot be disabled.",
+          SELF_DISABLE: "You cannot disable your own account.",
+          USER_STATE_CHANGED: "Account changed. Close this dialog and reload the page.",
+          USER_NOT_FOUND: "Account no longer exists. Reload the page.",
+        };
+        editStatus.textContent = messages[data.code] || (response.status === 429
+          ? "Too many attempts. Wait before trying again." : "Unable to update the account.");
+        return;
+      }
+      saved = true;
+      editDialog.close();
+      status.textContent = nextStatus === "disabled" ? "Account disabled. Sessions revoked." : "Account enabled.";
+      await refresh();
+    } catch {
+      if (!locked) {
+        if (saved) status.textContent = "Account updated, but the list could not be refreshed. Reload this page.";
+        else editStatus.textContent = "Update could not be confirmed. Reload the page before trying again.";
+      }
+    } finally {
+      editBusy = false;
+      editButton.disabled = editCancel.disabled = revokeButton.disabled = false;
+    }
+  });
+  async function revokeOrUnlink(unlink) {
+    if (locked || editBusy || !editing) return;
+    const target = editing;
+    editBusy = true;
+    editButton.disabled = editCancel.disabled = revokeButton.disabled =
+      confirmRevoke.disabled = cancelRevoke.disabled = unlinkButton.disabled =
+      confirmUnlink.disabled = cancelUnlink.disabled = true;
+    try {
+      const csrf = await request("/api/auth/csrf");
+      if (!csrf.ok || locked) throw new Error();
+      const response = await request(unlink ? "/api/auth/users/unlink-oidc" : "/api/auth/users/revoke-sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Ignis-Csrf": (await csrf.json()).csrfToken },
+        body: JSON.stringify({ userId: target.id }),
+      });
+      if (locked || !editDialog.open) return;
+      if (!response.ok) {
+        const failure = await response.json();
+        editStatus.textContent = failure.code === "LOCAL_PASSWORD_REQUIRED"
+          ? "Cannot unlink: this account needs a local password first."
+          : failure.code === "OIDC_NOT_LINKED"
+            ? "The link has already changed. Close this dialog and reload the page."
+            : response.status === 429 ? "Too many attempts. Wait before trying again."
+              : "Unable to complete the operation.";
+        return;
+      }
+      const result = await response.json();
+      if (result.signedOut) {
+        channel?.postMessage("lock");
+        lock();
+        location.replace("/login");
+        return;
+      }
+      revokeConfirmation.hidden = unlinkConfirmation.hidden = true;
+      if (unlink) {
+        editDialog.close();
+        status.textContent = "OpenID Connect unlinked. All Ignis sessions closed.";
+        await refresh();
+      } else editStatus.textContent = "All Ignis sessions closed. Account status unchanged.";
+    } catch {
+      if (!locked) editStatus.textContent = "The result could not be confirmed. Reload before trying again.";
+    } finally {
+      editBusy = false;
+      editButton.disabled = editing?.id === currentUserId;
+      editCancel.disabled = revokeButton.disabled = confirmRevoke.disabled = cancelRevoke.disabled =
+        unlinkButton.disabled = confirmUnlink.disabled = cancelUnlink.disabled = false;
+    }
+  }
+  confirmRevoke.addEventListener("click", () => revokeOrUnlink(false));
+  confirmUnlink.addEventListener("click", () => revokeOrUnlink(true));
   window.addEventListener("pagehide", lock);
   window.addEventListener("pageshow", (event) => {
     if (event.persisted) location.reload();
@@ -186,6 +349,7 @@
         return;
       }
       context = session.sessionId;
+      currentUserId = session.user.id;
       await refresh();
       if (locked) return;
       area.hidden = false;

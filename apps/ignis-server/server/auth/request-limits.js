@@ -25,6 +25,16 @@ function createRequestLimits({ now = Date.now, capacity = 10000 } = {}) {
     return true;
   }
   return {
+    staticRequest: (ip) =>
+      allow([
+        ["static-global", 3000, 60000],
+        ["static-ip:" + key(ip), 600, 60000],
+      ]),
+    authRead: (ip) =>
+      allow([
+        ["auth-read-global", 1500, 60000],
+        ["auth-read-ip:" + key(ip), 300, 60000],
+      ]),
     publicRequest: (ip) =>
       allow([
         ["public-global", 300, 60000],

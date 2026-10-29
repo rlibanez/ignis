@@ -40,4 +40,69 @@ function listUsers(db, actorId) {
   return db.prepare("SELECT id, login, role, status FROM users ORDER BY login").all();
 }
 
-module.exports = { createLocalUser, listUsers };
+function changeUserStatus(db, actorId, userId, status, expectedStatus, { isCurrent = () => true } = {}) {
+  if (typeof userId !== "string" ||
+      !["active", "disabled"].includes(status) ||
+      !["active", "disabled"].includes(expectedStatus))
+    throw new Error("Invalid user status request");
+  return transaction(db, () => {
+    authorize(db, actorId);
+    if (!isCurrent(true)) throw new Error("Administrator session required");
+    const fail = (code) => { throw Object.assign(new Error("User status change rejected"), { code }); };
+    const user = db.prepare("SELECT id, login, role, status FROM users WHERE id = ?").get(userId);
+    if (!user) fail("USER_NOT_FOUND");
+    if (user.status !== expectedStatus) fail("USER_STATE_CHANGED");
+    if (status === user.status) return user;
+    if (status === "disabled" && user.role === "admin" &&
+        db.prepare("SELECT count(*) n FROM users WHERE role = 'admin' AND status = 'active'").get().n <= 1)
+      fail("LAST_ADMIN");
+    if (status === "disabled" && actorId === userId) fail("SELF_DISABLE");
+    db.prepare("UPDATE users SET status = ? WHERE id = ?").run(status, userId);
+    // Existing triggers revoke all sessions and increment auth_version.
+    db.prepare("INSERT INTO audit_events VALUES (?, ?, ?, ?, ?)").run(
+      randomUUID(), actorId, status === "disabled" ? "disable-user" : "enable-user", userId, Date.now(),
+    );
+    return { ...user, status };
+  });
+}
+
+function revokeUserSessions(db, actorId, userId, { isCurrent = () => true } = {}) {
+  if (typeof userId !== "string") throw new Error("Invalid user");
+  return transaction(db, () => {
+    authorize(db, actorId);
+    if (!isCurrent(true)) throw new Error("Administrator session required");
+    if (!db.prepare("SELECT 1 FROM users WHERE id = ?").get(userId))
+      throw Object.assign(new Error("User not found"), { code: "USER_NOT_FOUND" });
+    // Also invalidates a local login or link that was already in progress.
+    db.prepare("UPDATE users SET auth_version = auth_version + 1 WHERE id = ?").run(userId);
+    const count = db.prepare("DELETE FROM sessions WHERE user_id = ?").run(userId).changes;
+    db.prepare("INSERT INTO audit_events VALUES (?, ?, ?, ?, ?)").run(
+      randomUUID(), actorId, "revoke-user-sessions", userId, Date.now(),
+    );
+    return { revokedSessions: count };
+  });
+}
+
+function unlinkUserOidc(db, actorId, userId, issuer, { isCurrent = () => true } = {}) {
+  if (typeof userId !== "string" || typeof issuer !== "string" || !issuer)
+    throw new Error("Invalid unlink request");
+  return transaction(db, () => {
+    authorize(db, actorId);
+    if (!isCurrent(true)) throw new Error("Administrator session required");
+    const fail = (code) => { throw Object.assign(new Error("OIDC unlink rejected"), { code }); };
+    if (!db.prepare("SELECT 1 FROM users WHERE id = ?").get(userId)) fail("USER_NOT_FOUND");
+    if (!db.prepare("SELECT 1 FROM oidc_identities WHERE user_id = ? AND issuer = ?").get(userId, issuer))
+      fail("OIDC_NOT_LINKED");
+    // Other issuers might not be configured anymore; require a usable local credential.
+    if (!db.prepare("SELECT 1 FROM local_credentials WHERE user_id = ?").get(userId))
+      fail("LOCAL_PASSWORD_REQUIRED");
+    // Existing delete trigger invalidates auth_version and removes all sessions.
+    db.prepare("DELETE FROM oidc_identities WHERE user_id = ? AND issuer = ?").run(userId, issuer);
+    db.prepare("INSERT INTO audit_events VALUES (?, ?, ?, ?, ?)").run(
+      randomUUID(), actorId, "unlink-oidc-user", userId, Date.now(),
+    );
+    return { unlinked: true };
+  });
+}
+
+module.exports = { createLocalUser, listUsers, changeUserStatus, revokeUserSessions, unlinkUserOidc };
