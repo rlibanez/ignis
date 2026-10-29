@@ -128,3 +128,15 @@ it("rejects sync writes for server-owned files and exhausted revisions",()=>{
   client.readSync(".obsidian/app.json");
   expect(()=>client.writeSync(".obsidian/app.json","{}")).toThrow();
 });
+
+it("metadata inspection does not adopt a newer revision or clear a write conflict",async()=>{
+  const {client,calls} = synchronousClient([{data:settings(1)},{data:settings(8)},{status:409,data:{code:"PREFERENCES_CONFLICT"}},{data:settings(9)}]);
+  client.readSync(".obsidian/app.json");
+  expect(client.inspectSync(".obsidian/app.json").revision).toBe(8);
+  expect(()=>client.writeSync(".obsidian/app.json","{}")).toThrow();
+  expect(JSON.parse(calls[2].body).expectedRevision).toBe(1);
+  client.inspectSync(".obsidian/app.json");
+  request.mockResolvedValueOnce(response(settings(10)));
+  await client.inspect(".obsidian/app.json");
+  await expect(client.write(".obsidian/app.json","{}")).rejects.toMatchObject({code:"CONFIGURATION_READ_REQUIRED"});
+});

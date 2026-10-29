@@ -10,6 +10,8 @@ const file = ".obsidian/app.json";
 afterEach(()=>{_reset();removeVirtualFile(file);});
 function setup() {
   const configuration = {
+    inspect:vi.fn(async()=>({content:'{"text":"á"}',writable:true})),
+    inspectSync:vi.fn(()=>({content:'{"text":"á"}',writable:true})),
     read:vi.fn(async()=>'{"spellcheck":true}'),
     readSync:vi.fn(()=>'{"spellcheck":true}'),
     write:vi.fn(async()=>({revision:1})),
@@ -81,4 +83,41 @@ it("preserves ordinary content reads when the adapter is present",async()=>{
   content.set("note.md","note");
   expect(sync.readFileSync("note.md","utf8")).toBe("note");
   expect(await async.readFile("note.md","utf8")).toBe("note");
+});
+
+it("derives private metadata without trusting shared metadata and without reading for edit",async()=>{
+  const {configuration,sync,async,metadata} = setup();
+  metadata.set(file,{type:"directory",size:999999,mtime:123,ctime:123});
+  for (const stat of [sync.statSync(file),await async.stat(file),sync.lstatSync(file),await async.lstat(file)]) {
+    expect(stat.isFile()).toBe(true);
+    expect(stat.size).toBe(new TextEncoder().encode('{"text":"á"}').length);
+    expect(stat.mtimeMs).toBe(0);
+  }
+  expect(sync.existsSync(file)).toBe(true);
+  expect(sync.statSync(".obsidian").isDirectory()).toBe(true);
+  expect(sync.existsSync(".obsidian/plugins/secret.json")).toBe(false);
+  expect(configuration.read).not.toHaveBeenCalled();
+  expect(configuration.readSync).not.toHaveBeenCalled();
+});
+it("lists only projected configuration without exposing shared plugin names",async()=>{
+  const {sync,async,metadata} = setup();
+  metadata.set(".obsidian/plugins/secret/main.js",{type:"file"});
+  const expected = ["app.json","appearance.json","core-plugins.json","community-plugins.json"];
+  expect(sync.readdirSync(".obsidian")).toEqual(expected);
+  expect(await async.readdir(".obsidian")).toEqual(expected);
+  expect(()=>sync.readdirSync(file)).toThrow(expect.objectContaining({code:"ENOTDIR"}));
+  await expect(async.readdir(".obsidian/plugins")).rejects.toThrow();
+});
+it("checks private access modes and propagates revoked access for metadata",async()=>{
+  const {configuration,sync,async} = setup();
+  sync.accessSync(file,2);
+  await async.access(file,4);
+  configuration.inspectSync.mockReturnValue({content:'[]',writable:false});
+  expect(()=>sync.accessSync(".obsidian/core-plugins.json",2)).toThrow(expect.objectContaining({code:"EACCES"}));
+  await expect(async.access(file,1)).rejects.toMatchObject({code:"EACCES"});
+  const error = Object.assign(new Error("Revoked"),{code:"AUTH_CONTEXT_CHANGED"});
+  configuration.inspectSync.mockImplementation(()=>{throw error;});
+  configuration.inspect.mockRejectedValue(error);
+  expect(()=>sync.existsSync(file)).toThrow(error);
+  await expect(async.readdir(".obsidian")).rejects.toBe(error);
 });

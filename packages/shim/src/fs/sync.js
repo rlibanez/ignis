@@ -15,6 +15,15 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
 
   return {
     existsSync(path) {
+      if (privateFiles) {
+        try {
+          const privatePath = privateFiles.select(path, resolvePath(path), true);
+          if (privatePath) { privateFiles.statSync(privatePath); return true; }
+        } catch (error) {
+          if (error.code === "UNSUPPORTED_CONFIGURATION") return false;
+          throw error;
+        }
+      }
       if (isInputCachePath(path) && inputCacheGet(path) !== null) {
         return true;
       }
@@ -24,6 +33,8 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
     },
 
     statSync(path) {
+      const privatePath = privateFiles?.select(path, resolvePath(path), true);
+      if (privatePath) return privateFiles.statSync(privatePath);
       if (isInputCachePath(path) && inputCacheGet(path) !== null) {
         const data = inputCacheGet(path);
         const size = data ? data.length || data.byteLength || 0 : 0;
@@ -53,6 +64,8 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
     },
 
     accessSync(path, mode) {
+      const privatePath = privateFiles?.select(path, resolvePath(path), true);
+      if (privatePath) return privateFiles.accessSync(privatePath, mode);
       if (isInputCachePath(path) && inputCacheGet(path) !== null) {
         return;
       }
@@ -219,6 +232,8 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
     },
 
     readdirSync(path) {
+      const privatePath = privateFiles?.select(path, resolvePath(path), true);
+      if (privatePath) return privateFiles.readdirSync(privatePath);
       const entries = metadataCache.readdir(path);
       return entries.map((e) => e.name);
     },

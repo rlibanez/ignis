@@ -105,5 +105,18 @@ export function createPrivateConfiguration({ vault, sessionId, currentContext, r
     catch (error) { value.blocked = true; throw error; }
     finally { value.busy = false; }
   }
-  return Object.freeze({read,write,readSync,writeSync});
+  // Metadata must not advance the revision that authorizes a later save.
+  async function inspect(path) {
+    const value = state(path);
+    value.busy = true;
+    try { return await exchange("GET",path); }
+    finally { value.busy = false; }
+  }
+  function inspectSync(path) {
+    const value = state(path);
+    value.busy = true;
+    try { return exchangeSync("GET",path); }
+    finally { value.busy = false; }
+  }
+  return Object.freeze({read,write,readSync,writeSync,inspect,inspectSync});
 }

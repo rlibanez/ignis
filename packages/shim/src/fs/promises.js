@@ -38,6 +38,8 @@ export function createFsPromises(metadataCache, contentCache, transport, private
 
   return {
     async stat(path) {
+      const privatePath = privateFiles?.select(path, resolvePath(path), true);
+      if (privatePath) return privateFiles.stat(privatePath);
       const resolved = resolvePath(path);
       const cached = metadataCache.toStat(resolved);
 
@@ -56,6 +58,8 @@ export function createFsPromises(metadataCache, contentCache, transport, private
     },
 
     async readdir(path) {
+      const privatePath = privateFiles?.select(path, resolvePath(path), true);
+      if (privatePath) return privateFiles.readdir(privatePath);
       const meta = metadataCache.get(path);
 
       if (meta && meta.type === "file") {
@@ -310,7 +314,9 @@ export function createFsPromises(metadataCache, contentCache, transport, private
       metadataCache.set(resolvedDest, meta);
     },
 
-    async access(path) {
+    async access(path, mode) {
+      const privatePath = privateFiles?.select(path, resolvePath(path), true);
+      if (privatePath) return privateFiles.access(privatePath, mode);
       const resolved = resolvePath(path);
 
       if (metadataCache.has(resolved)) {
