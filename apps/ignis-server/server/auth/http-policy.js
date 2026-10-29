@@ -4,48 +4,7 @@ const path = require("node:path");
 const net = require("node:net");
 const { readInitialAdminKey } = require("./initial-admin");
 
-const ROUTES = new Set([
-  ...["stat", "readFile", "access", "tree", "download", "download-zip"].map(
-    (p) => `GET /api/fs/${p}`,
-  ),
-  ...[
-    "writeFile",
-    "appendFile",
-    "mkdir",
-    "rename",
-    "copyFile",
-    "utimes",
-    "batch-read",
-  ].map((p) => `POST /api/fs/${p}`),
-  ...["unlink", "rmdir", "rm"].map((p) => `DELETE /api/fs/${p}`),
-  "GET /api/vault/list",
-  "GET /api/vault/info",
-  "POST /api/vault/refresh",
-  "POST /api/vault/create",
-  "POST /api/vault/rename",
-  "DELETE /api/vault/remove",
-  "POST /api/proxy",
-  "GET /api/version",
-  "GET /api/settings",
-  "POST /api/settings",
-  "GET /api/plugins",
-  "GET /api/bootstrap",
-  "POST /api/plugins/headless-sync/enable",
-  "POST /api/plugins/headless-sync/disable",
-  ...["status", "logs", "vaults", "remote-vaults"].map(
-    (p) => `GET /api/ext/headless-sync/${p}`,
-  ),
-  ...[
-    "login",
-    "logout",
-    "setup",
-    "config",
-    "start",
-    "stop",
-    "unlink",
-    "create-remote-vault",
-  ].map((p) => `POST /api/ext/headless-sync/${p}`),
-]);
+const { dataRoutePolicy } = require("./route-manifest");
 
 function readAuthConfig(env = process.env) {
   if (!env.IGNIS_PUBLIC_ORIGIN)
@@ -125,7 +84,7 @@ function canonicalRequestPath(req) {
 
 function permittedResource(method, pathname, staticRoots) {
   const verb = method === "HEAD" ? "GET" : method;
-  if (ROUTES.has(`${verb} ${pathname}`)) return true;
+  if (dataRoutePolicy(verb, pathname)) return true;
   if (pathname.startsWith("/api/")) return false;
   if (verb !== "GET") return false;
   if (["/", "/index.html", "/favicon.png"].includes(pathname)) return true;
