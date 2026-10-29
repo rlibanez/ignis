@@ -45,7 +45,7 @@ it("sends the selected owner when creating a vault", async () => {
 });
 
 it("keeps the opened UUID even when a refreshed list reuses its name", () => {
-  const current = { __currentVaultId: "Notes", __currentVaultUuid: "original", __vaultList: [{ id: "Notes", uuid: "replacement" }, { id: "Other", uuid: "other-id" }], location: {} };
+  const current = { __ignisAuth: { userId: "test-user" }, __currentVaultId: "Notes", __currentVaultUuid: "original", __vaultList: [{ id: "Notes", uuid: "replacement" }, { id: "Other", uuid: "other-id" }], location: {} };
   current.parent = current;
   vi.stubGlobal("window", current);
   const setItem = vi.fn();
@@ -53,5 +53,35 @@ it("keeps the opened UUID even when a refreshed list reuses its name", () => {
   expect(vaultService.referenceFor("Notes")).toBe("original");
   vaultService.openVault("Other");
   expect(current.location.href).toBe("/?vault=other-id");
-  expect(setItem).toHaveBeenCalledWith("last-vault", "other-id");
+  expect(setItem).toHaveBeenCalledWith("ignis:last-vault:test-user", "other-id");
+});
+
+it("isolates remembered vaults by account without importing the legacy global key", () => {
+  const data = new Map([["last-vault", "foreign-legacy"]]);
+  vi.stubGlobal("localStorage", { getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, value) });
+  const auth = { userId: "alice", blocked: false };
+  vi.stubGlobal("window", { __ignisAuth: auth });
+  expect(vaultService.rememberedVault()).toBeNull();
+  vaultService.rememberVault("alice-vault");
+  auth.userId = "bob";
+  expect(vaultService.rememberedVault()).toBeNull();
+  vaultService.rememberVault("bob-vault");
+  auth.userId = "alice";
+  expect(vaultService.rememberedVault()).toBe("alice-vault");
+  auth.blocked = true;
+  expect(vaultService.rememberedVault()).toBeNull();
+  vaultService.rememberVault("blocked-write");
+  auth.blocked = false;
+  expect(vaultService.rememberedVault()).toBe("alice-vault");
+  auth.userId = null;
+  expect(vaultService.rememberedVault()).toBeNull();
+  vaultService.rememberVault("anonymous-write");
+  expect(data.size).toBe(3);
+});
+
+it("keeps browser storage optional without falling back to a shared selection", () => {
+  vi.stubGlobal("window", { __ignisAuth: { userId: "alice" } });
+  vi.stubGlobal("localStorage", { getItem() { throw new Error("Disabled"); }, setItem() { throw new Error("Disabled"); } });
+  expect(vaultService.rememberedVault()).toBeNull();
+  expect(() => vaultService.rememberVault("vault")).not.toThrow();
 });

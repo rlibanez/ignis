@@ -12,6 +12,20 @@ async function fetchJson(url, options) {
 }
 
 export const vaultService = {
+  rememberedVault() {
+    const auth = window.__ignisAuth;
+    if (auth?.blocked || !auth?.userId) return null;
+    try { return localStorage.getItem("ignis:last-vault:" + encodeURIComponent(auth.userId)); }
+    catch { return null; }
+  },
+
+  rememberVault(reference) {
+    const auth = window.__ignisAuth;
+    if (auth?.blocked || !auth?.userId) return;
+    try { localStorage.setItem("ignis:last-vault:" + encodeURIComponent(auth.userId), reference); }
+    catch { /* Browser storage is optional; authorization stays on the server. */ }
+  },
+
   getCurrentVaultId() {
     return window.__currentVaultId || "";
   },
@@ -151,7 +165,7 @@ export const vaultService = {
 
   openVault(id) {
     const reference = this.referenceFor(id);
-    localStorage.setItem("last-vault", reference);
+    this.rememberVault(reference);
 
     const target = window.parent !== window ? window.parent : window;
 
@@ -172,8 +186,8 @@ export const vaultService = {
       localStorage.removeItem(pluginKey + oldId);
     }
 
-    if (localStorage.getItem("last-vault") === oldId) {
-      localStorage.setItem("last-vault", newId);
+    if (this.rememberedVault() === oldId) {
+      this.rememberVault(newId);
     }
   },
 };

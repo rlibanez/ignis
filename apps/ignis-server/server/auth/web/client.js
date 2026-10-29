@@ -10,6 +10,7 @@
       : null;
   let blocked = false,
     sessionId = null,
+    userId = null,
     csrf = null,
     csrfAt = 0,
     refresh = null;
@@ -125,10 +126,13 @@
     const state = await response.json();
     if (
       state.user.role !== "admin" ||
-      (sessionId && state.sessionId !== sessionId)
+      (sessionId && state.sessionId !== sessionId) ||
+      (userId && state.user.id !== userId) ||
+      typeof state.user.id !== "string" || !state.user.id
     )
       throw new Error("Session changed");
     sessionId = state.sessionId;
+    userId = state.user.id;
     return state;
   }
   async function token() {
@@ -303,6 +307,9 @@
     },
     get sessionId() {
       return sessionId;
+    },
+    get userId() {
+      return blocked ? null : userId;
     },
   };
   if (channel)

@@ -42,6 +42,7 @@ describe("resolveVaultId", () => {
   });
 
   afterAll(() => {
+    delete globalThis.__ignisAuth;
     for (const key of Object.keys(stubs)) {
       delete globalThis[key];
     }
@@ -53,16 +54,17 @@ describe("resolveVaultId", () => {
     infoStatus = 200;
     globalThis.location.search = "";
     delete globalThis.__currentVaultId;
+    globalThis.__ignisAuth = { userId: "test-user", blocked: false };
   });
 
   it("keeps the display name separate from the pinned UUID and persists the UUID", () => {
     applyVaultInfo({ id: "Notes", uuid: "stable-uuid" });
     expect(globalThis.__currentVaultId).toBe("Notes");
     expect(globalThis.__currentVaultUuid).toBe("stable-uuid");
-    expect(storage.get("last-vault")).toBe("stable-uuid");
+    expect(storage.get("ignis:last-vault:test-user")).toBe("stable-uuid");
     applyVaultInfo({ id: "Legacy" });
     expect(globalThis.__currentVaultUuid).toBeNull();
-    expect(storage.get("last-vault")).toBe("Legacy");
+    expect(storage.get("ignis:last-vault:test-user")).toBe("Legacy");
   });
 
   it("takes the vault from the URL without asking the server", () => {
@@ -74,7 +76,7 @@ describe("resolveVaultId", () => {
   });
 
   it("falls back to the last opened vault without asking the server", () => {
-    storage.set("last-vault", "Saved");
+    storage.set("ignis:last-vault:test-user", "Saved");
     resolveVaultId();
 
     expect(globalThis.__currentVaultId).toBe("Saved");

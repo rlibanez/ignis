@@ -68,7 +68,7 @@ export function resolveVaultId() {
   window.__currentVaultUuid = null;
   const urlParams = new URLSearchParams(window.location.search);
   window.__currentVaultId =
-    urlParams.get("vault") || localStorage.getItem("last-vault") || "";
+    urlParams.get("vault") || vaultService.rememberedVault() || "";
 
   if (!window.__currentVaultId) {
     const info = fetchVaultInfo("");
@@ -110,7 +110,7 @@ function fetchBootstrap() {
 export function applyVaultInfo(info) {
   window.__currentVaultId = info.id;
   window.__currentVaultUuid = info.uuid || null;
-  localStorage.setItem("last-vault", vaultService.getCurrentVaultReference());
+  vaultService.rememberVault(vaultService.getCurrentVaultReference());
   if (info.uuid && window.history?.replaceState) {
     const url = new URL(window.location.href);
     url.searchParams.set("vault", info.uuid);

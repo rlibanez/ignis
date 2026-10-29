@@ -6,6 +6,7 @@ const source = fs.readFileSync(
   "utf8",
 );
 async function fixture() {
+  let userId = "admin-id";
   let catalog = [{ id: "Notes", uuid: "original" }];
   const elements = [];
   let download;
@@ -59,7 +60,7 @@ async function fixture() {
       const url = input instanceof Request ? input.url : String(input);
       if (url.endsWith("/api/vault/list")) return Response.json(catalog, { status });
       if (url.endsWith("/session"))
-        return Response.json({ user: { role: "admin" }, sessionId: current });
+        return Response.json({ user: { id: userId, role: "admin" }, sessionId: current });
       if (url.endsWith("/csrf"))
         return Response.json({ csrfToken: "csrf-value" });
       return Response.json({}, { status });
@@ -92,6 +93,7 @@ async function fixture() {
   calls.length = 0;
   return {
     window,
+    user: value => { userId = value; },
     elements,
     catalog: value => { catalog = value; },
     download: () => download,
@@ -211,4 +213,13 @@ it("opens the standalone manager without booting the removed vault or Obsidian",
   expect(loaded).toEqual(["__IGNIS_UI_SRC__"]);
   expect(opened).toBe(true);
   expect(splashRemoved).toBe(true);
+});
+
+it("pins the account identity and hides it when the session is locked", async () => {
+  const f = await fixture();
+  expect(f.window.__ignisAuth.userId).toBe("admin-id");
+  f.user("different-account");
+  await f.window.__ignisAuth.check();
+  expect(f.window.__ignisAuth.blocked).toBe(true);
+  expect(f.window.__ignisAuth.userId).toBeNull();
 });
