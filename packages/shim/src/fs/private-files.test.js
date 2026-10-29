@@ -1,5 +1,6 @@
 import { it, expect, vi, afterEach } from "vitest";
 import { createPrivateFiles } from "./private-files.js";
+import { createFdOps } from "./fd.js";
 import { createFsSync } from "./sync.js";
 import { createFsPromises } from "./promises.js";
 import { MetadataCache } from "./metadata-cache.js";
@@ -120,4 +121,41 @@ it("checks private access modes and propagates revoked access for metadata",asyn
   configuration.inspect.mockRejectedValue(error);
   expect(()=>sync.existsSync(file)).toThrow(error);
   await expect(async.readdir(".obsidian")).rejects.toBe(error);
+});
+
+const alternativeOperations = [
+  ["appendFile",[file,"extra"]], ["unlink",[file]],
+  ["mkdir",[".obsidian/new"]], ["rmdir",[".obsidian"]],
+  ["rm",[".obsidian",{recursive:true}]],
+  ["rename",[file,"note.md"]], ["rename",["note.md",file]],
+  ["copyFile",[file,"note.md"]], ["copyFile",["note.md",file]],
+  ["utimes",[file,0,0]], ["lutimes",[file,0,0]], ["chmod",[file,0o600]],
+  ["rm",["/",{recursive:true}]], ["rename",["/","other"]],
+];
+it.each(alternativeOperations)("rejects %s before touching shared state (%j)",async(method,args)=>{
+  const {sync,async,content,metadata,transport} = setup();
+  const initial = {...metadata.get(file)};
+  const error = {code:"UNSUPPORTED_CONFIGURATION_OPERATION"};
+  expect(()=>sync[method+"Sync"](...args)).toThrow(expect.objectContaining(error));
+  await expect(async[method](...args)).rejects.toMatchObject(error);
+  expect(content.get(file)).toBe("shared private data must not escape");
+  expect(metadata.get(file)).toEqual(initial);
+  for (const mock of Object.values(transport)) expect(mock).not.toHaveBeenCalled();
+});
+it("rejects descriptor opens before buffers or shared cache reads, including callbacks",async()=>{
+  const {async,adapter,metadata,content,transport} = setup();
+  const fd = createFdOps(metadata,content,transport,adapter);
+  expect(()=>fd.openSync(file,"r")).toThrow(expect.objectContaining({code:"UNSUPPORTED_CONFIGURATION_OPERATION"}));
+  await expect(async.open(file,"r")).rejects.toMatchObject({code:"UNSUPPORTED_CONFIGURATION_OPERATION"});
+  const result = await new Promise(resolve=>fd.open(file,"r",(error,descriptor)=>resolve({error,descriptor})));
+  expect(result.error.code).toBe("UNSUPPORTED_CONFIGURATION_OPERATION");
+  expect(result.descriptor).toBeUndefined();
+  expect(transport.readFileSync).not.toHaveBeenCalled();
+});
+it("rejects mutation aliases that resolve into or out of private configuration",async()=>{
+  const {sync,async} = setup();
+  registerPathResolver(p=>p==="alias.md",()=>file);
+  registerPathResolver(p=>p===file,()=>"note.md");
+  expect(()=>sync.unlinkSync("alias.md")).toThrow();
+  await expect(async.rename(file,"note.md")).rejects.toThrow();
 });

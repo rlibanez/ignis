@@ -213,6 +213,7 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
     },
 
     unlinkSync(path) {
+      privateFiles?.assertOrdinary(path, resolvePath(path));
       const resolved = resolvePath(path);
 
       markSentOp(resolved);
@@ -244,6 +245,7 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
     },
 
     mkdirSync(path, options) {
+      privateFiles?.assertOrdinary(path, resolvePath(path));
       const recursive =
         typeof options === "object" ? !!options.recursive : !!options;
 
@@ -262,6 +264,7 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
     },
 
     rmdirSync(path) {
+      privateFiles?.assertOrdinary(path, resolvePath(path));
       const resolved = resolvePath(path);
 
       markSentOp(resolved);
@@ -277,6 +280,7 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
     },
 
     rmSync(path, options) {
+      privateFiles?.assertOrdinary(path, resolvePath(path));
       const recursive =
         typeof options === "object" ? !!options.recursive : false;
 
@@ -296,6 +300,8 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
     },
 
     renameSync(oldPath, newPath) {
+      privateFiles?.assertOrdinary(oldPath, resolvePath(oldPath));
+      privateFiles?.assertOrdinary(newPath, resolvePath(newPath));
       const resolvedOld = resolvePath(oldPath);
       const resolvedNew = resolvePath(newPath);
 
@@ -323,6 +329,8 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
     },
 
     copyFileSync(src, dest) {
+      privateFiles?.assertOrdinary(src, resolvePath(src));
+      privateFiles?.assertOrdinary(dest, resolvePath(dest));
       const resolvedSrc = resolvePath(src);
       const resolvedDest = resolvePath(dest);
 
@@ -355,6 +363,7 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
     },
 
     appendFileSync(path, data) {
+      privateFiles?.assertOrdinary(path, resolvePath(path));
       const resolved = resolvePath(path);
 
       markSentOp(resolved);
@@ -374,14 +383,17 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
     },
 
     utimesSync(path, atime, mtime) {
+      privateFiles?.assertOrdinary(path, resolvePath(path));
       commitUtimes(path, atime, mtime);
     },
 
     lutimesSync(path, atime, mtime) {
+      privateFiles?.assertOrdinary(path, resolvePath(path));
       commitUtimes(path, atime, mtime);
     },
 
-    chmodSync() {
+    chmodSync(path) {
+      privateFiles?.assertOrdinary(path, resolvePath(path));
       // The vault FS does not model permission bits. No-op.
     },
   };

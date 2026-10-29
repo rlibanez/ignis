@@ -51,6 +51,11 @@ export function createPrivateFiles(configuration) {
   }
   return Object.freeze({
     select,
+    assertOrdinary(original,resolved) {
+      const root = path => ["", "."].includes(normalize(path));
+      if (owns(original) || owns(resolved) || root(original) || root(resolved))
+        fail("UNSUPPORTED_CONFIGURATION_OPERATION");
+    },
     async stat(path) { return metadata(path,await configuration.inspect(probe(path))); },
     statSync(path) { return metadata(path,configuration.inspectSync(probe(path))); },
     async access(path,mode=0) { checkAccess(path,await configuration.inspect(probe(path)),mode); },

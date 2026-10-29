@@ -229,6 +229,7 @@ export function createFsPromises(metadataCache, contentCache, transport, private
     },
 
     async appendFile(path, data, encoding) {
+      privateFiles?.assertOrdinary(path, resolvePath(path));
       const resolved = resolvePath(path);
 
       markSentOp(resolved);
@@ -241,6 +242,7 @@ export function createFsPromises(metadataCache, contentCache, transport, private
     },
 
     async unlink(path) {
+      privateFiles?.assertOrdinary(path, resolvePath(path));
       const resolved = resolvePath(path);
 
       markSentOp(resolved);
@@ -251,6 +253,8 @@ export function createFsPromises(metadataCache, contentCache, transport, private
     },
 
     async rename(oldPath, newPath) {
+      privateFiles?.assertOrdinary(oldPath, resolvePath(oldPath));
+      privateFiles?.assertOrdinary(newPath, resolvePath(newPath));
       const resolvedOld = resolvePath(oldPath);
       const resolvedNew = resolvePath(newPath);
 
@@ -272,6 +276,7 @@ export function createFsPromises(metadataCache, contentCache, transport, private
     },
 
     async mkdir(path, options) {
+      privateFiles?.assertOrdinary(path, resolvePath(path));
       const recursive =
         typeof options === "object" ? !!options.recursive : !!options;
 
@@ -284,6 +289,7 @@ export function createFsPromises(metadataCache, contentCache, transport, private
     },
 
     async rmdir(path) {
+      privateFiles?.assertOrdinary(path, resolvePath(path));
       const resolved = resolvePath(path);
 
       markSentOp(resolved);
@@ -292,6 +298,7 @@ export function createFsPromises(metadataCache, contentCache, transport, private
     },
 
     async rm(path, options) {
+      privateFiles?.assertOrdinary(path, resolvePath(path));
       const recursive =
         typeof options === "object" ? !!options.recursive : false;
 
@@ -305,6 +312,8 @@ export function createFsPromises(metadataCache, contentCache, transport, private
     },
 
     async copyFile(src, dest) {
+      privateFiles?.assertOrdinary(src, resolvePath(src));
+      privateFiles?.assertOrdinary(dest, resolvePath(dest));
       const resolvedDest = resolvePath(dest);
 
       markSentOp(resolvedDest);
@@ -340,18 +349,22 @@ export function createFsPromises(metadataCache, contentCache, transport, private
     },
 
     async utimes(path, atime, mtime) {
+      privateFiles?.assertOrdinary(path, resolvePath(path));
       await commitUtimes(path, atime, mtime);
     },
 
     async lutimes(path, atime, mtime) {
+      privateFiles?.assertOrdinary(path, resolvePath(path));
       await commitUtimes(path, atime, mtime);
     },
 
-    async chmod() {
+    async chmod(path) {
+      privateFiles?.assertOrdinary(path, resolvePath(path));
       // No permission bits in the vault FS. No-op.
     },
 
     async open(path, flags) {
+      privateFiles?.assertOrdinary(path, resolvePath(path));
       const hasInCache = isInputCachePath(path) && inputCacheGet(path) !== null;
       const resolved = resolvePath(path);
 
