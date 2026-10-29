@@ -823,3 +823,50 @@ it("requires a session, CSRF, same origin and an exact password change payload",
   expect((await request("/api/auth/password", { jar, method: "POST", body: { ...body, userId: "normal" },
     headers: { "x-ignis-csrf": await csrf(jar) } })).status).toBe(400);
 });
+
+it("supports opted-in LAN login while enforcing exact Host, Origin and CSRF", async () => {
+  const origin = "http://192.168.2.9:8080";
+  const lan = createAuthBoundary({
+    dataRoot: path.join(root, "data"),
+    config: readAuthConfig({ IGNIS_PUBLIC_ORIGIN: origin, IGNIS_ALLOW_HTTP_PRIVATE_NETWORK: "true" }),
+    oidcEnv: {},
+  });
+  const app = express();
+  lan.install(app);
+  const local = http.createServer(app);
+  await new Promise(resolve => local.listen(0, "127.0.0.1", resolve));
+  const url = `http://127.0.0.1:${local.address().port}`;
+  const fetchLan = (target, options = {}) => new Promise((resolve, reject) => {
+    const req = http.request(target, options, res => {
+      let text = "";
+      res.on("data", chunk => { text += chunk; });
+      res.on("end", () => resolve({ status: res.statusCode,
+        json: async () => JSON.parse(text),
+        headers: { getSetCookie: () => res.headers["set-cookie"] || [] },
+      }));
+    });
+    req.on("error", reject);
+    req.end(options.body);
+  });
+  try {
+    const headers = { host: "192.168.2.9:8080" };
+    expect((await fetchLan(url + "/login", { headers })).status).toBe(200);
+    expect((await fetchLan(url + "/login", { headers: { host: "localhost:8080" } })).status).toBe(403);
+    const csrfResponse = await fetchLan(url + "/api/auth/csrf", { headers });
+    const token = (await csrfResponse.json()).csrfToken;
+    const cookie = csrfResponse.headers.getSetCookie().map(value => value.split(";")[0]).join("; ");
+    const options = { method: "POST", headers: { ...headers, cookie, origin, "content-type": "application/json", "x-ignis-csrf": token }, body: JSON.stringify({ login: "admin", password: PASSWORD }) };
+    expect((await fetchLan(url + "/api/auth/login", { ...options, headers: { ...options.headers, origin: "http://192.168.2.10:8080" } })).status).toBe(403);
+    expect((await fetchLan(url + "/api/auth/login", { ...options, headers: { ...options.headers, "x-ignis-csrf": "invalid" } })).status).toBe(403);
+    const response = await fetchLan(url + "/api/auth/login", options);
+    expect(response.status).toBe(200);
+    const sessionCookie = response.headers.getSetCookie().find(value => value.startsWith("ignis-dev-session="));
+    expect(sessionCookie).toContain("HttpOnly; SameSite=Lax");
+    expect(sessionCookie).not.toContain("Secure");
+    expect((await fetchLan(url + "/api/auth/session", { headers: { ...headers, cookie: sessionCookie.split(";")[0] } })).status).toBe(200);
+  } finally {
+    local.closeAllConnections();
+    await new Promise(resolve => local.close(resolve));
+    lan.close();
+  }
+});

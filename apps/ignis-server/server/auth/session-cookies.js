@@ -1,8 +1,18 @@
+const { isIP } = require("node:net");
+
+// Deliberately limited to literal RFC1918 IPv4 addresses; no DNS resolution.
+function isPrivateLanHost(hostname) {
+  if (isIP(hostname) !== 4) return false;
+  const [a, b] = hostname.split(".").map(Number);
+  return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+}
+
 // Pure transport helpers. publicOrigin must come from trusted deployment configuration,
 // never Host / X-Forwarded-* headers. Wiring to Express and CSRF belongs to phase 2A.2.
 function createSessionCookies({
   publicOrigin,
   allowHttpLoopback = false,
+  allowHttpPrivateNetwork = false,
   purpose = "session",
 }) {
   if (!["session", "csrf", "oidc"].includes(purpose))
@@ -19,10 +29,12 @@ function createSessionCookies({
     origin.search ||
     origin.hash ||
     (!secure &&
-      !(allowHttpLoopback === true && loopback && origin.protocol === "http:"))
+      !(origin.protocol === "http:" &&
+        ((allowHttpLoopback === true && loopback) ||
+         (allowHttpPrivateNetwork === true && isPrivateLanHost(origin.hostname)))))
   ) {
     throw new Error(
-      "Sessions require HTTPS; HTTP is only allowed explicitly on loopback",
+      "Sessions require HTTPS; HTTP requires an explicit loopback or private IPv4 development exception",
     );
   }
   const name = `${secure ? "__Host-ignis" : "ignis-dev"}-${purpose}`;
@@ -66,4 +78,4 @@ function createSessionCookies({
   return { name, serialize, read, clear };
 }
 
-module.exports = { createSessionCookies };
+module.exports = { createSessionCookies, isPrivateLanHost };

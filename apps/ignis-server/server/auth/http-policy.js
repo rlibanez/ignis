@@ -66,6 +66,9 @@ function readAuthConfig(env = process.env) {
   ) {
     throw new Error("Invalid HTTP loopback setting");
   }
+  if (env.IGNIS_ALLOW_HTTP_PRIVATE_NETWORK !== undefined &&
+      !["true", "false"].includes(env.IGNIS_ALLOW_HTTP_PRIVATE_NETWORK))
+    throw new Error("Invalid IGNIS_ALLOW_HTTP_PRIVATE_NETWORK; expected true or false");
   const trustedProxies = JSON.parse(env.IGNIS_TRUSTED_PROXIES || "[]");
   if (
     !Array.isArray(trustedProxies) ||
@@ -91,6 +94,7 @@ function readAuthConfig(env = process.env) {
     oidcButtonText,
     publicOrigin: origin.origin,
     allowHttpLoopback: env.IGNIS_ALLOW_HTTP_LOOPBACK === "true",
+    allowHttpPrivateNetwork: env.IGNIS_ALLOW_HTTP_PRIVATE_NETWORK === "true",
     trustedProxies,
     passwordPolicy: readPasswordPolicy(env),
     initialAdminKeyDigest: readInitialAdminKey(env),

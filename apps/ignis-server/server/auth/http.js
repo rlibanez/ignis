@@ -105,8 +105,9 @@ function createAuthBoundary({
       );
     }
     // Docker NAT makes even host-loopback clients appear as a bridge IP.
-    // The explicit development exception requires a loopback public origin and loopback port binding.
-    return config.allowHttpLoopback;
+    // Cookie policy validates the configured development origin; Host remains exact.
+    return config.allowHttpLoopback ||
+      (config.allowHttpPrivateNetwork && require("./session-cookies").isPrivateLanHost(publicUrl.hostname));
   }
   function originAllowed(req, required = false) {
     return (

@@ -81,3 +81,27 @@ describe("session cookie policy", () => {
     }
   });
 });
+
+it("requires opt-in for literal RFC1918 HTTP origins for all cookie purposes", () => {
+  for (const host of ["10.0.0.1", "172.16.0.1", "172.31.255.254", "192.168.2.9"]) {
+    expect(() => createSessionCookies({ publicOrigin: `http://${host}:8080` })).toThrow();
+    for (const purpose of ["session", "csrf", "oidc"]) {
+      const cookies = createSessionCookies({ publicOrigin: `http://${host}:8080`, allowHttpPrivateNetwork: true, purpose });
+      expect(cookies.name).toBe(`ignis-dev-${purpose}`);
+      expect(cookies.serialize(token, 60000, 1000)).toContain("HttpOnly; SameSite=Lax");
+      expect(cookies.serialize(token, 60000, 1000)).not.toContain("Secure");
+    }
+  }
+  for (const host of ["8.8.8.8", "172.15.0.1", "172.32.0.1", "192.169.1.1", "100.64.0.1", "169.254.1.1", "0.0.0.0", "localhost", "127.0.0.1", "ignis.local", "[::1]", "[fd00::1]"]) {
+    expect(() => createSessionCookies({ publicOrigin: `http://${host}`, allowHttpPrivateNetwork: true })).toThrow();
+  }
+  expect(createSessionCookies({ publicOrigin: "https://ignis.example", allowHttpPrivateNetwork: true }).serialize(token, 60000, 1000)).toContain("; Secure");
+});
+it("parses the LAN exception strictly and leaves it disabled by default", () => {
+  const { readAuthConfig } = require("./http-policy");
+  const env = { IGNIS_PUBLIC_ORIGIN: "http://192.168.2.9:8080" };
+  expect(readAuthConfig(env).allowHttpPrivateNetwork).toBe(false);
+  expect(readAuthConfig({ ...env, IGNIS_ALLOW_HTTP_PRIVATE_NETWORK: "true" }).allowHttpPrivateNetwork).toBe(true);
+  for (const value of ["1", "TRUE", "", "yes"])
+    expect(() => readAuthConfig({ ...env, IGNIS_ALLOW_HTTP_PRIVATE_NETWORK: value })).toThrow();
+});
