@@ -225,4 +225,17 @@ module.exports = [
       BEGIN SELECT RAISE(ABORT, 'Vault identity reserved'); END;
     `,
   },
+  {
+    version: 10,
+    sql: `
+      CREATE TABLE vault_preferences (
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
+        path TEXT NOT NULL,
+        content TEXT NOT NULL CHECK(length(CAST(content AS BLOB)) <= 1048576),
+        revision INTEGER NOT NULL CHECK(revision > 0),
+        PRIMARY KEY(user_id, vault_id, path)
+      ) STRICT;
+    `,
+  },
 ];
