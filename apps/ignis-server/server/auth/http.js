@@ -905,6 +905,11 @@ function createAuthBoundary({
             throw new Error("Configuration unavailable");
           return vaultConfig.snapshot(cookies.read(req.headers.cookie), reference);
         };
+        req.vaultView = require("./vault-view").createVaultView({
+          administrator: current.user.role === "admin",
+          authorize: directory => req.authorizeVaultFile(directory, "content.list", ""),
+          uuid: directory => req.vaultUUID(directory),
+        });
         req.vaultOwners = () => db.prepare("SELECT id,login FROM users WHERE status='active' ORDER BY login,id").all();
         req.vaultRegistrationOptions = () => require("./vault-registration").registrationOptions(db, vaultRoot);
         req.registerExistingVault = (directory, ownerId, expectedIdentity) => require("./vault-registration").registerExistingVault(db, vaultRoot, directory, ownerId, {

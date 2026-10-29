@@ -46,7 +46,7 @@ router.get("/list", (req, res) => {
     path: vaultPath,
   }));
 
-  res.json(list);
+  res.json(req.vaultView ? req.vaultView.list(list) : list);
 });
 
 router.get("/owners", (req, res) => {
@@ -92,7 +92,9 @@ router.get("/info", async (req, res) => {
     return res.status(404).json({ error: "Vault not found", id: vaultId });
   }
 
-  res.json({ ...bootstrapCache.buildVaultInfo(vaultId, vaultPath), uuid: req.vaultUUID?.(vaultId) });
+  const info = { ...bootstrapCache.buildVaultInfo(vaultId, vaultPath), uuid: req.vaultUUID?.(vaultId) };
+  try { res.json(req.vaultView ? req.vaultView.info(info) : info); }
+  catch { res.status(404).json({error:"Vault unavailable"}); }
 });
 
 // POST /api/vault/refresh { vault } - reconcile the whole vault against disk, including ignored paths

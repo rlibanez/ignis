@@ -8,7 +8,7 @@ it("keeps private configuration out of shared bootstrap and compressed caches", 
   const cache = require("../cache");
   const savedConfig = { refreshVaults: config.refreshVaults, getVaultPathOrRescan: config.getVaultPathOrRescan, getVaultPath: config.getVaultPath };
   const savedCache = { getOrBuild: cache.getOrBuild, getOrCompress: cache.getOrCompress };
-  const shared = { response: { tree: {}, vault: {id:"Notes"}, vaultList:[{id:"Notes"}] }, compressed: {gz:Buffer.from("shared cached bytes")} };
+  const shared = { response: { tree: {}, vault: {id:"Notes",path:"/vaults/Notes"}, vaultList:[{id:"Notes"},{id:"Other"}],plugins:["shared-plugin"],virtualPlugins:["shared-code"],etag:"shared-etag" }, compressed: {gz:Buffer.from("shared cached bytes")} };
   const original = structuredClone(shared);
   Object.assign(config,{ refreshVaults() {}, getVaultPathOrRescan:()=>"/vaults/Notes", getVaultPath:()=>"/vaults/Notes" });
   Object.assign(cache,{
@@ -26,13 +26,25 @@ it("keeps private configuration out of shared bootstrap and compressed caches", 
     const router = require("./bootstrap");
     const handler = router.stack[0].route.stack[0].handle;
     for (const encoding of ["", "gzip", "br"]) {
-      for (const user of ["alice","bob"]) {
+      for (const user of ["alice","bob","admin"]) {
         let result;
         const headers = {};
         const req = {query:{vault:"Notes"},headers:{"accept-encoding":encoding},vaultUUID:()=>"uuid",privateVaultConfiguration:()=>({owner:user})};
+        req.vaultView = require("../auth/vault-view").createVaultView({
+          administrator:user === "admin", authorize:id=>id === "Notes", uuid:()=>"uuid",
+        });
         const res = {setHeader:(key,value)=>{headers[key]=value;},status:()=>res,json:value=>{result=value;},end:bytes=>{result=JSON.parse((encoding==="br"?brotliDecompressSync(bytes):gunzipSync(bytes)).toString());}};
         await handler(req,res);
         expect(result.privateConfiguration).toEqual({owner:user});
+        if (user === "admin") {
+          expect(result.vaultList).toHaveLength(2);
+          expect(result.plugins).toEqual(["shared-plugin"]);
+        } else {
+          expect(result.vaultList).toEqual([{id:"Notes",uuid:"uuid"}]);
+          expect(result.vault.path).toBe("/");
+          expect(result.configurationMode).toBe("private");
+          expect(JSON.stringify(result)).not.toMatch(/Other|shared-plugin|shared-code|shared-etag|\/vaults/);
+        }
         expect(headers["Cache-Control"]).toBe("no-store");
         expect(shared.response).toEqual(original.response);
         expect(shared.compressed.gz).toEqual(Buffer.from("shared cached bytes"));
