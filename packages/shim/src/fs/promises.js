@@ -23,7 +23,7 @@ import { createUtimes } from "./utimes.js";
 import { createReadAhead } from "./read-ahead.js";
 import { isTextPath } from "./indexer-prefetch.js";
 
-export function createFsPromises(metadataCache, contentCache, transport) {
+export function createFsPromises(metadataCache, contentCache, transport, privateFiles = null) {
   initWriteCoalescer(transport);
   initWriteDurability(transport, enqueue);
 
@@ -81,6 +81,8 @@ export function createFsPromises(metadataCache, contentCache, transport) {
 
       const wantText = encoding === "utf8" || encoding === "utf-8";
       const { resolved, redirected } = resolvePathInfo(path);
+      const privatePath = privateFiles?.select(path, resolved);
+      if (privatePath) return privateFiles.read(privatePath, encoding);
 
       // Virtual plugin source overrides any cache/transport version.
       if (hasVirtualFile(resolved)) {
@@ -177,6 +179,8 @@ export function createFsPromises(metadataCache, contentCache, transport) {
       }
 
       const resolved = resolvePath(path);
+      const privatePath = privateFiles?.select(path, resolved);
+      if (privatePath) return privateFiles.write(privatePath, data, encoding);
       const transformed = applyWriteTransform(resolved, data);
 
       contentCache.set(resolved, transformed);

@@ -10,7 +10,7 @@ import { hasVirtualFile, getVirtualFile } from "./virtual-files.js";
 import { cancelPending, enqueueWrite, hasPending } from "./write-coalescer.js";
 import { createUtimes } from "./utimes.js";
 
-export function createFsSync(metadataCache, contentCache, transport) {
+export function createFsSync(metadataCache, contentCache, transport, privateFiles = null) {
   const commitUtimes = createUtimes(metadataCache, transport);
 
   return {
@@ -75,6 +75,8 @@ export function createFsSync(metadataCache, contentCache, transport) {
 
       const wantText = encoding === "utf8" || encoding === "utf-8";
       const { resolved, redirected } = resolvePathInfo(path);
+      const privatePath = privateFiles?.select(path, resolved);
+      if (privatePath) return privateFiles.readSync(privatePath, encoding);
 
       // Virtual plugin source overrides any cache or transport version.
       if (hasVirtualFile(resolved)) {
@@ -160,6 +162,8 @@ export function createFsSync(metadataCache, contentCache, transport) {
       }
 
       const resolved = resolvePath(path);
+      const privatePath = privateFiles?.select(path, resolved);
+      if (privatePath) return privateFiles.writeSync(privatePath, data, encoding);
       const transformed = applyWriteTransform(resolved, data);
 
       contentCache.set(resolved, transformed);
