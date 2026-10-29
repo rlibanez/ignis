@@ -1,4 +1,11 @@
 (() => {
+  let providerName = "OpenID Connect";
+  function setProviderName(name) {
+    providerName = name || "OpenID Connect";
+    for (const element of document.querySelectorAll("[data-provider-template]"))
+      element.textContent = element.dataset.providerTemplate.replaceAll("OpenID Connect", () => providerName);
+  }
+
   const status = document.getElementById("status");
   const area = document.getElementById("administration");
   const form = document.getElementById("create-user");
@@ -142,6 +149,8 @@
     const data = await response.json();
     if (locked) return;
     list.replaceChildren();
+    setProviderName(data.oidcButtonText);
+    unlinkSection.setAttribute("aria-label", `${providerName} linking`);
     const showOidc = data.oidcAvailable === true;
     document.getElementById("oidc-column").hidden = !showOidc;
     for (const user of data.users) {
@@ -167,7 +176,7 @@
         action.type = "button";
         action.className = "icon-button";
         action.disabled = name === "Delete";
-        action.title = name === "Edit" ? "Edit account status" : "Delete — not available yet";
+        action.title = name === "Edit" ? "Edit account" : "Delete — not available yet";
         action.setAttribute("aria-label", `${name} ${user.login}${name === "Delete" ? " — not available yet" : ""}`);
         if (name === "Edit") action.addEventListener("click", async () => {
           if (!await checkRecentSession() || editDialog.open || dialog.open) return;
@@ -201,7 +210,7 @@
       list.append(row);
     }
     document.getElementById("policy").textContent =
-      `Password: at least ${data.passwordPolicy.minLength} characters and ${data.passwordPolicy.minSpecialChars} punctuation/symbol characters; at most ${data.passwordPolicy.maxBytes} UTF-8 bytes.`;
+      `Password: at least ${data.passwordPolicy.minLength} characters and ${data.passwordPolicy.minSpecialChars} punctuation/symbol characters.`;
   }
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -321,7 +330,7 @@
       revokeConfirmation.hidden = unlinkConfirmation.hidden = true;
       if (unlink) {
         editDialog.close();
-        status.textContent = "OpenID Connect unlinked. All Ignis sessions closed.";
+        status.textContent = `${providerName} unlinked. All Ignis sessions closed.`;
         await refresh();
       } else editStatus.textContent = "All Ignis sessions closed. Account status unchanged.";
     } catch {

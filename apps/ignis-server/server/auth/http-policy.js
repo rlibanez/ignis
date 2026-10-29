@@ -84,7 +84,7 @@ function readAuthConfig(env = process.env) {
     })
   )
     throw new Error("Trusted proxies must be explicit IP addresses or CIDRs");
-  const oidcButtonText = (env.IGNIS_OIDC_BUTTON_TEXT || "").trim() || "Sign in with OpenID Connect";
+  const oidcButtonText = (env.IGNIS_OIDC_BUTTON_TEXT || "").trim() || "OpenID Connect";
   if ([...oidcButtonText].length > 80 || /[\p{Cc}\p{Cf}]/u.test(oidcButtonText))
     throw new Error("Invalid IGNIS_OIDC_BUTTON_TEXT; use at most 80 printable characters");
   return {

@@ -799,3 +799,27 @@ it("static page traffic cannot exhaust the session and CSRF budget", async () =>
   const jar = await login();
   expect((await request("/api/auth/session", { jar })).status).toBe(200);
 });
+
+it("changes a normal user's own password and revokes every session", async () => {
+  const jar = await login("normal");
+  const other = await login("normal");
+  const response = await request("/api/auth/password", {
+    jar, method: "POST", headers: { "x-ignis-csrf": await csrf(jar) },
+    body: { currentPassword: PASSWORD, newPassword: "replacement-passphrase" },
+  });
+  expect(response.status).toBe(200);
+  expect((await request("/api/auth/session", { jar })).status).toBe(401);
+  expect((await request("/api/auth/session", { jar: other })).status).toBe(401);
+  const fresh = await login("normal", "replacement-passphrase");
+  expect((await request("/api/auth/session", { jar: fresh })).status).toBe(200);
+});
+it("requires a session, CSRF, same origin and an exact password change payload", async () => {
+  const body = { currentPassword: PASSWORD, newPassword: "replacement-passphrase" };
+  expect((await request("/api/auth/password", { method: "POST", body })).status).toBe(401);
+  const jar = await login();
+  expect((await request("/api/auth/password", { jar, method: "POST", body })).status).toBe(403);
+  expect((await request("/api/auth/password", { jar, method: "POST", body,
+    headers: { "x-ignis-csrf": await csrf(jar), origin: "https://evil.example" } })).status).toBe(403);
+  expect((await request("/api/auth/password", { jar, method: "POST", body: { ...body, userId: "normal" },
+    headers: { "x-ignis-csrf": await csrf(jar) } })).status).toBe(400);
+});

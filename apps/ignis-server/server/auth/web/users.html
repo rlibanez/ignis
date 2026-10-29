@@ -19,7 +19,7 @@
           <div class="panel-heading"><h2 id="accounts-heading">Accounts</h2><button id="add-user" type="button">Add user</button></div>
           <div class="table-scroll" role="region" aria-label="User accounts" tabindex="0">
             <table>
-              <thead><tr><th scope="col">Username</th><th scope="col">Role</th><th scope="col">Status</th><th id="oidc-column" scope="col" hidden>OpenID Connect</th><th scope="col" class="actions-heading">Actions</th></tr></thead>
+              <thead><tr><th scope="col">Username</th><th scope="col">Role</th><th scope="col">Status</th><th id="oidc-column" scope="col" hidden data-provider-template="OpenID Connect">OpenID Connect</th><th scope="col" class="actions-heading">Actions</th></tr></thead>
               <tbody id="users"></tbody>
             </table>
           </div>
@@ -52,21 +52,21 @@
             <option value="active">Active</option>
             <option value="disabled">Disabled</option>
           </select>
-          <p class="help">Disabling an account blocks sign-in and revokes its Ignis sessions. Its files and OpenID Connect link are kept. Enabling it requires a new sign-in.</p>
+          <p class="help" data-provider-template="Disabling an account blocks sign-in and revokes its Ignis sessions. Its files and OpenID Connect link are kept. Enabling it requires a new sign-in.">Disabling an account blocks sign-in and revokes its Ignis sessions. Its files and OpenID Connect link are kept. Enabling it requires a new sign-in.</p>
           <p id="edit-status" role="status" aria-live="polite"></p>
           <section class="session-actions" aria-label="Session management">
             <button id="revoke-sessions" type="button" class="warning-button">Close all sessions</button>
             <div id="revoke-confirmation" hidden>
-              <p id="revoke-warning">Close all Ignis sessions for this user? Their account remains active. This does not sign them out of their OpenID Connect provider.</p>
+              <p id="revoke-warning" data-provider-template="Close all Ignis sessions for this user? Their account remains active. This does not sign them out of their OpenID Connect provider.">Close all Ignis sessions for this user? Their account remains active. This does not sign them out of their OpenID Connect provider.</p>
               <button id="confirm-revoke" type="button" class="warning-button">Confirm closing sessions</button>
               <button id="cancel-revoke" type="button" class="cancel-button">Keep sessions</button>
             </div>
           </section>
           <section id="unlink-section" class="session-actions" aria-label="OpenID Connect linking" hidden>
-            <button id="unlink-oidc" type="button" class="cancel-button">Unlink OpenID Connect</button>
+            <button id="unlink-oidc" type="button" class="cancel-button" data-provider-template="Unlink OpenID Connect">Unlink OpenID Connect</button>
             <div id="unlink-confirmation" hidden>
               <p>Remove this account's link to the configured provider and close all its Ignis sessions? A local password is required to retain access. If this is your account, you will be signed out.</p>
-              <p class="help">The provider account is not deleted. Automatic account linking, if enabled, may link it again on a later OpenID Connect sign-in.</p>
+              <p class="help" data-provider-template="The provider account is not deleted. Automatic account linking, if enabled, may link it again on a later OpenID Connect sign-in.">The provider account is not deleted. Automatic account linking, if enabled, may link it again on a later OpenID Connect sign-in.</p>
               <button id="confirm-unlink" type="button">Confirm unlinking</button>
               <button id="cancel-unlink" type="button" class="cancel-button">Keep link</button>
             </div>

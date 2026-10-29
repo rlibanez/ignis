@@ -281,6 +281,7 @@ function createAuthBoundary({
             oidcLinked: oidc ? !!oidc.linked(user.id) : null,
           })),
           oidcAvailable: !!oidc,
+          oidcButtonText: config.oidcButtonText,
           passwordPolicy: config.passwordPolicy,
         });
       if (!originAllowed(req, true) || !csrf.valid(req, session))
@@ -386,6 +387,8 @@ function createAuthBoundary({
       return session
         ? res.json({
             user: session.user,
+            hasLocalPassword: !!db.prepare("SELECT 1 FROM local_credentials WHERE user_id=?").get(session.user.id),
+            passwordPolicy: config.passwordPolicy,
             sessionId: session.id,
             expiresAt: session.expiresAt,
             oidcLinked: !!oidc?.linked(session.user.id),
@@ -397,6 +400,40 @@ function createAuthBoundary({
               now() - session.authenticatedAt < 300000,
           })
         : safe(res, 401, "Authentication required");
+    }
+    if (pathname === "/api/auth/password" && req.method === "POST") {
+      if (!session) return safe(res, 401, "Authentication required");
+      if (!originAllowed(req, true) || !csrf.valid(req, session))
+        return safe(res, 403, "Request rejected");
+      if (!limits.login(req.ip, session.user.login))
+        return safe(res, 429, "Too many requests");
+      const body = req.body;
+      if (!body || Array.isArray(body) ||
+          Object.keys(body).some((key) => !["currentPassword", "newPassword"].includes(key)) ||
+          typeof body.currentPassword !== "string" || typeof body.newPassword !== "string" ||
+          Buffer.byteLength(body.currentPassword) > 1024 || Buffer.byteLength(body.newPassword) > 1024)
+        return safe(res, 400, "Invalid password change request");
+      const token = cookies.read(req.headers.cookie);
+      try {
+        await require("./change-password").changePassword(
+          db, session.user.id, body.currentPassword, body.newPassword, config.passwordPolicy,
+          { isCurrent: (withinTransaction = false) => sessions.resolve(token, { withinTransaction })?.id === session.id },
+        );
+      } catch (error) {
+        const messages = {
+          INVALID_PASSWORD: "The current password is incorrect or no local password is configured.",
+          PASSWORD_POLICY: "The new password does not meet the password policy.",
+          PASSWORD_UNCHANGED: "Choose a different password.",
+          SESSION_CHANGED: "Your session changed. Sign in again before retrying.",
+        };
+        if (Object.hasOwn(messages, error.code))
+          return res.status(error.code === "SESSION_CHANGED" ? 401 : 400).json({ error: messages[error.code], code: error.code });
+        throw error;
+      }
+      csrf.consume(req);
+      res.append("Set-Cookie", cookies.clear());
+      sweepSockets();
+      return res.json({ signedOut: true });
     }
     if (pathname === "/api/auth/oidc/callback" && req.method === "GET") {
       if (!oidc || !initialized()) return safe(res, 404, "Not found");

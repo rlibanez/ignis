@@ -6,10 +6,10 @@ const config = (text) => readAuthConfig({
   ...(text === undefined ? {} : { IGNIS_OIDC_BUTTON_TEXT: text }),
 });
 it.each([undefined, "", "   "])("defaults blank button text: %s", (text) => {
-  expect(config(text).oidcButtonText).toBe("Sign in with OpenID Connect");
+  expect(config(text).oidcButtonText).toBe("OpenID Connect");
 });
 it("accepts custom text", () => {
-  expect(config("  Entrar con Authentik  ").oidcButtonText).toBe("Entrar con Authentik");
+  expect(config("  Authentik  ").oidcButtonText).toBe("Authentik");
   expect(config("a".repeat(80)).oidcButtonText.length).toBe(80);
 });
 it.each(["a".repeat(81), "a" + String.fromCharCode(10) + "b",

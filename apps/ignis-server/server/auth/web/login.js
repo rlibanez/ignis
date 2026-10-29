@@ -1,4 +1,11 @@
 (() => {
+  let providerName = "OpenID Connect";
+  function setProviderName(name) {
+    providerName = name || "OpenID Connect";
+    for (const element of document.querySelectorAll("[data-provider-template]"))
+      element.textContent = element.dataset.providerTemplate.replaceAll("OpenID Connect", () => providerName);
+  }
+
   const form = document.getElementById("login-form");
   const status = document.getElementById("status");
   const logout = document.getElementById("sign-out");
@@ -47,7 +54,7 @@
     } catch {
       status.textContent = link
         ? "Unable to link. Sign in again and retry."
-        : "Unable to start OpenID Connect sign-in. Please try again later.";
+        : `Unable to start ${providerName} sign-in. Please try again later.`;
       oidcButton.disabled = linkButton.disabled = false;
     }
   }
@@ -157,7 +164,7 @@
       form.hidden = accountPage;
       oidcAvailable = installation.oidcAvailable === true;
       oidcButton.hidden = !oidcAvailable;
-      oidcButton.textContent = installation.oidcButtonText || "Sign in with OpenID Connect";
+      setProviderName(installation.oidcButtonText);
       const outcome = new URL(location.href).searchParams.get("oidc");
       const returnIntent = outcome === "success" ? sessionStorage.getItem("ignis-reauth-return") : null;
       sessionStorage.removeItem("ignis-reauth-return");
@@ -172,6 +179,9 @@
       });
       if (current.ok) {
         const session = await current.json();
+        document.getElementById("change-password").hidden = !accountPage || !session.hasLocalPassword;
+        document.getElementById("password-policy").textContent =
+          `At least ${session.passwordPolicy.minLength} characters, including ${session.passwordPolicy.minSpecialChars} punctuation or symbol characters.`;
         if (intent) form.elements.login.value = session.user.login;
         if (outcome === "success" && ["users", "link"].includes(returnIntent)) {
           location.replace(destination(returnIntent));
@@ -185,7 +195,7 @@
         document.getElementById("manage-account").hidden = accountPage;
         document.getElementById("account").hidden = !accountPage;
         document.getElementById("account-status").textContent =
-          `Signed in as ${session.user.login}.`;
+          session.user.login;
         document.getElementById("open-ignis").hidden =
           session.user.role !== "admin";
         document.getElementById("manage-users").hidden = session.user.role !== "admin";
@@ -196,10 +206,6 @@
           form.elements.login.value = session.user.login;
           button.textContent = "Sign in again";
         }
-        document.getElementById("link-help").textContent = session.canLinkOidc
-          ? ""
-          : "Sign in again before linking. You will also authenticate with your identity provider.";
-        document.getElementById("link-help").hidden = linkButton.hidden || session.canLinkOidc;
         status.textContent =
           session.user.role === "admin"
             ? accountPage ? "" : "You are signed in."
@@ -209,7 +215,9 @@
           location.replace("/login");
           return;
         }
-        status.textContent = "Enter your Ignis account credentials.";
+        status.textContent = new URL(location.href).searchParams.get("password") === "changed"
+          ? "Password changed. All Ignis sessions have been closed. Sign in with your new password."
+          : "Enter your Ignis account credentials.";
       }
       else {
         status.textContent = current.status === 429
@@ -219,11 +227,11 @@
       }
       if (outcome === "failed")
         status.textContent =
-          "OpenID Connect sign-in failed. Please start again or contact your administrator.";
+          `${providerName} sign-in failed. Please start again or contact your administrator.`;
       if (intent && outcome !== "failed") {
         status.textContent = intent === "users"
           ? "Sign in again to manage users. You will return to user management afterwards."
-          : "Sign in again before linking your OpenID Connect account.";
+          : `Sign in again before linking your ${providerName} account.`;
         document.querySelector("h1").textContent = "Sign in again";
       }
       form.hidden = accountPage;
@@ -234,6 +242,85 @@
         : "Unable to check installation. Reload to try again.";
     }
   }
+  const passwordForm = document.getElementById("password-form");
+  const passwordStatus = document.getElementById("password-status");
+  function clearPasswordErrors() {
+    for (const field of passwordForm.querySelectorAll("input")) {
+      field.removeAttribute("aria-invalid");
+      field.removeAttribute("aria-describedby");
+    }
+    passwordStatus.hidden = true;
+    passwordStatus.textContent = "";
+  }
+  function showPasswordError(message, fieldName) {
+    clearPasswordErrors();
+    const field = fieldName ? passwordForm.elements[fieldName] : null;
+    const anchor = field ? field.parentElement : passwordForm.querySelector(".password-actions");
+    anchor.append(passwordStatus);
+    passwordStatus.textContent = message;
+    passwordStatus.hidden = false;
+    if (field) {
+      field.setAttribute("aria-invalid", "true");
+      field.setAttribute("aria-describedby", "password-status");
+      field.focus();
+    }
+  }
+  function clearPasswordFields() { passwordForm.reset(); }
+  passwordForm.addEventListener("input", clearPasswordErrors);
+  const passwordDialog = document.getElementById("password-dialog");
+  const passwordCancel = document.getElementById("cancel-password");
+  document.getElementById("change-password").addEventListener("click", () => {
+    clearPasswordFields();
+    clearPasswordErrors();
+    passwordDialog.showModal();
+    passwordForm.elements.currentPassword.focus();
+  });
+  passwordCancel.addEventListener("click", () => passwordDialog.close());
+  passwordDialog.addEventListener("close", clearPasswordFields);
+  passwordDialog.addEventListener("cancel", (event) => {
+    if (passwordCancel.disabled) event.preventDefault();
+  });
+  passwordForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const submit = passwordForm.querySelector('button[type="submit"]');
+    if (submit.disabled) return;
+    clearPasswordErrors();
+    if (passwordForm.elements.newPassword.value !== passwordForm.elements.confirmation.value) {
+      showPasswordError("New passwords do not match.", "confirmation");
+      return;
+    }
+    submit.disabled = passwordCancel.disabled = true;
+    let preserveNewPassword = false;
+    try {
+      const response = await request("/api/auth/password", {
+        currentPassword: passwordForm.elements.currentPassword.value,
+        newPassword: passwordForm.elements.newPassword.value,
+      });
+      if (!response.ok) {
+        const failure = await response.json();
+        if (response.status === 400 && failure.code === "INVALID_PASSWORD") {
+          preserveNewPassword = true;
+          passwordForm.elements.currentPassword.value = "";
+          showPasswordError("The current password is incorrect.", "currentPassword");
+        } else {
+          showPasswordError(response.status === 429 ? rateLimitMessage
+            : response.status === 400 ? failure.error
+              : "Unable to change your password. Sign in again before retrying.",
+            ["PASSWORD_POLICY", "PASSWORD_UNCHANGED"].includes(failure.code) ? "newPassword" : null);
+        }
+        return;
+      }
+      channel?.postMessage("lock");
+      try { await clearBrowserData(); } catch { /* Server sessions are already revoked. */ }
+      location.replace("/login?password=changed");
+    } catch {
+      showPasswordError("The change could not be confirmed. Sign in again before retrying.");
+    } finally {
+      if (!preserveNewPassword) clearPasswordFields();
+      submit.disabled = passwordCancel.disabled = false;
+    }
+  });
+  window.addEventListener("pagehide", clearPasswordFields);
   window.addEventListener("pagehide", () => {
     form.elements.password.value = "";
   });

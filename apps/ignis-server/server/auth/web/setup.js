@@ -29,7 +29,7 @@
         field("password").minLength = policy.minLength;
         field("passwordConfirmation").minLength = policy.minLength;
         document.getElementById("password-help").textContent =
-          `Use at least ${policy.minLength} characters, up to ${policy.maxBytes} UTF-8 bytes.` +
+          `Use at least ${policy.minLength} characters.` +
           (policy.minSpecialChars
             ? ` Include at least ${policy.minSpecialChars} punctuation or symbol characters (for example ! or *). Spaces do not count as symbols.`
             : " No special characters are required.");

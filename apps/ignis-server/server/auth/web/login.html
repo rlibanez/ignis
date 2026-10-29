@@ -15,17 +15,40 @@
       <h1>Sign in</h1>
       <p id="status" role="status" aria-live="polite">Checking installation…</p>
       <section id="account" hidden>
-        <p id="account-status"></p>
+        <div class="account-identity"><span class="identity-label">Username</span><p id="account-status"></p></div>
         <nav class="account-actions" aria-label="Account navigation">
           <a id="open-ignis" class="account-button" href="/" hidden>Open Ignis</a>
           <a id="manage-users" class="account-button secondary" href="/admin/users" hidden>Manage users</a>
         </nav>
-        <button id="link-oidc" hidden>Link OpenID Connect account</button>
-        <p id="link-help" class="help" hidden>
-          Sign in again before linking. You will also authenticate with your
-          identity provider.
-        </p>
+
+        <button id="link-oidc" class="account-button secondary" hidden data-provider-template="Link OpenID Connect account">Link OpenID Connect account</button>
+
+        <button id="change-password" class="account-button secondary" type="button" hidden>Change password</button>
       </section>
+      <dialog id="password-dialog" aria-labelledby="password-heading">
+        <h2 id="password-heading">Change password</h2>
+        <p>Enter your current local password. Changing it closes all your Ignis sessions, including this one.</p>
+        <p id="password-policy" class="help"></p>
+        <form id="password-form">
+          <label for="current-password">Current password</label>
+          <div class="password-field">
+            <input id="current-password" name="currentPassword" type="password" autocomplete="current-password" required maxlength="1024" />
+          </div>
+          <label for="new-password">New password</label>
+          <div class="password-field">
+            <input id="new-password" name="newPassword" type="password" autocomplete="new-password" required maxlength="1024" />
+          </div>
+          <label for="confirm-password">Confirm new password</label>
+          <div class="password-field">
+            <input id="confirm-password" name="confirmation" type="password" autocomplete="new-password" required maxlength="1024" />
+          </div>
+          <div class="password-actions">
+            <p id="password-status" role="alert" hidden></p>
+            <button id="cancel-password" class="account-button secondary" type="button">Cancel</button>
+            <button type="submit">Change password</button>
+          </div>
+        </form>
+      </dialog>
       <form id="login-form" hidden>
         <label for="login">Username</label>
         <input
@@ -46,12 +69,12 @@
         />
         <button type="submit">Sign in</button>
       </form>
-      <button id="oidc-sign-in" hidden>Sign in with OpenID Connect</button>
+      <button id="oidc-sign-in" hidden data-provider-template="Sign in with OpenID Connect">Sign in with OpenID Connect</button>
       <p><a id="manage-account" href="/account" hidden>Manage account</a></p>
       <button id="sign-out" hidden>Sign out</button>
       <dialog id="reauth-dialog" aria-labelledby="reauth-title">
         <h2 id="reauth-title">Sign in again to continue</h2>
-        <p>Linking an OpenID Connect account requires a recent sign-in. Sign in again, then return to Account and retry linking.</p>
+        <p data-provider-template="Linking an OpenID Connect account requires a recent sign-in. Sign in again, then return to Account and retry linking.">Linking an OpenID Connect account requires a recent sign-in. Sign in again, then return to Account and retry linking.</p>
         <a class="account-button" href="/login?reauth=link">Sign in again</a>
         <button id="cancel-reauth" type="button">Cancel</button>
       </dialog>

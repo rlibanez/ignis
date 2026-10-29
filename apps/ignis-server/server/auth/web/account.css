@@ -24,3 +24,59 @@
 
 #reauth-dialog { max-width: 28rem; width: calc(100% - 4rem); border: 1px solid #777d8d; border-radius: .65rem; padding: 1.5rem; background: light-dark(#fff, #202229); color: inherit; }
 #reauth-dialog::backdrop { background: #080b1480; }
+
+/* Floating feedback does not occupy space in the form. */
+.password-field, .password-actions { position: relative; }
+#password-dialog #password-status {
+  position: absolute;
+  z-index: 2;
+  bottom: calc(100% + .4rem);
+  left: 0;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: 100%;
+  margin: 0;
+  padding: .55rem .75rem;
+  border: 1px solid light-dark(#bd5266, #ae6375);
+  border-radius: .45rem;
+  background: light-dark(#fff0f3, #432631);
+  color: light-dark(#8c1e35, #ffc2cf);
+  box-shadow: 0 .3rem 1rem #0003;
+  font-size: .85rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+#password-dialog #password-status::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 1rem;
+  border: .35rem solid transparent;
+  border-top-color: light-dark(#bd5266, #ae6375);
+}
+
+/* Account layout: identity, navigation, security, then sign-out. */
+.account-page main { max-width: 30rem; margin: 3rem auto; padding: 2rem; }
+.account-page .brand { font-size: .75rem; margin: 0 0 1.25rem; }
+.account-page h1 { font-size: 1.75rem; margin: 0 0 1.5rem; letter-spacing: -.025em; }
+.account-identity { padding: 1rem 1.25rem; margin-bottom: 1.25rem; border-radius: .75rem; background: light-dark(#fff, #20232b); border: 1px solid light-dark(#e0e2e9, #333742); }
+.identity-label { font-size: .75rem; color: light-dark(#626978, #a7aebd); }
+.account-page #account-status { margin: .15rem 0 0; color: inherit; font-size: 1.15rem; font-weight: 650; overflow-wrap: anywhere; }
+.account-actions { gap: .6rem; }
+.account-page .account-button { padding: .75rem 1rem; font-size: .95rem; border-radius: .6rem; }
+.account-page .account-button.secondary { border-color: light-dark(#d4d7e1, #414653); background: light-dark(#fff, #20232b); }
+.account-page #sign-out { margin-top: 1.5rem; padding: .75rem; font-size: .9rem; background: transparent; border-color: light-dark(#dec4ca, #65434b); color: light-dark(#9c293c, #e7a4b1); border-radius: .6rem; }
+.account-page main > p:has(> #manage-account[hidden]) { display: none; }
+@media (max-width: 480px) {
+  .account-page main { margin: 1rem auto; padding: 1.25rem; }
+}
+
+.account-page #link-oidc, .account-page #change-password { margin-top: .6rem; }
+#password-dialog { box-sizing: border-box; width: min(34rem, calc(100% - 2rem)); max-height: calc(100dvh - 2rem); overflow-y: auto; padding: 1.5rem; border: 1px solid light-dark(#d4d7e1, #414653); border-radius: .75rem; background: light-dark(#fff, #20232b); color: inherit; }
+#password-dialog::backdrop { background: #080b1480; backdrop-filter: blur(3px); }
+#password-dialog h2 { margin-top: 0; }
+#password-dialog > p { font-size: .9rem; }
+.password-actions { display: flex; gap: .75rem; margin-top: 1.5rem; }
+.password-actions button { margin: 0; width: auto; flex: 1; }
+@media (max-width: 480px) { .password-actions { flex-direction: column-reverse; } }

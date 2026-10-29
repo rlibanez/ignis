@@ -73,3 +73,16 @@ button:disabled {
     padding: 1.25rem;
   }
 }
+
+.form-error:not(:empty), .field-error:not(:empty) {
+  padding: .75rem 1rem;
+  border: 1px solid light-dark(#c25969, #a76070);
+  border-left-width: 3px;
+  border-radius: .45rem;
+  background: light-dark(#fff0f2, #3c252d);
+  color: light-dark(#932238, #ffbdc9);
+  font-size: .9rem;
+  font-weight: 550;
+}
+.field-error { margin: .5rem 0 0; }
+input[aria-invalid="true"] { border-color: light-dark(#b32b45, #f08ca0); outline-color: light-dark(#b32b45, #f08ca0); }
