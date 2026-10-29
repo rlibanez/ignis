@@ -10,6 +10,7 @@ const { getOrBuild, getOrCompress } = require("../cache");
 const router = express.Router();
 
 router.get("/", async (req, res) => {
+  config.refreshVaults();
   const vaultId = req.query.vault || config.defaultVaultId;
 
   if (!vaultId || !config.getVaultPathOrRescan(vaultId)) {

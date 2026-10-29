@@ -442,7 +442,11 @@ async function getOrBuild(vaultId) {
     return pendingBuilds.get(vaultId);
   }
 
-  const promise = buildEntry(vaultId).finally(() => {
+  const promise = buildEntry(vaultId).then(entry => {
+    // The global catalog can change without any mutation in this vault.
+    if (entry) entry.response.vaultList = buildVaultList();
+    return entry;
+  }).finally(() => {
     pendingBuilds.delete(vaultId);
   });
 

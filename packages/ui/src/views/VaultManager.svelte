@@ -485,7 +485,19 @@
   .registration-body p { margin: 0 0 1rem; color: var(--text-muted); }
   .registration-body label { display: block; font-weight: 600; margin-bottom: 0.5rem; }
   .registration-body .owner-label { margin-top: 1rem; }
-  .registration-body input, .registration-body select { box-sizing: border-box; width: 100%; padding: 0.625rem 0.75rem; border: 1px solid var(--background-modifier-border); border-radius: 0.375rem; color: var(--text-normal); background: var(--background-primary); }
+  .registration-body input, .registration-body select {
+    box-sizing: border-box;
+    width: 100%;
+    height: var(--input-height, 2.25rem);
+    padding: 0 0.75rem;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 0.375rem;
+    color: var(--text-normal);
+    background: var(--background-primary);
+    font: inherit;
+    line-height: normal;
+  }
+  .registration-body select { appearance: auto; }
   .registration-body .registration-error { margin: 1rem 0 0; padding: 0.75rem; border: 1px solid var(--text-error, #e36d79); border-radius: 0.375rem; color: var(--text-error, #e36d79); }
   .registration-actions { display: flex; justify-content: flex-end; gap: 0.625rem; padding: 1rem 1.5rem; }
   .section-header {

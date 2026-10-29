@@ -68,7 +68,12 @@ const syncHandlers = {
   "vault-list": () => {
     const result = {};
 
-    for (const v of window.__vaultList || []) {
+    // Refresh when opening the switcher: another session may have changed the catalog.
+    let vaults;
+    try { vaults = vaultService.listVaultsSync(); }
+    catch { vaults = []; }
+
+    for (const v of vaults) {
       result[v.id] = {
         path: "/" + v.id,
         ts: Date.now(),

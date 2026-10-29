@@ -491,3 +491,36 @@ describe("vault plugin trust", () => {
     }
   });
 });
+
+describe("bootstrap vault catalog freshness", () => {
+  it("refreshes another vault's removal and creation in cached and compressed responses", async () => {
+    const { gunzipSync, brotliDecompressSync } = require("zlib");
+    const replacementDir = path.join(VAULT_ROOT, "replacement");
+    config.refreshVaults();
+    try {
+      const entry = await bootstrapCache.getOrBuild(VAULT_ID);
+      require("./compress").markCompressionStale(entry);
+      const oldCompression = bootstrapCache.getOrCompress(entry);
+      const tree = entry.response.tree;
+      const etag = entry.etag;
+      fs.renameSync(otherDir, replacementDir);
+      config.refreshVaults();
+      const refreshed = await bootstrapCache.getOrBuild(VAULT_ID);
+      const compressed = await bootstrapCache.getOrCompress(refreshed);
+      await oldCompression;
+      expect(refreshed.response.tree).toBe(tree);
+      expect(refreshed.etag).toBe(etag);
+      expect(refreshed.response.vaultList.map(v => v.id).sort()).toEqual(["replacement", VAULT_ID]);
+      for (const response of [
+        JSON.parse(gunzipSync(compressed.gz)),
+        JSON.parse(brotliDecompressSync(compressed.br)),
+      ]) {
+        expect(response.vaultList.map(v => v.id).sort()).toEqual(["replacement", VAULT_ID]);
+      }
+      expect(await bootstrapCache.getOrCompress(refreshed)).toBe(compressed);
+    } finally {
+      if (fs.existsSync(replacementDir)) fs.renameSync(replacementDir, otherDir);
+      config.refreshVaults();
+    }
+  });
+});

@@ -22,13 +22,18 @@ function markCompressionStale(entry) {
   compressedEtags.delete(entry);
 }
 
+function compressionKey(entry) {
+  return JSON.stringify([entry.etag, entry.response.vaultList]);
+}
+
 function getOrCompress(entry) {
+  const key = compressionKey(entry);
   // bust compression cache.
-  if (compressedEtags.get(entry) === entry.etag) {
+  if (compressedEtags.get(entry) === key) {
     return Promise.resolve(entry.compressed);
   }
 
-  const etag = entry.etag;
+  const etag = key;
   const inFlight = compressing.get(entry);
 
   if (inFlight && inFlight.etag === etag) {
@@ -40,7 +45,7 @@ function getOrCompress(entry) {
 
   run.promise = preCompress(jsonBuf)
     .then((compressed) => {
-      if (entry.etag === etag) {
+      if (compressionKey(entry) === etag) {
         entry.compressed = compressed;
         compressedEtags.set(entry, etag);
       }

@@ -61,3 +61,19 @@ describe("the request-url log line", () => {
     expect(JSON.stringify(log.mock.calls)).not.toContain("SECRET");
   });
 });
+
+describe("vault switcher catalog", () => {
+  it("uses the server list instead of a stale bootstrap list", async () => {
+    const { vaultService } = await import("@ignis/services");
+    window.__vaultList = [{ id: "deleted" }, { id: "existing" }];
+    vi.spyOn(vaultService, "listVaultsSync").mockReturnValue([{ id: "existing" }]);
+    expect(Object.keys(ipcRenderer.sendSync("vault-list"))).toEqual(["existing"]);
+  });
+
+  it("does not offer cached vaults when refreshing fails", async () => {
+    const { vaultService } = await import("@ignis/services");
+    window.__vaultList = [{ id: "deleted" }];
+    vi.spyOn(vaultService, "listVaultsSync").mockImplementation(() => { throw new Error("offline"); });
+    expect(ipcRenderer.sendSync("vault-list")).toEqual({});
+  });
+});
