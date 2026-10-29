@@ -13,6 +13,7 @@
     csrf = null,
     csrfAt = 0,
     refresh = null;
+  let vaultCatalog = null;
   const pending = new Set();
   const xhrs = new Set();
   const requests = new WeakMap();
@@ -29,12 +30,24 @@
   }
   function lock(
     message = "Your session has ended or changed. Sign in again to continue.",
+    vaultLost = false,
   ) {
     if (blocked) return;
     blocked = true;
-    document.title = "Sign in to Ignis";
+    document.title = vaultLost ? "Vault unavailable" : "Sign in to Ignis";
     csrf = null;
-    const snapshot = window.__ignis?.writes?.snapshotPending?.() || [];
+    const snapshot = [...(window.__ignis?.writes?.snapshotPending?.() || [])];
+    // Include editor text that has not reached the write queue yet.
+    if (vaultLost) {
+      try { window.app?.workspace?.iterateAllLeaves?.(leaf => {
+        try {
+        const editor = leaf.view?.editor;
+        const path = leaf.view?.file?.path;
+        if (path && typeof editor?.getValue === "function")
+          snapshot.push({ path, encoding: "utf8", data: editor.getValue(), source: "open-editor" });
+        } catch { /* An unavailable editor must not prevent locking. */ }
+      }); } catch { /* Preserve queued writes even if editor enumeration fails. */ }
+    }
     window.dispatchEvent(new Event("ignis:auth-lost"));
     for (const controller of pending) controller.abort();
     for (const xhr of xhrs) xhr.abort();
@@ -44,12 +57,17 @@
     panel.style.cssText =
       "max-width:32rem;margin:3rem auto;padding:2rem;font:16px system-ui";
     const heading = document.createElement("h1");
-    heading.textContent = "Session locked";
+    heading.textContent = vaultLost ? "Vault unavailable" : "Session locked";
     const text = document.createElement("p");
     text.textContent = message;
     const link = document.createElement("a");
-    link.href = "/login";
-    link.textContent = "Sign in";
+    link.href = vaultLost ? "/?manager=1" : "/login";
+    link.textContent = vaultLost ? "Open Vault Manager" : "Sign in";
+    const actionStyle =
+      "box-sizing:border-box;display:flex;align-items:center;justify-content:center;width:100%;height:auto;min-height:2.75rem;padding:0.625rem 1rem;border:1px solid var(--background-modifier-border,#555);border-radius:6px;background:var(--interactive-normal,#333);color:var(--text-normal,#eee);font:inherit;font-weight:600;text-align:center;text-decoration:none;white-space:normal;cursor:pointer;box-shadow:none";
+    link.style.cssText = actionStyle;
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:flex;flex-direction:column;gap:0.75rem;margin-top:1.5rem";
     panel.append(heading, text);
     if (snapshot.length) {
       const warning = document.createElement("p");
@@ -57,6 +75,7 @@
         "Some writes were not confirmed. Download them before leaving this page; they will not be sent under a different session.";
       const save = document.createElement("button");
       save.textContent = "Download unconfirmed writes";
+      save.style.cssText = actionStyle;
       save.onclick = () => {
         const url = URL.createObjectURL(
           new Blob([JSON.stringify(snapshot, null, 2)], {
@@ -69,10 +88,31 @@
         a.click();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       };
-      panel.append(warning, save);
+      panel.append(warning);
+      actions.append(save);
     }
-    panel.append(link);
+    actions.append(link);
+    panel.append(actions);
     document.body.append(panel);
+  }
+  function vaultUnavailable() {
+    lock("This vault was removed, renamed or made unavailable. Saving has stopped. Download any unconfirmed changes before returning to the Vault Manager.", true);
+  }
+  async function checkVault() {
+    const response = await nativeFetch("/api/vault/list", {
+      credentials: "same-origin", cache: "no-store",
+      headers: { "X-Ignis-Context": sessionId },
+    });
+    if (!response.ok) return; // An outage is not proof of deletion.
+    const list = await response.json();
+    if (!Array.isArray(list)) return;
+    const id = window.__currentVaultId;
+    if (vaultCatalog && id) {
+      const before = vaultCatalog.find(v => v.id === id);
+      const now = list.find(v => v.id === id);
+      if (before && (!now || (before.uuid && before.uuid !== now.uuid))) vaultUnavailable();
+    }
+    if (!vaultCatalog) vaultCatalog = list;
   }
   async function context() {
     const response = await nativeFetch("/api/auth/session", {
@@ -210,6 +250,7 @@
     } catch {
       lock("Your session could not be verified. Sign in again to continue.");
     }
+    if (!blocked) await checkVault().catch(() => {});
   }
   async function logout() {
     const unsaved = window.__ignis?.writes?.snapshotPending?.() || [];
@@ -243,6 +284,7 @@
     try {
       await context();
       await token();
+      await checkVault().catch(() => {});
     } catch (error) {
       lock();
       throw error;
@@ -253,6 +295,7 @@
     check,
     lock,
     logout,
+    vaultUnavailable,
     get blocked() {
       return blocked;
     },

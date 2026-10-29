@@ -133,9 +133,14 @@ export function createWsClient() {
       dispatch(msg);
     };
 
-    ws.onclose = () => {
-      window.__ignisAuth?.check();
+    ws.onclose = (event) => {
       ws = null;
+      if (event?.code === 4002) {
+        manuallyClosed = true;
+        window.__ignisAuth?.vaultUnavailable?.();
+      } else {
+        window.__ignisAuth?.check();
+      }
       setState("closed");
 
       if (!manuallyClosed) {

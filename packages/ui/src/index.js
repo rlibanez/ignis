@@ -1,4 +1,4 @@
-import "./bootstrap.js";
+export { showVaultManager } from "./bootstrap.js";
 
 export { default as VaultManager } from "./views/VaultManager.svelte";
 export { default as MessageDialog } from "./components/layout/MessageDialog.svelte";

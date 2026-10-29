@@ -6,6 +6,13 @@ const source = fs.readFileSync(
   "utf8",
 );
 async function fixture() {
+  let catalog = [{ id: "Notes", uuid: "original" }];
+  const elements = [];
+  let download;
+  class TestURL extends URL {
+    static createObjectURL(blob) { download = blob; return "blob:test"; }
+    static revokeObjectURL() {}
+  }
   const calls = [],
     events = [];
   let status = 200,
@@ -35,12 +42,12 @@ async function fixture() {
       this.aborted = true;
     }
   }
-  const element = () => ({
+  const element = () => { const el = {
     style: {},
     append() {},
     replaceChildren() {},
     click() {},
-  });
+  }; elements.push(el); return el; };
   const document = { body: element(), createElement: element };
   const window = {
     document,
@@ -50,6 +57,7 @@ async function fixture() {
     fetch: async (input, init = {}) => {
       calls.push({ input, init });
       const url = input instanceof Request ? input.url : String(input);
+      if (url.endsWith("/api/vault/list")) return Response.json(catalog, { status });
       if (url.endsWith("/session"))
         return Response.json({ user: { role: "admin" }, sessionId: current });
       if (url.endsWith("/csrf"))
@@ -66,7 +74,7 @@ async function fixture() {
       href: "https://ignis.test/",
       replace() {},
     },
-    URL,
+    URL: TestURL,
     Request,
     Headers,
     Response,
@@ -84,6 +92,9 @@ async function fixture() {
   calls.length = 0;
   return {
     window,
+    elements,
+    catalog: value => { catalog = value; },
+    download: () => download,
     calls,
     events,
     status: (value) => {
@@ -139,4 +150,65 @@ it("locks an old tab when a different session replaces its cookie", async () => 
   const xhr = new f.window.XMLHttpRequest();
   xhr.open("POST", "/api/fs/writeFile", false);
   expect(() => xhr.send()).toThrow("locked");
+});
+
+it("locks a removed vault and exports queued writes plus unsaved editor text", async () => {
+  const f = await fixture();
+  f.window.__currentVaultId = "Notes";
+  f.window.__ignis = { writes: { snapshotPending: () => [{ path: "queued.md", data: "queued" }] } };
+  f.window.app = { workspace: { iterateAllLeaves: fn => fn({ view: { file: { path: "edit.md" }, editor: { getValue: () => "unsaved text" } } }) } };
+  f.catalog([]);
+  await f.window.__ignisAuth.check();
+  expect(f.window.__ignisAuth.blocked).toBe(true);
+  expect(f.events).toContain("ignis:auth-lost");
+  expect(f.elements.some(el => el.textContent === "Vault unavailable")).toBe(true);
+  expect(f.elements.find(el => el.textContent === "Open Vault Manager").href).toBe("/?manager=1");
+  f.elements.find(el => el.textContent === "Download unconfirmed writes").onclick();
+  expect(JSON.parse(await f.download().text()).map(e => e.data)).toEqual(["queued", "unsaved text"]);
+  await expect(f.window.fetch("/api/fs/writeFile", { method: "POST" })).rejects.toThrow("locked");
+});
+it("locks when a different vault reuses the same directory", async () => {
+  const f = await fixture();
+  f.window.__currentVaultId = "Notes";
+  f.catalog([{ id: "Notes", uuid: "replacement" }]);
+  await f.window.__ignisAuth.check();
+  expect(f.window.__ignisAuth.blocked).toBe(true);
+});
+it("does not mistake a catalog outage or another vault deletion for losing the open vault", async () => {
+  const f = await fixture();
+  f.window.__currentVaultId = "Notes";
+  f.status(503);
+  await f.window.__ignisAuth.check();
+  expect(f.window.__ignisAuth.blocked).toBe(false);
+  f.status(200);
+  await f.window.__ignisAuth.check();
+  expect(f.window.__ignisAuth.blocked).toBe(false);
+});
+it("still blocks requests when an editor cannot be exported", async () => {
+  const f = await fixture();
+  f.window.app = { workspace: { iterateAllLeaves() { throw new Error("broken editor"); } } };
+  f.window.__ignisAuth.vaultUnavailable();
+  expect(f.window.__ignisAuth.blocked).toBe(true);
+  expect(f.events).toContain("ignis:auth-lost");
+});
+
+it("opens the standalone manager without booting the removed vault or Obsidian", async () => {
+  const html = fs.readFileSync(new URL("../assets/index.html", import.meta.url), "utf8");
+  const script = html.match(/<script>\s*(\(async function[\s\S]*?)<\/script>/)[1];
+  const loaded = [];
+  let opened = false;
+  let splashRemoved = false;
+  await vm.runInNewContext(script, {
+    window: { __ignisAuth: { ready: Promise.resolve() }, IgnisUI: { showVaultManager() { opened = true; } } },
+    location: { search: "?manager=1" },
+    URLSearchParams,
+    document: {
+      createElement: () => ({}),
+      head: { appendChild(script) { loaded.push(script.src); script.onload(); } },
+      getElementById: () => ({ remove() { splashRemoved = true; } }),
+    },
+  });
+  expect(loaded).toEqual(["__IGNIS_UI_SRC__"]);
+  expect(opened).toBe(true);
+  expect(splashRemoved).toBe(true);
 });

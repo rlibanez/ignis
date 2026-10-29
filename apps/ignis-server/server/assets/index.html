@@ -57,8 +57,15 @@
         document.head.appendChild(script);
       });
     }
+    const uiSrc = "__IGNIS_UI_SRC__";
+    if (new URLSearchParams(location.search).get("manager") === "1") {
+      await load(uiSrc);
+      document.getElementById("ignis-status")?.remove();
+      window.IgnisUI.showVaultManager();
+      return;
+    }
     await load("__SHIM_LOADER_SRC__");
-    await load("__IGNIS_UI_SRC__");
+    await load(uiSrc);
   } catch {
     window.__ignisAuth?.lock("Unable to start Ignis. Sign in again to continue.");
     return;
