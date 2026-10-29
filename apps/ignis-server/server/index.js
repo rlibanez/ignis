@@ -91,6 +91,7 @@ for (const router of [fsRoutes, pluginRoutes, bootstrapRoutes]) {
 }
 app.use("/api/fs", fsRoutes);
 app.use("/api/vault", vaultRoutes);
+app.use("/api/vault-config", require("./routes/vault-config"));
 app.use("/api/proxy", proxyRoutes);
 app.use("/api/version", versionRoutes);
 app.use("/api/settings", settingsRoutes);

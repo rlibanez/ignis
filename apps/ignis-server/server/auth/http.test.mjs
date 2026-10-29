@@ -50,6 +50,7 @@ beforeEach(async () => {
     next();
   });
   app.use(boundary.revalidate);
+  app.use("/api/vault-config", require("../routes/vault-config"));
   app.get("/api/bootstrap", (req, res) => res.json({ privateConfiguration: req.privateVaultConfiguration(req.query.vault) }));
   app.get("/api/vault/list", (req, res) => res.json(["private vault"]));
   app.post("/api/fs/writeFile", (req, res) => res.json({ ok: true }));
@@ -1185,4 +1186,24 @@ it("binds bootstrap private configuration to the authenticated account and regis
   expect(config[".obsidian/community-plugins.json"].content).toBe("[]");
   expect((await request(`/api/bootstrap?vault=${vault.id}`, {jar:await login("normal")})).status).toBe(403);
   expect((await request(`/api/bootstrap?vault=${vault.id}`)).status).toBe(401);
+});
+
+it("protects private configuration writes with CSRF, revision checks and a server-derived identity", async () => {
+  const owner = db.prepare("SELECT id FROM users WHERE role='admin'").get().id;
+  const vault = require("./store").registerVault(db, root, "vault", owner);
+  const jar = await login();
+  const route = `/api/vault-config?vault=${vault.id}&path=.obsidian/app.json`;
+  expect((await request(route,{jar})).status).toBe(200);
+  const body = {vault:vault.id,path:".obsidian/app.json",content:'{"spellcheck":true}',expectedRevision:0,userId:"normal"};
+  expect((await request("/api/vault-config",{jar,method:"POST",body})).status).toBe(403);
+  const headers = {"x-ignis-csrf":await csrf(jar)};
+  const save = () => request("/api/vault-config",{jar,method:"POST",body,headers});
+  expect((await save()).status).toBe(200);
+  const conflict = await save();
+  expect(conflict.status).toBe(409);
+  expect((await conflict.json()).code).toBe("PREFERENCES_CONFLICT");
+  expect(db.prepare("SELECT user_id FROM vault_preferences").get().user_id).toBe(owner);
+  expect((await request(route,{jar})).headers.get("cache-control")).toBe("no-store");
+  expect((await request("/api/vault-config",{jar,method:"POST",body:{...body,path:".obsidian/community-plugins.json"},headers})).status).toBe(400);
+  expect((await request(route,{jar:await login("normal")})).status).toBe(403);
 });

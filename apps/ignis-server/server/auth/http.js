@@ -884,6 +884,19 @@ function createAuthBoundary({
           });
           return true;
         };
+        req.vaultConfiguration = (operation, input) => {
+          const reference = require("./vault-selection").selectVaultReference(req.query, req.body);
+          if (!reference) throw Object.assign(new Error("Configuration unavailable"), {code:"INVALID_VAULT_SELECTION"});
+          const token = cookies.read(req.headers.cookie);
+          const result = vaultConfig[operation](token, { reference, path: input.path,
+            content: input.content, expectedRevision: input.expectedRevision });
+          // Preserve a response-time authorization check as well as the service check.
+          req.revalidateVaultFile = () => {
+            try { vaultConfig.read(token, { reference, path: input.path }); return true; }
+            catch { return false; }
+          };
+          return result;
+        };
         req.privateVaultConfiguration = directory => {
           const reference = db.prepare("SELECT id FROM vaults WHERE directory=? AND status='active'").get(directory)?.id;
           // Unregistered administrator vaults retain their existing behavior.

@@ -1,6 +1,7 @@
 // Inventory of data APIs. This classifies surfaces; it does NOT grant vault access.
 // The HTTP/WS boundary continues to require an active administrator for data.
 const groups = [
+  { mount: "/api/vault-config", source: "routes/vault-config.js", surface: "private-configuration", routes: [["GET", "/", "read"], ["POST", "/", "write"]] },
   { mount: "/api/fs", source: "routes/fs.js", surface: "vault-content", routes: [
     ...["stat", "readFile", "access", "tree", "download", "download-zip"].map(name => ["GET", `/${name}`, "read"]),
     ...["writeFile", "appendFile", "mkdir", "rename", "copyFile", "utimes"].map(name => ["POST", `/${name}`, "write"]),
