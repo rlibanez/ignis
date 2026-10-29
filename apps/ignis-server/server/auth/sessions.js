@@ -71,6 +71,7 @@ function createSessionService(
       .run(at, at).changes;
   }
   function insert(user, method, issuer, subject, authenticatedAt, at) {
+    if (db.prepare("SELECT 1 FROM password_resets WHERE user_id=?").get(user.id)) return null;
     prune(at);
     // Bound per-user sessions; evict oldest before insertion so the new session survives ties.
     db.prepare(
@@ -189,6 +190,7 @@ function createSessionService(
     if (!row) return null;
     let valid =
       row.status === "active" &&
+      !db.prepare("SELECT 1 FROM password_resets WHERE user_id=?").get(row.user_id) &&
       row.current_version === row.auth_version &&
       row.created_at <= at &&
       row.last_activity <= at &&

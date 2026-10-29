@@ -68,9 +68,16 @@ footer { margin-top: 1.5rem; }
 #edit-status:empty { display: none; }
 
 #edit-heading { overflow-wrap: anywhere; }
-#edit-user-name { color: light-dark(#6541ad, #c4a9ff); }
-.session-actions { margin-top: 1rem; }
-.session-actions > button { margin-top: .5rem; }
+#edit-user-name, #reset-user, #password-user { color: light-dark(#6541ad, #c4a9ff); }
+.edit-account-actions { display: grid; gap: .6rem; margin-top: 1rem; }
+.edit-account-actions > button,
+.edit-account-actions > .session-actions,
+.edit-account-actions > .dialog-actions,
+.edit-account-actions .session-actions > button,
+.edit-account-actions .unlink-control > button { margin: 0; }
+.edit-account-actions .dialog-actions { gap: .6rem; }
+.edit-account-actions #revoke-confirmation > button,
+.edit-account-actions #unlink-confirmation > button { margin-top: .6rem; }
 .warning-button { background: light-dark(#fff0d6, #44321d); color: light-dark(#714600, #ffd18a); border: 1px solid light-dark(#ae772b, #a47a40); }
 .warning-button:hover:not(:disabled) { background: light-dark(#ffe1ac, #594124); }
 .warning-button:focus-visible { outline: 3px solid light-dark(#8b5a13, #ffd18a); outline-offset: 3px; }
@@ -78,8 +85,8 @@ footer { margin-top: 1.5rem; }
 .email-confirmation { display: flex; align-items: flex-start; gap: .6rem; font-size: .9rem; }
 .email-confirmation input { width: auto; margin-top: .25rem; }
 
-#password-dialog, #reauth-dialog { box-sizing: border-box; width: min(30rem, calc(100% - 2rem)); max-height: calc(100dvh - 2rem); overflow-y: auto; padding: 1.5rem; border: 1px solid #777d8d; border-radius: .75rem; background: light-dark(#fff, #202229); color: inherit; }
-#password-dialog::backdrop, #reauth-dialog::backdrop { background: #080b1480; backdrop-filter: blur(3px); }
+#reset-dialog, #password-dialog, #reauth-dialog { box-sizing: border-box; width: min(30rem, calc(100% - 2rem)); max-height: calc(100dvh - 2rem); overflow-y: auto; padding: 1.5rem; border: 1px solid #777d8d; border-radius: .75rem; background: light-dark(#fff, #202229); color: inherit; }
+#reset-dialog::backdrop, #password-dialog::backdrop, #reauth-dialog::backdrop { background: #080b1480; backdrop-filter: blur(3px); }
 #reauth-status:not(:empty) { padding: .75rem; color: light-dark(#932238, #ffbdc9); background: light-dark(#fff0f2, #3c252d); border-radius: .45rem; }
 
 .field-heading { position: relative; display: flex; align-items: center; gap: .5rem; margin: 1.25rem 0 .4rem; }
@@ -89,7 +96,15 @@ footer { margin-top: 1.5rem; }
 .help-tooltip { position: absolute; z-index: 4; top: calc(100% + .4rem); left: 0; box-sizing: border-box; width: min(27rem, 100%); padding: .75rem; border: 1px solid light-dark(#b9bdc9, #696d7b); border-radius: .5rem; background: light-dark(#fff, #30333d); color: inherit; box-shadow: 0 .5rem 1.5rem #0004; font-size: .85rem; line-height: 1.5; }
 
 .unlink-control { position: relative; }
-.unlink-control > button { margin-top: .5rem; }
 .unlink-control:focus-visible { outline: 3px solid #a48be8; outline-offset: 3px; border-radius: .45rem; }
 .unlink-control > button:disabled { opacity: .5; cursor: not-allowed; pointer-events: none; }
 .unlink-control > .help-tooltip { top: auto; bottom: calc(100% + .4rem); }
+
+.clipboard-helper { position: fixed; left: -10000px; top: 0; opacity: 0; }
+
+.password-with-copy input { padding-right: 6rem; }
+.password-control .password-copy { right: 3rem; }
+.password-copy .copy-success, .password-copy.copied .copy-icon { display: none; }
+.password-copy.copied .copy-success { display: inline; }
+.copy-feedback { position: absolute; bottom: calc(100% + .35rem); right: 0; padding: .3rem .55rem; border-radius: .35rem; background: light-dark(#edeaf5, #353040); color: inherit; font-size: .8rem; pointer-events: none; }
+.copy-feedback:empty { display: none; }

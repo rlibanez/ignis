@@ -68,7 +68,6 @@
 .account-page #account-status { margin: .15rem 0 0; color: inherit; font-size: 1.15rem; font-weight: 650; overflow-wrap: anywhere; }
 .account-actions { gap: .6rem; }
 #sign-out { margin-top: 1.5rem; padding: .75rem; font-size: .9rem; background: transparent; border-color: light-dark(#dec4ca, #65434b); color: light-dark(#9c293c, #e7a4b1); border-radius: .6rem; }
-.account-page main > p:has(> #manage-account[hidden]) { display: none; }
 @media (max-width: 480px) {
   .account-page main { margin: 1rem auto; padding: 1.25rem; }
 }
@@ -81,3 +80,7 @@
 .password-actions { display: flex; gap: .75rem; margin-top: 1.5rem; }
 .password-actions button { margin: 0; width: auto; flex: 1; }
 @media (max-width: 480px) { .password-actions { flex-direction: column-reverse; } }
+
+body:not(.account-page) .login-actions { display: grid; gap: .6rem; margin-top: .6rem; }
+body:not(.account-page) .login-actions > * { margin: 0; }
+.login-actions:not(:has(> :not([hidden]))) { display: none; }

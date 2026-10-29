@@ -34,3 +34,16 @@ it("prints the missing-admin error and exits before asking for credentials", () 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+it("refuses to print a reset secret to a non-interactive terminal", () => {
+  const root = mkdtempSync(join(tmpdir(), "ignis-cli-reset-"));
+  try {
+    const db = require("./database").openDatabase(root); db.close();
+    const result = spawnSync(process.execPath, [new URL("./cli.js", import.meta.url).pathname, "reset-password", "admin"], {
+      env: { ...process.env, DATA_ROOT: root }, encoding: "utf8", timeout: 10000,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Reset secret requires an interactive terminal");
+    expect(result.stdout).not.toContain("Temporary secret");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

@@ -1,10 +1,13 @@
 (() => {
   const hideAll = [];
   for (const input of document.querySelectorAll('input[type="password"]')) {
-    const wrapper = document.createElement("div");
-    wrapper.className = "password-control";
-    input.before(wrapper);
-    wrapper.append(input);
+    let wrapper = input.parentElement;
+    if (!wrapper.classList.contains("password-control")) {
+      wrapper = document.createElement("div");
+      wrapper.className = "password-control";
+      input.before(wrapper);
+      wrapper.append(input);
+    }
     const button = document.createElement("button");
     button.type = "button";
     button.className = "password-toggle";

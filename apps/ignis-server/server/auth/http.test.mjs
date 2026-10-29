@@ -952,3 +952,61 @@ it("denies non-admin password setup and foreign-origin or injected requests", as
   expect((await request(path, { jar, method: "POST", body: { ...body, role: "admin" }, headers })).status).toBe(400);
   expect((await request(path, { jar, method: "POST", body, headers })).status).toBe(400);
 });
+
+it("issues password-reset secrets only to recently authenticated administrators with CSRF and exact context", async () => {
+  const jar = await login(); const normal = await login("normal");
+  const context = (await (await request("/api/auth/session", { jar })).json()).sessionId;
+  const path = "/api/auth/users/reset-password"; const body = { userId: "normal" };
+  expect((await request(path, { jar: normal, method: "POST", body, headers: { "x-ignis-csrf": await csrf(normal) } })).status).toBe(403);
+  expect((await request(path, { jar, method: "POST", body })).status).toBe(403);
+  const headers = { "x-ignis-context": context, "x-ignis-csrf": await csrf(jar) };
+  expect((await request(path, { jar, method: "POST", body, headers: { ...headers, origin: "https://evil.example" } })).status).toBe(403);
+  expect((await request(path, { jar, method: "POST", body, headers: { ...headers, "x-ignis-context": "wrong" } })).status).toBe(409);
+  expect((await request(path, { jar, method: "POST", body: { ...body, role: "admin" }, headers })).status).toBe(400);
+  clock += 300001;
+  expect((await request(path, { jar, method: "POST", body, headers })).status).toBe(403);
+});
+it("exchanges a temporary password at login for a restricted reset wizard without issuing a session", async () => {
+  const jar = await login();
+  const context = (await (await request("/api/auth/session", { jar })).json()).sessionId;
+  const issued = await request("/api/auth/users/reset-password", { jar, method: "POST", body: { userId: "normal" },
+    headers: { "x-ignis-context": context, "x-ignis-csrf": await csrf(jar) } });
+  expect(issued.status).toBe(200); expect(issued.headers.get("cache-control")).toBe("no-store");
+  const { secret, expiresAt } = await issued.json(); expect(secret).toMatch(/^[A-Za-z0-9_-]{32}$/); expect(expiresAt).toBe(clock + 3600000);
+  const anonymous = {};
+  const loginReset = await request("/api/auth/login", { jar: anonymous, method: "POST", body: { login: "normal", password: secret }, headers: { "x-ignis-csrf": await csrf(anonymous) } });
+  expect(loginReset.status).toBe(200); expect(await loginReset.json()).toEqual({ passwordResetRequired: true });
+  expect((await request("/api/auth/session", { jar: anonymous })).status).toBe(401);
+  expect((await request("/api/vault/list", { jar: anonymous })).status).toBe(401);
+  expect((await request("/api/auth/users", { jar: anonymous })).status).toBe(401);
+  expect(loginReset.headers.getSetCookie().find(value => value.startsWith("ignis-dev-reset="))).toContain("HttpOnly; SameSite=Lax");
+  const replayJar = {};
+  expect((await request("/api/auth/login", { jar: replayJar, method: "POST", body: { login: "normal", password: secret }, headers: { "x-ignis-csrf": await csrf(replayJar) } })).status).toBe(401);
+  const grant = await (await request("/api/auth/reset-password", { jar: anonymous })).json();
+  expect(grant.login).toBe("normal");
+  const path = "/api/auth/reset-password"; const body = { password: "replacement-password!123" };
+  expect((await request("/reset-password")).status).toBe(200);
+  expect((await request(path, { jar: anonymous, method: "POST", body })).status).toBe(403);
+  const headers = { "x-ignis-csrf": await csrf(anonymous), "x-ignis-reset-context": grant.context };
+  expect((await request(path, { jar: anonymous, method: "POST", body, headers: { ...headers, origin: "https://evil.example" } })).status).toBe(403);
+  expect((await request(path, { jar: anonymous, method: "POST", body: { ...body, secret }, headers })).status).toBe(400);
+  expect((await request(path, { jar: anonymous, method: "POST", body, headers: { ...headers, "x-ignis-reset-context": "wrong" } })).status).toBe(400);
+  const response = await request(path, { jar: anonymous, method: "POST", body, headers });
+  expect(response.status).toBe(200); expect((await request("/api/auth/session", { jar: anonymous })).status).toBe(401);
+  expect((await request(path, { jar: anonymous, method: "POST", body, headers: { "x-ignis-csrf": await csrf(anonymous) } })).status).toBe(400);
+  expect(await login("normal", body.password)).toBeTruthy();
+});
+it("allows self-reset issuance, clears the administrator cookie and returns the secret once", async () => {
+  const jar = await login(); const session = await (await request("/api/auth/session", { jar })).json();
+  const response = await request("/api/auth/users/reset-password", { jar, method: "POST", body: { userId: session.user.id },
+    headers: { "x-ignis-context": session.sessionId, "x-ignis-csrf": await csrf(jar) } });
+  expect(response.status).toBe(200); expect((await response.json()).signedOut).toBe(true);
+  expect(jar["ignis-dev-session"]).toBe("");
+  expect((await request("/api/auth/users", { jar })).status).toBe(401);
+});
+it("limits anonymous reset attempts independently from password login", async () => {
+  const jar = {}; const headers = { "x-ignis-csrf": await csrf(jar) };
+  for (let i=0; i<10; i++) expect((await request("/api/auth/reset-password", { jar, method: "POST", headers, body: { password: PASSWORD } })).status).toBe(400);
+  expect((await request("/api/auth/reset-password", { jar, method: "POST", headers, body: { password: PASSWORD } })).status).toBe(429);
+  expect(await login()).toBeTruthy();
+});

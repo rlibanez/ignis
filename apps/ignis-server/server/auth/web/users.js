@@ -112,6 +112,93 @@
     if (editBusy) event.preventDefault();
   });
   editDialog.addEventListener("close", () => { editing = null; revokeConfirmation.hidden = unlinkConfirmation.hidden = true; });
+  const resetDialog = document.getElementById("reset-dialog");
+  const resetButton = document.getElementById("reset-password");
+  const generateReset = document.getElementById("generate-reset");
+  const closeReset = document.getElementById("close-reset");
+  const resetSecret = document.getElementById("generated-secret");
+  const resetStatus = document.getElementById("reset-status");
+  const copyResetPassword = document.getElementById("copy-reset-password");
+  function showCopyFeedback(copied) {
+    copyResetPassword.classList.toggle("copied", copied);
+    copyResetPassword.title = copied ? "Copied!" : "Copy password";
+    copyResetPassword.setAttribute("aria-label", copyResetPassword.title);
+    document.getElementById("copy-feedback").textContent = copied ? "Copied!" : "";
+  }
+  copyResetPassword.addEventListener("click", async () => {
+    if (!resetDialog.open || !resetSecret.value || copyResetPassword.disabled) return;
+    const target = resetTarget;
+    copyResetPassword.disabled = true;
+    let copied = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(resetSecret.value);
+        copied = true;
+      }
+    } catch { /* HTTP LAN or browser restrictions may require the fallback. */ }
+    if (!copied && resetDialog.open && resetTarget === target && resetSecret.value) {
+      const helper = document.createElement("textarea");
+      helper.value = resetSecret.value;
+      helper.className = "clipboard-helper";
+      helper.readOnly = true;
+      helper.setAttribute("aria-label", "Copy temporary password");
+      resetDialog.append(helper);
+      try { helper.select(); copied = document.execCommand("copy"); }
+      catch { /* Keep manual copying available if the browser rejects both APIs. */ }
+      finally { helper.value = ""; helper.remove(); copyResetPassword.focus(); }
+    }
+    if (resetDialog.open && resetTarget === target) {
+      showCopyFeedback(copied);
+      resetStatus.textContent = copied ? "" : "Unable to copy automatically. Show the password and copy it manually.";
+    }
+    copyResetPassword.disabled = false;
+  });
+  let resetTarget = null, resetBusy = false, resetSelf = false;
+  resetButton.addEventListener("click", () => {
+    if (locked || editBusy || !editing?.hasLocalPassword) return;
+    resetTarget = editing.id;
+    resetSelf = false;
+    document.getElementById("reset-user").textContent = editing.login;
+    document.getElementById("reset-prompt").hidden = false;
+    document.getElementById("reset-result").hidden = true;
+    resetStatus.textContent = resetSecret.value = "";
+    showCopyFeedback(false);
+    closeReset.textContent = "Cancel";
+    resetDialog.showModal();
+  });
+  closeReset.addEventListener("click", () => { if (!resetBusy) resetDialog.close(); });
+  resetDialog.addEventListener("cancel", event => { if (resetBusy) event.preventDefault(); });
+  resetDialog.addEventListener("close", () => {
+    resetSecret.value = "";
+    resetTarget = null;
+    if (resetSelf) { resetSelf = false; lock(); location.replace("/login"); }
+  });
+  generateReset.addEventListener("click", async () => {
+    if (locked || resetBusy || !resetTarget) return;
+    resetBusy = true;
+    generateReset.disabled = closeReset.disabled = true;
+    try {
+      const csrf = await request("/api/auth/csrf");
+      if (!csrf.ok || locked) throw new Error();
+      const response = await request("/api/auth/users/reset-password", {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Ignis-Csrf": (await csrf.json()).csrfToken },
+        body: JSON.stringify({ userId: resetTarget }),
+      });
+      if (locked || !resetDialog.open) return;
+      if (!response.ok) { resetStatus.textContent = "Unable to generate a temporary password. Check the account status or try again later."; return; }
+      const result = await response.json();
+      resetSelf = result.signedOut;
+      if (resetSelf) channel?.postMessage("lock");
+      resetSecret.value = result.secret;
+      document.getElementById("reset-expiry").textContent = `Expires: ${new Date(result.expiresAt).toLocaleString()}. Single use.`;
+      document.getElementById("reset-prompt").hidden = true;
+      document.getElementById("reset-result").hidden = false;
+      closeReset.textContent = "Done";
+      resetSecret.focus(); resetSecret.select();
+      if (!resetSelf) await refresh();
+    } catch { if (!locked && resetDialog.open) resetStatus.textContent = "The result could not be confirmed. Generate another temporary password to replace any previous one."; }
+    finally { resetBusy = false; generateReset.disabled = closeReset.disabled = false; }
+  });
   const passwordDialog = document.getElementById("password-dialog");
   const passwordForm = document.getElementById("set-password-form");
   const setPasswordButton = document.getElementById("set-password");
@@ -203,6 +290,7 @@
     if (locked) return;
     pendingUser ||= editing?.id || null;
     clearPasswords();
+    if (resetDialog.open) resetDialog.close();
     if (passwordDialog.open) passwordDialog.close();
     if (dialog.open) dialog.close();
     if (editDialog.open) editDialog.close();
@@ -303,6 +391,7 @@
   }
   function lock() {
     locked = true;
+    if (resetDialog.open) resetDialog.close();
     if (passwordDialog.open) passwordDialog.close();
     if (reauthDialog.open) reauthDialog.close();
     if (dialog.open) dialog.close();
@@ -380,6 +469,7 @@
           pendingUser = user.id;
           if (!await checkRecentSession() || editDialog.open || dialog.open) return;
           editing = user;
+          resetButton.hidden = !user.hasLocalPassword || user.status !== "active";
           setPasswordButton.hidden = !user.canSetLocalPassword;
           unlinkSection.hidden = user.oidcLinked !== true;
           updateUnlinkAvailability();

@@ -15,7 +15,7 @@ function createSessionCookies({
   allowHttpPrivateNetwork = false,
   purpose = "session",
 }) {
-  if (!["session", "csrf", "oidc"].includes(purpose))
+  if (!["session", "csrf", "oidc", "reset"].includes(purpose))
     throw new Error("Invalid cookie purpose");
   const origin = new URL(publicOrigin);
   const secure = origin.protocol === "https:";

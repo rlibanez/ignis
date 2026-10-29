@@ -59,7 +59,7 @@ describe("identity persistence", () => {
     expect(db.prepare("SELECT id FROM vaults").get().id).toBe(vault.id);
     expect(
       db.prepare("SELECT count(*) AS n FROM schema_migrations").get().n,
-    ).toBe(5);
+    ).toBe(7);
     if (process.platform !== "win32") {
       expect(fs.statSync(path.join(root, "data/auth")).mode & 0o777).toBe(
         0o700,
@@ -227,7 +227,7 @@ describe("migration and crash recovery", () => {
   it("rolls back every statement of a failed migration", () => {
     const migrations = require("./schema");
     migrations.push({
-      version: 4,
+      version: 8,
       sql: "CREATE TABLE incomplete(id TEXT); INVALID SQL;",
     });
     db.close();
@@ -245,7 +245,7 @@ describe("migration and crash recovery", () => {
     ).toBeUndefined();
     expect(
       db.prepare("SELECT count(*) AS n FROM schema_migrations").get().n,
-    ).toBe(5);
+    ).toBe(7);
   });
 
   it("recovers after a process exits in an uncommitted write transaction", async () => {

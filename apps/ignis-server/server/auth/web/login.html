@@ -73,9 +73,11 @@
           <p id="login-error" role="alert" hidden></p>
         </div>
       </form>
+      <div class="login-actions">
       <button id="oidc-sign-in" hidden data-provider-template="Sign in with OpenID Connect">Sign in with OpenID Connect</button>
-      <p><a id="manage-account" class="account-button secondary" href="/account" hidden>Manage account</a></p>
+      <a id="manage-account" class="account-button secondary" href="/account" hidden>Manage account</a>
       <button id="sign-out" hidden>Sign out</button>
+      </div>
       <dialog id="reauth-dialog" aria-labelledby="reauth-title">
         <h2 id="reauth-title">Sign in again to continue</h2>
         <p data-provider-template="Linking an OpenID Connect account requires a recent sign-in. Sign in again, then return to Account and retry linking.">Linking an OpenID Connect account requires a recent sign-in. Sign in again, then return to Account and retry linking.</p>

@@ -70,6 +70,8 @@
           </select>
 
           <p id="edit-status" role="status" aria-live="polite"></p>
+          <div class="edit-account-actions">
+          <button id="reset-password" type="button" class="warning-button" hidden>Reset password</button>
           <button id="set-password" type="button" class="cancel-button" hidden>Set local password</button>
           <section class="session-actions" aria-label="Session management">
             <button id="revoke-sessions" type="button" class="warning-button">Close all sessions</button>
@@ -95,7 +97,33 @@
             <button id="cancel-edit" type="button" class="cancel-button">Cancel</button>
             <button type="submit">Save changes</button>
           </div>
+          </div>
         </form>
+      </dialog>
+      <dialog id="reset-dialog" aria-labelledby="reset-heading">
+        <h2 id="reset-heading">Reset password for <span id="reset-user"></span></h2>
+        <div id="reset-prompt">
+          <p>This closes all the user's Ignis sessions and blocks sign-in until they set a new password. Any earlier temporary password stops working. The provider link is kept.</p>
+          <p>If the temporary password expires or is lost, an administrator must generate another one.</p>
+          <button id="generate-reset" type="button" class="warning-button">Generate temporary password</button>
+        </div>
+        <div id="reset-result" hidden>
+          <p>Copy this temporary password now and give it privately to the user. It cannot be retrieved after closing this window.</p>
+          <label for="generated-secret">Temporary password</label>
+          <div class="password-control password-with-copy">
+            <input id="generated-secret" type="password" readonly autocomplete="off" />
+            <button id="copy-reset-password" type="button" class="password-toggle password-copy" aria-label="Copy password" title="Copy password" aria-controls="generated-secret">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <g class="copy-icon"><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4" /></g>
+                <path class="copy-success" d="m5 12 4 4L19 6" />
+              </svg>
+            </button>
+            <span id="copy-feedback" class="copy-feedback" role="status" aria-live="polite"></span>
+          </div>
+          <p id="reset-expiry"></p>
+        </div>
+        <p id="reset-status" role="alert"></p>
+        <button id="close-reset" type="button" class="cancel-button">Cancel</button>
       </dialog>
       <dialog id="password-dialog" aria-labelledby="password-heading">
         <h2 id="password-heading">Set local password for <span id="password-user"></span></h2>

@@ -5,6 +5,8 @@ const { createInitialAdminSetup } = require("./initial-admin");
 const setupAssets = new Map(
   [
     ["/setup", ["text/html", "setup.html"]],
+    ["/reset-password", ["text/html", "reset-password.html"]],
+    ["/auth/reset-password.js", ["text/javascript", "reset-password.js"]],
     ["/login", ["text/html", "login.html"]],
     ["/account", ["text/html", "login.html"]],
     ["/admin/users", ["text/html", "users.html"]],
@@ -44,6 +46,7 @@ function createAuthBoundary({
   oidcDependencies,
 }) {
   const cookies = createSessionCookies(config); // Validate before opening/listening.
+  const resetCookies = createSessionCookies({ ...config, purpose: "reset" });
   const publicUrl = new URL(config.publicOrigin);
   const db = openDatabase(dataRoot);
   const sessions = createSessionService(db, { ...sessionOptions, now });
@@ -264,12 +267,13 @@ function createAuthBoundary({
 
   async function authEndpoint(req, res, pathname) {
     const session = getSession(req);
-    if (["/api/auth/users", "/api/auth/users/status", "/api/auth/users/revoke-sessions", "/api/auth/users/unlink-oidc", "/api/auth/users/set-password"].includes(pathname)) {
+    if (["/api/auth/users", "/api/auth/users/status", "/api/auth/users/revoke-sessions", "/api/auth/users/unlink-oidc", "/api/auth/users/set-password", "/api/auth/users/reset-password"].includes(pathname)) {
+      const resettingPassword = pathname.endsWith("/reset-password");
       const settingPassword = pathname.endsWith("/set-password");
       const changingStatus = pathname.endsWith("/status");
       const unlinkingOidc = pathname.endsWith("/unlink-oidc");
       const revokingSessions = pathname.endsWith("/revoke-sessions");
-      if (!["GET", "POST"].includes(req.method) || ((settingPassword || changingStatus || revokingSessions || unlinkingOidc) && req.method !== "POST"))
+      if (!["GET", "POST"].includes(req.method) || ((resettingPassword || settingPassword || changingStatus || revokingSessions || unlinkingOidc) && req.method !== "POST"))
         return safe(res, 404, "Not found");
       if (!session) return safe(res, 401, "Authentication required");
       if (!initialized() || session.user.role !== "admin")
@@ -306,6 +310,22 @@ function createAuthBoundary({
       if (!limits.createUser(session.user.id))
         return safe(res, 429, "Too many requests");
       const body = req.body;
+      if (resettingPassword) {
+        if (req.headers["x-ignis-context"] !== session.id) return safe(res, 409, "Session changed");
+        if (!body || Array.isArray(body) || Object.keys(body).some(key => key !== "userId") || typeof body.userId !== "string" || !body.userId || body.userId.length > 64)
+          return safe(res, 400, "Expected userId only");
+        try {
+          const result = require("./password-reset").issuePasswordReset(db, session.user.id, body.userId, { isCurrent, now });
+          csrf.consume(req);
+          sweepSockets();
+          const signedOut = body.userId === session.user.id;
+          if (signedOut) res.append("Set-Cookie", cookies.clear());
+          return res.json({ ...result, signedOut });
+        } catch (error) {
+          if (["SESSION_CHANGED", "RESET_UNAVAILABLE"].includes(error.code)) return safe(res, 400, "Password reset unavailable for this account");
+          throw error;
+        }
+      }
       if (settingPassword) {
         if (req.headers["x-ignis-context"] !== session.id) return safe(res, 409, "Session changed");
         if (!body || Array.isArray(body) || Object.keys(body).some(key => !["userId", "password"].includes(key)) ||
@@ -413,7 +433,7 @@ function createAuthBoundary({
         initialized: initialized(),
         ...(oidc && initialized() ? { oidcAvailable: true, oidcButtonText: config.oidcButtonText } : {}),
         setupAvailable: setup.available(),
-        ...(setup.available() ? { passwordPolicy: config.passwordPolicy } : {}),
+        ...((setup.available() || initialized()) ? { passwordPolicy: config.passwordPolicy } : {}),
       });
     }
     if (req.method === "GET" && pathname === "/api/auth/csrf") {
@@ -439,6 +459,28 @@ function createAuthBoundary({
               now() - session.authenticatedAt < 300000,
           })
         : safe(res, 401, "Authentication required");
+    }
+    if (pathname === "/api/auth/reset-password" && req.method === "GET") {
+      const grant = require("./password-reset").readPasswordResetGrant(db, resetCookies.read(req.headers.cookie), { now });
+      return grant ? res.json({ login: grant.login, context: grant.context, passwordPolicy: config.passwordPolicy }) : safe(res, 401, "Password reset authorization required");
+    }
+    if (pathname === "/api/auth/reset-password" && req.method === "POST") {
+      if (!originAllowed(req, true) || !csrf.valid(req, session)) return safe(res, 403, "Request rejected");
+      if (!limits.resetPassword(req.ip)) return safe(res, 429, "Too many attempts; try again later");
+      const body = req.body;
+      if (!body || Array.isArray(body) || Object.keys(body).some(key => key !== "password") ||
+          typeof body.password !== "string") return safe(res, 400, "Invalid reset request");
+      try {
+        await require("./password-reset").completePasswordResetGrant(db, resetCookies.read(req.headers.cookie), req.headers["x-ignis-reset-context"], body.password, config.passwordPolicy, { now });
+      } catch (error) {
+        if (["INVALID_RESET", "PASSWORD_POLICY"].includes(error.code)) return res.status(400).json({ code: error.code, error: "Invalid reset secret or password policy" });
+        throw error;
+      }
+      csrf.consume(req);
+      sweepSockets();
+      res.append("Set-Cookie", cookies.clear());
+      res.append("Set-Cookie", resetCookies.clear());
+      return res.json({ reset: true });
     }
     if (pathname === "/api/auth/reauth" && req.method === "POST") {
       if (!session) return safe(res, 401, "Authentication required");
@@ -612,7 +654,17 @@ function createAuthBoundary({
     }
     if (!initialized()) return safe(res, 403, "Initial administrator required");
     const result = await sessions.loginLocal(login, req.body?.password);
-    if (!result) return safe(res, 401, "Invalid credentials");
+    if (!result) {
+      const reset = require("./password-reset").beginPasswordReset(db, login, req.body?.password, { now });
+      if (!reset) return safe(res, 401, "Invalid credentials");
+      sessions.revoke(cookies.read(req.headers.cookie));
+      csrf.consume(req);
+      res.append("Set-Cookie", cookies.clear());
+      res.append("Set-Cookie", resetCookies.serialize(reset.token, reset.expiresAt, now()));
+      sweepSockets();
+      return res.json({ passwordResetRequired: true });
+    }
+    res.append("Set-Cookie", resetCookies.clear());
     // End the browser's previous identity only after successful authentication.
     sessions.revoke(cookies.read(req.headers.cookie));
     csrf.consume(req);

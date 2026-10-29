@@ -165,4 +165,25 @@ module.exports = [
       CREATE UNIQUE INDEX oidc_identities_user_issuer ON oidc_identities(user_id, issuer);
     `,
   },
+  {
+    version: 6,
+    sql: `
+      CREATE TABLE password_resets (
+        user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL UNIQUE CHECK(length(token_hash)=64),
+        auth_version INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL
+      ) STRICT;
+    `,
+  },
+  {
+    version: 7,
+    sql: `
+      CREATE TABLE password_reset_grants (
+        token_hash TEXT PRIMARY KEY CHECK(length(token_hash)=64),
+        user_id TEXT NOT NULL UNIQUE REFERENCES password_resets(user_id) ON DELETE CASCADE,
+        reset_hash TEXT NOT NULL
+      ) STRICT;
+    `,
+  },
 ];

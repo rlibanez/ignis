@@ -348,6 +348,7 @@ describe("setup HTTP boundary", () => {
     expect(JSON.parse((await request("/api/auth/status")).text)).toEqual({
       initialized: true,
       setupAvailable: false,
+      passwordPolicy: { minLength: 8, minSpecialChars: 0, maxBytes: 1024 },
     });
     expect((await submit(jar, { initialAdminKey: OTHER })).status).toBe(409);
     expect(count("users")).toBe(1);

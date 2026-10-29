@@ -137,6 +137,7 @@
         return;
       }
       const session = await response.json();
+      if (session.passwordResetRequired) { location.replace("/reset-password"); return; }
       if (intent) location.replace(destination(intent));
       else if (accountPage) location.replace("/account");
       else if (session.user.role === "admin") location.replace("/");
