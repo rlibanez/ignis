@@ -236,7 +236,9 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
       const privatePath = privateFiles?.select(path, resolvePath(path), true);
       if (privatePath) return privateFiles.readdirSync(privatePath);
       const entries = metadataCache.readdir(path);
-      return entries.map((e) => e.name);
+      const names = entries.map((e) => e.name);
+      if (privateFiles && ["", "/", "."].includes(path)) return privateFiles.rootEntries(names);
+      return names;
     },
 
     lstatSync(path) {

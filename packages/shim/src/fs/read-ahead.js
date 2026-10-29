@@ -16,7 +16,7 @@ function parentDir(path) {
   return slash < 0 ? "" : path.slice(0, slash);
 }
 
-export function createReadAhead(metadataCache, contentCache) {
+export function createReadAhead(metadataCache, contentCache, privateFiles = null) {
   const inFlightBatchByPath = new Map();
   let inFlightBytes = 0;
   let roomNeededForLastSkippedBatch = 0;
@@ -27,6 +27,7 @@ export function createReadAhead(metadataCache, contentCache) {
 
   function isCandidate(path, missedPath) {
     if (
+      (privateFiles && !privateFiles.allowsSharedPrefetch(path)) ||
       path === missedPath ||
       inFlightBatchByPath.has(path) ||
       contentCache.has(path) ||

@@ -51,6 +51,25 @@ export function createPrivateFiles(configuration) {
   }
   return Object.freeze({
     select,
+    allowsSharedPrefetch(path) { return !owns(path); },
+    projectTree(tree,snapshot) {
+      const result = Object.fromEntries(Object.entries(tree)
+        .filter(([path])=>!owns(path)).map(([path,meta])=>[path,{...meta}]));
+      result[".obsidian"] = {type:"directory",size:0,mtime:0,ctime:0};
+      for (const path of files) {
+        const meta = metadata(path,snapshot?.[path]);
+        result[path] = {type:"file",size:meta.size,mtime:0,ctime:0};
+      }
+      return result;
+    },
+    rootEntries(entries) {
+      configuration.inspectSync(".obsidian/app.json");
+      return [...entries.filter(name=>name.toLowerCase() !== ".obsidian"),".obsidian"];
+    },
+    async rootEntriesAsync(entries) {
+      await configuration.inspect(".obsidian/app.json");
+      return [...entries.filter(name=>name.toLowerCase() !== ".obsidian"),".obsidian"];
+    },
     assertOrdinary(original,resolved) {
       const root = path => ["", "."].includes(normalize(path));
       if (owns(original) || owns(resolved) || root(original) || root(resolved))

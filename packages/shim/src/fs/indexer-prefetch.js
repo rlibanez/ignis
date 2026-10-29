@@ -276,6 +276,9 @@ export function prefetchVaultContent(
     return { priority: Promise.resolve(), bulk: Promise.resolve() };
   }
 
+  if (options.privateFiles) {
+    tree = Object.fromEntries(Object.entries(tree).filter(([path]) => options.privateFiles.allowsSharedPrefetch(path)));
+  }
   const totalBudget = prefetchByteBudget(contentCache);
   const { priority, bulk } = selectPrefetchTargets(tree, totalBudget);
 

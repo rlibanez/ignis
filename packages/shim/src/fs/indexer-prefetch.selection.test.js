@@ -1,3 +1,4 @@
+import { createPrivateFiles } from "./private-files.js";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { prefetchVaultContent } from "./indexer-prefetch.js";
 
@@ -290,4 +291,13 @@ describe("prefetchVaultContent file and byte caps", () => {
     expect(all).toContain(".obsidian/plugins/a/main.js");
     expect(all).not.toContain("Note.md");
   });
+});
+it("excludes private configuration and shared plugin files from boot prefetch",async()=>{
+  const cache = makeCache();
+  const result = prefetchVaultContent("v",tree,cache,{privateFiles:createPrivateFiles({})});
+  await result.priority;
+  await result.bulk;
+  expect(fetchCalls.flat()).toContain("Note.md");
+  expect(fetchCalls.flat().some(path=>path.startsWith(".obsidian/"))).toBe(false);
+  expect([...cache.store.keys()].some(path=>path.startsWith(".obsidian/"))).toBe(false);
 });

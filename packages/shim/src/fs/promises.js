@@ -34,7 +34,7 @@ export function createFsPromises(metadataCache, contentCache, transport, private
   });
 
   const commitUtimes = createUtimes(metadataCache, transport);
-  const readAhead = createReadAhead(metadataCache, contentCache);
+  const readAhead = createReadAhead(metadataCache, contentCache, privateFiles);
 
   return {
     async stat(path) {
@@ -75,7 +75,9 @@ export function createFsPromises(metadataCache, contentCache, transport, private
         throw e;
       }
       const entries = metadataCache.readdir(path);
-      return entries.map((e) => e.name);
+      const names = entries.map((e) => e.name);
+      if (privateFiles && ["", "/", "."].includes(path)) return privateFiles.rootEntriesAsync(names);
+      return names;
     },
 
     async readFile(path, encoding) {

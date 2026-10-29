@@ -159,3 +159,24 @@ it("rejects mutation aliases that resolve into or out of private configuration",
   expect(()=>sync.unlinkSync("alias.md")).toThrow();
   await expect(async.rename(file,"note.md")).rejects.toThrow();
 });
+it("projects a separate tree without shared configuration metadata or plugin names",()=>{
+  const {adapter} = setup();
+  const original = {"note.md":{type:"file",size:20},".obsidian/plugins/secret/main.js":{type:"file",size:100},".OBSIDIAN/app.json":{type:"file",size:900}};
+  const snapshot = Object.fromEntries(["app.json","appearance.json","core-plugins.json","community-plugins.json"].map(name=>[".obsidian/"+name,{content:'{}',writable:false}]));
+  const projected = adapter.projectTree(original,snapshot);
+  expect(Object.keys(projected)).toHaveLength(6);
+  expect(projected[".obsidian/app.json"].size).toBe(2);
+  expect(projected).not.toHaveProperty(".obsidian/plugins/secret/main.js");
+  projected["note.md"].size=3;
+  expect(original["note.md"].size).toBe(20);
+  expect(()=>adapter.projectTree(original,{})).toThrow();
+});
+it("adds the private directory to root listings without duplicates or shared casing",async()=>{
+  const {metadata,sync,async} = setup();
+  metadata.set(".OBSIDIAN/shared.json",{type:"file"});
+  expect(sync.readdirSync("/").filter(name=>name.toLowerCase()===".obsidian")).toEqual([".obsidian"]);
+  expect((await async.readdir("/")).filter(name=>name.toLowerCase()===".obsidian")).toEqual([".obsidian"]);
+  metadata.delete(file);
+  metadata.delete(".OBSIDIAN/shared.json");
+  expect(sync.readdirSync("/")).toContain(".obsidian");
+});

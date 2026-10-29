@@ -1,3 +1,4 @@
+import { createPrivateFiles } from "./private-files.js";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createReadAhead } from "./read-ahead.js";
 import { createFsPromises } from "./promises.js";
@@ -274,4 +275,12 @@ describe("readFile on a cache miss", () => {
 
     expect(batchRequests).toEqual([]);
   });
+});
+it("excludes private files from read-ahead even if the shared metadata contains them",async()=>{
+  metadataCache.populate({"note.md":file(),"other.md":file(),".obsidian/app.json":file(),".OBSIDIAN/secret.json":file()});
+  const readAhead = createReadAhead(metadataCache,contentCache,createPrivateFiles({}));
+  readAhead.fetchAround("note.md");
+  await readAhead.inFlightBatchFor("other.md");
+  expect(batchRequests.flat()).toEqual(["other.md"]);
+  expect(contentCache.has(".obsidian/app.json")).toBe(false);
 });
