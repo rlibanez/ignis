@@ -20,7 +20,9 @@ export function createWatcherClient(
   fsWatch,
   wsClient,
   transport,
+  privateFiles = null,
 ) {
+  const sharedPath = path => !privateFiles || privateFiles.allowsSharedPrefetch(path);
   function hasLocalChange(path) {
     return isRecentSentOp(path) || hasUnconfirmedWrite(path);
   }
@@ -33,7 +35,7 @@ export function createWatcherClient(
     const kept = new Set();
 
     for (const key of subtree) {
-      if (!hasUnconfirmedWrite(key)) {
+      if (sharedPath(key) && !hasUnconfirmedWrite(key)) {
         continue;
       }
 
@@ -57,7 +59,7 @@ export function createWatcherClient(
   function handleCreated(msg) {
     const { path, stat } = msg;
 
-    if (!path || hasLocalChange(path)) {
+    if (!path || !sharedPath(path) || hasLocalChange(path)) {
       return false;
     }
 
@@ -79,7 +81,7 @@ export function createWatcherClient(
   function handleFolderCreated(msg) {
     const { path } = msg;
 
-    if (!path || hasLocalChange(path)) {
+    if (!path || !sharedPath(path) || hasLocalChange(path)) {
       return false;
     }
 
@@ -92,7 +94,7 @@ export function createWatcherClient(
   function handleModified(msg) {
     const { path, stat } = msg;
 
-    if (!path || hasLocalChange(path)) {
+    if (!path || !sharedPath(path) || hasLocalChange(path)) {
       return false;
     }
 
@@ -114,7 +116,7 @@ export function createWatcherClient(
   function handleDeleted(msg) {
     const { path } = msg;
 
-    if (!path || hasLocalChange(path)) {
+    if (!path || !sharedPath(path) || hasLocalChange(path)) {
       return false;
     }
 
@@ -166,6 +168,7 @@ export function createWatcherClient(
     const fresh = new Set(Object.keys(tree).map(normalize));
 
     for (const [path, meta] of Object.entries(tree)) {
+      if (!sharedPath(path)) continue;
       const existing = metadataCache.get(path);
 
       if (!existing) {
@@ -195,7 +198,7 @@ export function createWatcherClient(
     // A cache key absent from the fresh tree was deleted while disconnected.
     // The empty root key is preserved because the tree never lists it.
     for (const key of metadataCache.keys()) {
-      if (key === "" || fresh.has(key)) {
+      if (key === "" || !sharedPath(key) || fresh.has(key)) {
         continue;
       }
 

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { createPrivateFiles } from "./private-files.js";
 import { createWatcherClient } from "./watcher-client.js";
 import { markSentOp } from "./echo-guard.js";
 import { MetadataCache } from "./metadata-cache.js";
@@ -7,7 +8,7 @@ import { trackWrite, _reset as resetDurability } from "./write-durability.js";
 
 const RESYNC_DEBOUNCE_MS = 1000;
 
-function makeDeps(metadataOverride) {
+function makeDeps(metadataOverride, privateFiles = null) {
   const store = new Map();
 
   const metadataCache = metadataOverride || {
@@ -51,6 +52,7 @@ function makeDeps(metadataOverride) {
     fsWatch,
     wsClient,
     transport,
+    privateFiles,
   );
 
   return {
@@ -760,5 +762,53 @@ describe("watcher-client unconfirmed writes", () => {
 
     expect(cache.get("note.md").mtime).toBe(999);
     expect(d.fsWatch._dispatch).toHaveBeenCalledWith("modified", "note.md");
+  });
+});
+
+describe("private configuration during watcher updates",()=>{
+  beforeEach(()=>vi.useFakeTimers());
+  afterEach(()=>vi.useRealTimers());
+  it("ignores shared configuration events without notifying listeners or invalidating private state",()=>{
+    const d = makeDeps(undefined,createPrivateFiles({}));
+    const meta = {type:"file",size:2,mtime:0};
+    d.metadataCache.set(".obsidian/app.json",meta);
+    for (const type of ["created","modified","deleted","folder-created"]) {
+      const listener = d.wsClient.subscribe.mock.calls.find(([name])=>name===type)[1];
+      listener({path:".obsidian/app.json",stat:{size:999,mtime:99}});
+      listener({path:".OBSIDIAN/plugins/secret/main.js",stat:{size:999}});
+    }
+    expect(d.metadataCache.get(".obsidian/app.json")).toEqual(meta);
+    expect(d.metadataCache.has(".OBSIDIAN/plugins/secret/main.js")).toBe(false);
+    expect(d.contentCache.invalidate).not.toHaveBeenCalled();
+    expect(d.fsWatch._dispatch).not.toHaveBeenCalled();
+  });
+  it("preserves projected files across missing or contaminated server trees while reconciling notes",async()=>{
+    const d = makeDeps(undefined,createPrivateFiles({}));
+    d.metadataCache.set(".obsidian",{type:"directory"});
+    d.metadataCache.set(".obsidian/app.json",{type:"file",size:2,mtime:0});
+    d.metadataCache.set("old.md",{type:"file",size:1});
+    await resyncWith(d,{
+      ".obsidian/app.json":{type:"file",size:900,mtime:100},
+      ".obsidian/plugins/secret/main.js":{type:"file",size:20},
+      "note.md":{type:"file",size:3,mtime:1},
+    });
+    expect(d.metadataCache.get(".obsidian/app.json").size).toBe(2);
+    expect(d.metadataCache.has(".obsidian/plugins/secret/main.js")).toBe(false);
+    expect(d.metadataCache.has("old.md")).toBe(false);
+    expect(d.metadataCache.has("note.md")).toBe(true);
+    await resyncWith(d,{});
+    expect(d.metadataCache.has(".obsidian/app.json")).toBe(true);
+    expect(d.metadataCache.has(".obsidian")).toBe(true);
+    expect(d.metadataCache.has("note.md")).toBe(false);
+  });
+  it("does not delete private descendants through an ordinary parent deletion",()=>{
+    const d = makeDeps(undefined,createPrivateFiles({}));
+    d.metadataCache.set("folder",{type:"directory"});
+    d.metadataCache.set("folder/.obsidian/app.json",{type:"file",size:2});
+    d.metadataCache.set("folder/note.md",{type:"file",size:2});
+    d.wsClient.subscribe.mock.calls.find(([name])=>name==="deleted")[1]({path:"folder"});
+    expect(d.metadataCache.has("folder/.obsidian/app.json")).toBe(true);
+    expect(d.metadataCache.has("folder")).toBe(true);
+    expect(d.metadataCache.has("folder/note.md")).toBe(false);
   });
 });
