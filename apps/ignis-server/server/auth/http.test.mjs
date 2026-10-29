@@ -50,6 +50,7 @@ beforeEach(async () => {
     next();
   });
   app.use(boundary.revalidate);
+  app.get("/api/bootstrap", (req, res) => res.json({ privateConfiguration: req.privateVaultConfiguration(req.query.vault) }));
   app.get("/api/vault/list", (req, res) => res.json(["private vault"]));
   app.post("/api/fs/writeFile", (req, res) => res.json({ ok: true }));
   app.get("/api/fs/readFile", (req, res) => {
@@ -1170,4 +1171,18 @@ it("projects filesystem events for each real socket without exposing reserved pa
     { type: "modified", path: "last.md", stat: { size: 5, mtime: 7 } },
   ]);
   const closed = once(ws, "close"); ws.close(); await closed;
+});
+
+it("binds bootstrap private configuration to the authenticated account and registered vault", async () => {
+  const owner = db.prepare("SELECT id FROM users WHERE role='admin'").get().id;
+  const vault = require("./store").registerVault(db, root, "vault", owner);
+  db.prepare("INSERT INTO vault_preferences VALUES (?,?,?,?,?)").run(owner,vault.id,".obsidian/app.json",'{"spellcheck":true,"secret":"hidden"}',1);
+  const jar = await login();
+  const result = await request(`/api/bootstrap?vault=${vault.id}&userId=normal`, { jar });
+  expect(result.status).toBe(200);
+  const config = (await result.json()).privateConfiguration;
+  expect(config[".obsidian/app.json"]).toEqual({content:'{"spellcheck":true}',revision:1,writable:true});
+  expect(config[".obsidian/community-plugins.json"].content).toBe("[]");
+  expect((await request(`/api/bootstrap?vault=${vault.id}`, {jar:await login("normal")})).status).toBe(403);
+  expect((await request(`/api/bootstrap?vault=${vault.id}`)).status).toBe(401);
 });

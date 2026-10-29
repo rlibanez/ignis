@@ -54,6 +54,12 @@ function createVaultConfigService(db, vaultRoot, sessions) {
     const projected = JSON.stringify(projectPreferences(path, value));
     return preferences.write(token, { reference, path, content: projected, expectedRevision });
   }
-  return Object.freeze({ read, write });
+  function snapshot(token, reference) {
+    // Fresh objects on every request; never reuse another caller's projection.
+    return Object.fromEntries([
+      ".obsidian/app.json", ".obsidian/appearance.json", ...fixed.keys(),
+    ].map(path => [path, read(token, { reference, path })]));
+  }
+  return Object.freeze({ read, write, snapshot });
 }
 module.exports = { projectPreferences, createVaultConfigService };

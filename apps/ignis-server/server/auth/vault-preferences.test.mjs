@@ -116,3 +116,16 @@ it("projects private configuration without serving shared code, paths or arbitra
   db.prepare("DELETE FROM memberships WHERE user_id='alice'").run();
   expect(() => config.read(alice,plugins)).toThrow();
 });
+
+it("creates isolated bootstrap snapshots with no shared configuration or cross-request references", () => {
+  const service = require("./vault-config").createVaultConfigService(db,vaultRoot,sessions);
+  save(alice,'{"spellcheck":true,"secret":"hidden"}');
+  const first = service.snapshot(alice,vault.id);
+  expect(Object.keys(first)).toHaveLength(4);
+  expect(first[".obsidian/app.json"].content).toBe('{"spellcheck":true}');
+  first[".obsidian/app.json"].content = "tampered";
+  expect(service.snapshot(alice,vault.id)[".obsidian/app.json"].content).toBe('{"spellcheck":true}');
+  expect(service.snapshot(bob,vault.id)[".obsidian/app.json"].content).toBe('{}');
+  sessions.revokeUser("alice");
+  expect(() => service.snapshot(alice,vault.id)).toThrow();
+});

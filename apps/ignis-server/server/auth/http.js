@@ -51,6 +51,7 @@ function createAuthBoundary({
   const publicUrl = new URL(config.publicOrigin);
   const db = openDatabase(dataRoot);
   const sessions = createSessionService(db, { ...sessionOptions, now });
+  const vaultConfig = vaultRoot ? require("./vault-config").createVaultConfigService(db, vaultRoot, sessions) : null;
   const vaultAccess = vaultRoot ? require("./vault-access").createVaultAccessService(db, vaultRoot, sessions) : null;
   const csrf = createCsrf(config, { now });
   let oidc = null;
@@ -882,6 +883,14 @@ function createAuthBoundary({
             return decision.allowed && decision.sessionId === current.id;
           });
           return true;
+        };
+        req.privateVaultConfiguration = directory => {
+          const reference = db.prepare("SELECT id FROM vaults WHERE directory=? AND status='active'").get(directory)?.id;
+          // Unregistered administrator vaults retain their existing behavior.
+          if (!reference) return undefined;
+          if (!req.authorizeVaultFile(directory, "content.list", ""))
+            throw new Error("Configuration unavailable");
+          return vaultConfig.snapshot(cookies.read(req.headers.cookie), reference);
         };
         req.vaultOwners = () => db.prepare("SELECT id,login FROM users WHERE status='active' ORDER BY login,id").all();
         req.vaultRegistrationOptions = () => require("./vault-registration").registrationOptions(db, vaultRoot);
