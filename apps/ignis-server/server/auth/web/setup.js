@@ -1,7 +1,7 @@
 (() => {
   const form = document.getElementById("setup-form");
   const status = document.getElementById("status");
-  const button = form.querySelector("button");
+  const button = form.querySelector('button[type="submit"]');
   const field = (name) => form.elements.namedItem(name);
   const clearSecrets = () => {
     for (const name of ["initialAdminKey", "password", "passwordConfirmation"])

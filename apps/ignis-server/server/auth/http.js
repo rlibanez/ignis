@@ -10,6 +10,7 @@ const setupAssets = new Map(
     ["/admin/users", ["text/html", "users.html"]],
     ["/auth/users.js", ["text/javascript", "users.js"]],
     ["/auth/users.css", ["text/css", "users.css"]],
+    ["/auth/password-visibility.js", ["text/javascript", "password-visibility.js"]],
     ["/auth/login.js", ["text/javascript", "login.js"]],
     ["/auth/account.css", ["text/css", "account.css"]],
     ["/auth/client.js", ["text/javascript", "client.js"]],

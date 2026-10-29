@@ -26,8 +26,10 @@
 #reauth-dialog::backdrop { background: #080b1480; }
 
 /* Floating feedback does not occupy space in the form. */
-.password-field, .password-actions { position: relative; }
-#password-dialog #password-status {
+.password-field, .password-actions, .login-submit { position: relative; }
+.login-submit { margin-top: 1.5rem; }
+.login-submit button { margin-top: 0; }
+#password-dialog #password-status, #login-error {
   position: absolute;
   z-index: 2;
   bottom: calc(100% + .4rem);
@@ -47,7 +49,7 @@
   overflow-wrap: anywhere;
   pointer-events: none;
 }
-#password-dialog #password-status::after {
+#password-dialog #password-status::after, #login-error::after {
   content: "";
   position: absolute;
   top: 100%;

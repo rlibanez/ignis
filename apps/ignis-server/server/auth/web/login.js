@@ -9,7 +9,7 @@
   const form = document.getElementById("login-form");
   const status = document.getElementById("status");
   const logout = document.getElementById("sign-out");
-  const button = form.querySelector("button");
+  const button = form.querySelector('button[type="submit"]');
   const oidcButton = document.getElementById("oidc-sign-in");
   const linkButton = document.getElementById("link-oidc");
   const accountPage = location.pathname === "/account";
@@ -96,9 +96,32 @@
         });
       }
   }
+  const loginError = document.getElementById("login-error");
+  function clearLoginError() {
+    loginError.hidden = true;
+    loginError.textContent = "";
+    form.elements.password.removeAttribute("aria-invalid");
+    form.elements.password.removeAttribute("aria-describedby");
+  }
+  function showLoginError(message, credentials = false) {
+    clearLoginError();
+    const field = form.elements.password;
+    const anchor = credentials ? field.parentElement : form.querySelector(".login-submit");
+    anchor.append(loginError);
+    loginError.textContent = message;
+    loginError.hidden = false;
+    if (credentials) {
+      field.setAttribute("aria-invalid", "true");
+      field.setAttribute("aria-describedby", "login-error");
+      field.focus();
+    }
+  }
+  form.addEventListener("input", clearLoginError);
+  form.addEventListener("reset", clearLoginError);
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (button.disabled) return;
+    clearLoginError();
     button.disabled = true;
     try {
       channel?.postMessage("lock");
@@ -108,10 +131,9 @@
         password: form.elements.password.value,
       });
       if (!response.ok) {
-        status.textContent =
-          response.status === 429
-            ? rateLimitMessage
-            : "Sign-in failed. Check your credentials and try again.";
+        showLoginError(response.status === 429 ? rateLimitMessage
+          : response.status === 401 ? "Incorrect username or password."
+            : "Unable to sign in. Please try again later.", response.status === 401);
         return;
       }
       const session = await response.json();
@@ -126,8 +148,7 @@
           "Signed in. Vault access for non-administrator accounts is not available yet.";
       }
     } catch {
-      status.textContent =
-        "Unable to sign in. Close other Ignis tabs and try again.";
+      showLoginError("Unable to sign in. Close other Ignis tabs and try again.");
     } finally {
       form.elements.password.value = "";
       button.disabled = false;

@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="/auth/setup.css" />
     <link rel="stylesheet" href="/auth/account.css" />
     <script src="/auth/login.js" defer></script>
+    <script src="/auth/password-visibility.js" defer></script>
   </head>
   <body>
     <main>
@@ -67,7 +68,10 @@
           required
           maxlength="1024"
         />
-        <button type="submit">Sign in</button>
+        <div class="login-submit">
+          <button type="submit">Sign in</button>
+          <p id="login-error" role="alert" hidden></p>
+        </div>
       </form>
       <button id="oidc-sign-in" hidden data-provider-template="Sign in with OpenID Connect">Sign in with OpenID Connect</button>
       <p><a id="manage-account" href="/account" hidden>Manage account</a></p>
