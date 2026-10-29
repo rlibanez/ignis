@@ -123,29 +123,29 @@ app.use("/vault-files", (req, res, next) => {
     const relPath = parts.slice(1).map(decodeURIComponent).join("/");
     resolved = relPath ? resolveVaultPath(vaultPath, relPath) : null;
   } catch {
-    // resolved stays null and gets handled by static handler
+    // Invalid paths must not fall through to a different static-file resolver.
   }
 
-  if (resolved && req.authorizeVaultFile && !req.authorizeVaultFile(vaultId, "content.read", path.relative(vaultPath, resolved).split(path.sep).join("/")))
+  if (!resolved) return res.status(404).json({ error: "Resource unavailable" });
+  if (req.authorizeVaultFile && !req.authorizeVaultFile(vaultId, "content.read", path.relative(vaultPath, resolved).split(path.sep).join("/")))
     return res.status(404).json({ error: "Resource unavailable" });
-  const buffered = resolved ? writeCoalescer.getPending(resolved) : null;
+  require("./vault/attachment-policy").applyAttachmentPolicy(res, resolved);
+  const buffered = writeCoalescer.getPending(resolved);
 
   // Serve buffered content if exists.
   if (buffered) {
     const body = writeCoalescer.pendingBuffer(buffered.data, buffered.encoding);
-
-    const ext = path.extname(resolved);
-
-    if (ext) {
-      res.type(ext);
-    }
 
     return res.send(body);
   }
 
   // Rewrite req.url to strip the vault ID prefix, then serve statically
   req.url = "/" + parts.slice(1).join("/");
-  express.static(vaultPath)(req, res, next);
+  express.static(vaultPath, { index: false, redirect: false })(req, res, error => {
+    if (error) return next(error);
+    // A missing attachment must not fall through to application assets.
+    res.status(404).end();
+  });
 });
 
 app.get(["/", "/index.html"], (req, res) => {

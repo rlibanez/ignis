@@ -81,7 +81,7 @@ function request(port, route, jar = {}, options = {}) {
             const [k, v] = cookie.split(";")[0].split("=");
             jar[k] = v;
           }
-          resolve({ status: res.statusCode, text });
+          resolve({ status: res.statusCode, text, headers: res.headers });
         });
       },
     );
@@ -113,6 +113,9 @@ it("protects real server routes, persists auth and does not log request secrets"
     path.join(root, "vaults", "Team", "note.md"),
     "private-note-marker",
   );
+  for (const filename of ["active.html", "active.js", "active.svg", "image.png"]) {
+    fs.writeFileSync(path.join(root, "vaults", "Team", filename), "<script>window.evil = true</script>");
+  }
   const password = "synthetic-real-server-password";
   const db = openDatabase(path.join(root, "data"));
   bootstrapAdmin(db, "admin", await hashPassword(password));
@@ -177,6 +180,17 @@ it("protects real server routes, persists auth and does not log request secrets"
     expect((await request(port, "/vault-files/Team/note.md", jar)).text).toBe(
       "private-note-marker",
     );
+    for (const filename of ["active.html", "active.js", "active.svg", "image.png"]) {
+      const media = await request(port, `/vault-files/Team/${filename}`, jar);
+      expect(media.status).toBe(200);
+      expect(media.headers["content-type"]).toBe(filename === "image.png" ? "image/png" : "application/octet-stream");
+      expect(media.headers["content-disposition"]).toBe(filename === "image.png" ? "inline" : "attachment");
+      expect(media.headers["content-security-policy"]).toContain("sandbox;");
+      expect(media.headers["x-content-type-options"]).toBe("nosniff");
+      expect(media.headers["cache-control"]).toBe("no-store");
+    }
+    expect((await request(port, "/vault-files/Team/", jar)).status).toBe(404);
+    expect((await request(port, "/vault-files/Team/index.html", jar)).status).toBe(404);
     expect((await request(port, "/api/bootstrap?vault=Team", jar)).status).toBe(
       200,
     );
@@ -315,6 +329,9 @@ it("protects real server routes, persists auth and does not log request secrets"
     const attachment = await request(port, `/vault-files/${result.uuid}/identity.md`, jar);
     expect(attachment.status).toBe(200);
     expect(attachment.text).toBe("stable identity");
+    expect(attachment.headers["content-type"]).toBe("application/octet-stream");
+    expect(attachment.headers["content-disposition"]).toBe("attachment");
+    expect(attachment.headers["content-security-policy"]).toContain("sandbox;");
     expect((await request(port, "/api/fs/tree?vault=Created", jar)).status).toBe(404);
 
     expect((await request(port, "/api/vault/remove?vault=Renamed", jar, { method: "DELETE", headers: { "x-ignis-csrf": createCsrf } })).status).toBe(409);
