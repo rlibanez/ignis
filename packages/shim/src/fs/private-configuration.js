@@ -37,7 +37,10 @@ export function createPrivateConfiguration({ vault, sessionId, currentContext, r
     const {url,options} = prepare(method,path,fields);
     const xhr = createXHR();
     xhr.open(method,url,false);
-    for (const [name,value] of Object.entries(options.headers)) xhr.setRequestHeader(name,value);
+    // Auth's XHR wrapper owns this header; XHR appends duplicate values.
+    for (const [name,value] of Object.entries(options.headers)) {
+      if (name !== "x-ignis-context") xhr.setRequestHeader(name,value);
+    }
     xhr.send(options.body ?? null);
     context();
     // status 0 (network failure/aborted request) must never acknowledge a write.

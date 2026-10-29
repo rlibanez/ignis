@@ -75,7 +75,7 @@ it("shares revisions across synchronous and asynchronous operations",async()=>{
   client.writeSync(".obsidian/app.json","{}");
   expect(JSON.parse(calls[1].body)).toEqual({vault:"stable-uuid",path:".obsidian/app.json",content:"{}",expectedRevision:5});
   expect(calls[0].async).toBe(false);
-  expect(calls[0].headers["x-ignis-context"]).toBe("session-a");
+  expect(calls[0].headers["x-ignis-context"]).toBeUndefined();
   expect(new URL(calls[0].url).searchParams.get("vault")).toBe("stable-uuid");
 });
 it("blocks sync operations while an async write is outstanding",async()=>{

@@ -129,3 +129,10 @@ it("creates isolated bootstrap snapshots with no shared configuration or cross-r
   sessions.revokeUser("alice");
   expect(() => service.snapshot(alice,vault.id)).toThrow();
 });
+it("explicitly disables bundled default-on plugins outside the reviewed minimal set",()=>{
+  const config = require("./vault-config").createVaultConfigService(db,vaultRoot,sessions);
+  const value = JSON.parse(config.read(alice,{reference:vault.id,path:".obsidian/core-plugins.json"}).content);
+  expect(Object.entries(value).filter(([,enabled])=>enabled).map(([id])=>id).sort()).toEqual(["file-explorer","global-search","switcher"]);
+  for (const id of ["canvas","bases","bookmarks","daily-notes","templates","file-recovery","sync","publish","webviewer"])
+    expect(value[id]).toBe(false);
+});

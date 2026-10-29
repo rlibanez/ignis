@@ -51,6 +51,11 @@ export function createPrivateFiles(configuration) {
   }
   return Object.freeze({
     select,
+    ensureDirectory(original,resolved) {
+      if (normalize(original) !== ".obsidian" || normalize(resolved) !== ".obsidian") return false;
+      configuration.inspectSync(".obsidian/app.json");
+      return true;
+    },
     allowsSharedPrefetch(path) { return !owns(path); },
     projectTree(tree,snapshot) {
       const result = Object.fromEntries(Object.entries(tree)

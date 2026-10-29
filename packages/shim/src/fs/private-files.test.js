@@ -180,3 +180,13 @@ it("adds the private directory to root listings without duplicates or shared cas
   metadata.delete(".OBSIDIAN/shared.json");
   expect(sync.readdirSync("/")).toContain(".obsidian");
 });
+it("treats creation of the existing private config directory as an authorized no-op",async()=>{
+  const {configuration,sync,async,transport,metadata} = setup();
+  sync.mkdirSync(".obsidian");
+  await async.mkdir(".obsidian",{recursive:true});
+  expect(configuration.inspectSync).toHaveBeenCalledTimes(2);
+  expect(metadata.has(".obsidian")).toBe(false);
+  for (const mock of Object.values(transport)) expect(mock).not.toHaveBeenCalled();
+  configuration.inspectSync.mockImplementation(()=>{throw new Error("Revoked");});
+  expect(()=>sync.mkdirSync(".obsidian")).toThrow("Revoked");
+});

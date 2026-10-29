@@ -278,6 +278,7 @@ export function createFsPromises(metadataCache, contentCache, transport, private
     },
 
     async mkdir(path, options) {
+      if (privateFiles?.ensureDirectory?.(path, resolvePath(path))) return;
       privateFiles?.assertOrdinary(path, resolvePath(path));
       const recursive =
         typeof options === "object" ? !!options.recursive : !!options;

@@ -8,7 +8,16 @@ const booleanFields = new Set([
 ]);
 const fixed = new Map([
   [".obsidian/community-plugins.json", []],
-  [".obsidian/core-plugins.json", { "file-explorer": true, "global-search": true, switcher: true, sync: false, publish: false, workspaces: false }],
+  [".obsidian/core-plugins.json", Object.fromEntries([
+    // Obsidian enables omitted entries according to defaultOn. Explicitly deny
+    // the bundled plugins outside our minimal reviewed set (Obsidian 1.14.4).
+    ...["graph", "backlink", "outgoing-link", "tag-pane", "page-preview", "daily-notes",
+      "templates", "note-composer", "command-palette", "slash-command", "editor-status",
+      "starred", "markdown-importer", "zk-prefixer", "random-note", "outline", "word-count",
+      "slides", "audio-recorder", "workspaces", "file-recovery", "publish", "sync",
+      "webviewer", "bases", "bookmarks", "canvas", "footnotes", "properties"].map(id => [id,false]),
+    ...["file-explorer", "global-search", "switcher"].map(id => [id,true]),
+  ])],
 ]);
 
 function projectPreferences(path, input) {
