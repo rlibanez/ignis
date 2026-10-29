@@ -206,3 +206,17 @@ it.each(["types","hotkeys","global-search","switcher"])("reports optional %s con
   expect(configuration.read).not.toHaveBeenCalled();
   for (const mock of Object.values(transport)) expect(mock).not.toHaveBeenCalled();
 });
+
+it("keeps Obsidian's case-sensitivity probe in memory without queued writes", () => {
+  const { sync, transport, configuration } = setup();
+  expect(sync.existsSync(".OBSIDIANTEST")).toBe(false);
+  sync.writeFileSync(".OBSIDIANTEST", "", "utf8");
+  expect(sync.existsSync(".OBSIDIANTEST")).toBe(true);
+  expect(sync.existsSync(".obsidiantest")).toBe(false);
+  sync.unlinkSync(".OBSIDIANTEST");
+  expect(sync.existsSync(".OBSIDIANTEST")).toBe(false);
+  expect(transport.writeFile).not.toHaveBeenCalled();
+  expect(() => sync.writeFileSync(".OBSIDIANTEST", "payload")).toThrow();
+  configuration.inspectSync.mockImplementation(() => { throw new Error("Revoked"); });
+  expect(() => sync.writeFileSync(".OBSIDIANTEST", "")).toThrow("Revoked");
+});

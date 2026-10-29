@@ -1,4 +1,4 @@
-// Policy foundation, not yet wired into data routes. Callers must supply roles
+// Data policy. Callers must supply roles
 // from the authenticated session/database, never from request fields.
 const roles = new Set(["reader", "editor", "owner"]);
 const personalCandidates = new Set([

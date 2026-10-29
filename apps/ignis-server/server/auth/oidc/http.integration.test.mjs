@@ -255,7 +255,7 @@ it("performs cross-site callback, provisions a normal account and sets only an o
   expect((await request("/api/auth/session", jar)).json().user.role).toBe(
     "user",
   );
-  expect((await request("/api/vault/list", jar)).status).toBe(403);
+  expect((await request("/api/vault/list", jar)).status).toBe(200);
   expect(
     (
       await request(callback, jar, "GET", undefined, {

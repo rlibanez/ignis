@@ -253,21 +253,16 @@ describe("HTTP boundary", () => {
       expect(response.headers.get("cache-control")).toBe("no-store");
     }
   });
-  it("allows local login and admin reads, but leaves normal accounts without data access", async () => {
+  it("allows the user shell and catalog but denies unowned vaults and administration", async () => {
     const admin = await login();
     expect((await request("/api/vault/list", { jar: admin })).status).toBe(200);
     const normal = await login("normal");
     expect((await request("/api/auth/session", { jar: normal })).status).toBe(
       200,
     );
-    for (const route of [
-      "/",
-      "/api/vault/list",
-      "/api/settings",
-      "/vault-files/vault/note.md",
-    ]) {
-      expect((await request(route, { jar: normal })).status).toBe(403);
-    }
+    expect((await request("/api/vault/list", { jar: normal })).status).toBe(200);
+    expect((await request("/api/settings", { jar: normal })).status).toBe(403);
+    expect((await request("/vault-files/vault/note.md", { jar: normal })).status).toBe(404);
   });
   it("requires same-origin CSRF proof bound to the current browser and session", async () => {
     const jar = await login();
@@ -632,7 +627,7 @@ describe("user administration HTTP", () => {
     expect((await listed.json()).oidcAvailable).toBe(false);
     expect((await listed.json()).users.every((row) => row.oidcLinked === null)).toBe(true);
     const normalJar = await login("new-user");
-    expect((await request("/api/vault/list", { jar: normalJar })).status).toBe(403);
+    expect((await request("/api/vault/list", { jar: normalJar })).status).toBe(200);
   });
 
   it("rejects stale admin authentication before creating an account", async () => {
@@ -1051,7 +1046,7 @@ it("requires confirmed, recent and context-bound administrator requests to chang
   expect((await request(path, { jar, method: "POST", body, headers: { ...headers, "x-ignis-csrf": await csrf(jar) } })).status).toBe(403);
 });
 
-it("rejects duplicate, malformed and conflicting vault selectors after parsing without opening normal-user access", async () => {
+it("rejects duplicate, malformed and conflicting vault selectors after parsing and denies unowned vaults", async () => {
   const jar = await login();
   for (const query of ["vault=a&vault=b", "vault[]=a", "vault=", "vault=..%2Fother"])
     expect((await request("/api/fs/readFile?" + query, { jar })).status).toBe(400);
@@ -1060,7 +1055,7 @@ it("rejects duplicate, malformed and conflicting vault selectors after parsing w
   expect((await request("/api/fs/writeFile?vault=first", { jar, method: "POST", body: { vault: "first", path: "note.md", data: "test" },
     headers: { "x-ignis-csrf": await csrf(jar) } })).status).toBe(200);
   const normal = await login("normal");
-  expect((await request("/api/fs/readFile?vault=first", { jar: normal })).status).toBe(403);
+  expect((await request("/api/fs/readFile?vault=first", { jar: normal })).status).toBe(404);
 });
 
 describe("registered WebSocket vault identity", () => {
@@ -1184,7 +1179,7 @@ it("binds bootstrap private configuration to the authenticated account and regis
   const config = (await result.json()).privateConfiguration;
   expect(config[".obsidian/app.json"]).toEqual({content:'{"spellcheck":true}',revision:1,writable:true});
   expect(config[".obsidian/community-plugins.json"].content).toBe("[]");
-  expect((await request(`/api/bootstrap?vault=${vault.id}`, {jar:await login("normal")})).status).toBe(403);
+  expect((await request(`/api/bootstrap?vault=${vault.id}`, {jar:await login("normal")})).status).toBe(404);
   expect((await request(`/api/bootstrap?vault=${vault.id}`)).status).toBe(401);
 });
 
@@ -1205,5 +1200,36 @@ it("protects private configuration writes with CSRF, revision checks and a serve
   expect(db.prepare("SELECT user_id FROM vault_preferences").get().user_id).toBe(owner);
   expect((await request(route,{jar})).headers.get("cache-control")).toBe("no-store");
   expect((await request("/api/vault-config",{jar,method:"POST",body:{...body,path:".obsidian/community-plugins.json"},headers})).status).toBe(400);
-  expect((await request(route,{jar:await login("normal")})).status).toBe(403);
+  expect((await request(route,{jar:await login("normal")})).status).toBe(404);
+});
+
+it("allows an owner socket and file reads, then stops both after membership revocation", async () => {
+  const owner = db.prepare("SELECT id FROM users WHERE login='normal'").get().id;
+  const vault = require("./store").registerVault(db, root, "vault", owner);
+  const jar = await login("normal");
+  const response = await request(`/api/fs/readFile?vault=${vault.id}&path=note.md`, { jar });
+  expect(response.status).toBe(200);
+  const ws = connect(jar, ORIGIN, vault.id);
+  await once(ws, "open");
+  const message = once(ws, "message");
+  wss.broadcastToVault("vault", { type: "modified", path: "visible.md" });
+  expect(JSON.parse((await message)[0].toString()).path).toBe("visible.md");
+  const closed = once(ws, "close");
+  db.prepare("DELETE FROM memberships WHERE vault_id=? AND user_id=?").run(vault.id, owner);
+  wss.broadcastToVault("vault", { type: "modified", path: "after-revoke.md" });
+  await closed;
+  expect((await request(`/api/fs/readFile?vault=${vault.id}&path=note.md`, { jar })).status).toBe(404);
+});
+
+it("does not open the owner runtime for reader or editor memberships", async () => {
+  const owner = db.prepare("SELECT id FROM users WHERE login='normal'").get().id;
+  const vault = require("./store").registerVault(db, root, "vault", owner);
+  const jar = await login("normal");
+  for (const role of ["reader", "editor"]) {
+    db.prepare("UPDATE memberships SET role=? WHERE vault_id=? AND user_id=?").run(role, vault.id, owner);
+    expect((await request(`/api/fs/readFile?vault=${vault.id}&path=note.md`, { jar })).status).toBe(404);
+    expect((await request(`/api/vault-config?vault=${vault.id}&path=.obsidian/app.json`, { jar })).status).toBe(404);
+    const ws = connect(jar, ORIGIN, vault.id);
+    await new Promise(resolve => { ws.once("error", resolve); });
+  }
 });

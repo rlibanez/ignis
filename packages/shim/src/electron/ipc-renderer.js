@@ -18,16 +18,10 @@ const syncHandlers = {
   cli: () => false,
   "set-language": () => null,
 
-  policy: () => ({
-    plugins: true,
-    themes: true,
-    snippets: true,
-    sync: true,
-    publish: true,
-    webViewer: true,
-    devTools: true,
-    insider: true,
-  }),
+  policy: () => Object.fromEntries(
+    ["plugins", "themes", "snippets", "sync", "publish", "webViewer", "devTools", "insider"]
+      .map(key => [key, window.__ignisAuth?.role === "admin"]),
+  ),
 
   terms: () => {
     if (!window.__obsidianTerms) {

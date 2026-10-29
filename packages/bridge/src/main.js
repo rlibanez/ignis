@@ -26,10 +26,12 @@ class IgnisBridgePlugin extends Plugin {
   async onload() {
     console.log("[ignis-bridge] Plugin loaded");
 
-    await pluginRegistry.refresh();
-    patchSettingsModal(this);
-    refreshIgnisSettings();
-    this._pluginTogglesUnsub = watchPluginToggles();
+    if (window.__ignisAuth?.role === "admin") {
+      await pluginRegistry.refresh();
+      patchSettingsModal(this);
+      refreshIgnisSettings();
+      this._pluginTogglesUnsub = watchPluginToggles();
+    }
 
     this.registerDomEvent(window, "ignis:virtual-plugin-loaded", () => {
       reconcilePluginTabs(this.app.setting);

@@ -1,3 +1,4 @@
+import { installAccountStorage } from "./account-storage.js";
 import { snapshotBuffered, suspendCoalescer } from "./fs/write-coalescer.js";
 import { installRequire } from "./require.js";
 import { installGlobals } from "./globals/index.js";
@@ -62,6 +63,8 @@ const BRIDGE_MANIFEST = {
   authorUrl: "https://github.com/Nystik-gh/ignis",
   isDesktopOnly: false,
 };
+
+installAccountStorage();
 
 installGlobals(); // process, Buffer, window overrides (before require so Buffer is available)
 installRequire(); // shim registry, window.require

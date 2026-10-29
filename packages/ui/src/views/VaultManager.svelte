@@ -20,6 +20,7 @@
 
   export let vaultService;
 
+  const administrator = window.__ignisAuth?.role === "admin";
   let vaults = [];
   let searchQuery = "";
   let openMenuId = null;
@@ -301,14 +302,14 @@
   <div class="section-body">
     <div class="vault-list">
       {#if vaults.length === 0}
-        <div class="empty">No vaults yet. Create one below.</div>
+        <div class="empty">{administrator ? "No vaults yet. Create one below." : "No vaults assigned. Ask an administrator to create a vault for you."}</div>
       {:else if filteredVaults.length === 0}
         <div class="empty">No vaults match your search.</div>
       {:else}
         {#each filteredVaults as vault (vault.id)}
           <ListItem
             primary={vault.name}
-            secondary={vault.path}
+            secondary={vault.path || ""}
             active={vault.id === currentVaultId}
             on:click={() => openVault(vault)}
           >
@@ -326,15 +327,15 @@
                   <span class="active-check">&#10003;</span>
                 {/if}
               </span>
-              <span class="vault-path">{vault.path}</span>
+              {#if vault.path}<span class="vault-path">{vault.path}</span>{/if}
             </svelte:fragment>
             <svelte:fragment slot="action">
-              <PopoverMenu
+              {#if administrator}<PopoverMenu
                 open={openMenuId === vault.id}
                 items={!vault.uuid && window.__ignisAuth ? [{ id: "register", label: "Register vault" }] : menuItems}
                 on:toggle={() => toggleMenu(vault.id)}
                 on:select={(e) => onMenuSelect(vault, e.detail)}
-              />
+              />{/if}
             </svelte:fragment>
           </ListItem>
         {/each}
@@ -353,12 +354,12 @@
         <Button variant="ghost" on:click={() => window.location.assign("/account")}>Account</Button>
         <Button variant="ghost" on:click={() => window.__ignisAuth.logout()}>Sign out</Button>
       {/if}
-      <Button variant="ghost" on:click={showCreateDialog}>
+      {#if administrator}<Button variant="ghost" on:click={showCreateDialog}>
         <svelte:fragment slot="icon">
           <Plus size="1rem" />
         </svelte:fragment>
         Create New Vault
-      </Button>
+      </Button>{/if}
     </div>
   </svelte:fragment>
 </Modal>

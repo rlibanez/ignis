@@ -1,5 +1,5 @@
 // Inventory of data APIs. This classifies surfaces; it does NOT grant vault access.
-// The HTTP/WS boundary continues to require an active administrator for data.
+// Owners may use the reviewed content surfaces; per-vault authorization is separate.
 const groups = [
   { mount: "/api/vault-config", source: "routes/vault-config.js", surface: "private-configuration", routes: [["GET", "/", "read"], ["POST", "/", "write"]] },
   { mount: "/api/fs", source: "routes/fs.js", surface: "vault-content", routes: [
@@ -30,7 +30,10 @@ const groups = [
 const routes = Object.freeze(groups.flatMap(group => group.routes.map(([method, suffix, operation, sourcePath]) => Object.freeze({
   method, path: group.mount + (suffix === "/" ? "" : suffix), mount: group.mount,
   source: group.source, sourcePath: sourcePath || suffix,
-  surface: group.surface, operation, currentAccess: "admin",
+  surface: group.surface, operation, currentAccess:
+    ["vault-content", "private-configuration", "mixed-bootstrap"].includes(group.surface) ||
+    (method === "GET" && ["/api/vault/list", "/api/vault/info", "/api/version"].includes(group.mount + (suffix === "/" ? "" : suffix)))
+      ? "owner" : "admin",
 }))));
 const byRoute = new Map(routes.map(route => [`${route.method} ${route.path}`, route]));
 if (byRoute.size !== routes.length) throw new Error("Duplicate route policy");

@@ -58,13 +58,28 @@
       });
     }
     const uiSrc = "__IGNIS_UI_SRC__";
-    if (new URLSearchParams(location.search).get("manager") === "1") {
+    const params = new URLSearchParams(location.search);
+    let showManager = params.get("manager") === "1";
+    if (!showManager && window.__ignisAuth.role === "user") {
+      const reference = params.get("vault");
+      const response = await fetch("/api/vault/info" + (reference ? "?vault=" + encodeURIComponent(reference) : ""), { cache: "no-store" });
+      if (response.status === 404) showManager = true;
+      else {
+        if (!response.ok) throw new Error("Vault selection unavailable");
+        const info = await response.json();
+        if (!info.uuid) throw new Error("Registered vault required");
+        params.set("vault", info.uuid);
+        history.replaceState(null, "", location.pathname + "?" + params.toString());
+      }
+    }
+    if (showManager) {
       await load(uiSrc);
       document.getElementById("ignis-status")?.remove();
       window.IgnisUI.showVaultManager();
       return;
     }
     await load("__SHIM_LOADER_SRC__");
+    if (window.__ignisBootstrapFailed) throw new Error("Private vault initialization unavailable");
     await load(uiSrc);
   } catch {
     window.__ignisAuth?.lock("Unable to start Ignis. Sign in again to continue.");

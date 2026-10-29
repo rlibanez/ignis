@@ -54,9 +54,11 @@ it("detects new API mounts in the server entry point", () => {
   const expected = [...new Set(routes.filter(route => !route.mount.startsWith("/api/ext/")).map(route => route.mount))].sort();
   expect(mounts).toEqual(expected);
 });
-it("keeps all inventoried APIs administrator-only and rejects unknown paths/methods", () => {
+it("classifies reviewed owner APIs and rejects unknown paths/methods", () => {
   for (const route of routes) {
-    expect(route.currentAccess).toBe("admin");
+    const owner = route.mount === "/api/fs" || route.mount === "/api/vault-config" ||
+      ["/api/bootstrap", "/api/vault/list", "/api/vault/info", "/api/version"].includes(route.path);
+    expect(route.currentAccess).toBe(owner ? "owner" : "admin");
     expect(Object.isFrozen(route)).toBe(true);
     expect(permittedResource(route.method, route.path, [])).toBe(true);
     expect(dataRoutePolicy("OPTIONS", route.path)).toBeNull();

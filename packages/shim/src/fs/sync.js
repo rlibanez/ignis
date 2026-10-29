@@ -15,6 +15,8 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
 
   return {
     existsSync(path) {
+      const probe = privateFiles?.caseProbe?.("exists", path, resolvePath(path));
+      if (probe) return probe.value;
       if (privateFiles) {
         try {
           const privatePath = privateFiles.select(path, resolvePath(path), true);
@@ -170,6 +172,8 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
     },
 
     writeFileSync(path, data, encoding) {
+      const probe = privateFiles?.caseProbe?.("write", path, resolvePath(path), data);
+      if (probe) return probe.value;
       if (typeof encoding === "object") {
         encoding = encoding?.encoding;
       }
@@ -213,6 +217,8 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
     },
 
     unlinkSync(path) {
+      const probe = privateFiles?.caseProbe?.("unlink", path, resolvePath(path));
+      if (probe) return probe.value;
       privateFiles?.assertOrdinary(path, resolvePath(path));
       const resolved = resolvePath(path);
 

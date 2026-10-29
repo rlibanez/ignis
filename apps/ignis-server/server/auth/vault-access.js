@@ -5,7 +5,7 @@ const { resolveRegisteredVault } = require("./vault-catalog");
 const { vaultCapabilityAllowed } = require("./vault-policy");
 const denied = Object.freeze({ allowed: false });
 
-// Preparatory service: data routes still enforce administrator-only access.
+// Data routes use this service for live per-vault decisions.
 // Use a fresh decision immediately before an operation, not as a durable grant.
 function createVaultAccessService(db, vaultRoot, sessions) {
   function evaluate(token, reference, operations) {

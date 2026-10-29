@@ -228,8 +228,30 @@ it("protects real server routes, persists auth and does not log request secrets"
     expect((await request(port, "/api/auth/login", ownerJar, { method: "POST", headers: { "x-ignis-csrf": ownerChallenge }, body: { login: "normal-owner", password } })).status).toBe(200);
     expect((await request(port, "/api/vault/registration", ownerJar)).status).toBe(403);
     expect((await request(port, "/api/vault/register", ownerJar, { method: "POST", body: registerBody })).status).toBe(403);
-    expect((await request(port, "/api/fs/readFile?vault=Team&path=note.md", ownerJar)).status).toBe(403);
+    expect((await request(port, "/api/fs/readFile?vault=Team&path=note.md", ownerJar)).status).toBe(200);
 
+    const ownerCsrf = JSON.parse((await request(port, "/api/auth/csrf", ownerJar)).text).csrfToken;
+    const ownUuid = JSON.parse(registered.text).uuid;
+    const ownerList = JSON.parse((await request(port, "/api/vault/list", ownerJar)).text);
+    expect(ownerList.map(v => v.id)).toEqual(["Team"]);
+    expect(ownerList[0].path).toBeUndefined();
+    const ownBoot = await request(port, `/api/bootstrap?vault=${ownUuid}`, ownerJar);
+    expect(ownBoot.status).toBe(200);
+    expect(JSON.parse(ownBoot.text)).toMatchObject({ configurationMode: "private", plugins: [], virtualPlugins: [] });
+    expect((await request(port, `/api/fs/writeFile?vault=${ownUuid}`, ownerJar, {
+      method: "POST", headers: { "x-ignis-csrf": ownerCsrf }, body: { path: "owner-note.md", content: "owner-write" },
+    })).status).toBe(200);
+    expect((await request(port, `/api/fs/readFile?vault=${ownUuid}&path=owner-note.md`, ownerJar)).text).toBe("owner-write");
+    expect((await request(port, `/api/fs/writeFile?vault=${ownUuid}`, ownerJar, {
+      method: "POST", body: { path: "no-csrf.md", content: "forbidden" },
+    })).status).toBe(403);
+    expect((await request(port, `/api/fs/readFile?vault=${ownUuid}&path=.obsidian/app.json`, ownerJar)).status).toBe(404);
+    for (const route of ["/api/settings", "/api/plugins", "/api/ext/headless-sync/status"]) {
+      expect((await request(port, route, ownerJar)).status).toBe(403);
+    }
+    expect((await request(port, "/api/fs/writeFile", ownerJar, {
+      method: "POST", headers: { "x-ignis-csrf": ownerCsrf }, body: { path: "implicit.md", content: "forbidden" },
+    })).status).toBe(404);
     expect(JSON.parse(registered.text)).toMatchObject({ id: "Team", ok: true });
     const registrationDb = openDatabase(path.join(root, "data"));
     try {
@@ -305,7 +327,7 @@ it("protects real server routes, persists auth and does not log request secrets"
     for (const endpoint of ["readFile", "download"])
       expect((await request(port, `/api/fs/${endpoint}?vault=${result.uuid}&path=.ignis-private/secret.md`, jar)).status).toBe(404);
 
-    expect((await request(port, `/api/fs/tree?vault=${result.uuid}`, ownerJar)).status).toBe(403);
+    expect((await request(port, `/api/fs/tree?vault=${result.uuid}`, ownerJar)).status).toBe(404);
     expect((await request(port, `/api/fs/writeFile?vault=${result.uuid}`, jar, {
       method: "POST", headers: { "x-ignis-csrf": createCsrf },
       body: { vault: "Created", path: "identity.md", content: "stable identity" },

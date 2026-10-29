@@ -12,8 +12,9 @@ const absentOptionalFiles = new Set([
 ]);
 const fail = code => { throw Object.assign(new Error("Private configuration unavailable"), {code}); };
 
-// Optional read/write adapter, not activated by the runtime yet. No disk fallback.
+// Private runtime adapter. No shared configuration fallback.
 export function createPrivateFiles(configuration) {
+  let probeExists = false;
   function owns(path) {
     const parts = normalize(path).toLowerCase().split("/");
     return parts.includes(".obsidian");
@@ -57,6 +58,15 @@ export function createPrivateFiles(configuration) {
     if ((mode & 1) || ((mode & 2) && (path === ".obsidian" || !result.writable))) fail("EACCES");
   }
   return Object.freeze({
+    caseProbe(operation, original, resolved, data) {
+      const path = normalize(original);
+      if (path !== normalize(resolved) || ![".OBSIDIANTEST", ".obsidiantest"].includes(path)) return null;
+      configuration.inspectSync(".obsidian/app.json");
+      if (operation === "exists") return { value: path === ".OBSIDIANTEST" && probeExists };
+      if (path !== ".OBSIDIANTEST" || (operation === "write" && data !== "")) fail("UNSUPPORTED_CONFIGURATION_OPERATION");
+      probeExists = operation === "write";
+      return { value: undefined };
+    },
     select,
     ensureDirectory(original,resolved) {
       if (normalize(original) !== ".obsidian" || normalize(resolved) !== ".obsidian") return false;

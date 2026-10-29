@@ -280,6 +280,10 @@ export function initialize() {
   resolveVaultId();
 
   const bootstrap = fetchBootstrap();
+  if (!bootstrap && window.__ignisAuth?.role === "user") {
+    window.__ignisBootstrapFailed = true;
+    throw new Error("Private vault initialization unavailable");
+  }
 
   if (bootstrap) {
     applyVaultInfo(bootstrap.vault);

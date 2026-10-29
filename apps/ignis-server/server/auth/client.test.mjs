@@ -5,7 +5,7 @@ const source = fs.readFileSync(
   new URL("./web/client.js", import.meta.url),
   "utf8",
 );
-async function fixture() {
+async function fixture({ storageFails = false } = {}) {
   let userId = "admin-id";
   let catalog = [{ id: "Notes", uuid: "original" }];
   const elements = [];
@@ -73,7 +73,7 @@ async function fixture() {
     location: {
       origin: "https://ignis.test",
       href: "https://ignis.test/",
-      replace() {},
+      replace() { events.push("redirect"); },
     },
     URL: TestURL,
     Request,
@@ -84,7 +84,7 @@ async function fixture() {
     Blob,
     setTimeout,
     setInterval() {},
-    localStorage: { clear() {} },
+    localStorage: { clear() { events.push("storage-clear"); if (storageFails) throw new Error("Storage unavailable"); expect(window.__ignisAuth.blocked).toBe(false); } },
     sessionStorage: { clear() {} },
     Date,
   };
@@ -222,4 +222,31 @@ it("pins the account identity and hides it when the session is locked", async ()
   await f.window.__ignisAuth.check();
   expect(f.window.__ignisAuth.blocked).toBe(true);
   expect(f.window.__ignisAuth.userId).toBeNull();
+});
+
+it("shows the manager for unavailable user vaults without loading Obsidian", async () => {
+  const html = fs.readFileSync(new URL("../assets/index.html", import.meta.url), "utf8");
+  const script = html.match(/<script>\s*(\(async function[\s\S]*?)<\/script>/)[1];
+  for (const search of ["", "?vault=foreign"]) {
+    const loaded = [];
+    let opened = false;
+    await vm.runInNewContext(script, {
+      window: { __ignisAuth: { role: "user", ready: Promise.resolve() }, IgnisUI: { showVaultManager() { opened = true; } } },
+      location: { search }, URLSearchParams,
+      fetch: async () => ({ status: 404 }),
+      document: { createElement: () => ({}), head: { appendChild(script) { loaded.push(script.src); script.onload(); } }, getElementById: () => ({ remove() {} }) },
+    });
+    expect(loaded).toEqual(["__IGNIS_UI_SRC__"]);
+    expect(opened).toBe(true);
+  }
+});
+
+it("leaves a revoked session even when clearing browser storage fails", async () => {
+  for (const storageFails of [false, true]) {
+    const f = await fixture({ storageFails });
+    await f.window.__ignisAuth.logout();
+    expect(f.events.indexOf("storage-clear")).toBeLessThan(f.events.indexOf("ignis:auth-lost"));
+    expect(f.events).toContain("redirect");
+    expect(f.window.__ignisAuth.blocked).toBe(true);
+  }
 });

@@ -140,14 +140,7 @@
       if (session.passwordResetRequired) { location.replace("/reset-password"); return; }
       if (intent) location.replace(destination(intent));
       else if (accountPage) location.replace("/account");
-      else if (session.user.role === "admin") location.replace("/");
-      else {
-        form.hidden = true;
-        logout.hidden = false;
-        document.getElementById("manage-account").hidden = false;
-        status.textContent =
-          "Signed in. Vault access for non-administrator accounts is not available yet.";
-      }
+      else location.replace("/");
     } catch {
       showLoginError("Unable to sign in. Close other Ignis tabs and try again.");
     } finally {
@@ -209,7 +202,7 @@
           location.replace(destination(returnIntent));
           return;
         }
-        if (outcome === "success" && session.user.role === "admin") {
+        if (outcome === "success") {
           location.replace("/");
           return;
         }
@@ -218,8 +211,7 @@
         document.getElementById("account").hidden = !accountPage;
         document.getElementById("account-status").textContent =
           session.user.login;
-        document.getElementById("open-ignis").hidden =
-          session.user.role !== "admin";
+        document.getElementById("open-ignis").hidden = false;
         document.getElementById("manage-users").hidden = session.user.role !== "admin";
         linkButton.hidden =
           !accountPage || !oidcAvailable || session.oidcLinked;
@@ -229,9 +221,7 @@
           button.textContent = "Sign in again";
         }
         status.textContent =
-          session.user.role === "admin"
-            ? accountPage ? "" : "You are signed in."
-            : "Signed in. Vault access for non-administrator accounts is not available yet.";
+          accountPage ? "" : "You are signed in.";
       } else if (current.status === 401) {
         if (accountPage) {
           location.replace("/login");

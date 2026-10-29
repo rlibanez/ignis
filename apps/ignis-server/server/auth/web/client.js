@@ -11,6 +11,7 @@
   let blocked = false,
     sessionId = null,
     userId = null,
+    role = null,
     csrf = null,
     csrfAt = 0,
     refresh = null;
@@ -125,7 +126,7 @@
     if (!response.ok) throw new Error("Session unavailable");
     const state = await response.json();
     if (
-      state.user.role !== "admin" ||
+      !["admin", "user"].includes(state.user.role) ||
       (sessionId && state.sessionId !== sessionId) ||
       (userId && state.user.id !== userId) ||
       typeof state.user.id !== "string" || !state.user.id
@@ -133,6 +134,7 @@
       throw new Error("Session changed");
     sessionId = state.sessionId;
     userId = state.user.id;
+    role = state.user.role;
     return state;
   }
   async function token() {
@@ -277,10 +279,11 @@
         body: "{}",
       });
       if (!response.ok) throw new Error();
+      // Clear the account-scoped storage while its local context is still valid.
+      // Storage failure must not prevent leaving an already revoked session.
+      try { localStorage.clear(); sessionStorage.clear(); } catch { /* Optional browser storage. */ }
       channel?.postMessage("lock");
       lock("You have signed out.");
-      localStorage.clear();
-      sessionStorage.clear();
       location.replace("/login");
     } catch {
       window.alert("Unable to sign out. Please try again.");
@@ -308,6 +311,7 @@
     get sessionId() {
       return sessionId;
     },
+    get role() { return blocked ? null : role; },
     get userId() {
       return blocked ? null : userId;
     },
