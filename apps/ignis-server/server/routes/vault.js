@@ -49,6 +49,34 @@ router.get("/list", (req, res) => {
   res.json(list);
 });
 
+// Administrative inspection does not create directories, identities or memberships.
+router.get("/registration", (req, res) => {
+  if (!req.vaultRegistrationOptions) return res.status(503).json({ error: "Vault registration unavailable" });
+  try { res.json(req.vaultRegistrationOptions()); }
+  catch { res.status(503).json({ error: "Unable to inspect existing vaults" }); }
+});
+
+router.post("/register", (req, res) => {
+  const body = req.body;
+  if (Object.keys(req.query).length || !body || Array.isArray(body) || Object.keys(body).length !== 3 ||
+      Object.keys(body).some(key => !["directory", "ownerId", "identity"].includes(key)) ||
+      typeof body.directory !== "string" || typeof body.ownerId !== "string" ||
+      typeof body.identity !== "string" || !/^[a-f0-9]{64}$/.test(body.identity))
+    return res.status(400).json({ error: "Select an existing vault and its owner" });
+  if (!req.registerExistingVault) return res.status(503).json({ error: "Vault registration unavailable" });
+  try {
+    const vault = req.registerExistingVault(body.directory, body.ownerId, body.identity);
+    config.refreshVaults();
+    bootstrapCache.invalidateVault(vault.name);
+    return res.json({ ok: true, id: vault.name, uuid: vault.id });
+  } catch (error) {
+    const statuses = { INVALID_DIRECTORY: 400, INVALID_ROOT: 409, INVALID_VAULT: 409, VAULT_ALIAS: 409,
+      VAULT_RESERVED: 409, OWNER_UNAVAILABLE: 409, SESSION_CHANGED: 401, DIRECTORY_CHANGED: 409 };
+    const messages = require("../auth/vault-registration").messages;
+    return res.status(statuses[error.code] || 503).json({ error: messages[error.code] || "Vault registration could not be completed" });
+  }
+});
+
 // GET /api/vault/info?vault=<id> - returns info for a specific vault
 router.get("/info", async (req, res) => {
   const vaultId = req.query.vault || config.defaultVaultId;

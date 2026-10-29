@@ -48,7 +48,7 @@ it("rejects root symlinks and ID/alias collisions, including preexisting inconsi
   const alias = path.join(root, "linked-root"); fs.symlinkSync(vaultRoot, alias);
   expect(() => resolveRegisteredVault(db, alias, registered.id)).toThrow();
   fs.mkdirSync(path.join(vaultRoot, registered.id));
-  expect(() => registerVault(db, vaultRoot, registered.id, "admin")).toThrow("alias conflict");
+  expect(() => registerVault(db, vaultRoot, registered.id, "admin")).toThrow("registered or reserved");
   db.prepare("INSERT INTO vaults(id,name,directory,status,created_at) VALUES ('other','Other',?,'active',0)").run(registered.id);
   expect(() => resolveRegisteredVault(db, vaultRoot, registered.id)).toThrow();
 });

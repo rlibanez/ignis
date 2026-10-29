@@ -810,7 +810,21 @@ function createAuthBoundary({
         catch { return safe(res, 400, "Invalid or conflicting vault selection"); }
       }
       if (vaultRoot) {
+        req.vaultRegistrationOptions = () => require("./vault-registration").registrationOptions(db, vaultRoot);
+        req.registerExistingVault = (directory, ownerId, expectedIdentity) => require("./vault-registration").registerExistingVault(db, vaultRoot, directory, ownerId, {
+          actorId: current.user.id, expectedIdentity,
+          isCurrent: withinTransaction => {
+            const session = sessions.resolve(cookies.read(req.headers.cookie), { withinTransaction });
+            return session?.id === current.id && session.user.role === "admin";
+          },
+        });
         req.vaultUUID = directory => db.prepare("SELECT id FROM vaults WHERE directory=? AND status='active'").get(directory)?.id;
+        if (["/api/vault/rename", "/api/vault/remove"].includes(pathname)) {
+          const reference = require("./vault-selection").selectVaultReference(req.query, req.body);
+          if (!db.prepare("SELECT 1 FROM vaults WHERE id=? OR directory=?").get(reference, reference) &&
+              !db.prepare("SELECT 1 FROM vault_deletions WHERE vault_id=?").get(reference))
+            return safe(res, 409, "Register this vault before renaming or deleting it");
+        }
         if (pathname === "/api/vault/remove") {
           const reference = require("./vault-selection").selectVaultReference(req.query, req.body);
           if (db.prepare("SELECT 1 FROM vault_deletions WHERE vault_id=? AND state!='pending'").get(reference))

@@ -24,3 +24,12 @@ it("keeps the name selector only for an unregistered legacy vault", async () => 
   expect(await vaultService.deleteVault("Legacy")).toEqual({ wasCurrentVault: false, cleanupPending: false });
   expect(fetch.mock.calls[0][0]).toBe("/api/vault/remove?vault=Legacy");
 });
+
+it("sends the explicit owner and inspected folder identity without silently retrying conflicts", async () => {
+  const fetch = vi.fn().mockResolvedValue({ ok: false, json: async () => ({ error: "The directory changed" }) });
+  vi.stubGlobal("fetch", fetch);
+  await expect(vaultService.registerVault("Notes", "selected-owner", "selected-identity")).rejects.toThrow("directory changed");
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(fetch.mock.calls[0][0]).toBe("/api/vault/register");
+  expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ directory: "Notes", ownerId: "selected-owner", identity: "selected-identity" });
+});

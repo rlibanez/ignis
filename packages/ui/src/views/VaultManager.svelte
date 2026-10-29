@@ -31,6 +31,11 @@
   let errorMessage = "";
   let pendingReload = false;
   let deletedCurrentVault = false;
+  let registrationOwners = [];
+  let registrationOwner = "";
+  let registrationSnapshot = null;
+  let registrationError = "";
+  let registrationBusy = false;
   let version = "";
 
   const menuItems = [
@@ -85,10 +90,54 @@
 
   function onMenuSelect(vault, item) {
     openMenuId = null;
-    if (item.id === "rename") {
+    if (item.id === "register") {
+      showRegistrationDialog(vault);
+    } else if (item.id === "rename") {
       showRenameDialog(vault);
     } else if (item.id === "delete") {
       showDeleteDialog(vault);
+    }
+  }
+
+  async function showRegistrationDialog(vault) {
+    targetVault = vault;
+    activeDialog = "register";
+    registrationOwner = "";
+    registrationOwners = [];
+    registrationSnapshot = null;
+    registrationError = "";
+    registrationBusy = true;
+    try {
+      const options = await vaultService.registrationOptions();
+      if (activeDialog !== "register" || targetVault !== vault) return;
+      registrationOwners = options.owners;
+      const candidate = options.vaults.find(entry => entry.directory === vault.id);
+      if (!candidate?.eligible) {
+        registrationError = candidate?.reason || "This vault is no longer available for registration. Refresh the vault list.";
+      } else {
+        registrationSnapshot = candidate.identity;
+        if (!registrationOwners.length) registrationError = "An active user is required to own this vault.";
+      }
+    } catch (error) {
+      if (activeDialog === "register" && targetVault === vault) registrationError = error.message;
+    } finally {
+      if (activeDialog === "register" && targetVault === vault) registrationBusy = false;
+    }
+  }
+
+  async function onRegisterConfirm() {
+    if (registrationBusy || !registrationOwner || !registrationSnapshot) return;
+    const selected = targetVault;
+    registrationBusy = true;
+    registrationError = "";
+    try {
+      await vaultService.registerVault(selected.id, registrationOwner, registrationSnapshot);
+      if (activeDialog === "register" && targetVault === selected) closeDialog();
+      await refreshVaults();
+    } catch (error) {
+      if (activeDialog === "register" && targetVault === selected) registrationError = error.message;
+    } finally {
+      if (activeDialog === "register" && targetVault === selected) registrationBusy = false;
     }
   }
 
@@ -242,6 +291,9 @@
             <svelte:fragment slot="default">
               <span class="vault-name">
                 {vault.name}
+                {#if !vault.uuid && window.__ignisAuth}
+                  <span class="active-label">(not registered)</span>
+                {/if}
                 {#if vault.id === currentVaultId}
                   <span class="active-label">(active)</span>
                   <span class="active-check">&#10003;</span>
@@ -252,7 +304,7 @@
             <svelte:fragment slot="action">
               <PopoverMenu
                 open={openMenuId === vault.id}
-                items={menuItems}
+                items={!vault.uuid && window.__ignisAuth ? [{ id: "register", label: "Register vault" }] : menuItems}
                 on:toggle={() => toggleMenu(vault.id)}
                 on:select={(e) => onMenuSelect(vault, e.detail)}
               />
@@ -340,6 +392,36 @@
   </ConfirmDialog>
 {/if}
 
+{#if activeDialog === "register" && targetVault}
+  <Modal
+    title={"Register vault " + targetVault.name}
+    width="500px"
+    closeOnOverlayClick={false}
+    on:escape={closeDialog}
+    on:close={closeDialog}
+  >
+    <div class="registration-body">
+      <p>Register this existing folder without moving or changing its files.</p>
+      <label for="vault-owner">Initial owner</label>
+      <select id="vault-owner" bind:value={registrationOwner} disabled={registrationBusy || !registrationSnapshot}>
+        <option value="" disabled>Select a user</option>
+        {#each registrationOwners as owner (owner.id)}
+          <option value={owner.id}>{owner.login}</option>
+        {/each}
+      </select>
+      {#if registrationError}<p class="registration-error" role="alert">{registrationError}</p>{/if}
+    </div>
+    <svelte:fragment slot="footer">
+      <div class="registration-actions">
+        <Button variant="secondary" on:click={closeDialog}>Cancel</Button>
+        <Button variant="primary" disabled={registrationBusy || !registrationOwner || !registrationSnapshot} on:click={onRegisterConfirm}>
+          {registrationBusy ? "Please wait…" : "Register vault"}
+        </Button>
+      </div>
+    </svelte:fragment>
+  </Modal>
+{/if}
+
 {#if activeDialog === "cleanup"}
   <MessageDialog
     title="Vault removed"
@@ -364,6 +446,12 @@
 {/if}
 
 <style>
+  .registration-body { padding: 1.25rem 1.5rem; }
+  .registration-body p { margin: 0 0 1rem; color: var(--text-muted); }
+  .registration-body label { display: block; font-weight: 600; margin-bottom: 0.5rem; }
+  .registration-body select { width: 100%; padding: 0.625rem 0.75rem; border: 1px solid var(--background-modifier-border); border-radius: 0.375rem; color: var(--text-normal); background: var(--background-primary); }
+  .registration-body .registration-error { margin: 1rem 0 0; padding: 0.75rem; border: 1px solid var(--text-error, #e36d79); border-radius: 0.375rem; color: var(--text-error, #e36d79); }
+  .registration-actions { display: flex; justify-content: flex-end; gap: 0.625rem; padding: 1rem 1.5rem; }
   .section-header {
     display: flex;
     align-items: center;

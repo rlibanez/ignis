@@ -137,6 +137,10 @@ function guardPath(req, res, source = "query") {
     return null;
   }
 
+  if (req.method === "DELETE" && resolved === path.resolve(vaultRoot)) {
+    res.status(403).json({ error: "Use vault management to remove a vault" });
+    return null;
+  }
   req._vaultRoot = vaultRoot;
   return resolved;
 }
@@ -325,6 +329,10 @@ router.post("/rename", async (req, res) => {
 
   const oldResolved = resolveVaultPath(vaultRoot, req.body.oldPath);
   const newResolved = resolveVaultPath(vaultRoot, req.body.newPath);
+
+  if (oldResolved === path.resolve(vaultRoot) || newResolved === path.resolve(vaultRoot)) {
+    return res.status(403).json({ error: "Use vault management to rename a vault" });
+  }
 
   if (!oldResolved || !newResolved) {
     return res.status(403).json({ error: "Invalid path" });

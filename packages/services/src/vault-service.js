@@ -41,6 +41,18 @@ export const vaultService = {
     return [];
   },
 
+  async registrationOptions() {
+    return fetchJson(API_BASE + "/registration");
+  },
+
+  async registerVault(directory, ownerId, identity) {
+    return fetchJson(API_BASE + "/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ directory, ownerId, identity }),
+    });
+  },
+
   async createVault(name) {
     await fetchJson(API_BASE + "/create", {
       method: "POST",

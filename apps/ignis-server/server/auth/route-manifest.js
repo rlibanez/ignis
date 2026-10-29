@@ -11,6 +11,7 @@ const groups = [
     ["GET", "/list", "list"], ["GET", "/info", "read"],
     ["POST", "/refresh", "manage"], ["POST", "/create", "manage"],
     ["POST", "/rename", "manage"], ["DELETE", "/remove", "manage"],
+    ["GET", "/registration", "read"], ["POST", "/register", "manage"],
   ] },
   { mount: "/api/bootstrap", source: "routes/bootstrap.js", surface: "mixed-bootstrap", routes: [["GET", "/", "read"]] },
   { mount: "/api/proxy", source: "routes/proxy/index.js", surface: "external-network", routes: [["POST", "/", "network"]] },

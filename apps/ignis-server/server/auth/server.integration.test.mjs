@@ -116,6 +116,8 @@ it("protects real server routes, persists auth and does not log request secrets"
   const password = "synthetic-real-server-password";
   const db = openDatabase(path.join(root, "data"));
   bootstrapAdmin(db, "admin", await hashPassword(password));
+  db.exec("INSERT INTO users(id,login,role,created_at) VALUES ('normal-owner','normal-owner','user',0)");
+  db.exec("INSERT INTO local_credentials SELECT 'normal-owner', password_hash, updated_at FROM local_credentials LIMIT 1");
   db.exec("INSERT INTO vaults(id,name,directory,status,created_at) VALUES ('interrupted','Interrupted','Interrupted','pending',0)");
   fs.mkdirSync(path.join(root, "vaults", "Interrupted", ".obsidian", "plugins", "ignis-bridge"), { recursive: true });
   fs.writeFileSync(path.join(root, "vaults", "Interrupted", ".obsidian", "plugins", "ignis-bridge", "keep"), "preserve");
@@ -129,6 +131,7 @@ it("protects real server routes, persists auth and does not log request secrets"
     const port = await processState.ready;
     for (const route of [
       "/api/vault/list",
+      "/api/vault/registration",
       "/api/bootstrap?vault=Team",
       "/api/fs/readFile?vault=Team&path=note.md",
       "/vault-files/Team/note.md",
@@ -189,6 +192,38 @@ it("protects real server routes, persists auth and does not log request secrets"
     expect((await request(port, "/api/fs/readFile?vault=TrashAlias&path=keep", jar)).status).toBe(404);
     expect(fs.readFileSync(path.join(root, "vaults", ".ignis-trash", "preserved", "keep"), "utf8")).toBe("staged-private-marker");
     const createCsrf = JSON.parse((await request(port, "/api/auth/csrf", jar)).text).csrfToken;
+    expect((await request(port, "/api/vault/rename", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { vault: "Team", name: "Moved" } })).status).toBe(409);
+    expect((await request(port, "/api/vault/remove?vault=Team", jar, { method: "DELETE", headers: { "x-ignis-csrf": createCsrf } })).status).toBe(409);
+    const registration = JSON.parse((await request(port, "/api/vault/registration", jar)).text);
+    const candidate = registration.vaults.find(vault => vault.directory === "Team");
+    expect(candidate.eligible).toBe(true);
+    const registerBody = { directory: "Team", ownerId: "normal-owner", identity: candidate.identity };
+    expect((await request(port, "/api/vault/register", jar, { method: "POST", body: registerBody })).status).toBe(403);
+    expect((await request(port, "/api/vault/register", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { ...registerBody, role: "owner" } })).status).toBe(400);
+    expect((await request(port, "/api/vault/register", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { ...registerBody, identity: "0".repeat(64) } })).status).toBe(409);
+    const registered = await request(port, "/api/vault/register", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: registerBody });
+    expect(registered.status).toBe(200);
+    for (const route of ["/api/fs/rm?vault=Team&path=.&recursive=true", "/api/fs/rmdir?vault=Team&path="]) {
+      expect((await request(port, route, jar, { method: "DELETE", headers: { "x-ignis-csrf": createCsrf } })).status).toBe(403);
+    }
+    expect((await request(port, "/api/fs/rename", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { vault: "Team", oldPath: ".", newPath: "moved" } })).status).toBe(403);
+    expect((await request(port, "/api/fs/stat?vault=Team&path=", jar)).status).toBe(200);
+
+    const ownerJar = {};
+    const ownerChallenge = JSON.parse((await request(port, "/api/auth/csrf", ownerJar)).text).csrfToken;
+    expect((await request(port, "/api/auth/login", ownerJar, { method: "POST", headers: { "x-ignis-csrf": ownerChallenge }, body: { login: "normal-owner", password } })).status).toBe(200);
+    expect((await request(port, "/api/vault/registration", ownerJar)).status).toBe(403);
+    expect((await request(port, "/api/vault/register", ownerJar, { method: "POST", body: registerBody })).status).toBe(403);
+    expect((await request(port, "/api/fs/readFile?vault=Team&path=note.md", ownerJar)).status).toBe(403);
+
+    expect(JSON.parse(registered.text)).toMatchObject({ id: "Team", ok: true });
+    const registrationDb = openDatabase(path.join(root, "data"));
+    try {
+      expect(registrationDb.prepare("SELECT user_id,role FROM memberships WHERE vault_id=?").get(JSON.parse(registered.text).uuid)).toEqual({ user_id: "normal-owner", role: "owner" });
+    } finally { registrationDb.close(); }
+    expect((await request(port, "/api/vault/register", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: registerBody })).status).toBe(409);
+    expect(fs.readFileSync(path.join(root, "vaults", "Team", "note.md"), "utf8")).toBe("private-note-marker");
+
     expect((await request(port, "/api/vault/create", jar, { method: "POST", body: { name: "Created" } })).status).toBe(403);
     expect((await request(port, "/api/vault/create", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { name: "Created", ownerId: "other" } })).status).toBe(400);
     const created = await request(port, "/api/vault/create", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { name: "Created" } });
