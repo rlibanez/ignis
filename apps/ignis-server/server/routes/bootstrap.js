@@ -11,10 +11,10 @@ const router = express.Router();
 
 router.get("/", async (req, res) => {
   config.refreshVaults();
-  const vaultId = req.query.vault || config.defaultVaultId;
+  const vaultId = require("../vault/request-selection").selectRequestVault(req, config);
 
   if (!vaultId || !config.getVaultPathOrRescan(vaultId)) {
-    return res.status(404).json({ error: "Vault not found", id: vaultId });
+    return res.status(404).json({ error: "Vault unavailable" });
   }
 
   try {

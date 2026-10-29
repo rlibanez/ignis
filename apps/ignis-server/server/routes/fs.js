@@ -33,11 +33,11 @@ function checkedMutation(req, action) {
 
 // Resolve the vault root for a request. Reads vault ID from query or body.
 function getVaultRoot(req, res) {
-  const vaultId = req.query.vault || req.body?.vault || config.defaultVaultId;
-  const vaultPath = config.getVaultPath(vaultId);
+  const vaultId = require("../vault/request-selection").selectRequestVault(req, config);
+  const vaultPath = vaultId && config.getVaultPath(vaultId);
 
   if (!vaultPath) {
-    res.status(404).json({ error: "Vault not found", id: vaultId });
+    res.status(404).json({ error: "Vault unavailable" });
     return null;
   }
 

@@ -2,6 +2,18 @@ const { createHash } = require("node:crypto");
 
 // Callbacks are server-owned and consult the current session and policy.
 function createVaultView({ administrator, authorize, uuid }) {
+  function select(reference, { defaultVault, candidates = [], allowDefault = false } = {}) {
+    if (administrator) return reference ?? defaultVault ?? null;
+    // A stale or forbidden explicit selection must never open another vault.
+    if (reference !== null && reference !== undefined) {
+      return authorize(reference) ? reference : null;
+    }
+    // Only the initial information request may choose an accessible vault.
+    // Reads, writes and bootstrap must keep an explicit vault identity.
+    if (!allowDefault) return null;
+    return candidates.find(directory => authorize(directory)) ?? null;
+  }
+
   function list(items) {
     if (administrator) return items;
     return items.filter(item => authorize(item.id)).map(item => ({
@@ -53,7 +65,7 @@ function createVaultView({ administrator, authorize, uuid }) {
     };
   }
 
-  return Object.freeze({ list, info, bootstrap });
+  return Object.freeze({ list, info, bootstrap, select });
 }
 
 module.exports = { createVaultView };
