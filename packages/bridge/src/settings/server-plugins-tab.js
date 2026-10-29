@@ -14,7 +14,7 @@ async function togglePlugin(pluginId, enable) {
   const res = await fetch(`/api/plugins/${pluginId}/${action}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ vault: vaultId }),
+    body: JSON.stringify({ vault: window.__ignis?.vault?.uuid || vaultId }),
   });
 
   if (!res.ok) {

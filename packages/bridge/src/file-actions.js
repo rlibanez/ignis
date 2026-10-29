@@ -1,7 +1,7 @@
 import { Notice } from "obsidian";
 
 function getVaultId() {
-  return window.__currentVaultId || "";
+  return window.__ignis?.vault?.uuid || window.__currentVaultId || "";
 }
 
 function triggerDownload(endpoint, filePath, downloadName) {

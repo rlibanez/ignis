@@ -49,7 +49,7 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          vaultId,
+          vaultId: window.__ignis?.vault?.id === vaultId ? (window.__ignis.vault.uuid || vaultId) : vaultId,
           remoteVault: vault.id,
           remoteVaultName: vault.name,
           vaultPassword,

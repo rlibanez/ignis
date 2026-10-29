@@ -849,6 +849,20 @@ function createAuthBoundary({
               error.code === "INVALID_VAULT_SELECTION" ? "Invalid or conflicting vault selection" : "Vault unavailable");
           }
         }
+        const pluginToggle = /^\/api\/plugins\/[^/]+\/(enable|disable)$/.test(pathname);
+        const syncVault = /^\/api\/ext\/headless-sync\/(setup|config|start|stop|unlink|logs)$/.test(pathname);
+        if (pluginToggle || syncVault) {
+          const field = syncVault ? "vaultId" : "vault";
+          try {
+            const directory = require("./vault-request").resolvePluginVaultRequest(db, vaultRoot, req.query, req.body, field);
+            req.query[field] = directory;
+            if (req.body) req.body[field] = directory;
+          } catch (error) {
+            if (!["INVALID_VAULT_SELECTION", "VAULT_UNAVAILABLE"].includes(error.code)) throw error;
+            return safe(res, error.code === "INVALID_VAULT_SELECTION" ? 400 : 404,
+              error.code === "INVALID_VAULT_SELECTION" ? "Invalid or conflicting vault selection" : "Vault unavailable");
+          }
+        }
         req.vaultOwners = () => db.prepare("SELECT id,login FROM users WHERE status='active' ORDER BY login,id").all();
         req.vaultRegistrationOptions = () => require("./vault-registration").registrationOptions(db, vaultRoot);
         req.registerExistingVault = (directory, ownerId, expectedIdentity) => require("./vault-registration").registerExistingVault(db, vaultRoot, directory, ownerId, {

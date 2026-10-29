@@ -51,6 +51,10 @@ beforeEach(async () => {
   app.use(boundary.revalidate);
   app.get("/api/vault/list", (req, res) => res.json(["private vault"]));
   app.post("/api/fs/writeFile", (req, res) => res.json({ ok: true }));
+  app.post(["/api/plugins/headless-sync/enable", "/api/plugins/headless-sync/disable",
+    ...["setup", "config", "start", "stop", "unlink"].map(name => "/api/ext/headless-sync/" + name)],
+    (req, res) => res.json({ query: req.query, body: req.body }));
+  app.get("/api/ext/headless-sync/logs", (req, res) => res.json({ query: req.query }));
   app.get("/api/settings", () => {
     throw new Error("secret internal failure");
   });
@@ -1092,4 +1096,37 @@ describe("registered WebSocket vault identity", () => {
     wss.broadcastToVault("vault", { type: "modified", path: "replacement.md" });
     expect((await closed)[0]).toBe(4002);
   });
+});
+
+it("resolves plugin and sync UUIDs before routing and keeps all operations administrator-only", async () => {
+  const owner = db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
+  const vault = require("./store").registerVault(db, root, "vault", owner);
+  const jar = await login();
+  const normal = await login("normal");
+  const token = await csrf(jar);
+  const headers = { "x-ignis-csrf": token };
+  for (const action of ["setup", "config", "start", "stop", "unlink"]) {
+    const url = "/api/ext/headless-sync/" + action;
+    const body = { vaultId: vault.id };
+    const response = await request(url, { jar, method: "POST", headers, body });
+    expect(response.status).toBe(200);
+    expect((await response.json()).body.vaultId).toBe("vault");
+    expect((await request(url, { jar: normal, method: "POST", headers, body })).status).toBe(403);
+    expect((await request(url, { jar, method: "POST", body })).status).toBe(403);
+  }
+  for (const action of ["enable", "disable"]) {
+    const response = await request("/api/plugins/headless-sync/" + action, { jar, method: "POST", headers, body: { vault: vault.id } });
+    expect(response.status).toBe(200);
+    expect((await response.json()).body.vault).toBe("vault");
+  }
+  const logs = await request(`/api/ext/headless-sync/logs?vaultId=${vault.id}`, { jar });
+  expect(logs.status).toBe(200);
+  expect((await logs.json()).query.vaultId).toBe("vault");
+  for (const body of [{}, { vaultId: [] }, { vaultId: "../vault" }, { vaultId: vault.id, vault: "vault" }]) {
+    expect((await request("/api/ext/headless-sync/start", { jar, method: "POST", headers, body })).status).toBe(400);
+  }
+  expect((await request("/api/ext/headless-sync/start?vaultId=other", { jar, method: "POST", headers, body: { vaultId: vault.id } })).status).toBe(400);
+  db.prepare("UPDATE vaults SET status='quarantine' WHERE id=?").run(vault.id);
+  expect((await request("/api/ext/headless-sync/start", { jar, method: "POST", headers, body: { vaultId: vault.id } })).status).toBe(404);
+  expect((await request(`/api/ext/headless-sync/logs?vaultId=${vault.id}`, { jar })).status).toBe(404);
 });

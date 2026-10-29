@@ -17,4 +17,13 @@ function resolveVaultRequest(db, vaultRoot, query, body) {
   };
   return selectVaultReference(query, body, { resolveIdentity });
 }
-module.exports = { resolveVaultRequest };
+function resolvePluginVaultRequest(db, vaultRoot, query, body, field) {
+  const invalid = () => { throw Object.assign(new Error("Invalid vault selection"), { code: "INVALID_VAULT_SELECTION" }); };
+  const other = field === "vaultId" ? "vault" : "vaultId";
+  if ([query, body].some(source => source && Object.hasOwn(source, other))) invalid();
+  const select = source => source && Object.hasOwn(source, field) ? { vault: source[field] } : {};
+  const directory = resolveVaultRequest(db, vaultRoot, select(query), select(body));
+  if (directory === null) invalid();
+  return directory;
+}
+module.exports = { resolveVaultRequest, resolvePluginVaultRequest };
