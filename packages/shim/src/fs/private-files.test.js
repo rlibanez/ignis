@@ -190,3 +190,19 @@ it("treats creation of the existing private config directory as an authorized no
   configuration.inspectSync.mockImplementation(()=>{throw new Error("Revoked");});
   expect(()=>sync.mkdirSync(".obsidian")).toThrow("Revoked");
 });
+
+it.each(["types","hotkeys","global-search","switcher"])("reports optional %s config as absent without reading shared data or allowing writes",async name=>{
+  const {sync,async,metadata,content,transport,configuration} = setup();
+  const path = `.obsidian/${name}.json`;
+  metadata.set(path,{type:"file",size:999});
+  content.set(path,"shared secret");
+  expect(sync.existsSync(path)).toBe(false);
+  expect(()=>sync.readFileSync(path,"utf8")).toThrow(expect.objectContaining({code:"ENOENT"}));
+  expect(()=>sync.statSync(path)).toThrow(expect.objectContaining({code:"ENOENT"}));
+  await expect(async.readFile(path,"utf8")).rejects.toMatchObject({code:"ENOENT"});
+  await expect(async.access(path)).rejects.toMatchObject({code:"ENOENT"});
+  await expect(async.writeFile(path,"{}")).rejects.toMatchObject({code:"UNSUPPORTED_CONFIGURATION"});
+  expect(()=>sync.writeFileSync(path,"{}")).toThrow();
+  expect(configuration.read).not.toHaveBeenCalled();
+  for (const mock of Object.values(transport)) expect(mock).not.toHaveBeenCalled();
+});

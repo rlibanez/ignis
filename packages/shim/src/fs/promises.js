@@ -87,7 +87,7 @@ export function createFsPromises(metadataCache, contentCache, transport, private
 
       const wantText = encoding === "utf8" || encoding === "utf-8";
       const { resolved, redirected } = resolvePathInfo(path);
-      const privatePath = privateFiles?.select(path, resolved);
+      const privatePath = privateFiles?.select(path, resolved, false, true);
       if (privatePath) return privateFiles.read(privatePath, encoding);
 
       // Virtual plugin source overrides any cache/transport version.

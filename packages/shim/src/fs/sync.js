@@ -20,7 +20,7 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
           const privatePath = privateFiles.select(path, resolvePath(path), true);
           if (privatePath) { privateFiles.statSync(privatePath); return true; }
         } catch (error) {
-          if (error.code === "UNSUPPORTED_CONFIGURATION") return false;
+          if (["UNSUPPORTED_CONFIGURATION", "ENOENT"].includes(error.code)) return false;
           throw error;
         }
       }
@@ -88,7 +88,7 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
 
       const wantText = encoding === "utf8" || encoding === "utf-8";
       const { resolved, redirected } = resolvePathInfo(path);
-      const privatePath = privateFiles?.select(path, resolved);
+      const privatePath = privateFiles?.select(path, resolved, false, true);
       if (privatePath) return privateFiles.readSync(privatePath, encoding);
 
       // Virtual plugin source overrides any cache or transport version.

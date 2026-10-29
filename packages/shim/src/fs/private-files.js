@@ -4,6 +4,12 @@ const files = new Set([
   ".obsidian/app.json", ".obsidian/appearance.json",
   ".obsidian/core-plugins.json", ".obsidian/community-plugins.json",
 ]);
+// Obsidian treats ENOENT as an absent optional configuration, using its defaults.
+// These files remain unavailable for writes until their schemas are reviewed.
+const absentOptionalFiles = new Set([
+  ".obsidian/types.json", ".obsidian/hotkeys.json",
+  ".obsidian/global-search.json", ".obsidian/switcher.json",
+]);
 const fail = code => { throw Object.assign(new Error("Private configuration unavailable"), {code}); };
 
 // Optional read/write adapter, not activated by the runtime yet. No disk fallback.
@@ -12,9 +18,10 @@ export function createPrivateFiles(configuration) {
     const parts = normalize(path).toLowerCase().split("/");
     return parts.includes(".obsidian");
   }
-  function select(original,resolved, directory = false) {
+  function select(original,resolved, directory = false, reading = false) {
     if (!owns(original) && !owns(resolved)) return null;
     const path = normalize(original);
+    if (path === normalize(resolved) && (directory || reading) && absentOptionalFiles.has(path)) fail("ENOENT");
     if (path !== normalize(resolved) || !(files.has(path) || (directory && path === ".obsidian"))) fail("UNSUPPORTED_CONFIGURATION");
     return path;
   }
