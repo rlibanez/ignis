@@ -371,11 +371,18 @@ function createAuthBoundary({
       }
       if (changingStatus) {
         if (!body || Array.isArray(body) ||
-            Object.keys(body).some((key) => !["userId", "status", "expectedStatus", "email", "emailVerified", "expectedEmail", "expectedEmailTrust"].includes(key)) ||
+            Object.keys(body).some((key) => !["userId", "status", "expectedStatus", "email", "emailVerified", "expectedEmail", "expectedEmailTrust", "role", "expectedRole", "confirmAdmin"].includes(key)) ||
             typeof body.userId !== "string" || body.userId.length > 64 ||
             !["active", "disabled"].includes(body.status) ||
             !["active", "disabled"].includes(body.expectedStatus))
           return safe(res, 400, "Invalid user status request");
+        const roleKeys = ["role", "expectedRole", "confirmAdmin"];
+        if (roleKeys.some(key => Object.hasOwn(body, key)) &&
+            (!roleKeys.every(key => Object.hasOwn(body, key)) || !["admin", "user"].includes(body.role) ||
+             !["admin", "user"].includes(body.expectedRole) || typeof body.confirmAdmin !== "boolean"))
+          return safe(res, 400, "Invalid role update");
+        if (roleKeys.some(key => Object.hasOwn(body, key)) && req.headers["x-ignis-context"] !== session.id)
+          return safe(res, 409, "Session changed");
         const emailKeys = ["email", "emailVerified", "expectedEmail", "expectedEmailTrust"];
         if (emailKeys.some(key => Object.hasOwn(body, key)) &&
             (!emailKeys.every(key => Object.hasOwn(body, key)) ||
@@ -388,6 +395,7 @@ function createAuthBoundary({
           const user = changeUserStatus(
             db, session.user.id, body.userId, body.status, body.expectedStatus, {
               isCurrent, emailUpdate: Object.hasOwn(body, "email") ? body : undefined,
+              roleUpdate: Object.hasOwn(body, "role") ? body : undefined,
             },
           );
           csrf.consume(req);
@@ -401,7 +409,10 @@ function createAuthBoundary({
             EMAIL_IN_USE: [400, "Email is already assigned to another account."],
             USER_NOT_FOUND: [404, "User not found"],
             USER_STATE_CHANGED: [409, "Account changed. Reload the list and try again."],
-            LAST_ADMIN: [400, "The last active administrator cannot be disabled."],
+            LAST_ADMIN: [400, "The last active administrator cannot be disabled or demoted."],
+            INVALID_ROLE: [400, "Invalid account role."],
+            SELF_ROLE_CHANGE: [400, "You cannot change your own role."],
+            ADMIN_CONFIRMATION_REQUIRED: [400, "Confirm granting administrator access."],
             SELF_DISABLE: [400, "You cannot disable your own account."],
           };
           if (Object.hasOwn(messages, error.code)) {

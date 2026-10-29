@@ -44,7 +44,7 @@ function listUsers(db, actorId) {
   return db.prepare("SELECT id, login, role, status, email, email_trust FROM users ORDER BY login").all();
 }
 
-function changeUserStatus(db, actorId, userId, status, expectedStatus, { isCurrent = () => true, emailUpdate } = {}) {
+function changeUserStatus(db, actorId, userId, status, expectedStatus, { isCurrent = () => true, emailUpdate, roleUpdate } = {}) {
   if (typeof userId !== "string" ||
       !["active", "disabled"].includes(status) ||
       !["active", "disabled"].includes(expectedStatus))
@@ -61,12 +61,18 @@ function changeUserStatus(db, actorId, userId, status, expectedStatus, { isCurre
       if (previous.email !== emailUpdate.expectedEmail || previous.email_trust !== emailUpdate.expectedEmailTrust)
         fail("USER_STATE_CHANGED");
     }
-    if (status === user.status && !emailUpdate) return user;
-    if (status === "disabled" && user.role === "admin" &&
-        db.prepare("SELECT count(*) n FROM users WHERE role = 'admin' AND status = 'active'").get().n <= 1)
-      fail("LAST_ADMIN");
+    const role = roleUpdate ? roleUpdate.role : user.role;
+    if (roleUpdate) {
+      if (!["admin", "user"].includes(role) || !["admin", "user"].includes(roleUpdate.expectedRole) || typeof roleUpdate.confirmAdmin !== "boolean") fail("INVALID_ROLE");
+      if (user.role !== roleUpdate.expectedRole) fail("USER_STATE_CHANGED");
+      if (role !== user.role && role === "admin" && !roleUpdate.confirmAdmin) fail("ADMIN_CONFIRMATION_REQUIRED");
+    }
+    if (status === user.status && role === user.role && !emailUpdate) return user;
+    if (user.status === "active" && user.role === "admin" && (role !== "admin" || status !== "active") &&
+        db.prepare("SELECT count(*) n FROM users WHERE role='admin' AND status='active'").get().n <= 1) fail("LAST_ADMIN");
+    if (role !== user.role && actorId === userId) fail("SELF_ROLE_CHANGE");
     if (status !== user.status && status === "disabled" && actorId === userId) fail("SELF_DISABLE");
-    if (status !== user.status) db.prepare("UPDATE users SET status = ? WHERE id = ?").run(status, userId);
+    if (status !== user.status || role !== user.role) db.prepare("UPDATE users SET status = ?, role = ? WHERE id = ?").run(status, role, userId);
     if (emailUpdate) {
       let email;
       try { email = emailUpdate.email === "" || emailUpdate.email === null ? null : normalizeEmail(emailUpdate.email); }
@@ -83,7 +89,10 @@ function changeUserStatus(db, actorId, userId, status, expectedStatus, { isCurre
     if (status !== user.status) db.prepare("INSERT INTO audit_events VALUES (?, ?, ?, ?, ?)").run(
       randomUUID(), actorId, status === "disabled" ? "disable-user" : "enable-user", userId, Date.now(),
     );
-    return { ...user, status };
+    if (role !== user.role) db.prepare("INSERT INTO audit_events VALUES (?, ?, ?, ?, ?)").run(
+      randomUUID(), actorId, role === "admin" ? "promote-user-admin" : "demote-user-admin", userId, Date.now(),
+    );
+    return { ...user, status, role };
   });
 }
 

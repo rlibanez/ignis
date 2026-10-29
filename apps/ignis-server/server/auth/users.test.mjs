@@ -255,3 +255,42 @@ it("does not overwrite a password when two setup requests race", async () => {
   expect(outcomes.filter(result => result.status === "rejected")).toHaveLength(1);
   expect(db.prepare("SELECT count(*) n FROM audit_events").get().n).toBe(1);
 });
+
+it("requires explicit promotion confirmation and revokes sessions on promotion and demotion", async () => {
+  const user = await createLocalUser(db, "admin", "role-target", password);
+  const sessions = require("./sessions").createSessionService(db);
+  const original = await sessions.loginLocal(user.login, password);
+  const roleUpdate = { role: "admin", expectedRole: "user", confirmAdmin: false };
+  expect(() => changeUserStatus(db, "admin", user.id, "active", "active", { roleUpdate })).toThrow();
+  roleUpdate.confirmAdmin = true;
+  expect(changeUserStatus(db, "admin", user.id, "active", "active", { roleUpdate }).role).toBe("admin");
+  expect(sessions.resolve(original.token)).toBeNull();
+  const promoted = await sessions.loginLocal(user.login, password);
+  expect(promoted.session.user.role).toBe("admin");
+  roleUpdate.role = "user"; roleUpdate.expectedRole = "admin"; roleUpdate.confirmAdmin = false;
+  changeUserStatus(db, "admin", user.id, "active", "active", { roleUpdate });
+  expect(sessions.resolve(promoted.token)).toBeNull();
+  expect((await sessions.loginLocal(user.login, password)).session.user.role).toBe("user");
+  expect(db.prepare("SELECT action FROM audit_events WHERE resource_id=? ORDER BY rowid").all(user.id).map(row => row.action)).toEqual(["create-local-user", "promote-user-admin", "demote-user-admin"]);
+});
+it("rejects unauthorized role edits, stale snapshots, malformed roles and self-demotion", () => {
+  const roleUpdate = { role: "admin", expectedRole: "user", confirmAdmin: true };
+  expect(() => changeUserStatus(db, "normal", "normal", "active", "active", { roleUpdate })).toThrow();
+  expect(() => changeUserStatus(db, "admin", "normal", "active", "active", { roleUpdate, isCurrent: () => false })).toThrow();
+  expect(() => changeUserStatus(db, "admin", "normal", "active", "active", { roleUpdate: { ...roleUpdate, role: "owner" } })).toThrow();
+  expect(() => changeUserStatus(db, "admin", "normal", "active", "active", { roleUpdate: { ...roleUpdate, expectedRole: "admin" } })).toThrow();
+  expect(() => changeUserStatus(db, "admin", "admin", "active", "active", { roleUpdate: { role: "user", expectedRole: "admin", confirmAdmin: false } })).toThrow();
+});
+it("protects the last administrator and rolls back combined email/status/role edits", () => {
+  const demotion = { role: "user", expectedRole: "admin", confirmAdmin: false };
+  changeUserStatus(db, "admin", "other", "active", "active", { roleUpdate: demotion });
+  expect(() => changeUserStatus(db, null, "admin", "active", "active", { roleUpdate: demotion })).toThrow();
+  expect(() => db.exec("UPDATE users SET role='user' WHERE id='admin'")).toThrow();
+  const roleUpdate = { role: "admin", expectedRole: "user", confirmAdmin: true };
+  const emailUpdate = { email: "invalid", emailVerified: false, expectedEmail: null, expectedEmailTrust: "unverified" };
+  expect(() => changeUserStatus(db, "admin", "normal", "disabled", "active", { roleUpdate, emailUpdate })).toThrow();
+  expect(db.prepare("SELECT role,status FROM users WHERE id='normal'").get()).toEqual({ role: "user", status: "active" });
+  db.exec("CREATE TRIGGER fail_role_audit BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT,'audit unavailable'); END");
+  expect(() => changeUserStatus(db, "admin", "normal", "active", "active", { roleUpdate })).toThrow();
+  expect(db.prepare("SELECT role FROM users WHERE id='normal'").get().role).toBe("user");
+});

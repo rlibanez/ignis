@@ -107,6 +107,12 @@
   let editing = null;
   let editBusy = false;
   let currentUserId;
+  const confirmAdminLabel = document.getElementById("confirm-admin-label");
+  editForm.elements.role.addEventListener("change", () => {
+    editForm.elements.confirmAdmin.checked = false;
+    confirmAdminLabel.hidden = !editing || editing.role === "admin" || editForm.elements.role.value !== "admin";
+    editForm.elements.confirmAdmin.required = !confirmAdminLabel.hidden;
+  });
   editCancel.addEventListener("click", () => editDialog.close());
   editDialog.addEventListener("cancel", (event) => {
     if (editBusy) event.preventDefault();
@@ -477,12 +483,16 @@
           revokeConfirmation.hidden = true;
           document.getElementById("edit-user-name").textContent = user.login;
           editForm.elements.status.value = user.status;
+          editForm.elements.role.value = user.role;
+          editForm.elements.confirmAdmin.checked = editForm.elements.confirmAdmin.required = false;
+          confirmAdminLabel.hidden = true;
           editForm.elements.email.value = user.email || "";
           editForm.elements.emailVerified.checked = user.email_trust !== "unverified";
           const ownAccount = user.id === currentUserId;
           editForm.elements.status.disabled = ownAccount;
+          editForm.elements.role.disabled = ownAccount;
           editButton.disabled = false;
-          editStatus.textContent = ownAccount ? "You cannot disable your own account." : "";
+          editStatus.textContent = ownAccount ? "You cannot disable your own account or change your own role." : "";
           editDialog.showModal();
         });
         const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -558,7 +568,7 @@
       const response = await request("/api/auth/users/status", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Ignis-Csrf": (await csrf.json()).csrfToken },
-        body: JSON.stringify({ userId: target.id, status: nextStatus, expectedStatus: target.status, email: editForm.elements.email.value, emailVerified: editForm.elements.emailVerified.checked, expectedEmail: target.email, expectedEmailTrust: target.email_trust }),
+        body: JSON.stringify({ userId: target.id, status: nextStatus, expectedStatus: target.status, role: editForm.elements.role.value, expectedRole: target.role, confirmAdmin: editForm.elements.confirmAdmin.checked, email: editForm.elements.email.value, emailVerified: editForm.elements.emailVerified.checked, expectedEmail: target.email, expectedEmailTrust: target.email_trust }),
       });
       if (locked || !editDialog.open) return;
       if (!response.ok) {
@@ -566,8 +576,11 @@
         const messages = {
           INVALID_EMAIL: "Enter a valid email; confirmation requires an address.",
           EMAIL_IN_USE: "This email is already assigned to another account.",
-          LAST_ADMIN: "The last active administrator cannot be disabled.",
-          SELF_DISABLE: "You cannot disable your own account.",
+          LAST_ADMIN: "The last active administrator cannot be disabled or demoted.",
+          SELF_ROLE_CHANGE: "You cannot change your own role.",
+          INVALID_ROLE: "Choose a valid account role.",
+          ADMIN_CONFIRMATION_REQUIRED: "Confirm granting administrator access.",
+          SELF_DISABLE: "You cannot disable your own account or change your own role.",
           USER_STATE_CHANGED: "Account changed. Close this dialog and reload the page.",
           USER_NOT_FOUND: "Account no longer exists. Reload the page.",
         };

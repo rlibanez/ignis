@@ -1010,3 +1010,28 @@ it("limits anonymous reset attempts independently from password login", async ()
   expect((await request("/api/auth/reset-password", { jar, method: "POST", headers, body: { password: PASSWORD } })).status).toBe(429);
   expect(await login()).toBeTruthy();
 });
+
+it("requires confirmed, recent and context-bound administrator requests to change roles", async () => {
+  const jar = await login(); const normal = await login("normal");
+  const session = await (await request("/api/auth/session", { jar })).json();
+  const path = "/api/auth/users/status";
+  const body = { userId: "normal", status: "active", expectedStatus: "active", role: "admin", expectedRole: "user", confirmAdmin: true };
+  expect((await request(path, { jar: normal, method: "POST", body, headers: { "x-ignis-csrf": await csrf(normal) } })).status).toBe(403);
+  expect((await request(path, { jar, method: "POST", body })).status).toBe(403);
+  expect((await request(path, { jar, method: "POST", body, headers: { "x-ignis-csrf": await csrf(jar) } })).status).toBe(409);
+  const headers = { "x-ignis-context": session.sessionId, "x-ignis-csrf": await csrf(jar) };
+  expect((await request(path, { jar, method: "POST", body, headers: { ...headers, origin: "https://evil.example" } })).status).toBe(403);
+  expect((await request(path, { jar, method: "POST", body: { ...body, confirmAdmin: false }, headers })).status).toBe(400);
+  expect((await request(path, { jar, method: "POST", body, headers })).status).toBe(200);
+  expect((await request("/api/auth/session", { jar: normal })).status).toBe(401);
+  const promoted = await login("normal");
+  expect((await request("/api/auth/users", { jar: promoted })).status).toBe(200);
+  const socket = connect(promoted); await once(socket, "open");
+  const closed = once(socket, "close");
+  const demotion = { ...body, role: "user", expectedRole: "admin", confirmAdmin: false };
+  expect((await request(path, { jar, method: "POST", body: demotion, headers: { ...headers, "x-ignis-csrf": await csrf(jar) } })).status).toBe(200);
+  await closed;
+  expect((await request("/api/auth/users", { jar: promoted })).status).toBe(401);
+  clock += 300001;
+  expect((await request(path, { jar, method: "POST", body, headers: { ...headers, "x-ignis-csrf": await csrf(jar) } })).status).toBe(403);
+});

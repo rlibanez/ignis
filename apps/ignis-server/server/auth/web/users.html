@@ -24,7 +24,7 @@
               <tbody id="users"></tbody>
             </table>
           </div>
-          <p class="help action-help">Editing supports account activation and deactivation. Deletion is not available yet.</p>
+          <p class="help action-help">Edit account details, roles and access status. Deletion is not available yet.</p>
         </section>
         <dialog id="create-dialog" aria-labelledby="create-heading">
         <h2 id="create-heading">Create user</h2>
@@ -59,6 +59,13 @@
           </div>
           <input id="edit-email" name="email" type="email" maxlength="254" autocomplete="off" />
           <label class="email-confirmation"><input name="emailVerified" type="checkbox" /> I confirm that this email belongs to this user</label>
+          <div class="field-heading"><label for="user-role">Account role</label>
+            <span class="field-help"><button type="button" class="help-toggle" aria-label="About account roles" aria-expanded="false" aria-controls="role-help">?</button>
+              <span id="role-help" class="help-tooltip" role="tooltip" hidden>Administrators can manage users and access all vaults currently available to administrators. Changing a role closes all the user's sessions. You cannot change your own role.</span>
+            </span>
+          </div>
+          <select id="user-role" name="role"><option value="user">User</option><option value="admin">Administrator</option></select>
+          <label id="confirm-admin-label" class="email-confirmation" hidden><input name="confirmAdmin" type="checkbox" /> I confirm granting administrator access to this user</label>
           <div class="field-heading"><label for="user-status">Account status</label>
             <span class="field-help"><button type="button" class="help-toggle" aria-label="About account status" aria-expanded="false" aria-controls="account-status-help">?</button>
               <span id="account-status-help" class="help-tooltip" role="tooltip" data-provider-template="Disabling an account blocks sign-in and revokes its Ignis sessions. Its files and OpenID Connect link are kept. Enabling it requires a new sign-in." hidden>Disabling an account blocks sign-in and revokes its Ignis sessions. Its files and OpenID Connect link are kept. Enabling it requires a new sign-in.</span>
