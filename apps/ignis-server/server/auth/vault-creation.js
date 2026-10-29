@@ -12,7 +12,7 @@ function validVaultName(name) {
 function audit(db, actor, action, id) {
   db.prepare("INSERT INTO audit_events VALUES (?, ?, ?, ?, ?)").run(randomUUID(), actor, action, id, Date.now());
 }
-function createRegisteredVault(db, root, actor, name, { isCurrent, io = fs } = {}) {
+function createRegisteredVault(db, root, actor, name, { isCurrent, ownerId = actor, io = fs } = {}) {
   if (!validVaultName(name) || !path.isAbsolute(root)) fail("INVALID_VAULT_NAME");
   const rootStat = io.lstatSync(root);
   if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) fail("INVALID_VAULT_ROOT");
@@ -20,6 +20,7 @@ function createRegisteredVault(db, root, actor, name, { isCurrent, io = fs } = {
   const authorize = () => {
     if (typeof actor !== "string" || !db.prepare("SELECT 1 FROM users WHERE id=? AND role='admin' AND status='active'").get(actor) ||
         typeof isCurrent !== "function" || !isCurrent(true)) fail("SESSION_CHANGED");
+    if (typeof ownerId !== "string" || !db.prepare("SELECT 1 FROM users WHERE id=? AND status='active'").get(ownerId)) fail("OWNER_UNAVAILABLE");
   };
   // Durable reservation before touching disk. Pending entries are hidden from discovery.
   transaction(db, () => {
@@ -28,7 +29,7 @@ function createRegisteredVault(db, root, actor, name, { isCurrent, io = fs } = {
         db.prepare("SELECT 1 FROM vault_renames WHERE source=? OR target=?").get(name, name) ||
         db.prepare("SELECT 1 FROM vaults WHERE directory=? OR id=? OR directory=?").get(name, name, id)) fail("VAULT_EXISTS");
     db.prepare("INSERT INTO vaults(id,name,directory,status,created_at) VALUES (?,?,?,'pending',?)").run(id, name, name, Date.now());
-    db.prepare("INSERT INTO memberships VALUES (?,?,'owner')").run(id, actor);
+    db.prepare("INSERT INTO memberships VALUES (?,?,'owner')").run(id, ownerId);
     audit(db, actor, "begin-create-vault", id);
   });
   let created = false, identity = null;

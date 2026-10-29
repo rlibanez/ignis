@@ -33,3 +33,13 @@ it("sends the explicit owner and inspected folder identity without silently retr
   expect(fetch.mock.calls[0][0]).toBe("/api/vault/register");
   expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ directory: "Notes", ownerId: "selected-owner", identity: "selected-identity" });
 });
+
+it("sends the selected owner when creating a vault", async () => {
+  vi.stubGlobal("window", {});
+  vi.stubGlobal("localStorage", { setItem: vi.fn() });
+  const fetch = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) })
+    .mockResolvedValueOnce({ ok: true, json: async () => [] });
+  vi.stubGlobal("fetch", fetch);
+  await vaultService.createVault("Owned", "selected-owner");
+  expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ name: "Owned", ownerId: "selected-owner" });
+});

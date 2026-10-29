@@ -115,3 +115,26 @@ it.each(["before-folder", "after-folder", "prepared"])("recovers a process inter
   expect(db.prepare("SELECT status FROM vaults WHERE directory='Interrupted'").get().status).toBe("quarantine");
   expect(fs.existsSync(path.join(vaultRoot, "Interrupted"))).toBe(phase !== "before-folder");
 });
+
+it("assigns an explicitly selected user while auditing the administrator who created the vault", () => {
+  const vault = create("Owned", { ownerId: "normal" });
+  expect(db.prepare("SELECT user_id,role FROM memberships WHERE vault_id=?").all(vault.id)).toEqual([{ user_id: "normal", role: "owner" }]);
+  expect(db.prepare("SELECT actor_id FROM audit_events WHERE action='create-vault'").get().actor_id).toBe("admin");
+});
+it.each([null, "", "missing", [], {}])("rejects invalid or unavailable owner %j before touching disk", ownerId => {
+  expect(() => create("Owned", { ownerId })).toThrow();
+  expect(fs.readdirSync(vaultRoot)).toEqual([]);
+  expect(db.prepare("SELECT count(*) n FROM vaults").get().n).toBe(0);
+});
+it("rejects a disabled owner before reservation and rechecks before activation", () => {
+  db.exec("UPDATE users SET status='disabled' WHERE id='normal'");
+  expect(() => create("Owned", { ownerId: "normal" })).toThrow();
+  db.exec("UPDATE users SET status='active' WHERE id='normal'");
+  const io = { ...fs, mkdirSync(location, options) {
+    fs.mkdirSync(location, options);
+    if (location.endsWith(".obsidian")) db.exec("UPDATE users SET status='disabled' WHERE id='normal'");
+  } };
+  expect(() => create("Owned", { ownerId: "normal", io })).toThrow();
+  expect(fs.readdirSync(vaultRoot)).toEqual([]);
+  expect(db.prepare("SELECT count(*) n FROM memberships").get().n).toBe(0);
+});

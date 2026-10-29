@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import {
     Vault,
     Folder,
@@ -31,6 +31,13 @@
   let errorMessage = "";
   let pendingReload = false;
   let deletedCurrentVault = false;
+  let createOwners = [];
+  let createOwner = "";
+  let createError = "";
+  let createBusy = false;
+  let createRequest = 0;
+  let createForm;
+  let createNameInput;
   let registrationOwners = [];
   let registrationOwner = "";
   let registrationSnapshot = null;
@@ -141,9 +148,28 @@
     }
   }
 
-  function showCreateDialog() {
+  async function showCreateDialog() {
+    const request = ++createRequest;
     dialogValue = "";
+    createOwner = "";
+    createOwners = [];
+    createError = "";
+    createBusy = true;
     activeDialog = "create";
+    try {
+      const result = await vaultService.vaultOwners();
+      if (activeDialog !== "create" || createRequest !== request) return;
+      createOwners = result.owners;
+      if (!createOwners.length) createError = "An active user is required to own this vault.";
+    } catch (error) {
+      if (activeDialog === "create" && createRequest === request) createError = error.message;
+    } finally {
+      if (activeDialog === "create" && createRequest === request) {
+        createBusy = false;
+        await tick();
+        if (activeDialog === "create" && createRequest === request) createNameInput?.focus();
+      }
+    }
   }
 
   function showRenameDialog(vault) {
@@ -163,19 +189,20 @@
     dialogValue = "";
   }
 
-  async function onCreateConfirm(e) {
-    const name = e.detail.trim();
-
-    if (!name) {
-      return;
-    }
-
+  async function onCreateConfirm() {
+    if (createBusy || !createForm?.reportValidity()) return;
+    const name = dialogValue.trim();
+    if (!name || !createOwner) return;
+    const request = createRequest;
+    createBusy = true;
+    createError = "";
     try {
-      vaults = await vaultService.createVault(name);
-      closeDialog();
-    } catch (err) {
-      errorMessage = "Failed to create vault: " + err.message;
-      activeDialog = "error";
+      vaults = await vaultService.createVault(name, createOwner);
+      if (activeDialog === "create" && createRequest === request) closeDialog();
+    } catch (error) {
+      if (activeDialog === "create" && createRequest === request) createError = error.message;
+    } finally {
+      if (activeDialog === "create" && createRequest === request) createBusy = false;
     }
   }
 
@@ -337,22 +364,30 @@
 </Modal>
 
 {#if activeDialog === "create"}
-  <PromptDialog
-    title="Create Vault"
-    label="Vault Name:"
-    placeholder="My New Vault"
-    confirmText="Create Vault"
-    bind:value={dialogValue}
-    on:confirm={onCreateConfirm}
-    on:cancel={closeDialog}
-  >
-    <svelte:fragment slot="icon">
-      <SquarePlus size="1.25rem" />
+  <Modal title="Create Vault" width="500px" closeOnOverlayClick={false} on:escape={closeDialog} on:close={closeDialog}>
+    <svelte:fragment slot="icon"><SquarePlus size="1.25rem" /></svelte:fragment>
+    <form class="registration-body" bind:this={createForm} on:submit|preventDefault={onCreateConfirm}>
+      <label for="new-vault-name">Vault name</label>
+      <input id="new-vault-name" type="text" bind:this={createNameInput} bind:value={dialogValue} required maxlength="255" disabled={createBusy} />
+      <label class="owner-label" for="new-vault-owner">Initial owner</label>
+      <select id="new-vault-owner" bind:value={createOwner} required disabled={createBusy}>
+        <option value="" disabled>Select a user</option>
+        {#each createOwners as owner (owner.id)}
+          <option value={owner.id}>{owner.login}</option>
+        {/each}
+      </select>
+      {#if createError}<p class="registration-error" role="alert">{createError}</p>{/if}
+    </form>
+    <svelte:fragment slot="footer">
+      <div class="registration-actions">
+        <Button variant="secondary" on:click={closeDialog}>Cancel</Button>
+        <Button variant="primary" disabled={createBusy || !dialogValue.trim() || !createOwner} on:click={onCreateConfirm}>
+          <svelte:fragment slot="icon"><Plus size="0.875rem" /></svelte:fragment>
+          {createBusy ? "Please wait…" : "Create Vault"}
+        </Button>
+      </div>
     </svelte:fragment>
-    <svelte:fragment slot="confirmIcon">
-      <Plus size="0.875rem" />
-    </svelte:fragment>
-  </PromptDialog>
+  </Modal>
 {/if}
 
 {#if activeDialog === "rename"}
@@ -449,7 +484,8 @@
   .registration-body { padding: 1.25rem 1.5rem; }
   .registration-body p { margin: 0 0 1rem; color: var(--text-muted); }
   .registration-body label { display: block; font-weight: 600; margin-bottom: 0.5rem; }
-  .registration-body select { width: 100%; padding: 0.625rem 0.75rem; border: 1px solid var(--background-modifier-border); border-radius: 0.375rem; color: var(--text-normal); background: var(--background-primary); }
+  .registration-body .owner-label { margin-top: 1rem; }
+  .registration-body input, .registration-body select { box-sizing: border-box; width: 100%; padding: 0.625rem 0.75rem; border: 1px solid var(--background-modifier-border); border-radius: 0.375rem; color: var(--text-normal); background: var(--background-primary); }
   .registration-body .registration-error { margin: 1rem 0 0; padding: 0.75rem; border: 1px solid var(--text-error, #e36d79); border-radius: 0.375rem; color: var(--text-error, #e36d79); }
   .registration-actions { display: flex; justify-content: flex-end; gap: 0.625rem; padding: 1rem 1.5rem; }
   .section-header {

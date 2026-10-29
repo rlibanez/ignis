@@ -53,11 +53,15 @@ export const vaultService = {
     });
   },
 
-  async createVault(name) {
+  async vaultOwners() {
+    return fetchJson(API_BASE + "/owners");
+  },
+
+  async createVault(name, ownerId) {
     await fetchJson(API_BASE + "/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, ...(ownerId === undefined ? {} : { ownerId }) }),
     });
 
     this.setVaultTrust(name);

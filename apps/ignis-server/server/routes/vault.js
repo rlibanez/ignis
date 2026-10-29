@@ -49,6 +49,12 @@ router.get("/list", (req, res) => {
   res.json(list);
 });
 
+router.get("/owners", (req, res) => {
+  if (!req.vaultOwners) return res.status(503).json({ error: "Vault owners unavailable" });
+  try { res.json({ owners: req.vaultOwners() }); }
+  catch { res.status(503).json({ error: "Unable to list vault owners" }); }
+});
+
 // Administrative inspection does not create directories, identities or memberships.
 router.get("/registration", (req, res) => {
   if (!req.vaultRegistrationOptions) return res.status(503).json({ error: "Vault registration unavailable" });
@@ -120,25 +126,27 @@ router.post("/refresh", async (req, res) => {
   }
 });
 
-// POST /api/vault/create { name } - create a new vault in VAULT_ROOT
+// POST /api/vault/create { name, ownerId? } - create a new vault in VAULT_ROOT
 router.post("/create", async (req, res) => {
   const name = req.body?.name;
 
-  if (!req.body || Array.isArray(req.body) || Object.keys(req.body).some(key => key !== "name") || !isValidVaultName(name)) {
+  if (!req.body || Array.isArray(req.body) || Object.keys(req.body).some(key => !["name", "ownerId"].includes(key)) || !isValidVaultName(name)) {
     return res.status(400).json({ error: "Invalid vault name" });
   }
+  if (Object.hasOwn(req.body, "ownerId") && (typeof req.body.ownerId !== "string" || !req.body.ownerId || req.body.ownerId.length > 128))
+    return res.status(400).json({ error: "Select a valid vault owner" });
 
   if (typeof req.createRegisteredVault !== "function")
     return res.status(503).json({ error: "Vault registration unavailable" });
   try {
-    const vault = req.createRegisteredVault(name);
+    const vault = req.createRegisteredVault(name, req.body.ownerId);
     config.refreshVaults();
     bootstrapCache.invalidateVault(name);
     // Keep the directory ID used by the current editor; UUID is its stable identity.
     res.json({ ok: true, id: name, uuid: vault.id, path: vault.path });
   } catch (e) {
-    const statuses = { INVALID_VAULT_NAME: 400, INVALID_VAULT_ROOT: 503, VAULT_EXISTS: 409, SESSION_CHANGED: 401, VAULT_STATE_CHANGED: 409 };
-    return res.status(statuses[e.code] || 503).json({ error: e.code === "VAULT_EXISTS" ? "Vault already exists" : "Vault creation could not be completed" });
+    const statuses = { OWNER_UNAVAILABLE: 409, INVALID_VAULT_NAME: 400, INVALID_VAULT_ROOT: 503, VAULT_EXISTS: 409, SESSION_CHANGED: 401, VAULT_STATE_CHANGED: 409 };
+    return res.status(statuses[e.code] || 503).json({ error: e.code === "VAULT_EXISTS" ? "Vault already exists" : e.code === "OWNER_UNAVAILABLE" ? "Select an active user as the vault owner" : "Vault creation could not be completed" });
   }
 });
 

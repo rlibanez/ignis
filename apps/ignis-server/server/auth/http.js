@@ -810,6 +810,7 @@ function createAuthBoundary({
         catch { return safe(res, 400, "Invalid or conflicting vault selection"); }
       }
       if (vaultRoot) {
+        req.vaultOwners = () => db.prepare("SELECT id,login FROM users WHERE status='active' ORDER BY login,id").all();
         req.vaultRegistrationOptions = () => require("./vault-registration").registrationOptions(db, vaultRoot);
         req.registerExistingVault = (directory, ownerId, expectedIdentity) => require("./vault-registration").registerExistingVault(db, vaultRoot, directory, ownerId, {
           actorId: current.user.id, expectedIdentity,
@@ -851,7 +852,8 @@ function createAuthBoundary({
             });
           }
         }
-        req.createRegisteredVault = name => require("./vault-creation").createRegisteredVault(db, vaultRoot, current.user.id, name, {
+        req.createRegisteredVault = (name, ownerId) => require("./vault-creation").createRegisteredVault(db, vaultRoot, current.user.id, name, {
+          ownerId,
           isCurrent: withinTransaction => {
             const session = sessions.resolve(cookies.read(req.headers.cookie), { withinTransaction });
             return session?.id === current.id && session.user.role === "admin";
