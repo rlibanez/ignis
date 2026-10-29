@@ -170,7 +170,8 @@ function setupWebSocket(server, opts = {}) {
     }
 
     const params = new url.URL(req.url, "http://localhost").searchParams;
-    const vaultId = params.get("vault");
+    // Authentication may resolve a stable UUID to the canonical watcher key.
+    const vaultId = security?.vaultId ? security.vaultId(req) : params.get("vault");
 
     if (!vaultId || !getVaultPath(vaultId)) {
       ws.close(4001, "Invalid or missing vault ID");

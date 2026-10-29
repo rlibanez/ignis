@@ -128,13 +128,34 @@ function createAuthBoundary({
   function getSession(req, touch = false) {
     return sessions.resolve(cookies.read(req.headers.cookie), { touch });
   }
+  const socketVaults = new WeakMap();
+  function socketVault(reference) {
+    const directory = vaultRoot
+      ? require("./vault-request").resolveVaultRequest(db, vaultRoot, { vault: reference }, null)
+      : require("./vault-selection").selectVaultReference({ vault: reference }, null);
+    const id = vaultRoot ? db.prepare("SELECT id FROM vaults WHERE directory=? AND status='active'").get(directory)?.id : null;
+    return { directory, id: id || null };
+  }
+  function sameSocketVault(left, right) {
+    return left.directory === right.directory && left.id === right.id;
+  }
   function checkSocket(ws) {
     const entry = socketEntries.get(ws);
     if (!entry) return false;
     try {
       const session = sessions.resolve(entry.token);
-      if (session && session.user.role === "admin" && initialized())
+      if (session && session.user.role === "admin" && initialized()) {
+        if (entry.vault) {
+          try {
+            if (!sameSocketVault(entry.vault, socketVault(entry.vault.id || entry.vault.directory)))
+              throw new Error("Vault changed");
+          } catch {
+            ws.close(4002, "Vault changed");
+            return false;
+          }
+        }
         return true;
+      }
     } catch {
       /* Fail closed on storage errors. */
     }
@@ -156,6 +177,7 @@ function createAuthBoundary({
   cleanup.unref();
 
   const wsSecurity = {
+    vaultId(req) { return socketVaults.get(req)?.directory; },
     verify(req) {
       if (
         !transportAllowed(req) ||
@@ -180,12 +202,12 @@ function createAuthBoundary({
       )
         return false;
       const session = getSession(req);
-      return (
-        initialized() &&
-        session?.user.role === "admin" &&
-        (!url.searchParams.has("context") ||
-          url.searchParams.get("context") === session.id)
-      );
+      if (!(initialized() && session?.user.role === "admin" &&
+          (!url.searchParams.has("context") || url.searchParams.get("context") === session.id))) return false;
+      try {
+        socketVaults.set(req, socketVault(url.searchParams.get("vault")));
+        return true;
+      } catch { return false; }
     },
     attach(ws, req) {
       const token = cookies.read(req.headers.cookie);
@@ -194,7 +216,12 @@ function createAuthBoundary({
         ws.terminate();
         return;
       }
-      socketEntries.set(ws, { token, window: now(), messages: 0 });
+      const vault = socketVaults.get(req);
+      if (!vault || !sameSocketVault(vault, socketVault(vault.id || vault.directory))) {
+        ws.close(4002, "Vault changed");
+        return;
+      }
+      socketEntries.set(ws, { token, vault, window: now(), messages: 0 });
       const original = ws.send.bind(ws);
       ws.send = (...args) => {
         if (!checkSocket(ws)) return;

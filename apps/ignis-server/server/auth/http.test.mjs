@@ -34,6 +34,7 @@ beforeEach(async () => {
   const app = express();
   boundary = createAuthBoundary({
     dataRoot: path.join(root, "data"),
+    vaultRoot: root,
     config: readAuthConfig({
       IGNIS_PUBLIC_ORIGIN: ORIGIN,
       IGNIS_ALLOW_HTTP_LOOPBACK: "true",
@@ -143,8 +144,8 @@ async function login(user = "admin", password = PASSWORD) {
   expect(await result.json()).not.toHaveProperty("token");
   return jar;
 }
-function connect(jar = {}, origin = ORIGIN) {
-  return new WebSocket(base.replace("http:", "ws:") + "/ws?vault=vault", {
+function connect(jar = {}, origin = ORIGIN, reference = "vault") {
+  return new WebSocket(base.replace("http:", "ws:") + "/ws?vault=" + encodeURIComponent(reference), {
     headers: {
       host: "localhost:8080",
       origin,
@@ -1048,4 +1049,47 @@ it("rejects duplicate, malformed and conflicting vault selectors after parsing w
     headers: { "x-ignis-csrf": await csrf(jar) } })).status).toBe(200);
   const normal = await login("normal");
   expect((await request("/api/fs/readFile?vault=first", { jar: normal })).status).toBe(403);
+});
+
+describe("registered WebSocket vault identity", () => {
+  function register() {
+    const owner = db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
+    return require("./store").registerVault(db, root, "vault", owner);
+  }
+  it("routes UUID and alias connections through the same watcher and broadcast key", async () => {
+    const vault = register();
+    const jar = await login();
+    const byId = connect(jar, ORIGIN, vault.id);
+    const byName = connect(jar);
+    await Promise.all([once(byId, "open"), once(byName, "open")]);
+    const messages = [once(byId, "message"), once(byName, "message")];
+    wss.broadcastToVault("vault", { type: "modified", path: "same-vault.md" });
+    for (const message of await Promise.all(messages))
+      expect(JSON.parse(message[0].toString()).path).toBe("same-vault.md");
+    const closed = [once(byId, "close"), once(byName, "close")];
+    wss.closeVaultSockets("vault");
+    expect((await Promise.all(closed)).map(event => event[0])).toEqual([4002, 4002]);
+  });
+  it("blocks outgoing data when the pinned vault is quarantined", async () => {
+    const vault = register();
+    const ws = connect(await login(), ORIGIN, vault.id);
+    await once(ws, "open");
+    let received = false;
+    ws.on("message", () => { received = true; });
+    const closed = once(ws, "close");
+    db.prepare("UPDATE vaults SET status='quarantine' WHERE id=?").run(vault.id);
+    wss.broadcastToVault("vault", { type: "modified", path: "must-not-arrive.md" });
+    expect((await closed)[0]).toBe(4002);
+    expect(received).toBe(false);
+  });
+  it("does not follow a replacement registration under the same alias", async () => {
+    const vault = register();
+    const ws = connect(await login());
+    await once(ws, "open");
+    const closed = once(ws, "close");
+    db.prepare("DELETE FROM vaults WHERE id=?").run(vault.id);
+    expect(register().id).not.toBe(vault.id);
+    wss.broadcastToVault("vault", { type: "modified", path: "replacement.md" });
+    expect((await closed)[0]).toBe(4002);
+  });
 });
