@@ -335,7 +335,7 @@ it("manually links an administrator only from its existing recent session", asyn
   const after = (await request("/api/auth/users", jar)).json().users;
   expect(after.find((user) => user.login === "admin").oidcLinked).toBe(true);
   for (const user of after) {
-    expect(Object.keys(user).sort()).toEqual(["email", "email_trust", "id", "login", "oidcLinked", "role", "status"]);
+    expect(Object.keys(user).sort()).toEqual(["canSetLocalPassword", "email", "email_trust", "hasLocalPassword", "id", "login", "oidcLinked", "role", "status"]);
   }
   expect((await request("/api/auth/session", jar)).json()).toMatchObject({
     user: { role: "admin" },

@@ -126,4 +126,28 @@ function unlinkUserOidc(db, actorId, userId, issuer, { isCurrent = () => true } 
   });
 }
 
-module.exports = { createLocalUser, listUsers, changeUserStatus, revokeUserSessions, unlinkUserOidc };
+async function setInitialLocalPassword(db, actorId, userId, password, policy, { isCurrent } = {}) {
+  const fail = code => { throw Object.assign(new Error("Local password setup rejected"), { code }); };
+  const check = (withinTransaction = false) => {
+    if (typeof actorId !== "string" || !db.prepare("SELECT 1 FROM users WHERE id=? AND role='admin' AND status='active'").get(actorId)) fail("SESSION_CHANGED");
+    if (typeof isCurrent !== "function" || !isCurrent(withinTransaction)) fail("SESSION_CHANGED");
+    const user = db.prepare("SELECT auth_version FROM users WHERE id=?").get(userId);
+    if (!user) fail("USER_NOT_FOUND");
+    if (db.prepare("SELECT 1 FROM local_credentials WHERE user_id=?").get(userId)) fail("LOCAL_PASSWORD_EXISTS");
+    if (!db.prepare("SELECT 1 FROM oidc_identities WHERE user_id=?").get(userId)) fail("OIDC_NOT_LINKED");
+    return user.auth_version;
+  };
+  const version = check();
+  if (!require("./password-policy").meetsPasswordPolicy(password, policy)) fail("PASSWORD_POLICY");
+  const hash = await hashPassword(password, policy);
+  return transaction(db, () => {
+    if (check(true) !== version) fail("USER_STATE_CHANGED");
+    // Inserting credentials revokes every target session and increments auth_version.
+    db.prepare("INSERT INTO local_credentials VALUES (?, ?, ?)").run(userId, hash, Date.now());
+    db.prepare("INSERT INTO audit_events VALUES (?, ?, ?, ?, ?)").run(
+      randomUUID(), actorId, "set-initial-local-password", userId, Date.now(),
+    );
+  });
+}
+
+module.exports = { setInitialLocalPassword, createLocalUser, listUsers, changeUserStatus, revokeUserSessions, unlinkUserOidc };

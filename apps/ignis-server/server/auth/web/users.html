@@ -70,6 +70,7 @@
           </select>
 
           <p id="edit-status" role="status" aria-live="polite"></p>
+          <button id="set-password" type="button" class="cancel-button" hidden>Set local password</button>
           <section class="session-actions" aria-label="Session management">
             <button id="revoke-sessions" type="button" class="warning-button">Close all sessions</button>
             <div id="revoke-confirmation" hidden>
@@ -79,7 +80,10 @@
             </div>
           </section>
           <section id="unlink-section" class="session-actions" aria-label="OpenID Connect linking" hidden>
-            <button id="unlink-oidc" type="button" class="cancel-button" data-provider-template="Unlink OpenID Connect">Unlink OpenID Connect</button>
+            <div id="unlink-control" class="unlink-control">
+              <button id="unlink-oidc" type="button" class="cancel-button" data-provider-template="Unlink OpenID Connect">Unlink OpenID Connect</button>
+              <span id="unlink-help" class="help-tooltip" role="tooltip" hidden>Cannot unlink: this account needs a local password first.</span>
+            </div>
             <div id="unlink-confirmation" hidden>
               <p>Remove this account's link to the configured provider and close all its Ignis sessions? A local password is required to retain access. If this is your account, you will be signed out.</p>
               <p class="help" data-provider-template="The provider account is not deleted. Automatic account linking, if enabled, may link it again on a later OpenID Connect sign-in.">The provider account is not deleted. Automatic account linking, if enabled, may link it again on a later OpenID Connect sign-in.</p>
@@ -91,6 +95,18 @@
             <button id="cancel-edit" type="button" class="cancel-button">Cancel</button>
             <button type="submit">Save changes</button>
           </div>
+        </form>
+      </dialog>
+      <dialog id="password-dialog" aria-labelledby="password-heading">
+        <h2 id="password-heading">Set local password for <span id="password-user"></span></h2>
+        <p class="help">All Ignis sessions for this user will close. The provider link is kept. If this is your account, you will need to sign in again.</p>
+        <p id="password-policy" class="help"></p>
+        <form id="set-password-form">
+          <label for="initial-password">New password</label>
+          <input id="initial-password" name="password" type="password" required maxlength="1024" autocomplete="new-password" />
+          <label for="initial-confirmation">Confirm new password</label>
+          <input id="initial-confirmation" name="confirmation" type="password" required maxlength="1024" autocomplete="new-password" />
+          <div class="dialog-actions"><button id="cancel-password" type="button" class="cancel-button">Cancel</button><button type="submit">Set local password</button></div>
         </form>
       </dialog>
       <dialog id="reauth-dialog" aria-labelledby="reauth-heading">

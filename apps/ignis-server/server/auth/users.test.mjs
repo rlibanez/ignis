@@ -204,3 +204,54 @@ it("resets email trust on change, rejects stale edits and rolls back status on d
   expect(() => changeUserStatus(db, "admin", user.id, "disabled", "active", { emailUpdate: { email: "taken@example.com", emailVerified: true, expectedEmail: "new@example.com", expectedEmailTrust: "unverified" } })).toThrow();
   expect(db.prepare("SELECT status FROM users WHERE id=?").get(user.id).status).toBe("active");
 });
+
+const { setInitialLocalPassword } = require("./users");
+const setupPolicy = require("./password-policy").readPasswordPolicy();
+const currentAdmin = { isCurrent: () => true };
+function oidcOnly() {
+  db.exec("INSERT INTO oidc_identities VALUES ('https://provider.example','initial-sub','normal',0)");
+  const sessions = require("./sessions").createSessionService(db);
+  const session = sessions.issueForVerifiedOidcIdentity({ issuer: "https://provider.example", subject: "initial-sub", authenticatedAt: Date.now() });
+  return { sessions, session };
+}
+it("sets a first password, revokes sessions, preserves OIDC and allows subsequent unlink and local login", async () => {
+  const { sessions, session } = oidcOnly();
+  await setInitialLocalPassword(db, "admin", "normal", password, setupPolicy, currentAdmin);
+  expect(sessions.resolve(session.token)).toBeNull();
+  expect(db.prepare("SELECT count(*) n FROM oidc_identities").get().n).toBe(1);
+  expect(db.prepare("SELECT actor_id,action,resource_id FROM audit_events").get()).toEqual({ actor_id: "admin", action: "set-initial-local-password", resource_id: "normal" });
+  require("./users").unlinkUserOidc(db, "admin", "normal", "https://provider.example");
+  expect(await sessions.loginLocal("normal", password)).not.toBeNull();
+  await expect(setInitialLocalPassword(db, "admin", "normal", password, setupPolicy, currentAdmin)).rejects.toMatchObject({ code: "LOCAL_PASSWORD_EXISTS" });
+});
+it("rejects unauthorized, stale, missing-link and weak-password setup", async () => {
+  await expect(setInitialLocalPassword(db, "admin", "normal", password, setupPolicy, currentAdmin)).rejects.toMatchObject({ code: "OIDC_NOT_LINKED" });
+  oidcOnly();
+  for (const actor of [null, undefined, "normal", "missing"])
+    await expect(setInitialLocalPassword(db, actor, "normal", password, setupPolicy, currentAdmin)).rejects.toThrow();
+  await expect(setInitialLocalPassword(db, "admin", "normal", password, setupPolicy)).rejects.toThrow();
+  await expect(setInitialLocalPassword(db, "admin", "normal", "short", setupPolicy, currentAdmin)).rejects.toMatchObject({ code: "PASSWORD_POLICY" });
+  await expect(setInitialLocalPassword(db, "admin", "normal", password, setupPolicy, { isCurrent: inside => !inside })).rejects.toThrow();
+  expect(db.prepare("SELECT count(*) n FROM local_credentials").get().n).toBe(0);
+});
+it("rejects a target changed during hashing and rolls back credential/session changes on audit failure", async () => {
+  const { sessions, session } = oidcOnly();
+  const pending = setInitialLocalPassword(db, "admin", "normal", password, setupPolicy, currentAdmin);
+  db.exec("UPDATE users SET auth_version=auth_version+1 WHERE id='normal'");
+  await expect(pending).rejects.toMatchObject({ code: "USER_STATE_CHANGED" });
+  const before = db.prepare("SELECT auth_version FROM users WHERE id='normal'").get();
+  const sessionCount = db.prepare("SELECT count(*) n FROM sessions").get().n;
+  db.exec("CREATE TRIGGER fail_initial_audit BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END");
+  await expect(setInitialLocalPassword(db, "admin", "normal", password, setupPolicy, currentAdmin)).rejects.toThrow();
+  expect(db.prepare("SELECT count(*) n FROM local_credentials").get().n).toBe(0);
+  expect(db.prepare("SELECT auth_version FROM users WHERE id='normal'").get()).toEqual(before);
+  expect(db.prepare("SELECT count(*) n FROM sessions").get().n).toBe(sessionCount);
+  expect(sessions.resolve(session.token)).toBeNull();
+});
+it("does not overwrite a password when two setup requests race", async () => {
+  oidcOnly();
+  const outcomes = await Promise.allSettled([password, password + "other"].map(value => setInitialLocalPassword(db, "admin", "normal", value, setupPolicy, currentAdmin)));
+  expect(outcomes.filter(result => result.status === "fulfilled")).toHaveLength(1);
+  expect(outcomes.filter(result => result.status === "rejected")).toHaveLength(1);
+  expect(db.prepare("SELECT count(*) n FROM audit_events").get().n).toBe(1);
+});

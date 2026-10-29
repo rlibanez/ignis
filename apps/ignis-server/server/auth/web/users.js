@@ -59,11 +59,42 @@
   });
   const unlinkSection = document.getElementById("unlink-section");
   const unlinkButton = document.getElementById("unlink-oidc");
+  const unlinkControl = document.getElementById("unlink-control");
+  const unlinkHelp = document.getElementById("unlink-help");
+  function updateUnlinkAvailability() {
+    const needsPassword = !!editing && !editing.hasLocalPassword;
+    unlinkButton.disabled = editBusy || needsPassword;
+    unlinkHelp.hidden = true;
+    unlinkControl.tabIndex = needsPassword ? 0 : -1;
+    if (needsPassword) {
+      unlinkControl.setAttribute("role", "group");
+      unlinkControl.setAttribute("aria-label", `Unlink ${providerName}`);
+      unlinkControl.setAttribute("aria-describedby", "unlink-help");
+      unlinkButton.setAttribute("aria-describedby", "unlink-help");
+    } else {
+      unlinkControl.removeAttribute("role");
+      unlinkControl.removeAttribute("aria-label");
+      unlinkControl.removeAttribute("aria-describedby");
+      unlinkButton.removeAttribute("aria-describedby");
+    }
+  }
+  const showUnlinkHelp = () => { if (editing && !editing.hasLocalPassword) unlinkHelp.hidden = false; };
+  unlinkControl.addEventListener("mouseenter", showUnlinkHelp);
+  unlinkControl.addEventListener("focus", showUnlinkHelp);
+  unlinkControl.addEventListener("click", showUnlinkHelp);
+  unlinkControl.addEventListener("mouseleave", () => { unlinkHelp.hidden = true; });
+  unlinkControl.addEventListener("focusout", () => { unlinkHelp.hidden = true; });
+  unlinkControl.addEventListener("keydown", event => {
+    if (event.key === "Escape" && !unlinkHelp.hidden) {
+      event.preventDefault(); event.stopPropagation(); unlinkHelp.hidden = true;
+    }
+  });
+  editDialog.addEventListener("close", () => { unlinkHelp.hidden = true; });
   const unlinkConfirmation = document.getElementById("unlink-confirmation");
   const confirmUnlink = document.getElementById("confirm-unlink");
   const cancelUnlink = document.getElementById("cancel-unlink");
   unlinkButton.addEventListener("click", () => {
-    if (locked || editBusy || !editing) return;
+    if (locked || editBusy || !editing?.hasLocalPassword) return;
     revokeConfirmation.hidden = true;
     unlinkConfirmation.hidden = false;
     confirmUnlink.focus();
@@ -81,6 +112,87 @@
     if (editBusy) event.preventDefault();
   });
   editDialog.addEventListener("close", () => { editing = null; revokeConfirmation.hidden = unlinkConfirmation.hidden = true; });
+  const passwordDialog = document.getElementById("password-dialog");
+  const passwordForm = document.getElementById("set-password-form");
+  const setPasswordButton = document.getElementById("set-password");
+  const passwordSubmit = passwordForm.querySelector('button[type="submit"]');
+  const passwordCancel = document.getElementById("cancel-password");
+  let passwordTarget = null, passwordBusy = false;
+  const passwordError = (message, field = passwordForm.elements.password) => {
+    field.setCustomValidity(message);
+    field.reportValidity();
+  };
+  for (const field of [passwordForm.elements.password, passwordForm.elements.confirmation])
+    field.addEventListener("input", () => {
+      passwordForm.elements.password.setCustomValidity("");
+      passwordForm.elements.confirmation.setCustomValidity("");
+    });
+  setPasswordButton.addEventListener("click", () => {
+    if (locked || editBusy || !editing?.canSetLocalPassword) return;
+    passwordTarget = editing.id;
+    document.getElementById("password-user").textContent = editing.login;
+    passwordForm.reset();
+    passwordDialog.showModal();
+    passwordForm.elements.password.focus();
+  });
+  passwordCancel.addEventListener("click", () => { if (!passwordBusy) passwordDialog.close(); });
+  passwordDialog.addEventListener("cancel", event => { if (passwordBusy) event.preventDefault(); });
+  passwordDialog.addEventListener("close", () => {
+    passwordForm.reset();
+    passwordTarget = null;
+    passwordForm.elements.password.setCustomValidity("");
+    passwordForm.elements.confirmation.setCustomValidity("");
+  });
+  passwordForm.addEventListener("submit", async event => {
+    event.preventDefault();
+    if (locked || passwordBusy || !passwordTarget) return;
+    if (passwordForm.elements.password.value !== passwordForm.elements.confirmation.value) {
+      passwordError("Passwords do not match.", passwordForm.elements.confirmation);
+      return;
+    }
+    const target = passwordTarget;
+    passwordBusy = true;
+    passwordSubmit.disabled = passwordCancel.disabled = true;
+    let saved = false;
+    try {
+      const csrf = await request("/api/auth/csrf");
+      if (!csrf.ok || locked) throw new Error();
+      const response = await request("/api/auth/users/set-password", {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Ignis-Csrf": (await csrf.json()).csrfToken },
+        body: JSON.stringify({ userId: target, password: passwordForm.elements.password.value }),
+      });
+      if (locked || !passwordDialog.open) return;
+      const result = await response.json();
+      if (!response.ok) {
+        const messages = {
+          PASSWORD_POLICY: "The password does not meet the password policy.",
+          LOCAL_PASSWORD_EXISTS: "This account already has a local password. Close this dialog and reload the list.",
+          USER_STATE_CHANGED: "Account changed. Close this dialog and reload the list.",
+          OIDC_NOT_LINKED: "This account no longer has a provider link. Reload the list.",
+          USER_NOT_FOUND: "Account no longer exists. Reload the list.",
+        };
+        passwordError(messages[result.code] || (response.status === 429 ? "Too many attempts. Wait before trying again." : "Unable to set the password. Reload before trying again."));
+        return;
+      }
+      saved = true;
+      passwordDialog.close();
+      if (result.signedOut) {
+        channel?.postMessage("lock"); lock(); location.replace("/login"); return;
+      }
+      editDialog.close();
+      status.textContent = "Local password set. All user sessions closed; provider link kept.";
+      await refresh();
+    } catch {
+      if (!locked) {
+        if (saved) status.textContent = "Password set, but the list could not be refreshed. Reload this page.";
+        else if (passwordDialog.open) passwordError("The result could not be confirmed. Reload before trying again.");
+      }
+    } finally {
+      passwordForm.elements.password.value = passwordForm.elements.confirmation.value = "";
+      passwordBusy = false;
+      passwordSubmit.disabled = passwordCancel.disabled = false;
+    }
+  });
   const reauthDialog = document.getElementById("reauth-dialog");
   const reauthForm = document.getElementById("reauth-form");
   const reauthOidc = document.getElementById("reauth-oidc");
@@ -91,6 +203,7 @@
     if (locked) return;
     pendingUser ||= editing?.id || null;
     clearPasswords();
+    if (passwordDialog.open) passwordDialog.close();
     if (dialog.open) dialog.close();
     if (editDialog.open) editDialog.close();
     reauthForm.reset();
@@ -190,6 +303,7 @@
   }
   function lock() {
     locked = true;
+    if (passwordDialog.open) passwordDialog.close();
     if (reauthDialog.open) reauthDialog.close();
     if (dialog.open) dialog.close();
     if (editDialog.open) editDialog.close();
@@ -266,7 +380,9 @@
           pendingUser = user.id;
           if (!await checkRecentSession() || editDialog.open || dialog.open) return;
           editing = user;
+          setPasswordButton.hidden = !user.canSetLocalPassword;
           unlinkSection.hidden = user.oidcLinked !== true;
+          updateUnlinkAvailability();
           unlinkConfirmation.hidden = true;
           revokeConfirmation.hidden = true;
           document.getElementById("edit-user-name").textContent = user.login;
@@ -296,7 +412,7 @@
       row.append(actions);
       list.append(row);
     }
-    document.getElementById("policy").textContent =
+    document.getElementById("password-policy").textContent = document.getElementById("policy").textContent =
       `Password: at least ${data.passwordPolicy.minLength} characters and ${data.passwordPolicy.minSpecialChars} punctuation/symbol characters.`;
   }
   form.addEventListener("submit", async (event) => {
@@ -435,7 +551,8 @@
       editBusy = false;
       editButton.disabled = false;
       editCancel.disabled = revokeButton.disabled = confirmRevoke.disabled = cancelRevoke.disabled =
-        unlinkButton.disabled = confirmUnlink.disabled = cancelUnlink.disabled = false;
+        confirmUnlink.disabled = cancelUnlink.disabled = false;
+      updateUnlinkAvailability();
     }
   }
   confirmRevoke.addEventListener("click", () => revokeOrUnlink(false));

@@ -613,7 +613,7 @@ describe("user administration HTTP", () => {
     const listed = await request("/api/auth/users", { jar });
     expect(listed.status).toBe(200);
     for (const row of (await listed.json()).users)
-      expect(Object.keys(row).sort()).toEqual(["email", "email_trust", "id", "login", "oidcLinked", "role", "status"]);
+      expect(Object.keys(row).sort()).toEqual(["canSetLocalPassword", "email", "email_trust", "hasLocalPassword", "id", "login", "oidcLinked", "role", "status"]);
     expect((await listed.json()).oidcAvailable).toBe(false);
     expect((await listed.json()).users.every((row) => row.oidcLinked === null)).toBe(true);
     const normalJar = await login("new-user");
@@ -900,4 +900,55 @@ it("reauthenticates the same administrator with a rotated session and rejects ac
   expect(current.user.id).toBe(session.user.id);
   expect(current.sessionId).not.toBe(session.sessionId);
   expect(current.recentAuthentication).toBe(true);
+});
+
+it("guards initial password setup with admin identity, CSRF, context and recent authentication", async () => {
+  const normal = await login("normal");
+  const jar = await login();
+  db.exec("DELETE FROM local_credentials WHERE user_id='normal'; INSERT INTO oidc_identities VALUES ('https://provider.example','initial-sub','normal',0)");
+  const context = (await (await request("/api/auth/session", { jar })).json()).sessionId;
+  const body = { userId: "normal", password: PASSWORD };
+  const path = "/api/auth/users/set-password";
+  expect((await request(path, { jar: normal, method: "POST", body })).status).toBe(401);
+  expect((await request(path, { jar, method: "POST", body })).status).toBe(403);
+  expect((await request(path, { jar, method: "POST", body, headers: { "x-ignis-csrf": await csrf(jar) } })).status).toBe(409);
+  clock += 300001;
+  expect((await request(path, { jar, method: "POST", body, headers: { "x-ignis-context": context, "x-ignis-csrf": await csrf(jar) } })).status).toBe(403);
+  const fresh = await login();
+  const freshContext = (await (await request("/api/auth/session", { jar: fresh })).json()).sessionId;
+  const response = await request(path, { jar: fresh, method: "POST", body, headers: { "x-ignis-context": freshContext, "x-ignis-csrf": await csrf(fresh) } });
+  expect(response.status).toBe(200);
+  expect((await response.json()).signedOut).toBe(false);
+  expect((await (await request("/api/auth/users", { jar: fresh })).json()).users.find(u => u.id === "normal")).toMatchObject({ hasLocalPassword: true, canSetLocalPassword: false });
+  expect(await login("normal")).toBeTruthy();
+});
+
+it("sets the OIDC-only administrator's own password and signs out without unlinking", async () => {
+  const admin = db.prepare("SELECT id FROM users WHERE role='admin'").get();
+  db.prepare("INSERT INTO oidc_identities VALUES ('https://provider.example','admin-sub',?,0)").run(admin.id);
+  db.prepare("DELETE FROM local_credentials WHERE user_id=?").run(admin.id);
+  const sessions = require("./sessions").createSessionService(db, { now: () => clock });
+  const auth = sessions.issueForVerifiedOidcIdentity({ issuer: "https://provider.example", subject: "admin-sub", authenticatedAt: clock });
+  const jar = { "ignis-dev-session": auth.token };
+  const session = await (await request("/api/auth/session", { jar })).json();
+  const response = await request("/api/auth/users/set-password", { jar, method: "POST", body: { userId: admin.id, password: PASSWORD },
+    headers: { "x-ignis-context": session.sessionId, "x-ignis-csrf": await csrf(jar) } });
+  expect(response.status).toBe(200);
+  expect((await response.json()).signedOut).toBe(true);
+  expect(jar["ignis-dev-session"]).toBe("");
+  expect(sessions.resolve(auth.token)).toBeNull();
+  expect(db.prepare("SELECT count(*) n FROM oidc_identities").get().n).toBe(1);
+  expect(await login()).toBeTruthy();
+});
+it("denies non-admin password setup and foreign-origin or injected requests", async () => {
+  const normal = await login("normal");
+  const jar = await login();
+  const path = "/api/auth/users/set-password";
+  const body = { userId: "normal", password: PASSWORD };
+  expect((await request(path, { jar: normal, method: "POST", body, headers: { "x-ignis-csrf": await csrf(normal) } })).status).toBe(403);
+  const context = (await (await request("/api/auth/session", { jar })).json()).sessionId;
+  const headers = { "x-ignis-context": context, "x-ignis-csrf": await csrf(jar) };
+  expect((await request(path, { jar, method: "POST", body, headers: { ...headers, origin: "https://evil.example" } })).status).toBe(403);
+  expect((await request(path, { jar, method: "POST", body: { ...body, role: "admin" }, headers })).status).toBe(400);
+  expect((await request(path, { jar, method: "POST", body, headers })).status).toBe(400);
 });

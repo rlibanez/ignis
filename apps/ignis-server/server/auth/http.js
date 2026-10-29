@@ -32,7 +32,7 @@ const { createCsrf } = require("./csrf");
 const { createRequestLimits } = require("./request-limits");
 const { canonicalRequestPath, permittedResource } = require("./http-policy");
 const { normalizeLogin } = require("./store");
-const { createLocalUser, listUsers, changeUserStatus, revokeUserSessions } = require("./users");
+const { setInitialLocalPassword, createLocalUser, listUsers, changeUserStatus, revokeUserSessions } = require("./users");
 
 function createAuthBoundary({
   dataRoot,
@@ -264,11 +264,12 @@ function createAuthBoundary({
 
   async function authEndpoint(req, res, pathname) {
     const session = getSession(req);
-    if (["/api/auth/users", "/api/auth/users/status", "/api/auth/users/revoke-sessions", "/api/auth/users/unlink-oidc"].includes(pathname)) {
+    if (["/api/auth/users", "/api/auth/users/status", "/api/auth/users/revoke-sessions", "/api/auth/users/unlink-oidc", "/api/auth/users/set-password"].includes(pathname)) {
+      const settingPassword = pathname.endsWith("/set-password");
       const changingStatus = pathname.endsWith("/status");
       const unlinkingOidc = pathname.endsWith("/unlink-oidc");
       const revokingSessions = pathname.endsWith("/revoke-sessions");
-      if (!["GET", "POST"].includes(req.method) || ((changingStatus || revokingSessions || unlinkingOidc) && req.method !== "POST"))
+      if (!["GET", "POST"].includes(req.method) || ((settingPassword || changingStatus || revokingSessions || unlinkingOidc) && req.method !== "POST"))
         return safe(res, 404, "Not found");
       if (!session) return safe(res, 401, "Authentication required");
       if (!initialized() || session.user.role !== "admin")
@@ -280,6 +281,8 @@ function createAuthBoundary({
         return res.json({
           users: listUsers(db, session.user.id).map((user) => ({
             ...user,
+            hasLocalPassword: !!db.prepare("SELECT 1 FROM local_credentials WHERE user_id=?").get(user.id),
+            canSetLocalPassword: !db.prepare("SELECT 1 FROM local_credentials WHERE user_id=?").get(user.id) && !!db.prepare("SELECT 1 FROM oidc_identities WHERE user_id=?").get(user.id),
             oidcLinked: oidc ? !!oidc.linked(user.id) : null,
           })),
           oidcAvailable: !!oidc,
@@ -303,6 +306,26 @@ function createAuthBoundary({
       if (!limits.createUser(session.user.id))
         return safe(res, 429, "Too many requests");
       const body = req.body;
+      if (settingPassword) {
+        if (req.headers["x-ignis-context"] !== session.id) return safe(res, 409, "Session changed");
+        if (!body || Array.isArray(body) || Object.keys(body).some(key => !["userId", "password"].includes(key)) ||
+            typeof body.userId !== "string" || !body.userId || body.userId.length > 64 || typeof body.password !== "string")
+          return safe(res, 400, "Expected userId and password");
+        try {
+          await setInitialLocalPassword(db, session.user.id, body.userId, body.password, config.passwordPolicy, { isCurrent });
+          csrf.consume(req);
+          sweepSockets();
+          const signedOut = body.userId === session.user.id;
+          if (signedOut) res.append("Set-Cookie", cookies.clear());
+          return res.json({ signedOut });
+        } catch (error) {
+          const known = ["PASSWORD_POLICY", "LOCAL_PASSWORD_EXISTS", "USER_NOT_FOUND", "USER_STATE_CHANGED", "OIDC_NOT_LINKED"];
+          if (known.includes(error.code)) return res.status(400).json({ error: "Unable to set local password", code: error.code });
+          if (error.code === "AUTH_BUSY") return safe(res, 429, "Too many requests");
+          if (error.code === "SESSION_CHANGED") return safe(res, 403, "Administrator session changed; sign in again");
+          throw error;
+        }
+      }
       if (revokingSessions || unlinkingOidc) {
         if (!body || Array.isArray(body) || Object.keys(body).some((key) => key !== "userId") ||
             typeof body.userId !== "string" || !body.userId || body.userId.length > 64)
