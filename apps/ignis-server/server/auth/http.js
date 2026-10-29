@@ -42,6 +42,7 @@ function createAuthBoundary({
   staticRoots = [],
   now = Date.now,
   sessionOptions = {},
+  vaultRoot,
   oidcEnv = process.env,
   oidcDependencies,
 }) {
@@ -54,8 +55,10 @@ function createAuthBoundary({
   let oidc = null;
   let initialization;
   function initialize() {
-    initialization ||= require("./oidc/runtime")
-      .createOidcRuntime(db, config, sessions, oidcEnv, oidcDependencies)
+    initialization ||= Promise.resolve().then(() => {
+      if (vaultRoot) require("./vault-creation").quarantinePendingVaults(db);
+      return require("./oidc/runtime").createOidcRuntime(db, config, sessions, oidcEnv, oidcDependencies);
+    })
       .then((value) => {
         oidc = value;
       });
@@ -803,6 +806,19 @@ function createAuthBoundary({
         try { require("./vault-selection").selectVaultReference(req.query, req.body); }
         catch { return safe(res, 400, "Invalid or conflicting vault selection"); }
       }
+      if (vaultRoot) {
+        if (["/api/vault/rename", "/api/vault/remove"].includes(pathname)) {
+          const reference = require("./vault-selection").selectVaultReference(req.query, req.body);
+          if (db.prepare("SELECT 1 FROM vaults WHERE id=? OR directory=?").get(reference, reference))
+            return safe(res, 409, "Registered vault rename and removal are not available yet");
+        }
+        req.createRegisteredVault = name => require("./vault-creation").createRegisteredVault(db, vaultRoot, current.user.id, name, {
+          isCurrent: withinTransaction => {
+            const session = sessions.resolve(cookies.read(req.headers.cookie), { withinTransaction });
+            return session?.id === current.id && session.user.role === "admin";
+          },
+        });
+      }
       req.auth = current;
       // A download may outlive its session. Do not emit further chunks after revocation.
       for (const method of ["write", "end"]) {
@@ -870,6 +886,7 @@ function createAuthBoundary({
     wsSecurity,
     close,
     staticRoots,
+    vaultDirectoryAvailable: directory => require("./vault-creation").directoryAvailable(db, directory, vaultRoot),
   };
 }
 

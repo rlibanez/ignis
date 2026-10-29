@@ -116,6 +116,10 @@ it("protects real server routes, persists auth and does not log request secrets"
   const password = "synthetic-real-server-password";
   const db = openDatabase(path.join(root, "data"));
   bootstrapAdmin(db, "admin", await hashPassword(password));
+  db.exec("INSERT INTO vaults(id,name,directory,status,created_at) VALUES ('interrupted','Interrupted','Interrupted','pending',0)");
+  fs.mkdirSync(path.join(root, "vaults", "Interrupted", ".obsidian", "plugins", "ignis-bridge"), { recursive: true });
+  fs.writeFileSync(path.join(root, "vaults", "Interrupted", ".obsidian", "plugins", "ignis-bridge", "keep"), "preserve");
+  fs.symlinkSync(path.join(root, "vaults", "Interrupted"), path.join(root, "vaults", "Alias"));
   db.close();
   const processState = await launch(root);
   try {
@@ -171,6 +175,29 @@ it("protects real server routes, persists auth and does not log request secrets"
       200,
     );
     expect((await request(port, "/api/vault/list", jar)).status).toBe(200);
+    const visibleVaults = JSON.parse((await request(port, "/api/vault/list", jar)).text);
+    expect(visibleVaults.some(vault => ["Interrupted", "Alias"].includes(vault.id))).toBe(false);
+    expect((await request(port, "/vault-files/Alias/.obsidian/plugins/ignis-bridge/keep", jar)).status).toBe(404);
+    expect((await request(port, "/api/vault/info?vault=Interrupted", jar)).status).toBe(404);
+    expect((await request(port, "/vault-files/Interrupted/.obsidian/plugins/ignis-bridge/keep", jar)).status).toBe(404);
+    expect(fs.readFileSync(path.join(root, "vaults", "Interrupted", ".obsidian", "plugins", "ignis-bridge", "keep"), "utf8")).toBe("preserve");
+    const createCsrf = JSON.parse((await request(port, "/api/auth/csrf", jar)).text).csrfToken;
+    expect((await request(port, "/api/vault/create", jar, { method: "POST", body: { name: "Created" } })).status).toBe(403);
+    expect((await request(port, "/api/vault/create", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { name: "Created", ownerId: "other" } })).status).toBe(400);
+    const created = await request(port, "/api/vault/create", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { name: "Created" } });
+    expect(created.status).toBe(200);
+    const result = JSON.parse(created.text);
+    expect(result.id).toBe("Created"); expect(result.uuid).toMatch(/^[a-f0-9-]{36}$/);
+    const checkDb = openDatabase(path.join(root, "data"));
+    try {
+      expect(checkDb.prepare("SELECT v.status,u.login,m.role FROM vaults v JOIN memberships m ON m.vault_id=v.id JOIN users u ON u.id=m.user_id WHERE v.id=?").get(result.uuid))
+        .toEqual({ status: "active", login: "admin", role: "owner" });
+    } finally { checkDb.close(); }
+    expect(fs.existsSync(path.join(root, "vaults", "Created", ".obsidian"))).toBe(true);
+    expect((await request(port, "/api/vault/create", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { name: "Created" } })).status).toBe(409);
+    expect((await request(port, "/api/vault/rename", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { vault: "Created", name: "Renamed" } })).status).toBe(409);
+    expect((await request(port, "/api/vault/remove?vault=Created", jar, { method: "DELETE", headers: { "x-ignis-csrf": createCsrf } })).status).toBe(409);
+
     const csrf = JSON.parse(
       (await request(port, "/api/auth/csrf", jar)).text,
     ).csrfToken;

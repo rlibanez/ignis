@@ -37,7 +37,7 @@ async function migratePluginFromVault(vaultPath, vaultName, pluginId) {
   return didWork;
 }
 
-async function migratePluginsFromAllVaults(vaultRoot, pluginIds) {
+async function migratePluginsFromAllVaults(vaultRoot, pluginIds, isAvailable = () => true) {
   if (!(await fs.promises.stat(vaultRoot).catch(() => null))) {
     return;
   }
@@ -45,7 +45,7 @@ async function migratePluginsFromAllVaults(vaultRoot, pluginIds) {
   const entries = await fs.promises.readdir(vaultRoot, { withFileTypes: true });
 
   for (const entry of entries) {
-    if (!entry.isDirectory()) {
+    if (!entry.isDirectory() || !isAvailable(entry.name)) {
       continue;
     }
 

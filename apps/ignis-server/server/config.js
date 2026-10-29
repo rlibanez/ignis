@@ -23,6 +23,8 @@ try {
   console.error("[config] Failed to create DATA_ROOT:", dataRoot, e.message);
 }
 
+let vaultDirectoryAvailable = () => true;
+
 function discoverVaults() {
   // clean object. TODO: refactor to Map for more idiomatic code.
   const vaults = Object.create(null);
@@ -31,7 +33,7 @@ function discoverVaults() {
     const entries = fs.readdirSync(vaultRoot, { withFileTypes: true });
 
     for (const entry of entries) {
-      if (entry.name.startsWith(".")) {
+      if (entry.name.startsWith(".") || !vaultDirectoryAvailable(entry.name)) {
         continue;
       }
 
@@ -61,7 +63,9 @@ function discoverVaults() {
   // Optionally create a default vault if none exist
   if (
     Object.keys(vaults).length === 0 &&
-    process.env.AUTO_CREATE_DEFAULT === "true"
+    process.env.AUTO_CREATE_DEFAULT === "true" &&
+    vaultDirectoryAvailable("My Vault") &&
+    !fs.existsSync(path.join(vaultRoot, "My Vault"))
   ) {
     const defaultPath = path.join(vaultRoot, "My Vault");
 
@@ -83,18 +87,19 @@ const RESCAN_MIN_INTERVAL_MS = 1000;
 let lastRescanAt = 0;
 
 function getVaultPath(id) {
-  return Object.prototype.hasOwnProperty.call(vaults, id) ? vaults[id] : null;
+  return Object.prototype.hasOwnProperty.call(vaults, id) && vaultDirectoryAvailable(id) ? vaults[id] : null;
 }
 
 module.exports = {
   port: process.env.PORT || 8080,
   vaultRoot,
   dataRoot,
+  setVaultDirectoryAvailability(check) { vaultDirectoryAvailable = check; },
   get vaults() {
-    return vaults;
+    return Object.assign(Object.create(null), Object.fromEntries(Object.entries(vaults).filter(([id]) => vaultDirectoryAvailable(id))));
   },
   get defaultVaultId() {
-    return Object.keys(vaults)[0] || null;
+    return Object.keys(vaults).find(id => vaultDirectoryAvailable(id)) || null;
   },
   getVaultPath,
   getVaultPathOrRescan(id, now = Date.now()) {
@@ -114,6 +119,7 @@ module.exports = {
     const target = path.resolve(absPath);
 
     for (const [vaultId, vaultPath] of Object.entries(vaults)) {
+      if (!vaultDirectoryAvailable(vaultId)) continue;
       const base = path.resolve(vaultPath);
 
       if (target === base || target.startsWith(base + path.sep)) {

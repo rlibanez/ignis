@@ -43,6 +43,7 @@ const REPO_ROOT = path.join(__dirname, "..", "..", "..");
 const app = express();
 const auth = createAuthBoundary({
   dataRoot: config.dataRoot,
+  vaultRoot: config.vaultRoot,
   config: readAuthConfig(),
   staticRoots: [
     { root: path.join(__dirname, "assets"), mount: "/assets/" },
@@ -51,6 +52,8 @@ const auth = createAuthBoundary({
     config.obsidianAssetsPath,
   ],
 });
+config.setVaultDirectoryAvailability(auth.vaultDirectoryAvailable);
+config.refreshVaults();
 auth.install(app);
 
 // Reject oversized requests by Content-Length before parsing.
@@ -178,7 +181,7 @@ async function start() {
   await migratePluginsFromAllVaults(config.vaultRoot, [
     BRIDGE_PLUGIN_ID,
     ...bundledPluginDirs.map((d) => d.bundledPluginId),
-  ]);
+  ], auth.vaultDirectoryAvailable);
   server.listen(config.port, () =>
     console.log(`[ignis] Server running on port ${server.address().port}`),
   );

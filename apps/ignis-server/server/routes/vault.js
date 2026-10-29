@@ -95,28 +95,21 @@ router.post("/refresh", async (req, res) => {
 router.post("/create", async (req, res) => {
   const name = req.body?.name;
 
-  if (!isValidVaultName(name)) {
+  if (!req.body || Array.isArray(req.body) || Object.keys(req.body).some(key => key !== "name") || !isValidVaultName(name)) {
     return res.status(400).json({ error: "Invalid vault name" });
   }
 
-  const vaultPath = path.join(config.vaultRoot, name);
-
+  if (typeof req.createRegisteredVault !== "function")
+    return res.status(503).json({ error: "Vault registration unavailable" });
   try {
-    await fs.promises.mkdir(vaultPath, { recursive: false });
-    await fs.promises.mkdir(path.join(vaultPath, ".obsidian"), {
-      recursive: false,
-    });
-
+    const vault = req.createRegisteredVault(name);
     config.refreshVaults();
     bootstrapCache.invalidateVault(name);
-
-    res.json({ ok: true, id: name, path: vaultPath });
+    // Keep the directory ID used by the current editor; UUID is its stable identity.
+    res.json({ ok: true, id: name, uuid: vault.id, path: vault.path });
   } catch (e) {
-    if (e.code === "EEXIST") {
-      return res.status(409).json({ error: "Vault already exists" });
-    }
-
-    res.status(500).json(sanitizeError(e));
+    const statuses = { INVALID_VAULT_NAME: 400, INVALID_VAULT_ROOT: 503, VAULT_EXISTS: 409, SESSION_CHANGED: 401, VAULT_STATE_CHANGED: 409 };
+    return res.status(statuses[e.code] || 503).json({ error: e.code === "VAULT_EXISTS" ? "Vault already exists" : "Vault creation could not be completed" });
   }
 });
 
