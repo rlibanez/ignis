@@ -1147,3 +1147,27 @@ it("revalidates the pinned file decision before releasing response bytes", async
   beforeFileReply = () => db.prepare("UPDATE vaults SET status='quarantine' WHERE id=?").run(vault.id);
   await expect(request("/api/fs/readFile?vault=vault&path=note.md", { jar })).rejects.toThrow();
 });
+
+it("projects filesystem events for each real socket without exposing reserved paths or extra payload fields", async () => {
+  const owner = db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
+  require("./store").registerVault(db, root, "vault", owner);
+  const ws = connect(await login());
+  await once(ws, "open");
+  const received = [];
+  const finished = new Promise(resolve => {
+    ws.on("message", bytes => {
+      const message = JSON.parse(bytes.toString());
+      received.push(message);
+      if (message.path === "last.md") resolve();
+    });
+  });
+  wss.broadcastToVault("vault", { type: "modified", path: ".ignis-private/secret.md" });
+  wss.broadcastToVault("vault", { type: "rename", path: "public.md", toPath: ".ignis-private/secret.md" });
+  wss.broadcastToVault("vault", { type: "modified", path: "last.md", unexpectedSecret: "must-not-arrive", stat: { size: 5, mtime: 7, absolutePath: "/private" } });
+  await finished;
+  expect(received).toEqual([
+    { type: "deleted", path: "public.md" },
+    { type: "modified", path: "last.md", stat: { size: 5, mtime: 7 } },
+  ]);
+  const closed = once(ws, "close"); ws.close(); await closed;
+});

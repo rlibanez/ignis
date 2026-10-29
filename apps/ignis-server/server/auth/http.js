@@ -232,24 +232,21 @@ function createAuthBoundary({
         } catch {
           return;
         }
-        const allowed =
-          message &&
-          (message.channel === "metadata"
-            ? ["revision", "replaced"].includes(message.type)
-            : message.channel === "plugin:headless-sync"
-              ? ["sync-log", "sync-status"].includes(message.type)
-              : !message.channel &&
-                [
-                  "created",
-                  "modified",
-                  "deleted",
-                  "folder-created",
-                  "rename",
-                  "write-giveup",
-                  "virtual-plugin-enable",
-                  "virtual-plugin-disable",
-                ].includes(message.type));
-        if (allowed) return original(...args);
+        try {
+          const permitted = (capability, path) => {
+            if (!vault.id) return require("./vault-policy").vaultCapabilityAllowed({
+              status: "active", instanceRole: "admin", capability, path,
+            });
+            return vaultAccess.check(token, { reference: vault.id, capability, path }).allowed;
+          };
+          const projected = require("./vault-events").projectVaultEvent(message, {
+            canRead: path => permitted("content.read", path),
+            canAdmin: capability => permitted(capability),
+          });
+          if (projected) return original(JSON.stringify(projected), ...args.slice(1));
+        } catch {
+          ws.terminate();
+        }
       };
       let timer;
       function expire() {
