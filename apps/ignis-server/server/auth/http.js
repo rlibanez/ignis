@@ -51,6 +51,7 @@ function createAuthBoundary({
   const publicUrl = new URL(config.publicOrigin);
   const db = openDatabase(dataRoot);
   const sessions = createSessionService(db, { ...sessionOptions, now });
+  const vaultAccess = vaultRoot ? require("./vault-access").createVaultAccessService(db, vaultRoot, sessions) : null;
   const csrf = createCsrf(config, { now });
   let oidc = null;
   let initialization;
@@ -863,6 +864,22 @@ function createAuthBoundary({
               error.code === "INVALID_VAULT_SELECTION" ? "Invalid or conflicting vault selection" : "Vault unavailable");
           }
         }
+        req.authorizeVaultFile = (directory, capability, relativePath) => {
+          const identity = db.prepare("SELECT id FROM vaults WHERE directory=?").get(directory);
+          // Legacy folders remain administrator-only; membership access will
+          // require registration when the outer boundary is opened in future.
+          if (!identity) return current.user.role === "admin";
+          const reference = identity.id;
+          const check = () => {
+            const decision = vaultAccess.check(cookies.read(req.headers.cookie), {
+              reference, capability, path: relativePath,
+            });
+            return decision.allowed && decision.sessionId === current.id;
+          };
+          if (!check()) return false;
+          req.revalidateVaultFile = check;
+          return true;
+        };
         req.vaultOwners = () => db.prepare("SELECT id,login FROM users WHERE status='active' ORDER BY login,id").all();
         req.vaultRegistrationOptions = () => require("./vault-registration").registrationOptions(db, vaultRoot);
         req.registerExistingVault = (directory, ownerId, expectedIdentity) => require("./vault-registration").registerExistingVault(db, vaultRoot, directory, ownerId, {
@@ -923,7 +940,8 @@ function createAuthBoundary({
             if (
               active?.id === current.id &&
               active.user.role === "admin" &&
-              initialized()
+              initialized() &&
+              (!req.revalidateVaultFile || req.revalidateVaultFile())
             )
               return original(...args);
           } catch {

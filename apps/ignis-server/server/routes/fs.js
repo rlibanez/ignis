@@ -141,6 +141,16 @@ function guardPath(req, res, source = "query") {
     res.status(403).json({ error: "Use vault management to remove a vault" });
     return null;
   }
+  const fileCapabilities = {
+    "/readFile": "content.read", "/download": "content.read",
+    "/writeFile": "content.write", "/appendFile": "content.write", "/utimes": "content.write",
+  };
+  const capability = fileCapabilities[req.route?.path];
+  if (capability && req.authorizeVaultFile &&
+      !req.authorizeVaultFile(req._vaultId, capability, toRelative(vaultRoot, resolved))) {
+    res.status(404).json({ error: "Resource unavailable" });
+    return null;
+  }
   req._vaultRoot = vaultRoot;
   return resolved;
 }
@@ -253,6 +263,7 @@ router.post("/writeFile", async (req, res) => {
       data = Buffer.from(req.body.content, "base64");
     }
 
+    if (req.revalidateVaultFile && !req.revalidateVaultFile()) { res.destroy(); return; }
     const result = await writeCoalesced(resolved, data, encoding);
     const rel = toRelative(req._vaultRoot, resolved);
     const buffered = getPending(resolved) !== null;
@@ -280,6 +291,7 @@ router.post("/appendFile", async (req, res) => {
 
   try {
     await flushPending(resolved);
+    if (req.revalidateVaultFile && !req.revalidateVaultFile()) { res.destroy(); return; }
     await fs.promises.appendFile(resolved, req.body.content, "utf-8");
 
     const rel = toRelative(req._vaultRoot, resolved);
@@ -499,6 +511,7 @@ router.post("/utimes", async (req, res) => {
 
   try {
     await flushPending(resolved);
+    if (req.revalidateVaultFile && !req.revalidateVaultFile()) { res.destroy(); return; }
     await fs.promises.utimes(
       resolved,
       req.body.atime / 1000,

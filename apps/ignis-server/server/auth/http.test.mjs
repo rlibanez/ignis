@@ -16,7 +16,7 @@ const { bootstrapAdmin } = require("./store");
 const { hashPassword } = require("./password");
 const ORIGIN = "http://localhost:8080";
 const PASSWORD = "synthetic integration passphrase";
-let root, db, boundary, server, wss, base, hash, clock, beforeRouting;
+let root, db, boundary, server, wss, base, hash, clock, beforeRouting, beforeFileReply;
 beforeAll(async () => {
   hash = await hashPassword(PASSWORD);
 });
@@ -42,6 +42,7 @@ beforeEach(async () => {
     now: () => clock,
   });
   beforeRouting = () => {};
+  beforeFileReply = () => {};
   boundary.install(app);
   app.use(express.json());
   app.use((req, res, next) => {
@@ -51,6 +52,11 @@ beforeEach(async () => {
   app.use(boundary.revalidate);
   app.get("/api/vault/list", (req, res) => res.json(["private vault"]));
   app.post("/api/fs/writeFile", (req, res) => res.json({ ok: true }));
+  app.get("/api/fs/readFile", (req, res) => {
+    if (!req.authorizeVaultFile("vault", "content.read", "note.md")) return res.sendStatus(404);
+    beforeFileReply();
+    res.send("protected bytes");
+  });
   app.post(["/api/plugins/headless-sync/enable", "/api/plugins/headless-sync/disable",
     ...["setup", "config", "start", "stop", "unlink"].map(name => "/api/ext/headless-sync/" + name)],
     (req, res) => res.json({ query: req.query, body: req.body }));
@@ -1129,4 +1135,15 @@ it("resolves plugin and sync UUIDs before routing and keeps all operations admin
   db.prepare("UPDATE vaults SET status='quarantine' WHERE id=?").run(vault.id);
   expect((await request("/api/ext/headless-sync/start", { jar, method: "POST", headers, body: { vaultId: vault.id } })).status).toBe(404);
   expect((await request(`/api/ext/headless-sync/logs?vaultId=${vault.id}`, { jar })).status).toBe(404);
+});
+
+it("revalidates the pinned file decision before releasing response bytes", async () => {
+  const owner = db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
+  const vault = require("./store").registerVault(db, root, "vault", owner);
+  const jar = await login();
+  const permitted = await request("/api/fs/readFile?vault=vault&path=note.md", { jar });
+  expect(permitted.status).toBe(200);
+  expect(await permitted.text()).toBe("protected bytes");
+  beforeFileReply = () => db.prepare("UPDATE vaults SET status='quarantine' WHERE id=?").run(vault.id);
+  await expect(request("/api/fs/readFile?vault=vault&path=note.md", { jar })).rejects.toThrow();
 });

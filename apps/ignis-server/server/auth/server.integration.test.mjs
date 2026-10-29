@@ -254,6 +254,18 @@ it("protects real server routes, persists auth and does not log request secrets"
     expect(uuidBootstrap.status).toBe(200);
     expect(JSON.parse(uuidBootstrap.text).vault).toMatchObject({ id: "Created", uuid: result.uuid });
     expect(JSON.parse(uuidBootstrap.text).vaultList.find(v => v.id === "Created").uuid).toBe(result.uuid);
+    // Registered file routes run the capability evaluator, including admin requests.
+    for (const endpoint of ["writeFile", "appendFile", "utimes"]) {
+      const deniedFile = await request(port, `/api/fs/${endpoint}?vault=${result.uuid}`, jar, {
+        method: "POST", headers: { "x-ignis-csrf": createCsrf },
+        body: { path: ".ignis-private/secret.md", content: "must not write", atime: 0, mtime: 0 },
+      });
+      expect(deniedFile.status).toBe(404);
+    }
+    expect(fs.existsSync(path.join(root, "vaults", "Created", ".ignis-private"))).toBe(false);
+    for (const endpoint of ["readFile", "download"])
+      expect((await request(port, `/api/fs/${endpoint}?vault=${result.uuid}&path=.ignis-private/secret.md`, jar)).status).toBe(404);
+
     expect((await request(port, `/api/fs/tree?vault=${result.uuid}`, ownerJar)).status).toBe(403);
     expect((await request(port, `/api/fs/writeFile?vault=${result.uuid}`, jar, {
       method: "POST", headers: { "x-ignis-csrf": createCsrf },
