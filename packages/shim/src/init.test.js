@@ -34,11 +34,11 @@ describe("resolveVaultId", () => {
     XMLHttpRequest: FakeXHR,
   };
 
-  let resolveVaultId;
+  let resolveVaultId, applyVaultInfo;
 
   beforeAll(async () => {
     Object.assign(globalThis, stubs);
-    ({ resolveVaultId } = await import("./init.js"));
+    ({ resolveVaultId, applyVaultInfo } = await import("./init.js"));
   });
 
   afterAll(() => {
@@ -53,6 +53,16 @@ describe("resolveVaultId", () => {
     infoStatus = 200;
     globalThis.location.search = "";
     delete globalThis.__currentVaultId;
+  });
+
+  it("keeps the display name separate from the pinned UUID and persists the UUID", () => {
+    applyVaultInfo({ id: "Notes", uuid: "stable-uuid" });
+    expect(globalThis.__currentVaultId).toBe("Notes");
+    expect(globalThis.__currentVaultUuid).toBe("stable-uuid");
+    expect(storage.get("last-vault")).toBe("stable-uuid");
+    applyVaultInfo({ id: "Legacy" });
+    expect(globalThis.__currentVaultUuid).toBeNull();
+    expect(storage.get("last-vault")).toBe("Legacy");
   });
 
   it("takes the vault from the URL without asking the server", () => {

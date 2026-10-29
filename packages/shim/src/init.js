@@ -65,6 +65,7 @@ function fetchVaultInfo(vaultId) {
 }
 
 export function resolveVaultId() {
+  window.__currentVaultUuid = null;
   const urlParams = new URLSearchParams(window.location.search);
   window.__currentVaultId =
     urlParams.get("vault") || localStorage.getItem("last-vault") || "";
@@ -72,6 +73,7 @@ export function resolveVaultId() {
   if (!window.__currentVaultId) {
     const info = fetchVaultInfo("");
     window.__currentVaultId = info ? info.id : "";
+    window.__currentVaultUuid = info?.uuid || null;
   }
 
   const workspace = urlParams.get("workspace") || "";
@@ -90,7 +92,7 @@ function fetchBootstrap() {
 
     xhr.open(
       "GET",
-      "/api/bootstrap?vault=" + encodeURIComponent(window.__currentVaultId),
+      "/api/bootstrap?vault=" + encodeURIComponent(vaultService.getCurrentVaultReference()),
       false,
     );
     xhr.send();
@@ -105,9 +107,15 @@ function fetchBootstrap() {
   return null;
 }
 
-function applyVaultInfo(info) {
+export function applyVaultInfo(info) {
   window.__currentVaultId = info.id;
-  localStorage.setItem("last-vault", info.id);
+  window.__currentVaultUuid = info.uuid || null;
+  localStorage.setItem("last-vault", vaultService.getCurrentVaultReference());
+  if (info.uuid && window.history?.replaceState) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("vault", info.uuid);
+    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+  }
   window.__obsidianVersion = info.version || "0.0.0";
 
   window.__vaultConfig = {
@@ -156,7 +164,7 @@ function initVaultListFallback() {
 function initMetadataCacheFallback() {
   try {
     const vaultParam = window.__currentVaultId
-      ? "?vault=" + encodeURIComponent(window.__currentVaultId)
+      ? "?vault=" + encodeURIComponent(vaultService.getCurrentVaultReference())
       : "";
 
     const xhr = new XMLHttpRequest();
@@ -284,7 +292,7 @@ export function initialize() {
     // The priority slice (configs and plugin entry files) resolves window.__ignisBootReady, which the index.html injector waits on before appending Obsidian's scripts, so Obsidian's early reads hit the cache.
     // The bulk slice streams afterward without blocking boot.
     const { priority } = prefetchVaultContent(
-      window.__currentVaultId,
+      vaultService.getCurrentVaultReference(),
       bootstrap.tree,
       fsShim._contentCache,
       { onProgress: updateBootProgress },

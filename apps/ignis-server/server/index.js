@@ -107,7 +107,9 @@ app.use("/vault-files", (req, res, next) => {
     return res.status(400).json({ error: "Missing vault ID" });
   }
 
-  const vaultId = decodeURIComponent(parts[0]);
+  let vaultId;
+  try { vaultId = auth.resolveVaultDirectory(decodeURIComponent(parts[0])); }
+  catch { return res.status(404).json({ error: "Vault unavailable" }); }
   const vaultPath = config.getVaultPath(vaultId);
 
   if (!vaultPath) {

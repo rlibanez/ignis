@@ -964,6 +964,7 @@ function createAuthBoundary({
     revalidate,
     errorHandler,
     wsSecurity,
+    resolveVaultDirectory: reference => require("./vault-request").resolveVaultRequest(db, vaultRoot, { vault: reference }, null),
     close,
     staticRoots,
     vaultDirectoryAvailable: directory => require("./vault-creation").directoryAvailable(db, directory, vaultRoot),

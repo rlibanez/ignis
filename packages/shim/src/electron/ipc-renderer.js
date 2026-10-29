@@ -35,7 +35,7 @@ const syncHandlers = {
   },
 
   "file-url": () =>
-    "/vault-files/" + encodeURIComponent(window.__currentVaultId || "") + "/",
+    "/vault-files/" + encodeURIComponent(vaultService.getCurrentVaultReference()) + "/",
 
   "disable-update": () => true,
   update: () => "",

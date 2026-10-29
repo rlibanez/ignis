@@ -92,7 +92,7 @@ router.get("/info", async (req, res) => {
     return res.status(404).json({ error: "Vault not found", id: vaultId });
   }
 
-  res.json(bootstrapCache.buildVaultInfo(vaultId, vaultPath));
+  res.json({ ...bootstrapCache.buildVaultInfo(vaultId, vaultPath), uuid: req.vaultUUID?.(vaultId) });
 });
 
 // POST /api/vault/refresh { vault } - reconcile the whole vault against disk, including ignored paths

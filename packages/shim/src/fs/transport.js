@@ -16,7 +16,7 @@ function uint8ToBase64(bytes) {
 }
 
 function vaultId() {
-  return window.__currentVaultId || "";
+  return window.__currentVaultUuid || window.__currentVaultId || "";
 }
 
 const KEEPALIVE_MAX_BYTES = 64 * 1024;

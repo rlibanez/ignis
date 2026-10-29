@@ -23,7 +23,7 @@ function markCompressionStale(entry) {
 }
 
 function compressionKey(entry) {
-  return JSON.stringify([entry.etag, entry.response.vaultList]);
+  return JSON.stringify([entry.etag, entry.response.vaultList, entry.response.vault?.uuid]);
 }
 
 function getOrCompress(entry) {

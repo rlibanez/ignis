@@ -524,3 +524,13 @@ describe("bootstrap vault catalog freshness", () => {
     }
   });
 });
+
+it("refreshes compressed bootstrap identity even when the metadata etag is unchanged", async () => {
+  const { gunzipSync } = require("zlib");
+  const entry = await bootstrapCache.getOrBuild(VAULT_ID);
+  const initial = await bootstrapCache.getOrCompress(entry);
+  entry.response.vault = { ...entry.response.vault, uuid: "registered-id" };
+  const registered = await bootstrapCache.getOrCompress(entry);
+  expect(registered).not.toBe(initial);
+  expect(JSON.parse(gunzipSync(registered.gz)).vault.uuid).toBe("registered-id");
+});

@@ -108,7 +108,9 @@
     if (!Array.isArray(list)) return;
     const id = window.__currentVaultId;
     if (vaultCatalog && id) {
-      const before = vaultCatalog.find(v => v.id === id);
+      const before = window.__currentVaultUuid
+        ? { id, uuid: window.__currentVaultUuid }
+        : vaultCatalog.find(v => v.id === id);
       const now = list.find(v => v.id === id);
       if (before && (!now || (before.uuid && before.uuid !== now.uuid))) vaultUnavailable();
     }

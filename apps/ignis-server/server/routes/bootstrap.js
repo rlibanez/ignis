@@ -24,6 +24,9 @@ router.get("/", async (req, res) => {
       return res.status(404).json({ error: "Vault not found" });
     }
 
+    entry.response.vault = { ...entry.response.vault, uuid: req.vaultUUID?.(vaultId) };
+    entry.response.vaultList = entry.response.vaultList.map(vault => ({ ...vault, uuid: req.vaultUUID?.(vault.id) }));
+
     // don't cache the bootstrap response, since it contains the metadata tree which can change frequently.
     res.setHeader("Cache-Control", "no-store");
 

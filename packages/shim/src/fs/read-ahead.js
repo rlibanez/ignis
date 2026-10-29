@@ -101,7 +101,7 @@ export function createReadAhead(metadataCache, contentCache) {
       paths.map((p) => [p, contentCache.pathUpdates(p)]),
     );
 
-    const batch = fetchBatch(window.__currentVaultId, paths)
+    const batch = fetchBatch(window.__currentVaultUuid || window.__currentVaultId, paths)
       .then((result) => {
         for (const [p, content] of Object.entries(result.files || {})) {
           if (typeof content === "string" && pathUpdatesBefore.has(p)) {

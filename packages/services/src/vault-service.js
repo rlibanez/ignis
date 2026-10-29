@@ -16,6 +16,15 @@ export const vaultService = {
     return window.__currentVaultId || "";
   },
 
+  getCurrentVaultReference() {
+    return window.__currentVaultUuid || this.getCurrentVaultId();
+  },
+
+  referenceFor(id) {
+    if (id === this.getCurrentVaultId()) return this.getCurrentVaultReference();
+    return window.__vaultList?.find(vault => vault.id === id)?.uuid || id;
+  },
+
   async listVaults() {
     const list = await fetchJson(API_BASE + "/list");
 
@@ -87,7 +96,7 @@ export const vaultService = {
     return fetchJson(API_BASE + "/refresh", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ vault: id }),
+      body: JSON.stringify({ vault: this.referenceFor(id) }),
     });
   },
 
@@ -95,7 +104,7 @@ export const vaultService = {
     await fetchJson(API_BASE + "/rename", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ vault: id, name: newName }),
+      body: JSON.stringify({ vault: this.referenceFor(id), name: newName }),
     });
 
     this._migrateLocalStorage(id, newName);
@@ -107,7 +116,7 @@ export const vaultService = {
         window.__vaultConfig.id = newName;
       }
 
-      history.replaceState(null, "", "/?vault=" + encodeURIComponent(newName));
+      history.replaceState(null, "", "/?vault=" + encodeURIComponent(this.getCurrentVaultReference()));
     }
 
     return this.listVaults();
@@ -141,11 +150,12 @@ export const vaultService = {
   },
 
   openVault(id) {
-    localStorage.setItem("last-vault", id);
+    const reference = this.referenceFor(id);
+    localStorage.setItem("last-vault", reference);
 
     const target = window.parent !== window ? window.parent : window;
 
-    target.location.href = "/?vault=" + encodeURIComponent(id);
+    target.location.href = "/?vault=" + encodeURIComponent(reference);
   },
 
   setVaultTrust(vaultId, trusted = true) {

@@ -43,3 +43,15 @@ it("sends the selected owner when creating a vault", async () => {
   await vaultService.createVault("Owned", "selected-owner");
   expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ name: "Owned", ownerId: "selected-owner" });
 });
+
+it("keeps the opened UUID even when a refreshed list reuses its name", () => {
+  const current = { __currentVaultId: "Notes", __currentVaultUuid: "original", __vaultList: [{ id: "Notes", uuid: "replacement" }, { id: "Other", uuid: "other-id" }], location: {} };
+  current.parent = current;
+  vi.stubGlobal("window", current);
+  const setItem = vi.fn();
+  vi.stubGlobal("localStorage", { setItem });
+  expect(vaultService.referenceFor("Notes")).toBe("original");
+  vaultService.openVault("Other");
+  expect(current.location.href).toBe("/?vault=other-id");
+  expect(setItem).toHaveBeenCalledWith("last-vault", "other-id");
+});

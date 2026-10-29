@@ -250,7 +250,10 @@ it("protects real server routes, persists auth and does not log request secrets"
     } finally { checkDb.close(); }
     expect(fs.existsSync(path.join(root, "vaults", "Created", ".obsidian"))).toBe(true);
     expect((await request(port, `/api/vault/info?vault=${result.uuid}`, jar)).status).toBe(200);
-    expect((await request(port, `/api/bootstrap?vault=${result.uuid}`, jar)).status).toBe(200);
+    const uuidBootstrap = await request(port, `/api/bootstrap?vault=${result.uuid}`, jar);
+    expect(uuidBootstrap.status).toBe(200);
+    expect(JSON.parse(uuidBootstrap.text).vault).toMatchObject({ id: "Created", uuid: result.uuid });
+    expect(JSON.parse(uuidBootstrap.text).vaultList.find(v => v.id === "Created").uuid).toBe(result.uuid);
     expect((await request(port, `/api/fs/tree?vault=${result.uuid}`, ownerJar)).status).toBe(403);
     expect((await request(port, `/api/fs/writeFile?vault=${result.uuid}`, jar, {
       method: "POST", headers: { "x-ignis-csrf": createCsrf },
@@ -272,6 +275,9 @@ it("protects real server routes, persists auth and does not log request secrets"
     const byUuid = await request(port, `/api/fs/readFile?vault=${result.uuid}&path=identity.md`, jar);
     expect(byUuid.status).toBe(200);
     expect(byUuid.text).toContain("stable identity");
+    const attachment = await request(port, `/vault-files/${result.uuid}/identity.md`, jar);
+    expect(attachment.status).toBe(200);
+    expect(attachment.text).toBe("stable identity");
     expect((await request(port, "/api/fs/tree?vault=Created", jar)).status).toBe(404);
 
     expect((await request(port, "/api/vault/remove?vault=Renamed", jar, { method: "DELETE", headers: { "x-ignis-csrf": createCsrf } })).status).toBe(409);
@@ -292,6 +298,7 @@ it("protects real server routes, persists auth and does not log request secrets"
       method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { path: "old.md", content: "must not write" },
     })).status).toBe(404);
     expect(fs.existsSync(path.join(root, "vaults", "Renamed", "old.md"))).toBe(false);
+    expect((await request(port, `/vault-files/${result.uuid}/identity.md`, jar)).status).toBe(404);
 
     expect((await request(port, removeUrl, jar, { method: "DELETE", headers: { "x-ignis-csrf": createCsrf } })).status).toBe(410);
     expect(fs.existsSync(path.join(root, "vaults", "Renamed"))).toBe(true);

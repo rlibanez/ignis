@@ -58,3 +58,11 @@ describe("transport keepalive gating", () => {
     expect(lastInit().keepalive).toBeUndefined();
   });
 });
+
+it("pins reads and writes to the opened UUID instead of a reusable directory name", async () => {
+  window.__currentVaultUuid = "opened-uuid";
+  await transport.writeFile("a.md", "hello", "utf-8");
+  expect(JSON.parse(lastInit().body).vault).toBe("opened-uuid");
+  await transport.readFile("a.md", "utf-8");
+  expect(new URL(fetchMock.mock.calls.at(-1)[0]).searchParams.get("vault")).toBe("opened-uuid");
+});

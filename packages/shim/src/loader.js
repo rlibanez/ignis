@@ -81,7 +81,7 @@ function onLayoutReady() {
 
 // Connect the shared WebSocket after everything is initialized; watcher and live-toggle subscribers attach to the same client.
 if (window.__currentVaultId) {
-  fsShim._watcherClient.connect(window.__currentVaultId);
+  fsShim._watcherClient.connect(window.__currentVaultUuid || window.__currentVaultId);
   watchPluginToggles(wsClient);
 }
 
