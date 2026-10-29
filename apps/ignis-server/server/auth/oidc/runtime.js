@@ -61,7 +61,7 @@ async function createOidcRuntime(
     ...network,
     origins: [new URL(config.issuer).origin, ...network.allowedOrigins],
   }, dependencies);
-  let login, manual, initializing, closed = false;
+  let login, manual, reauth, initializing, closed = false;
   const ready = async () => {
     if (closed) throw new Error("OIDC unavailable");
     if (login) return;
@@ -70,13 +70,16 @@ async function createOidcRuntime(
         const configuration = await initializeOidcClient(config, network, dependencies);
         const nextLogin = await createOidcAccountLogin(db, config, configuration, cookiePolicy, sessions);
         const nextManual = await createManualOidcLink(db, config, configuration, cookiePolicy, sessions);
+        const nextReauth = await require("./login").createOidcLogin(config, configuration, cookiePolicy, { freshAuthentication: true });
         if (closed) {
+          nextReauth.clear();
           nextLogin.clear();
           nextManual.clear();
           throw new Error("OIDC unavailable");
         }
         login = nextLogin;
         manual = nextManual;
+        reauth = nextReauth;
       })().catch(() => {
         const error = new Error("OpenID Connect is unavailable; try again later");
         error.code = "OIDC_UNAVAILABLE";
@@ -106,16 +109,18 @@ async function createOidcRuntime(
     },
     async begin(kind, sessionToken, cookie) {
       purge();
-      if (pending.size >= 1000 || !["login", "link"].includes(kind))
+      if (pending.size >= 1000 || !["login", "link", "reauth"].includes(kind))
         throw new Error("OIDC unavailable");
-      const sessionId = sessions.resolve(sessionToken)?.id ?? null;
+      const original = sessions.resolve(sessionToken);
+      const sessionId = original?.id ?? null;
+      if (kind === "reauth" && original?.user.role !== "admin") throw new Error("OIDC unavailable");
       await ready();
       if ((sessions.resolve(sessionToken)?.id ?? null) !== sessionId)
         throw new Error("OIDC unavailable");
       const result =
         kind === "link"
           ? await manual.begin(sessionToken, cookie)
-          : await login.begin(cookie);
+          : kind === "reauth" ? await reauth.begin(cookie) : await login.begin(cookie);
       if (
         closed ||
         pending.size >= 1000 ||
@@ -148,6 +153,17 @@ async function createOidcRuntime(
       )
         throw new Error("OIDC authentication failed");
       pending.delete(id);
+      if (entry.kind === "reauth") {
+        const identity = await reauth.complete(callback, cookie);
+        const current = sessions.resolve(sessionToken);
+        const linked = db.prepare("SELECT user_id FROM oidc_identities WHERE issuer=? AND subject=?").get(identity.issuer, identity.subject);
+        if (closed || entry.until <= Date.now() || !current || current.id !== entry.sessionId ||
+            current.user.role !== "admin" || linked?.user_id !== current.user.id)
+          throw new Error("OIDC authentication failed");
+        const authentication = sessions.issueForVerifiedOidcIdentity({ issuer: identity.issuer, subject: identity.subject, authenticatedAt: Date.now() });
+        if (!authentication) throw new Error("OIDC authentication failed");
+        return { authentication, kind: "reauth" };
+      }
       const result =
         entry.kind === "link"
           ? (await manual.complete(callback, cookie, sessionToken))
@@ -165,6 +181,7 @@ async function createOidcRuntime(
       pending.clear();
       login?.clear();
       manual?.clear();
+      reauth?.clear();
     },
   };
 }

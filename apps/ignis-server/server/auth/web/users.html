@@ -20,7 +20,7 @@
           <div class="panel-heading"><h2 id="accounts-heading">Accounts</h2><button id="add-user" type="button">Add user</button></div>
           <div class="table-scroll" role="region" aria-label="User accounts" tabindex="0">
             <table>
-              <thead><tr><th scope="col">Username</th><th scope="col">Role</th><th scope="col">Status</th><th id="oidc-column" scope="col" hidden data-provider-template="OpenID Connect">OpenID Connect</th><th scope="col" class="actions-heading">Actions</th></tr></thead>
+              <thead><tr><th scope="col">Username</th><th scope="col">Email</th><th scope="col">Email verification</th><th scope="col">Role</th><th scope="col">Status</th><th id="oidc-column" scope="col" hidden data-provider-template="OpenID Connect">OpenID Connect</th><th scope="col" class="actions-heading">Actions</th></tr></thead>
               <tbody id="users"></tbody>
             </table>
           </div>
@@ -36,6 +36,10 @@
           <input id="new-login" name="login" required minlength="3" maxlength="64"
             pattern="[a-zA-Z0-9][a-zA-Z0-9._\-]{2,63}" autocomplete="off" />
           <p class="help">3–64 ASCII letters, digits, dots, underscores or hyphens. Start with a letter or digit.</p>
+          <label for="new-email">Email (optional)</label>
+          <input id="new-email" name="email" type="email" maxlength="254" autocomplete="off" />
+          <label class="email-confirmation"><input name="emailVerified" type="checkbox" /> I confirm that this email belongs to this user</label>
+          <p class="help">Changing the address clears confirmation. Confirm it explicitly to allow verified-email account linking. Email changes close the user's sessions.</p>
           <label for="new-password">Password</label>
           <input id="new-password" name="password" type="password" required maxlength="1024" autocomplete="new-password" />
           <label for="confirm-password">Confirm password</label>
@@ -48,12 +52,23 @@
       <dialog id="edit-dialog" aria-labelledby="edit-heading">
         <h2 id="edit-heading">Edit user <span id="edit-user-name"></span></h2>
         <form id="edit-user">
-          <label for="user-status">Account status</label>
+          <div class="field-heading"><label for="edit-email">Email (optional)</label>
+            <span class="field-help"><button type="button" class="help-toggle" aria-label="About email verification" aria-expanded="false" aria-controls="email-help">?</button>
+              <span id="email-help" class="help-tooltip" role="tooltip" hidden>Changing the address clears confirmation. Confirm it explicitly to allow verified-email account linking. Email changes close the user's sessions.</span>
+            </span>
+          </div>
+          <input id="edit-email" name="email" type="email" maxlength="254" autocomplete="off" />
+          <label class="email-confirmation"><input name="emailVerified" type="checkbox" /> I confirm that this email belongs to this user</label>
+          <div class="field-heading"><label for="user-status">Account status</label>
+            <span class="field-help"><button type="button" class="help-toggle" aria-label="About account status" aria-expanded="false" aria-controls="account-status-help">?</button>
+              <span id="account-status-help" class="help-tooltip" role="tooltip" data-provider-template="Disabling an account blocks sign-in and revokes its Ignis sessions. Its files and OpenID Connect link are kept. Enabling it requires a new sign-in." hidden>Disabling an account blocks sign-in and revokes its Ignis sessions. Its files and OpenID Connect link are kept. Enabling it requires a new sign-in.</span>
+            </span>
+          </div>
           <select id="user-status" name="status">
             <option value="active">Active</option>
             <option value="disabled">Disabled</option>
           </select>
-          <p class="help" data-provider-template="Disabling an account blocks sign-in and revokes its Ignis sessions. Its files and OpenID Connect link are kept. Enabling it requires a new sign-in.">Disabling an account blocks sign-in and revokes its Ignis sessions. Its files and OpenID Connect link are kept. Enabling it requires a new sign-in.</p>
+
           <p id="edit-status" role="status" aria-live="polite"></p>
           <section class="session-actions" aria-label="Session management">
             <button id="revoke-sessions" type="button" class="warning-button">Close all sessions</button>
@@ -78,11 +93,18 @@
           </div>
         </form>
       </dialog>
-      <dialog id="reauth-dialog" aria-labelledby="reauth-title">
-        <h2 id="reauth-title">Sign in again to manage users</h2>
-        <p>Managing accounts requires a sign-in within the last five minutes. Sign in again, then return here to repeat the action. No changes have been made.</p>
-        <a class="secondary-button" href="/login?reauth=users">Sign in again</a>
-        <button id="cancel-reauth" type="button">Cancel</button>
+      <dialog id="reauth-dialog" aria-labelledby="reauth-heading">
+        <h2 id="reauth-heading">Confirm your identity</h2>
+        <p id="reauth-user"></p>
+        <p class="help">Confirm your identity to continue editing. No changes will be saved automatically.</p>
+        <form id="reauth-form">
+          <label for="reauth-password">Password</label>
+          <input id="reauth-password" name="password" type="password" autocomplete="current-password" required maxlength="1024" />
+          <button type="submit">Confirm identity</button>
+        </form>
+        <button id="reauth-oidc" type="button" hidden>Continue with OpenID Connect</button>
+        <p id="reauth-status" role="alert"></p>
+        <button id="cancel-reauth" type="button" class="cancel-button">Cancel</button>
       </dialog>
       <noscript>JavaScript is required to manage users.</noscript>
     </main>

@@ -25,7 +25,7 @@ it("creates only a normal local user, hashes the password and audits without gra
   expect(db.prepare("SELECT actor_id,action,resource_id FROM audit_events").get()).toEqual({
     actor_id: "admin", action: "create-local-user", resource_id: user.id,
   });
-  expect(Object.keys(listUsers(db, "admin")[0]).sort()).toEqual(["id", "login", "role", "status"]);
+  expect(Object.keys(listUsers(db, "admin")[0]).sort()).toEqual(["email", "email_trust", "id", "login", "role", "status"]);
 });
 
 it.each([undefined, "", "missing", "normal"])("rejects unauthorized actor %s", async (actor) => {
@@ -182,4 +182,25 @@ it("rolls back unlink and session revocation if the audit write fails", async ()
   expect(() => unlinkUserOidc(db, "admin", user.id, "https://current.example")).toThrow();
   expect(sessions.resolve(local.token)).not.toBeNull();
   expect(db.prepare("SELECT count(*) n FROM oidc_identities").get().n).toBe(1);
+});
+
+it("creates optional emails atomically with explicit admin confirmation", async () => {
+  const user = await createLocalUser(db, "admin", "email-user", password, undefined, { email: "Test@Example.com", emailVerified: true });
+  expect(db.prepare("SELECT email,email_trust FROM users WHERE id=?").get(user.id)).toEqual({ email: "test@example.com", email_trust: "admin_confirmed" });
+  await expect(createLocalUser(db, "admin", "duplicate-email", password, undefined, { email: "test@example.com" })).rejects.toThrow();
+  expect(db.prepare("SELECT 1 FROM users WHERE login='duplicate-email'").get()).toBeUndefined();
+  await expect(createLocalUser(db, "admin", "empty-email", password, undefined, { emailVerified: true })).rejects.toThrow();
+});
+it("resets email trust on change, rejects stale edits and rolls back status on duplicate email", async () => {
+  const user = await createLocalUser(db, "admin", "edit-email", password, undefined, { email: "old@example.com", emailVerified: true });
+  const options = { emailUpdate: { email: "new@example.com", emailVerified: false, expectedEmail: "old@example.com", expectedEmailTrust: "admin_confirmed" } };
+  const sessions = require("./sessions").createSessionService(db);
+  const session = await sessions.loginLocal(user.login, password);
+  changeUserStatus(db, "admin", user.id, "active", "active", options);
+  expect(sessions.resolve(session.token)).toBeNull();
+  expect(db.prepare("SELECT email_trust FROM users WHERE id=?").get(user.id).email_trust).toBe("unverified");
+  expect(() => changeUserStatus(db, "admin", user.id, "disabled", "active", options)).toThrow();
+  db.exec("UPDATE users SET email='taken@example.com' WHERE id='normal'");
+  expect(() => changeUserStatus(db, "admin", user.id, "disabled", "active", { emailUpdate: { email: "taken@example.com", emailVerified: true, expectedEmail: "new@example.com", expectedEmailTrust: "unverified" } })).toThrow();
+  expect(db.prepare("SELECT status FROM users WHERE id=?").get(user.id).status).toBe("active");
 });

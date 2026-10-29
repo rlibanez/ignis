@@ -328,20 +328,34 @@ function createAuthBoundary({
       }
       if (changingStatus) {
         if (!body || Array.isArray(body) ||
-            Object.keys(body).some((key) => !["userId", "status", "expectedStatus"].includes(key)) ||
+            Object.keys(body).some((key) => !["userId", "status", "expectedStatus", "email", "emailVerified", "expectedEmail", "expectedEmailTrust"].includes(key)) ||
             typeof body.userId !== "string" || body.userId.length > 64 ||
             !["active", "disabled"].includes(body.status) ||
             !["active", "disabled"].includes(body.expectedStatus))
           return safe(res, 400, "Invalid user status request");
+        const emailKeys = ["email", "emailVerified", "expectedEmail", "expectedEmailTrust"];
+        if (emailKeys.some(key => Object.hasOwn(body, key)) &&
+            (!emailKeys.every(key => Object.hasOwn(body, key)) ||
+             !(body.email === null || typeof body.email === "string") ||
+             typeof body.emailVerified !== "boolean" ||
+             !(body.expectedEmail === null || typeof body.expectedEmail === "string") ||
+             !["unverified", "admin_confirmed", "oidc_verified"].includes(body.expectedEmailTrust)))
+          return safe(res, 400, "Invalid email update");
         try {
           const user = changeUserStatus(
-            db, session.user.id, body.userId, body.status, body.expectedStatus, { isCurrent },
+            db, session.user.id, body.userId, body.status, body.expectedStatus, {
+              isCurrent, emailUpdate: Object.hasOwn(body, "email") ? body : undefined,
+            },
           );
           csrf.consume(req);
           sweepSockets();
-          return res.json({ user });
+          const signedOut = body.userId === session.user.id && !sessions.resolve(cookies.read(req.headers.cookie));
+          if (signedOut) res.append("Set-Cookie", cookies.clear());
+          return res.json({ user, signedOut });
         } catch (error) {
           const messages = {
+            INVALID_EMAIL: [400, "Invalid email or verification confirmation."],
+            EMAIL_IN_USE: [400, "Email is already assigned to another account."],
             USER_NOT_FOUND: [404, "User not found"],
             USER_STATE_CHANGED: [409, "Account changed. Reload the list and try again."],
             LAST_ADMIN: [400, "The last active administrator cannot be disabled."],
@@ -355,20 +369,20 @@ function createAuthBoundary({
         }
       }
       if (!body || Array.isArray(body) ||
-          Object.keys(body).some((key) => !["login", "password"].includes(key)) ||
+          Object.keys(body).some((key) => !["login", "password", "email", "emailVerified"].includes(key)) ||
           typeof body.login !== "string" || typeof body.password !== "string")
         return safe(res, 400, "Expected login and password only");
       try {
         const user = await createLocalUser(
           db, session.user.id, body.login, body.password,
-          config.passwordPolicy, { isCurrent },
+          config.passwordPolicy, { isCurrent, email: body.email ?? null, emailVerified: body.emailVerified ?? false },
         );
         csrf.consume(req);
         return res.status(201).json({ user });
       } catch (error) {
         if (!isCurrent()) return safe(res, 403, "Administrator session required");
         return safe(res, error.code === "AUTH_BUSY" ? 429 : 400,
-          "User creation failed; check login availability and password policy");
+          "User creation failed; check username/email availability, email confirmation and password policy");
       }
     }
     if (req.method === "GET" && pathname === "/api/auth/status") {
@@ -402,6 +416,27 @@ function createAuthBoundary({
               now() - session.authenticatedAt < 300000,
           })
         : safe(res, 401, "Authentication required");
+    }
+    if (pathname === "/api/auth/reauth" && req.method === "POST") {
+      if (!session) return safe(res, 401, "Authentication required");
+      if (session.user.role !== "admin" || !originAllowed(req, true) || !csrf.valid(req, session))
+        return safe(res, 403, "Request rejected");
+      if (req.headers["x-ignis-context"] !== session.id) return safe(res, 409, "Session changed");
+      if (!req.body || Object.keys(req.body).some(key => key !== "password") || typeof req.body.password !== "string")
+        return safe(res, 400, "Expected password only");
+      if (!limits.login(req.ip, session.user.login)) return safe(res, 429, "Too many requests");
+      const previous = cookies.read(req.headers.cookie);
+      const result = await sessions.loginLocal(session.user.login, req.body.password);
+      if (!result) return res.status(400).json({ error: "Incorrect password" });
+      if (sessions.resolve(previous)?.id !== session.id || result.session.user.id !== session.user.id || result.session.user.role !== "admin") {
+        sessions.revoke(result.token);
+        return safe(res, 401, "Session changed");
+      }
+      sessions.revoke(previous);
+      csrf.consume(req);
+      res.append("Set-Cookie", cookies.serialize(result.token, result.session.expiresAt, now()));
+      sweepSockets();
+      return res.json({ sessionId: result.session.id, userId: result.session.user.id });
     }
     if (pathname === "/api/auth/password" && req.method === "POST") {
       if (!session) return safe(res, 401, "Authentication required");
@@ -469,7 +504,7 @@ function createAuthBoundary({
         sweepSockets();
         return res.redirect(
           303,
-          result.kind === "link"
+          result.kind === "reauth" ? "/admin/users?reauth=success" : result.kind === "link"
             ? "/account?oidc=linked"
             : "/login?oidc=success",
         );
@@ -480,14 +515,17 @@ function createAuthBoundary({
     }
     if (
       pathname === "/api/auth/oidc/start" ||
-      pathname === "/api/auth/oidc/link"
+      pathname === "/api/auth/oidc/link" || pathname === "/api/auth/oidc/reauth"
     ) {
       if (!oidc || !initialized() || req.method !== "POST")
         return safe(res, 404, "Not found");
       if (!originAllowed(req, true) || !csrf.valid(req, session))
         return safe(res, 403, "Request rejected");
       if (!limits.oidcStart(req.ip)) return safe(res, 429, "Too many requests");
-      const kind = pathname.endsWith("/link") ? "link" : "login";
+      const kind = pathname.endsWith("/reauth") ? "reauth" : pathname.endsWith("/link") ? "link" : "login";
+      if (kind === "reauth" && (!session || session.user.role !== "admin" ||
+          req.headers["x-ignis-context"] !== session.id || !oidc.linked(session.user.id)))
+        return safe(res, 403, "Reauthentication unavailable");
       if (kind === "link" && (!session || oidc.linked(session.user.id)))
         return safe(res, 403, "Account linking unavailable");
       if (kind === "link" && now() - session.authenticatedAt >= 300000)
@@ -579,7 +617,7 @@ function createAuthBoundary({
         req.url.split("?")[0] === "/api/auth/oidc/callback";
       const authNavigation =
         req.method === "GET" &&
-        ["/login", "/account"].includes(req.url.split("?")[0]) &&
+        ["/login", "/account", "/admin/users"].includes(req.url.split("?")[0]) &&
         req.headers["sec-fetch-mode"] === "navigate" &&
         req.headers["sec-fetch-dest"] === "document";
       if (!transportAllowed(req) || (!callback && !authNavigation && !originAllowed(req)))

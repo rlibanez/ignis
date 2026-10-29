@@ -335,7 +335,7 @@ it("manually links an administrator only from its existing recent session", asyn
   const after = (await request("/api/auth/users", jar)).json().users;
   expect(after.find((user) => user.login === "admin").oidcLinked).toBe(true);
   for (const user of after) {
-    expect(Object.keys(user).sort()).toEqual(["id", "login", "oidcLinked", "role", "status"]);
+    expect(Object.keys(user).sort()).toEqual(["email", "email_trust", "id", "login", "oidcLinked", "role", "status"]);
   }
   expect((await request("/api/auth/session", jar)).json()).toMatchObject({
     user: { role: "admin" },
@@ -512,4 +512,37 @@ it("limits cross-site landing exceptions to public top-level GET documents", asy
     expect((await request(route, {}, "GET", undefined, { ...headers, "sec-fetch-mode": "cors" })).status).toBe(403);
     expect((await request(route, {}, "GET", undefined, { ...headers, host: "wrong.invalid" })).status).toBe(403);
   }
+});
+
+it("OIDC reauthentication preserves the administrator and rejects another provider identity", async () => {
+  const jar = {};
+  await post("/api/auth/login", jar, { login: "admin", password: "synthetic-passphrase" });
+  const initial = (await request("/api/auth/session", jar)).json();
+  db.prepare("INSERT INTO oidc_identities VALUES (?, 'external', ?, 0)").run(issuer, initial.user.id);
+  // Linking invalidates the old session, so start with a new local session.
+  await post("/api/auth/login", jar, { login: "admin", password: "synthetic-passphrase" });
+  async function begin() {
+    const session = (await request("/api/auth/session", jar)).json();
+    const token = (await request("/api/auth/csrf", jar)).json().csrfToken;
+    return request("/api/auth/oidc/reauth", jar, "POST", {}, {
+      origin: ORIGIN, "x-ignis-csrf": token, "x-ignis-context": session.sessionId,
+    });
+  }
+  const start = await begin();
+  expect(start.status).toBe(200);
+  expect(new URL(start.json().authorizationUrl).searchParams.get("max_age")).toBe("30");
+  callbackClaims = { sub: "someone-else" };
+  expect((await request(providerCallback(start.json().authorizationUrl), jar)).headers.location).toBe("/login?oidc=failed");
+  expect((await request("/api/auth/session", jar)).json().user.id).toBe(initial.user.id);
+  expect(db.prepare("SELECT count(*) n FROM users").get().n).toBe(1);
+  callbackClaims = {};
+  const again = await begin();
+  const before = jar["ignis-dev-session"];
+  const completed = await request(providerCallback(again.json().authorizationUrl), jar);
+  expect(completed.headers.location).toBe("/admin/users?reauth=success");
+  expect(jar["ignis-dev-session"]).not.toBe(before);
+  expect((await request("/api/auth/session", jar)).json().user.id).toBe(initial.user.id);
+  expect((await request(completed.headers.location, jar, "GET", undefined, {
+    "sec-fetch-site": "cross-site", "sec-fetch-mode": "navigate", "sec-fetch-dest": "document",
+  })).status).toBe(200);
 });

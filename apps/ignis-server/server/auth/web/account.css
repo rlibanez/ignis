@@ -4,20 +4,21 @@
 .account-actions { display: grid; grid-template-columns: 1fr; gap: .75rem; }
 .account-button {
   display: flex; justify-content: center; align-items: center;
-  box-sizing: border-box; padding: .85rem 1rem; border-radius: .45rem;
+  box-sizing: border-box; padding: .75rem 1rem; border-radius: .6rem;
+  font-size: .95rem; line-height: 1.25;
   background: #6846be; color: #fff; text-decoration: none;
   text-align: center; font-weight: 650; border: 1px solid transparent;
 }
-.account-button.secondary { background: transparent; color: inherit; border-color: light-dark(#898d99, #777d8d); }
+.account-button.secondary { background: light-dark(#fff, #20232b); color: inherit; border-color: light-dark(#d4d7e1, #414653); }
 .account-button:hover { filter: brightness(1.12); }
 .account-button:focus-visible, summary:focus-visible { outline: 3px solid #a48be8; outline-offset: 3px; }
-.account-page #sign-out {
+#sign-out {
   margin-top: 1.75rem;
   color: light-dark(#a12436, #ffb4bd);
   background: light-dark(#fcecef, #3b242c);
   border: 1px solid light-dark(#d89ca6, #81505c);
 }
-.account-page #sign-out:hover { background: light-dark(#f7dce2, #4b2b35); }
+#sign-out:hover { background: light-dark(#f7dce2, #4b2b35); }
 @media (max-width: 400px) {
   .account-actions { grid-template-columns: 1fr; }
 }
@@ -66,9 +67,7 @@
 .identity-label { font-size: .75rem; color: light-dark(#626978, #a7aebd); }
 .account-page #account-status { margin: .15rem 0 0; color: inherit; font-size: 1.15rem; font-weight: 650; overflow-wrap: anywhere; }
 .account-actions { gap: .6rem; }
-.account-page .account-button { padding: .75rem 1rem; font-size: .95rem; border-radius: .6rem; }
-.account-page .account-button.secondary { border-color: light-dark(#d4d7e1, #414653); background: light-dark(#fff, #20232b); }
-.account-page #sign-out { margin-top: 1.5rem; padding: .75rem; font-size: .9rem; background: transparent; border-color: light-dark(#dec4ca, #65434b); color: light-dark(#9c293c, #e7a4b1); border-radius: .6rem; }
+#sign-out { margin-top: 1.5rem; padding: .75rem; font-size: .9rem; background: transparent; border-color: light-dark(#dec4ca, #65434b); color: light-dark(#9c293c, #e7a4b1); border-radius: .6rem; }
 .account-page main > p:has(> #manage-account[hidden]) { display: none; }
 @media (max-width: 480px) {
   .account-page main { margin: 1rem auto; padding: 1.25rem; }

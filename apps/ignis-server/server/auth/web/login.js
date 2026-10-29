@@ -251,9 +251,10 @@
           `${providerName} sign-in failed. Please start again or contact your administrator.`;
       if (intent && outcome !== "failed") {
         status.textContent = intent === "users"
-          ? "Sign in again to manage users. You will return to user management afterwards."
+          ? "Confirm your identity to manage users. You will return to Users after signing in."
           : `Sign in again before linking your ${providerName} account.`;
         document.querySelector("h1").textContent = "Sign in again";
+        button.textContent = "Sign in again";
       }
       form.hidden = accountPage;
       if (accountPage) oidcButton.hidden = true;

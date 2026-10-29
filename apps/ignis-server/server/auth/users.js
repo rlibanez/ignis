@@ -1,6 +1,7 @@
 const { randomUUID } = require("node:crypto");
 const { transaction } = require("./database");
 const { normalizeLogin } = require("./store");
+const { normalizeEmail } = require("./email");
 const { hashPassword } = require("./password");
 const { readPasswordPolicy } = require("./password-policy");
 
@@ -13,7 +14,9 @@ function authorize(db, actorId) {
   ) throw new Error("Administrator required");
 }
 
-async function createLocalUser(db, actorId, login, password, policy = readPasswordPolicy(), { isCurrent = () => true } = {}) {
+async function createLocalUser(db, actorId, login, password, policy = readPasswordPolicy(), { isCurrent = () => true, email = null, emailVerified = false } = {}) {
+  email = email === null || email === "" ? null : normalizeEmail(email);
+  if (typeof emailVerified !== "boolean" || (emailVerified && !email)) throw new Error("Invalid email confirmation");
   authorize(db, actorId);
   if (!isCurrent()) throw new Error("Administrator session required");
   login = normalizeLogin(login);
@@ -29,6 +32,7 @@ async function createLocalUser(db, actorId, login, password, policy = readPasswo
     const id = randomUUID();
     const now = Date.now();
     db.prepare("INSERT INTO users(id, login, role, created_at) VALUES (?, ?, 'user', ?)").run(id, login, now);
+    db.prepare("UPDATE users SET email=?, email_trust=? WHERE id=?").run(email, emailVerified ? "admin_confirmed" : "unverified", id);
     db.prepare("INSERT INTO local_credentials VALUES (?, ?, ?)").run(id, hash, now);
     db.prepare("INSERT INTO audit_events VALUES (?, ?, ?, ?, ?)").run(randomUUID(), actorId, "create-local-user", id, now);
     return { id, login, role: "user", status: "active" };
@@ -37,10 +41,10 @@ async function createLocalUser(db, actorId, login, password, policy = readPasswo
 
 function listUsers(db, actorId) {
   authorize(db, actorId);
-  return db.prepare("SELECT id, login, role, status FROM users ORDER BY login").all();
+  return db.prepare("SELECT id, login, role, status, email, email_trust FROM users ORDER BY login").all();
 }
 
-function changeUserStatus(db, actorId, userId, status, expectedStatus, { isCurrent = () => true } = {}) {
+function changeUserStatus(db, actorId, userId, status, expectedStatus, { isCurrent = () => true, emailUpdate } = {}) {
   if (typeof userId !== "string" ||
       !["active", "disabled"].includes(status) ||
       !["active", "disabled"].includes(expectedStatus))
@@ -52,14 +56,31 @@ function changeUserStatus(db, actorId, userId, status, expectedStatus, { isCurre
     const user = db.prepare("SELECT id, login, role, status FROM users WHERE id = ?").get(userId);
     if (!user) fail("USER_NOT_FOUND");
     if (user.status !== expectedStatus) fail("USER_STATE_CHANGED");
-    if (status === user.status) return user;
+    if (emailUpdate) {
+      const previous = db.prepare("SELECT email, email_trust FROM users WHERE id=?").get(userId);
+      if (previous.email !== emailUpdate.expectedEmail || previous.email_trust !== emailUpdate.expectedEmailTrust)
+        fail("USER_STATE_CHANGED");
+    }
+    if (status === user.status && !emailUpdate) return user;
     if (status === "disabled" && user.role === "admin" &&
         db.prepare("SELECT count(*) n FROM users WHERE role = 'admin' AND status = 'active'").get().n <= 1)
       fail("LAST_ADMIN");
-    if (status === "disabled" && actorId === userId) fail("SELF_DISABLE");
-    db.prepare("UPDATE users SET status = ? WHERE id = ?").run(status, userId);
+    if (status !== user.status && status === "disabled" && actorId === userId) fail("SELF_DISABLE");
+    if (status !== user.status) db.prepare("UPDATE users SET status = ? WHERE id = ?").run(status, userId);
+    if (emailUpdate) {
+      let email;
+      try { email = emailUpdate.email === "" || emailUpdate.email === null ? null : normalizeEmail(emailUpdate.email); }
+      catch { fail("INVALID_EMAIL"); }
+      if (typeof emailUpdate.emailVerified !== "boolean" || (emailUpdate.emailVerified && !email)) fail("INVALID_EMAIL");
+      if (email && db.prepare("SELECT 1 FROM users WHERE email=? AND id!=?").get(email, userId)) fail("EMAIL_IN_USE");
+      const trust = emailUpdate.emailVerified
+        ? email === emailUpdate.expectedEmail && emailUpdate.expectedEmailTrust === "oidc_verified" ? "oidc_verified" : "admin_confirmed"
+        : "unverified";
+      db.prepare("UPDATE users SET email=?, email_trust=? WHERE id=?").run(email, trust, userId);
+      db.prepare("INSERT INTO audit_events VALUES (?, ?, ?, ?, ?)").run(randomUUID(), actorId, "set-user-email", userId, Date.now());
+    }
     // Existing triggers revoke all sessions and increment auth_version.
-    db.prepare("INSERT INTO audit_events VALUES (?, ?, ?, ?, ?)").run(
+    if (status !== user.status) db.prepare("INSERT INTO audit_events VALUES (?, ?, ?, ?, ?)").run(
       randomUUID(), actorId, status === "disabled" ? "disable-user" : "enable-user", userId, Date.now(),
     );
     return { ...user, status };

@@ -613,7 +613,7 @@ describe("user administration HTTP", () => {
     const listed = await request("/api/auth/users", { jar });
     expect(listed.status).toBe(200);
     for (const row of (await listed.json()).users)
-      expect(Object.keys(row).sort()).toEqual(["id", "login", "oidcLinked", "role", "status"]);
+      expect(Object.keys(row).sort()).toEqual(["email", "email_trust", "id", "login", "oidcLinked", "role", "status"]);
     expect((await listed.json()).oidcAvailable).toBe(false);
     expect((await listed.json()).users.every((row) => row.oidcLinked === null)).toBe(true);
     const normalJar = await login("new-user");
@@ -869,4 +869,35 @@ it("supports opted-in LAN login while enforcing exact Host, Origin and CSRF", as
     await new Promise(resolve => local.close(resolve));
     lan.close();
   }
+});
+
+it("admin email updates require recent authorized requests and revoke self sessions", async () => {
+  const jar = await login();
+  const listing = await (await request("/api/auth/users", { jar })).json();
+  const admin = listing.users.find(user => user.login === "admin");
+  const body = { userId: admin.id, status: "active", expectedStatus: "active", email: "admin@example.com", emailVerified: true, expectedEmail: null, expectedEmailTrust: "unverified" };
+  expect((await request("/api/auth/users/status", { jar, method: "POST", body })).status).toBe(403);
+  const response = await request("/api/auth/users/status", { jar, method: "POST", body, headers: { "x-ignis-csrf": await csrf(jar) } });
+  expect(response.status).toBe(200);
+  expect((await response.json()).signedOut).toBe(true);
+  expect((await request("/api/auth/session", { jar })).status).toBe(401);
+  expect(db.prepare("SELECT email_trust FROM users WHERE id=?").get(admin.id).email_trust).toBe("admin_confirmed");
+});
+
+it("reauthenticates the same administrator with a rotated session and rejects account injection", async () => {
+  const jar = await login();
+  const session = await (await request("/api/auth/session", { jar })).json();
+  clock += 300001;
+  async function confirm(body) {
+    return request("/api/auth/reauth", { jar, method: "POST", body,
+      headers: { "x-ignis-context": session.sessionId, "x-ignis-csrf": await csrf(jar) } });
+  }
+  expect((await confirm({ password: PASSWORD, login: "normal" })).status).toBe(400);
+  expect((await confirm({ password: "incorrect" })).status).toBe(400);
+  const response = await confirm({ password: PASSWORD });
+  expect(response.status).toBe(200);
+  const current = await (await request("/api/auth/session", { jar })).json();
+  expect(current.user.id).toBe(session.user.id);
+  expect(current.sessionId).not.toBe(session.sessionId);
+  expect(current.recentAuthentication).toBe(true);
 });
