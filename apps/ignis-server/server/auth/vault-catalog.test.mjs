@@ -63,3 +63,14 @@ it.each(["", null, [], ["Notes", "Notes"], {}, 7, "../Notes", "Notes/child", "No
   expect(() => selectVaultReference({ vault: value }, {}, { defaultVault: "Notes" })).toThrow();
   expect(() => selectVaultReference({}, { vault: value })).toThrow();
 });
+
+it("normalizes HTTP UUID/alias selectors without changing legacy names or choosing a default", () => {
+  const { resolveVaultRequest } = require("./vault-request");
+  expect(resolveVaultRequest(db, vaultRoot, { vault: registered.id }, { vault: "Notes" })).toBe("Notes");
+  expect(resolveVaultRequest(db, vaultRoot, { vault: "Legacy" }, null)).toBe("Legacy");
+  expect(resolveVaultRequest(db, vaultRoot, {}, {})).toBeNull();
+  expect(() => resolveVaultRequest(db, vaultRoot, { vault: registered.id }, { vault: "Legacy" })).toThrow();
+  db.prepare("UPDATE vaults SET status='quarantine'").run();
+  expect(() => resolveVaultRequest(db, vaultRoot, { vault: registered.id }, null)).toThrow();
+  expect(() => resolveVaultRequest(db, vaultRoot, { vault: "Notes" }, null)).toThrow();
+});

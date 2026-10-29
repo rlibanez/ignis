@@ -804,12 +804,24 @@ function createAuthBoundary({
       if (!initialized() || current.user.role !== "admin")
         return safe(res, 403, "Administrator access required");
       const pathname = canonicalRequestPath(req);
-      if (pathname?.startsWith("/api/fs/") || pathname === "/api/bootstrap" ||
-          ["/api/vault/info", "/api/vault/refresh", "/api/vault/rename", "/api/vault/remove"].includes(pathname)) {
+      if (!vaultRoot || ["/api/vault/rename", "/api/vault/remove"].includes(pathname)) {
         try { require("./vault-selection").selectVaultReference(req.query, req.body); }
         catch { return safe(res, 400, "Invalid or conflicting vault selection"); }
       }
       if (vaultRoot) {
+        if (pathname?.startsWith("/api/fs/") || pathname === "/api/bootstrap" ||
+            ["/api/vault/info", "/api/vault/refresh"].includes(pathname)) {
+          try {
+            const directory = require("./vault-request").resolveVaultRequest(db, vaultRoot, req.query, req.body);
+            if (directory !== null) {
+              req.query.vault = directory;
+              if (req.body && Object.hasOwn(req.body, "vault")) req.body.vault = directory;
+            }
+          } catch (error) {
+            return safe(res, error.code === "INVALID_VAULT_SELECTION" ? 400 : 404,
+              error.code === "INVALID_VAULT_SELECTION" ? "Invalid or conflicting vault selection" : "Vault unavailable");
+          }
+        }
         req.vaultOwners = () => db.prepare("SELECT id,login FROM users WHERE status='active' ORDER BY login,id").all();
         req.vaultRegistrationOptions = () => require("./vault-registration").registrationOptions(db, vaultRoot);
         req.registerExistingVault = (directory, ownerId, expectedIdentity) => require("./vault-registration").registerExistingVault(db, vaultRoot, directory, ownerId, {
