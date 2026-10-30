@@ -86,12 +86,17 @@ it("does not start Obsidian with a shared default browser identity", () => {
   expect(() => ipcRenderer.sendSync("vault")).toThrow("Authenticated vault identity required");
 });
 
-describe("trusted community plugin policy",()=>{
- it.each(["admin","user"])("allows community plugins for %s without granting server integrations",role=>{
+describe("vault plugin availability policy",()=>{
+ it.each(["admin","user"])("allows all core and community plugins for %s",role=>{
   window.__ignisAuth={role};
   const policy=ipcRenderer.sendSync("policy");
   expect(policy.plugins).toBe(true);expect(policy.themes).toBe(true);expect(policy.snippets).toBe(true);
-  expect(policy.sync).toBe(role==="admin");expect(policy.publish).toBe(role==="admin");
+  for (const key of ["sync", "publish", "webViewer"]) expect(policy[key]).toBe(true);
+  for (const key of ["devTools", "insider"]) expect(policy[key]).toBe(role === "admin");
+ });
+ it.each(["admin", "user"])("disables the policy for a blocked %s session", role => {
+  window.__ignisAuth = {role, blocked:true};
+  expect(Object.values(ipcRenderer.sendSync("policy")).every(value => value === false)).toBe(true);
  });
  it("does not enable plugins without an authenticated role",()=>{
   expect(ipcRenderer.sendSync("policy").plugins).toBe(false);

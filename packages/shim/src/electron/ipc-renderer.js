@@ -18,10 +18,12 @@ const syncHandlers = {
   cli: () => false,
   "set-language": () => null,
 
+  // UI availability only: server membership, write and network checks remain authoritative.
   policy: () => Object.fromEntries(
     ["plugins", "themes", "snippets", "sync", "publish", "webViewer", "devTools", "insider"]
-      .map(key => [key, window.__ignisAuth?.role === "admin" ||
-        (window.__ignisAuth?.role === "user" && ["plugins", "themes", "snippets"].includes(key))]),
+      .map(key => [key, !window.__ignisAuth?.blocked &&
+        (window.__ignisAuth?.role === "admin" ||
+        (window.__ignisAuth?.role === "user" && ["plugins", "themes", "snippets", "sync", "publish", "webViewer"].includes(key)))]),
   ),
 
   terms: () => {
