@@ -5,6 +5,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import http from "node:http";
+import {createHash} from "node:crypto";
+const hash=text=>createHash("sha256").update(text).digest("hex");
 import WebSocket from "ws";
 import { once } from "node:events";
 const require = createRequire(import.meta.url);
@@ -135,17 +137,19 @@ it('validates three independent real sessions across conflicts, downgrade, revok
   let membership=await success(alice.call('/api/vault/members?vault='+a));
   const member=async(role,expectedRole)=>{membership=await success(alice.call('/api/vault/members',{vault:a,login:'bob',role,expectedRole,revision:membership.revision}));};
   await member('editor',null);
-  await success(alice.call('/api/fs/writeFile?vault='+a,{path:'private.md',content:'base'}));
+  await success(alice.call('/api/fs/writeFile?vault='+a,{path:'private.md',content:'base',expectedHash:null}));
   const readPrivate=actor=>actor.call('/api/fs/readFile?vault='+a+'&path=private.md&encoding=utf8');
   expect((await readPrivate(alice)).text).toBe('base');expect((await readPrivate(bob)).text).toBe('base');
-  // Characterize the OPEN acceptance gap: ordinary writes have no read-version precondition.
-  // These successful responses are evidence of last-writer-wins, NOT conflict-safety.
-  await success(alice.call('/api/fs/writeFile?vault='+a,{path:'private.md',content:'alice edit'}));
-  await success(bob.call('/api/fs/writeFile?vault='+a,{path:'private.md',content:'bob stale edit'}));
-  expect((await readPrivate(alice)).text).toBe('bob stale edit');
+  expect((await alice.call('/api/fs/writeFile?vault='+a,{path:'private.md',content:'no version'})).status).toBe(428);
+  const ordinaryRace=await Promise.all([
+    alice.call('/api/fs/writeFile?vault='+a,{path:'private.md',content:'alice edit',expectedHash:hash('base')}),
+    bob.call('/api/fs/writeFile?vault='+a,{path:'private.md',content:'bob edit',expectedHash:hash('base')})]);
+  expect(ordinaryRace.map(r=>r.status).sort()).toEqual([200,409]);
+  const saved=(await readPrivate(alice)).text;
+  expect(saved).toBe(ordinaryRace[0].status===200?'alice edit':'bob edit');
   await member('reader','editor');
   expect((await bob.call('/api/fs/writeFile?vault='+a,{path:'private.md',content:'forbidden'})).status).toBe(404);
-  expect((await readPrivate(bob)).text).toBe('bob stale edit');
+  expect((await readPrivate(bob)).text).toBe(saved);
   const socket=new WebSocket(`ws://127.0.0.1:${port}/ws?vault=${a}&context=${bob.context}`,{headers:{host:'localhost:8080',origin:'http://localhost:8080',cookie:Object.entries(bob.jar).map(([k,v])=>`${k}=${v}`).join('; ')}});
   sockets.push(socket);await once(socket,'open',{signal:AbortSignal.timeout(3000)});
   const closed=once(socket,'close',{signal:AbortSignal.timeout(3000)});
@@ -153,17 +157,23 @@ it('validates three independent real sessions across conflicts, downgrade, revok
   expect((await readPrivate(bob)).status).toBe(404);
   expect((await readPrivate(admin)).status).toBe(404);
   await success(alice.call('/api/fs/mkdir?vault='+a,{path:'Project',recursive:false}));
-  await success(alice.call('/api/fs/writeFile?vault='+a,{path:'Project/note.md',content:'original'}));
+  await success(alice.call('/api/fs/writeFile?vault='+a,{path:'Project/note.md',content:'original',expectedHash:null}));
   const id=(await success(alice.share('create',{vault:a,path:'Project',login:'bob',role:'editor'}))).id;
   await success(alice.share('grant',{action:'grant',id,login:'carol',role:'editor',revision:1}));
   await success(bob.share('destination',{id,vault:b,localPath:'Received'}));await success(carol.share('destination',{id,vault:c,localPath:'Team'}));
   const rb=await success(bob.share('read',{id,path:'note.md'})),rc=await success(carol.share('read',{id,path:'note.md'}));expect(rb.etag).toBe(rc.etag);
   const write=(actor,etag,text)=>actor.share('write',{action:'write',id,path:'note.md',etag,content:Buffer.from(text).toString('base64')});
   const race=await Promise.all([write(bob,rb.etag,'bob wins?'),write(carol,rc.etag,'carol wins?')]);expect(race.map(r=>r.status).sort()).toEqual([200,409]);
+  const beforeMixed=await success(bob.share('read',{id,path:'note.md'}));
+  const mixed=await Promise.all([
+    alice.call('/api/fs/writeFile?vault='+a,{path:'Project/note.md',content:'owner edit',expectedHash:beforeMixed.etag}),
+    write(bob,beforeMixed.etag,'recipient edit')]);
+  expect(mixed.map(r=>r.status).sort()).toEqual([200,409]);
   const latest=await success(bob.share('read',{id,path:'note.md'}));
   // Persisted bytes and aliases survive a real server restart with the same sessions.
   await stop(server.child);server=await launch(root);port=await server.ready;
   expect((await success(bob.share('read',{id,path:'note.md'}))).content).toBe(latest.content);
+  expect((await alice.call('/api/fs/writeFile?vault='+a,{path:'Project/note.md',content:'stale after restart',expectedHash:beforeMixed.etag})).status).toBe(409);
   expect((await success(bob.share('mounts',{vault:b}))).mounts[0].localPath).toBe('Received');
   expect((await success(carol.share('mounts',{vault:c}))).mounts[0].localPath).toBe('Team');
   await success(alice.share('grant',{action:'grant',id,login:'bob',role:'reader',revision:2}));
@@ -190,7 +200,3 @@ it('validates three independent real sessions across conflicts, downgrade, revok
   expect((await success(carol.share('mounts',{vault:c}))).mounts).toEqual([]);
  }finally{for(const socket of sockets)socket.terminate();if(server)await stop(server.child);fs.rmSync(root,{recursive:true,force:true});}
 },45000);
-
-// This is deliberately visible in the suite until the ordinary filesystem protocol
-// carries and enforces read versions, including cached reads and write retries.
-it.todo('rejects stale ordinary whole-vault edits without losing the local recovery copy');

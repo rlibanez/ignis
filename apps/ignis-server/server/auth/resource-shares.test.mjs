@@ -285,3 +285,54 @@ it('exposes outgoing badges only to the current vault owner and only for live re
  fs.writeFileSync(path.join(root,'Notes','secret.md'),'replacement');expect(service.mounts('owner',{vault:vault.id}).outgoing).toEqual([]);
  expect(single).toBeTruthy();
 });
+
+const ordinary=(expected,content='owner update',p='Project/note.md',user='owner')=>service.writeOriginal(user,vault.id,p,Buffer.from(content),expected);
+it.each(['Project','Project/note.md'])('coordinates ordinary owner and recipient writes for %s in both orders',async p=>{
+ const id=share(p,'editor'),relative=p==='Project'?'note.md':'';
+ const initial=await read(id,relative);
+ const own=await ordinary(initial.etag);
+ expect(Buffer.from((await read(id,relative)).content,'base64').toString()).toBe('owner update');
+ await expect(write(id,initial.etag,'stale recipient',relative)).rejects.toMatchObject({code:'SHARE_CONFLICT'});
+ const recipient=await write(id,own.etag,'recipient update',relative);
+ await expect(ordinary(own.etag,'stale owner')).rejects.toMatchObject({code:'CONTENT_CONFLICT'});
+ expect(fs.readFileSync(path.join(root,'Notes','Project/note.md'),'utf8')).toBe('recipient update');
+ expect((await ordinary(recipient.etag,'fresh owner')).etag).not.toBe(recipient.etag);
+ expect((await read(id,relative)).kind).toBe('file');
+});
+it('permits only one racing ordinary or mixed publication on a read version',async()=>{
+ const id=share('Project/note.md','editor'),initial=await read(id);
+ const races=await Promise.allSettled([ordinary(initial.etag,'one'),ordinary(initial.etag,'two'),write(id,initial.etag,'three','')]);
+ expect(races.filter(r=>r.status==='fulfilled')).toHaveLength(1);
+ expect(races.filter(r=>r.status==='rejected')).toHaveLength(2);
+});
+it('requires an exact version and rejects deleted files, collisions, traversal, links and unauthorized writers',async()=>{
+ const id=share('Project/note.md','editor'),initial=await read(id);
+ for(const missing of [undefined,'*','',false,{},'a'.repeat(63)])await expect(ordinary(missing)).rejects.toMatchObject({code:'CONTENT_VERSION_REQUIRED'});
+ await expect(ordinary(null)).rejects.toMatchObject({code:'CONTENT_CONFLICT'});
+ for(const user of ['admin','recipient','outsider','invalid'])await expect(ordinary(initial.etag,'no','Project/note.md',user)).rejects.toThrow();
+ for(const p of ['../outside','.obsidian/config','Project/../secret.md'])await expect(ordinary(null,'no',p)).rejects.toThrow();
+ fs.symlinkSync('note.md',path.join(root,'Notes/Project/link.md'));fs.linkSync(path.join(root,'Notes/secret.md'),path.join(root,'Notes/Project/hard.md'));
+ for(const p of ['Project/link.md','Project/hard.md'])await expect(ordinary(initial.etag,'no',p)).rejects.toThrow();
+ fs.unlinkSync(path.join(root,'Notes/Project/note.md'));await expect(ordinary(initial.etag)).rejects.toMatchObject({code:'CONTENT_CONFLICT'});
+ expect(fs.existsSync(path.join(root,'Notes/Project/note.md'))).toBe(false);
+ const created=await ordinary(null,'new','Project/new.md');expect(created.size).toBe(3);
+});
+it('rechecks revocation after draining pending writes',async()=>{
+ const id=share('Project/note.md','editor'),initial=await read(id);
+ const spy=vi.spyOn(writeCoalescer,'flushPending').mockImplementationOnce(async()=>{active=false;});
+ try{await expect(ordinary(initial.etag)).rejects.toThrow();expect(fs.readFileSync(path.join(root,'Notes/Project/note.md'),'utf8')).toBe('hello');}finally{spy.mockRestore();}
+});
+
+it('does not damage the original when publication fails before the rename',async()=>{
+ const id=share('Project/note.md','editor'),initial=await read(id);
+ const spy=vi.spyOn(fs,'renameSync').mockImplementationOnce(()=>{throw Object.assign(new Error('disk failure'),{code:'EIO'});});
+ try{await expect(ordinary(initial.etag)).rejects.toThrow();}finally{spy.mockRestore();}
+ expect(fs.readFileSync(path.join(root,'Notes/Project/note.md'),'utf8')).toBe('hello');
+ expect(fs.readdirSync(path.join(root,'Notes/Project'))).toEqual(['note.md']);
+ expect((await read(id)).etag).toBe(initial.etag);
+});
+it('preserves binary contents and file grants across an ordinary atomic save',async()=>{
+ const id=share('Project/note.md','editor'),initial=await read(id),bytes=Buffer.from([0,255,128,13,10]);
+ const result=await service.writeOriginal('owner',vault.id,'Project/note.md',bytes,initial.etag);
+ expect(Buffer.from((await read(id)).content,'base64')).toEqual(bytes);expect((await read(id)).etag).toBe(result.etag);
+});

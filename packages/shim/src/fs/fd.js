@@ -85,6 +85,7 @@ export function createFdOps(metadataCache, contentCache, transport, privateFiles
     }
 
     const data = ensureData(path);
+    transport.rememberVersion?.(resolved,data);
     const fd = nextFd++;
     openFiles.set(fd, { path: resolved, data });
 

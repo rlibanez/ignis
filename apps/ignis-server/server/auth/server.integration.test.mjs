@@ -266,7 +266,7 @@ it("protects real server routes, persists auth and does not log request secrets"
     expect(ownBoot.status).toBe(200);
     expect(JSON.parse(ownBoot.text)).toMatchObject({ configurationMode: "shared", plugins: [], virtualPlugins: [] });
     expect((await request(port, `/api/fs/writeFile?vault=${ownUuid}`, ownerJar, {
-      method: "POST", headers: { "x-ignis-csrf": ownerCsrf }, body: { path: "owner-note.md", content: "owner-write" },
+      method: "POST", headers: { "x-ignis-csrf": ownerCsrf }, body: { path: "owner-note.md", content: "owner-write", expectedHash: null },
     })).status).toBe(200);
     expect((await request(port, `/api/fs/readFile?vault=${ownUuid}&path=owner-note.md`, ownerJar)).text).toBe("owner-write");
     expect((await request(port, `/api/fs/writeFile?vault=${ownUuid}`, ownerJar, {
@@ -373,7 +373,7 @@ it("protects real server routes, persists auth and does not log request secrets"
     expect((await request(port, `/api/fs/tree?vault=${result.uuid}`, ownerJar)).status).toBe(404);
     expect((await request(port, `/api/fs/writeFile?vault=${result.uuid}`, jar, {
       method: "POST", headers: { "x-ignis-csrf": createCsrf },
-      body: { vault: "Created", path: "identity.md", content: "stable identity" },
+      body: { vault: "Created", path: "identity.md", content: "stable identity", expectedHash: null },
     })).status).toBe(200);
     expect((await request(port, `/api/fs/writeFile?vault=${result.uuid}`, jar, {
       method: "POST", headers: { "x-ignis-csrf": createCsrf },
@@ -429,7 +429,7 @@ it("protects real server routes, persists auth and does not log request secrets"
     const write = await request(port, "/api/fs/writeFile", jar, {
       method: "POST",
       headers: { "x-ignis-csrf": csrf },
-      body: { vault: "Team", path: "new.md", content: "authorized" },
+      body: { vault: "Team", path: "new.md", content: "authorized", expectedHash: null },
     });
     expect(write.status).toBe(200);
     expect(fs.readFileSync(path.join(root, "vaults/Team/new.md"), "utf8")).toBe(

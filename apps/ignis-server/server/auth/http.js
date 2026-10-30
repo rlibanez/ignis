@@ -956,6 +956,8 @@ function createAuthBoundary({
             throw new Error("Configuration unavailable");
           return vaultConfig.snapshot(cookies.read(req.headers.cookie), reference);
         };
+        req.writeVaultContent = (reference, relative, bytes, expectedHash) =>
+          sharesService.writeOriginal(cookies.read(req.headers.cookie), reference, relative, bytes, expectedHash);
         req.vaultMembers = (operation, input) => {
           const service = require("./vault-members").createVaultMembersService(db, vaultRoot, sessions);
           const token = cookies.read(req.headers.cookie);

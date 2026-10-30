@@ -48,11 +48,14 @@ function initStatusBar(plugin) {
     item.setAttribute("aria-label", label);
   }
 
+  const retryableFailures = () => writes.listRetryableFailed ? writes.listRetryableFailed() : writes.listFailed();
+
   // A give-up replaces any prior Notice so the count stays current instead of stacking one per write.
   function showFailureNotice() {
-    const count = writes.listFailed().length;
+    const count = retryableFailures().length;
 
     if (count === 0) {
+      failureNotice?.hide();failureNotice=null;
       return;
     }
 
@@ -93,7 +96,7 @@ function initStatusBar(plugin) {
 
   // Once a superseded failure leaves nothing failed, drop the prompt.
   function reconcileFailureNotice() {
-    if (failureNotice && writes.listFailed().length === 0) {
+    if (failureNotice && retryableFailures().length === 0) {
       failureNotice.hide();
       failureNotice = null;
     }

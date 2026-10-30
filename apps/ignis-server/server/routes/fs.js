@@ -259,6 +259,11 @@ router.post("/writeFile", async (req, res) => {
   }
 
   try {
+    const rel = toRelative(req._vaultRoot, resolved);
+    const guarded = req.writeVaultContent && require("../auth/vault-policy").classifyVaultPath(rel) === "content";
+    if (guarded && req.body.expectedHash !== null &&
+        (typeof req.body.expectedHash !== "string" || !/^[a-f0-9]{64}$/.test(req.body.expectedHash)))
+      return res.status(428).json({error:"Read the file before saving; a content version is required.",code:"CONTENT_VERSION_REQUIRED"});
     // Ensure parent directory exists
     const dir = path.dirname(resolved);
     await fs.promises.mkdir(dir, { recursive: true });
@@ -271,11 +276,12 @@ router.post("/writeFile", async (req, res) => {
     }
 
     if (req.revalidateVaultFile && !req.revalidateVaultFile()) { res.destroy(); return; }
-    const result = await writeCoalesced(resolved, data, encoding);
-    const rel = toRelative(req._vaultRoot, resolved);
+    const result = guarded
+      ? await req.writeVaultContent(req.vaultUUID(req._vaultId),rel,Buffer.isBuffer(data)?data:Buffer.from(data,encoding === "binary"?"utf8":encoding),req.body.expectedHash)
+      : await writeCoalesced(resolved, data, encoding);
     const buffered = getPending(resolved) !== null;
 
-    res.json({ ok: true, mtime: result.mtime, size: result.size });
+    res.json({ ok: true, mtime: result.mtime, size: result.size, ...(result.etag?{etag:result.etag}:{}) });
 
     applyToTree(
       req,
@@ -284,6 +290,9 @@ router.post("/writeFile", async (req, res) => {
         : { type: "modified", path: rel },
     );
   } catch (e) {
+    if(e.code === "CONTENT_CONFLICT") return res.status(409).json({error:"The file changed since it was read. Download your changes before reloading.",code:e.code});
+    if(e.code === "SHARE_UNAVAILABLE") return res.status(404).json({error:"Resource unavailable",code:"CONTENT_UNAVAILABLE"});
+    if(e.code === "SHARE_WRITE_UNCERTAIN") return res.status(503).json({error:"The save could not be confirmed. Preserve your changes before reloading.",code:"CONTENT_WRITE_UNCERTAIN"});
     res.status(500).json(sanitizeError(e));
   }
 });
@@ -299,7 +308,8 @@ router.post("/appendFile", async (req, res) => {
   try {
     await flushPending(resolved);
     if (req.revalidateVaultFile && !req.revalidateVaultFile()) { res.destroy(); return; }
-    await fs.promises.appendFile(resolved, req.body.content, "utf-8");
+    // No asynchronous disk write may outlive a version-checked publication.
+    checkedMutation(req,()=>fs.appendFileSync(resolved, req.body.content, "utf-8"));
 
     const rel = toRelative(req._vaultRoot, resolved);
 

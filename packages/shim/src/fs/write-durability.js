@@ -73,7 +73,7 @@ function flushOnUnload() {
   }
 
   for (const [path, entry] of entries) {
-    if (entry.data === undefined || entry.data === null) {
+    if (entry.terminal || entry.data === undefined || entry.data === null) {
       continue;
     }
 
@@ -222,13 +222,16 @@ function attempt(path, gen) {
       discard(path);
       recompute();
     },
-    () => {
+    (error) => {
       const current = entries.get(path);
 
       if (!current || current.gen !== gen) {
         return;
       }
-
+      if(error?.code?.startsWith("CONTENT_")) {
+        current.terminal=true;current.silent=false;current.status="failed";
+        recompute();emitFailure(path);return;
+      }
       current.attempts += 1;
 
       if (current.attempts <= MAX_ATTEMPTS) {
@@ -304,7 +307,7 @@ export function trackWrite(path, opts) {
       }
     },
 
-    failure(data, encoding, onResult) {
+    failure(data, encoding, onResult, error) {
       const current = entries.get(path);
 
       if (!current || current.gen !== gen) {
@@ -319,6 +322,10 @@ export function trackWrite(path, opts) {
       current.overThreshold = true;
       current.attempts = 1;
 
+      if(error?.code?.startsWith("CONTENT_")) {
+        current.terminal=true;current.silent=false;current.status="failed";
+        recompute();emitFailure(path);return;
+      }
       scheduleRetry(path, gen);
       recompute();
     },
@@ -398,6 +405,11 @@ export function listFailed() {
   return failed;
 }
 
+// Terminal conflicts have their own recovery UI, never a retry/reload prompt.
+export function listRetryableFailed() {
+  return [...entries].filter(([,entry])=>entry.status === "failed" && !entry.silent && !entry.terminal).map(([path])=>path);
+}
+
 export function getDetail() {
   let pending = 0;
   let retrying = 0;
@@ -421,7 +433,7 @@ export function getDetail() {
 export function retryAll() {
   if (suspended) return;
   for (const [path, entry] of entries) {
-    if (entry.status === "failed" && !entry.silent) {
+    if (entry.status === "failed" && !entry.silent && !entry.terminal) {
       entry.status = "retrying";
       entry.attempts = 1;
       attempt(path, entry.gen);

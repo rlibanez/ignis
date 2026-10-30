@@ -1,11 +1,11 @@
 import {it,expect,vi} from 'vitest';
 import {createSharedNotice} from './shared-notice.js';
-function fixture(){
+function fixture(ordinary=false){
  const nodes=[],events={},context={sessionId:'session',vault:'vault'},leaves=[];
  function element(tag){const node={tag,style:{},children:[],attrs:{},textContent:'',setAttribute(k,v){this.attrs[k]=v;},append(...children){for(const child of children){child.parent=this;this.children.push(child);}},replaceChildren(){this.children=[];},remove(){if(this.parent)this.parent.children=this.parent.children.filter(x=>x!==this);},click(){this.onclick?.();}};nodes.push(node);return node;}
  const body=element('body'),host={document:{body,createElement:element},addEventListener:(name,fn)=>events[name]=fn,URL:{createObjectURL:vi.fn(()=> 'blob:recovery'),revokeObjectURL:vi.fn()},Blob,app:{workspace:{iterateAllLeaves:fn=>leaves.forEach(fn)}}};
- const notice=createSharedNotice(()=>context,host);
- const find=text=>nodes.findLast(n=>n.textContent===text),close=()=>nodes.findLast(n=>n.attrs['aria-label']==='Dismiss shared resource notice').click();
+ const notice=createSharedNotice(()=>context,host,ordinary);
+ const find=text=>nodes.findLast(n=>n.textContent===text),close=()=>nodes.findLast(n=>n.attrs['aria-label']?.startsWith('Dismiss')).click();
  const fail=(content='draft')=>notice.failure({path:'Shared/note.md',content,...context});
  return {host,body,events,context,leaves,notice,find,close,fail,nodes};
 }
@@ -40,4 +40,13 @@ it('captures a downgraded editor with an accurate read-only explanation',async()
  expect(f.nodes.some(n=>n.textContent.includes('no longer available'))).toBe(false);
  f.find('Download shared recovery copy').click();
  expect(JSON.parse(await f.host.URL.createObjectURL.mock.calls[0][0].text()).files['Shared/note.md'].content).toBe('unsubmitted draft');
+});
+
+it('offers dismissible ordinary recovery without claiming local notes are unaffected',async()=>{
+ const f=fixture(true);f.notice.failure({path:'note.md',content:'my draft',...f.context});
+ expect(f.nodes.some(n=>n.textContent.includes('content changed'))).toBe(true);
+ expect(f.nodes.some(n=>n.textContent.includes('local notes are unaffected'))).toBe(false);
+ f.find('Download recovery copy').click();
+ expect(JSON.parse(await f.host.URL.createObjectURL.mock.calls[0][0].text()).files['note.md'].content).toBe('my draft');
+ f.close();expect(f.find('Recover unsaved changes')).toBeDefined();f.events['ignis:auth-lost']();expect(f.body.children).toEqual([]);
 });

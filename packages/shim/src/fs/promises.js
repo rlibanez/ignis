@@ -164,6 +164,7 @@ export function createFsPromises(metadataCache, contentCache, transport, private
       }
 
       // Apply registered read transforms (e.g., patching synced config files).
+      transport.rememberVersion?.(resolved, result);
       result = applyReadTransform(resolved, result);
 
       if (wantText) {
@@ -187,6 +188,7 @@ export function createFsPromises(metadataCache, contentCache, transport, private
       const resolved = resolvePath(path);
       const privatePath = privateFiles?.select(path, resolved);
       if (privatePath) return privateFiles.write(privatePath, data, encoding);
+      transport.prepareWrite?.(resolved,contentCache.get(resolved));
       const transformed = applyWriteTransform(resolved, data);
 
       contentCache.set(resolved, transformed);
