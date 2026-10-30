@@ -186,6 +186,13 @@ it('validates three independent real sessions across conflicts, downgrade, revok
   expect((await write(bob,latest.etag,'forbidden')).status).toBe(404);
   expect((await success(bob.share('mounts',{vault:b}))).mounts[0].role).toBe('reader');
   expect((await success(carol.share('read',{id,path:'note.md'}))).content).toBe(latest.content);
+  // Both the resource recipient and the owner can move within the same share.
+  await success(alice.call('/api/fs/mkdir?vault='+a,{path:'Project/Sub',recursive:false}));
+  await success(carol.share('rename',{id,path:'note.md',to:'Sub/note.md',etag:latest.etag}));
+  expect((await success(carol.share('read',{id,path:'Sub/note.md'}))).content).toBe(latest.content);
+  await success(alice.call('/api/fs/rename?vault='+a,{oldPath:'Project/Sub/note.md',newPath:'Project/note.md'}));
+  expect((await success(bob.share('read',{id,path:'note.md'}))).content).toBe(latest.content);
+  expect((await alice.call('/api/fs/rename?vault='+a,{oldPath:'Project/note.md',newPath:'outside.md'})).status).toBe(409);
   await success(alice.call('/api/fs/rename?vault='+a,{oldPath:'Project',newPath:'Renamed'}));
   expect((await success(bob.share('mounts',{vault:b}))).mounts[0].localPath).toBe('Received');
   expect((await success(carol.share('read',{id,path:'note.md'}))).content).toBe(latest.content);

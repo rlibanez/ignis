@@ -226,19 +226,27 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
   }
   function renameDisk(user,v,oldPath,newPath,etag) {
     canonical(oldPath);canonical(newPath);
-    if(path.posix.dirname(oldPath)!==path.posix.dirname(newPath) || oldPath===newPath)fail("INVALID_SHARE_PATH");
+    if(oldPath===newPath || newPath.toLowerCase().startsWith(oldPath.toLowerCase()+"/"))fail("INVALID_SHARE_PATH");
+    const crossDirectory=path.posix.dirname(oldPath)!==path.posix.dirname(newPath);
     let published=false;
     try{return transaction(db,()=>{
       const source=inspect(v.path,oldPath),destination=inspect(v.path,newPath,true);
         if(destination.stat || writeCoalescer.hasPendingSubtree(source.filename) || writeCoalescer.hasPendingSubtree(destination.filename))fail("SHARE_CONFLICT");
         const expected=etag===undefined?undefined:source.stat.isDirectory()?directoryTag(source.stat):digest(readFile(source,maxFileBytes));
         if(etag!==undefined && etag!==expected)fail("SHARE_CONFLICT");
-        const parent=path.dirname(source.filename),entries=fs.opendirSync(parent);let count=0;
+        const parent=path.dirname(source.filename),destinationParent=path.dirname(destination.filename),entries=fs.opendirSync(destinationParent);let count=0;
         try{for(let entry;(entry=entries.readSync());){if(++count>10000)fail("SHARE_LIMIT");if(entry.name.toLowerCase()===path.basename(destination.filename).toLowerCase())fail("SHARE_CONFLICT");}}finally{entries.closeSync();}
         let total=0;
         function validate(item,depth){if(++total>5000 || depth>32)fail("SHARE_LIMIT");if(!item.stat.isDirectory())return;const dir=fs.opendirSync(item.filename);try{for(let entry;(entry=dir.readSync());)validate(inspect(item.filename,canonical(entry.name)),depth+1);}finally{dir.closeSync();}}
         validate(source,0);
         const shares=db.prepare("SELECT * FROM shared_resources WHERE vault_id=?").all(v.id),affected=[];
+        if(crossDirectory){
+          // Moving must not silently add or remove access inherited from a folder
+          // grant. Explicit grants within the moved subtree travel with that subtree.
+          const enclosing=target=>shares.filter(row=>row.kind==="directory" && target.startsWith(row.path+"/")).map(row=>row.id).sort();
+          const before=enclosing(oldPath),after=enclosing(newPath);
+          if(!before.length || JSON.stringify(before)!==JSON.stringify(after))fail("SHARE_MOVE_BOUNDARY");
+        }
         for(const row of shares){
           if(row.path.toLowerCase()===newPath.toLowerCase() || row.path.toLowerCase().startsWith(newPath.toLowerCase()+"/"))fail("SHARE_CONFLICT");
           if(row.path===oldPath || row.path.startsWith(oldPath+"/")){
@@ -248,14 +256,13 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
         }
         audit(user,"rename-shared-content",{vault:v.id,path:oldPath,to:newPath});
         fs.renameSync(source.filename,destination.filename);published=true;
-        const fd=fs.openSync(parent,fs.constants.O_RDONLY|fs.constants.O_DIRECTORY);try{fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
+        for(const directory of new Set([parent,destinationParent])){const fd=fs.openSync(directory,fs.constants.O_RDONLY|fs.constants.O_DIRECTORY);try{fs.fsyncSync(fd);}finally{fs.closeSync(fd);}}
         for(const row of affected)db.prepare("UPDATE shared_resources SET path=?,revision=revision+1 WHERE id=?").run(newPath+row.path.slice(oldPath.length),row.id);
       return {ok:true};
     });}catch(error){if(published)fail("SHARE_RENAME_UNCERTAIN");throw error;}
   }
   async function rename(token,input) {
     const relative=canonical(input.path),to=canonical(input.to);
-    if(path.posix.dirname(relative)!==path.posix.dirname(to))fail("INVALID_SHARE_PATH");
     function resolve(){
       const access=resource(token,input.id,relative,true);
       const oldPath=access.row.path+"/"+relative;

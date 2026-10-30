@@ -200,7 +200,7 @@ it('renames writable notes and folders while preserving nested explicit grants',
  await service.mutate('recipient',{id,path:'Sub',action:'mkdir',etag:null});await write(id,null,'inside','Sub/Inside.md');const nested=share('Project/Sub/Inside.md');
  const directory=await read(id,'Sub');await service.rename('recipient',{id,path:'Sub',to:'Renamed folder',etag:directory.etag});expect(Buffer.from((await read(nested)).content,'base64').toString()).toBe('inside');
 });
-it('denies rename for Read, foreign users, traversal, stale root revisions and cross-folder moves',async()=>{
+it('denies rename for Read, foreign users, traversal and missing destination parents',async()=>{
  const id=share(),file=await read(id,'note.md');await expect(service.rename('recipient',{id,path:'note.md',to:'Other.md',etag:file.etag})).rejects.toThrow();
  service.grant('owner',{action:'grant',id,revision:1,login:'recipient',role:'editor'});
  for(const [token,from,to] of [['admin','note.md','Other.md'],['recipient','','Other'],['recipient','note.md','../Other.md'],['recipient','note.md','.hidden'],['recipient','note.md','Sub/Other.md']])await expect(service.rename(token,{id,path:from,to,etag:file.etag})).rejects.toThrow();
@@ -344,4 +344,44 @@ it('allows deliberate plugin replacement but rejects an editor based on the over
  await expect(ordinary(initial.etag,'stale editor')).rejects.toMatchObject({code:'CONTENT_CONFLICT'});
  for(const user of ['admin','recipient','outsider','invalid'])await expect(ordinary(undefined,'unauthorized','Project/note.md',user)).rejects.toThrow();
  for(const bad of ['*','',false,{}])await expect(ordinary(bad,'invalid')).rejects.toMatchObject({code:'CONTENT_VERSION_REQUIRED'});
+});
+it('moves notes within a shared folder for recipients and owners, retaining explicit grants',async()=>{
+ const id=share('Project','editor'),fileId=share('Project/note.md');
+ fs.mkdirSync(path.join(root,'Notes/Project/Sub'));
+ await service.rename('recipient',{id,path:'note.md',to:'Sub/note.md',etag:(await read(id,'note.md')).etag});
+ expect(Buffer.from((await read(fileId)).content,'base64').toString()).toBe('hello');
+ expect(db.prepare('SELECT path FROM shared_resources WHERE id=?').get(fileId).path).toBe('Project/Sub/note.md');
+ service.renameOriginal('owner',vault.id,'Project/Sub/note.md','Project/note.md');
+ expect((await read(fileId)).kind).toBe('file');
+});
+it('moves directories and updates all nested explicit grants without changing recipient aliases',async()=>{
+ const id=share('Project','editor');fs.mkdirSync(path.join(root,'Notes/Project/A'));fs.mkdirSync(path.join(root,'Notes/Project/B'));
+ fs.writeFileSync(path.join(root,'Notes/Project/A/inside.md'),'inside');
+ const nested=share('Project/A/inside.md');const dest=makeDestination();
+ service.destination('recipient',{id:nested,vault:dest.id,localPath:'Alias.md'});
+ await service.rename('recipient',{id,path:'A',to:'B/A',etag:(await read(id,'A')).etag});
+ expect(Buffer.from((await read(nested)).content,'base64').toString()).toBe('inside');
+ expect(db.prepare('SELECT local_path FROM resource_destinations WHERE resource_id=?').get(nested).local_path).toBe('Alias.md');
+});
+it('rejects movement across sharing boundaries even by the owner and never exposes private content',async()=>{
+ const id=share('Project','editor');fs.mkdirSync(path.join(root,'Notes/Project/Nested'));share('Project/Nested');
+ await expect(service.rename('recipient',{id,path:'note.md',to:'Nested/note.md',etag:(await read(id,'note.md')).etag})).rejects.toMatchObject({code:'SHARE_MOVE_BOUNDARY'});
+ expect(()=>service.renameOriginal('owner',vault.id,'Project/note.md','escaped.md')).toThrow();
+ expect(()=>service.renameOriginal('owner',vault.id,'secret.md','Project/secret.md')).toThrow();
+ expect(fs.existsSync(path.join(root,'Notes/Project/note.md'))).toBe(true);
+});
+it('rejects descendant cycles, target collisions, missing parents and symlink destinations on moves',async()=>{
+ const id=share('Project','editor');fs.mkdirSync(path.join(root,'Notes/Project/A'));fs.mkdirSync(path.join(root,'Notes/Project/A/Sub'));
+ await expect(service.rename('recipient',{id,path:'A',to:'A/Sub/A',etag:(await read(id,'A')).etag})).rejects.toThrow();
+ fs.writeFileSync(path.join(root,'Notes/Project/A/NOTE.md'),'keep');
+ fs.symlinkSync('A',path.join(root,'Notes/Project/Link'));
+ for(const to of ['A/note.md','Missing/note.md','Link/note.md'])await expect(service.rename('recipient',{id,path:'note.md',to,etag:(await read(id,'note.md')).etag})).rejects.toThrow();
+ expect(fs.readFileSync(path.join(root,'Notes/Project/A/NOTE.md'),'utf8')).toBe('keep');
+});
+it('rechecks Write after draining a cross-directory move',async()=>{
+ const id=share('Project','editor');fs.mkdirSync(path.join(root,'Notes/Project/Sub'));
+ const etag=(await read(id,'note.md')).etag;
+ const flush=vi.spyOn(writeCoalescer,'flushPendingSubtree').mockImplementationOnce(async()=>{service.grant('owner',{action:'grant',id,revision:1,login:'recipient',role:'reader'});});
+ try{await expect(service.rename('recipient',{id,path:'note.md',to:'Sub/note.md',etag})).rejects.toThrow();}finally{flush.mockRestore();}
+ expect(fs.existsSync(path.join(root,'Notes/Project/note.md'))).toBe(true);
 });

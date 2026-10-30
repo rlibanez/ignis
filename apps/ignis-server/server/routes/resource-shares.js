@@ -3,6 +3,7 @@ function createResourceSharesRouter(service) {
   const router = express.Router();
   const json = express.json({limit:service.limits.maxRequestBytes,strict:true});
   const messages = {
+    SHARE_MOVE_BOUNDARY:[409,"Move within the same shared folder without crossing another shared folder boundary."],
     SHARE_PLACEMENT_CONFLICT:[409,"This location overlaps a local file or another shared resource. Choose another existing destination folder."],
     SHARE_RENAME_UNCERTAIN:[503,"The rename reached disk but its sharing metadata could not be confirmed. Ask the owner to check the resource before continuing."],
     SHARE_WRITE_UNCERTAIN:[503,"The file was published, but its sharing metadata could not be confirmed. Ask the owner to check the file and share it again."],

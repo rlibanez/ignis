@@ -104,3 +104,12 @@ it('keeps append bound to the content it read instead of fetching a newer replac
  const operations=f.calls.map(c=>c.operation);expect(operations.filter(x=>x==='read')).toHaveLength(2);
  expect(f.calls.find(c=>c.operation==='write').input.etag).toBe(contentHash('original'));
 });
+it('routes a move inside one received folder through the shared API and preserves the write baseline',async()=>{
+ const f=fixture();await f.fs.readFile(f.file);
+ f.cache.set('Project/Sub',{type:'directory'});
+ await f.fs.rename(f.file,'Project/Sub/note.md');
+ expect(f.calls.find(c=>c.operation==='rename').input).toMatchObject({path:'note.md',to:'Sub/note.md',etag:contentHash('original')});
+ expect(f.cache.has(f.file)).toBe(false);
+ await f.fs.writeFile('Project/Sub/note.md','moved content');
+ expect(f.ordinary.rename).not.toHaveBeenCalled();expect(f.ordinary.writeFile).not.toHaveBeenCalled();
+});

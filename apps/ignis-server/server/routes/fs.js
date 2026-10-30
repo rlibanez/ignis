@@ -393,6 +393,7 @@ router.post("/rename", async (req, res) => {
       ),
     );
   } catch (e) {
+    if(e.code === "SHARE_MOVE_BOUNDARY") return res.status(409).json({error:"Move within the same shared folder without crossing another shared folder boundary.",code:e.code});
     res.status(500).json(sanitizeError(e));
   }
 });
