@@ -272,3 +272,16 @@ it('coordinates original-vault renames with nested shares and forbids implicit a
  expect(db.prepare('SELECT path FROM shared_resources WHERE id=?').get(child).path).toBe('Renamed/note.md');
  expect(Buffer.from((await read(child)).content,'base64').toString()).toBe('hello');
 });
+
+it('exposes outgoing badges only to the current vault owner and only for live resources with grants',()=>{
+ const id=share(),single=share('secret.md');
+ expect(service.mounts('owner',{vault:vault.id}).outgoing).toEqual(expect.arrayContaining([{path:'Project',kind:'directory'},{path:'secret.md',kind:'file'}]));
+ db.prepare("INSERT INTO memberships(vault_id,user_id,role) VALUES (?,'outsider','editor')").run(vault.id);
+ expect(service.mounts('outsider',{vault:vault.id}).outgoing).toEqual([]);
+ const other=makeDestination('Other','owner');expect(service.mounts('owner',{vault:other.id}).outgoing).toEqual([]);
+ expect(()=>service.mounts('admin',{vault:vault.id})).toThrow();
+ service.grant('owner',{action:'revoke',id,revision:1});expect(service.mounts('owner',{vault:vault.id}).outgoing).toEqual([{path:'secret.md',kind:'file'}]);
+ fs.unlinkSync(path.join(root,'Notes','secret.md'));expect(service.mounts('owner',{vault:vault.id}).outgoing).toEqual([]);
+ fs.writeFileSync(path.join(root,'Notes','secret.md'),'replacement');expect(service.mounts('owner',{vault:vault.id}).outgoing).toEqual([]);
+ expect(single).toBeTruthy();
+});

@@ -7,5 +7,6 @@ it('decorates resources without altering names and removes badges on revocation 
  const unsubscribe=vi.fn(),icons={setIcon:vi.fn()},files={describe:()=>info,subscribe:fn=>{changed=fn;return unsubscribe;}};
  installSharedIcons(icons,files,host);await new Promise(resolve=>setTimeout(resolve,0));expect(icons.setIcon).toHaveBeenCalledWith(item.icon,'users');expect(item.icon.title).toBe('Shared by alice · Read / Write');
  changed();await new Promise(resolve=>setTimeout(resolve,0));expect(icons.setIcon).toHaveBeenCalledTimes(1);
+ info={direction:'outgoing'};changed();await new Promise(resolve=>setTimeout(resolve,0));expect(icons.setIcon).toHaveBeenLastCalledWith(item.icon,'share-2');expect(item.icon.title).toBe('Shared by you');
  info=null;changed();await new Promise(resolve=>setTimeout(resolve,0));expect(item.icon).toBeUndefined();logout();expect(observer.disconnect).toHaveBeenCalled();expect(unsubscribe).toHaveBeenCalled();
 });

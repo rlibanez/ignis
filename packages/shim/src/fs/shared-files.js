@@ -7,7 +7,7 @@ function wire(input){const value={...input};delete value.role;return value;}
 const base64 = bytes => {let binary="";for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(binary);};
 const bytes = value => Uint8Array.from(atob(value),character=>character.charCodeAt(0));
 export function createSharedFiles({metadataCache,watch,currentContext,request=fetch,createXHR=()=>new XMLHttpRequest(),onFailure=()=>{},onNotice=()=>{},onRemoved=()=>{}}) {
-  let scope=null, enabled=false, mounted=new Map(), tree=Object.create(null), timer=null, refreshing=false, maxBytes=0;
+  let scope=null, enabled=false, outgoing=[], mounted=new Map(), tree=Object.create(null), timer=null, refreshing=false, maxBytes=0;
   const states=new Map(),reserved=new Set(),subscribers=new Set();
   function context(){const value=currentContext();if(!scope?.sessionId || value?.sessionId!==scope.sessionId || value?.vault!==scope.vault)fail("AUTH_CONTEXT_CHANGED","Session or vault changed");}
   function owns(path){return enabled && [...reserved].some(root=>under(normalize(path),root));}
@@ -55,6 +55,7 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
       const previous=tree[path];metadataCache.set(path,meta);
       if(notify && (!previous || previous.mtime!==meta.mtime || previous.size!==meta.size))watch._dispatch(previous?"change":"rename",path);
     }
+    outgoing=snapshot.outgoing || [];
     tree=next;for(const subscriber of subscribers)subscriber();
   }
   function configure(ordinary){
@@ -66,7 +67,7 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
   }
   async function refresh(){if(!enabled || refreshing)return;refreshing=true;try{accept(await exchange("mounts",{vault:scope.vault}),true);}catch(error){onNotice(error.message);}finally{refreshing=false;}}
   function start(){if(enabled&&!timer)timer=setInterval(refresh,15000);}
-  function stop(){if(timer)clearInterval(timer);timer=null;for(const path of Object.keys(tree))metadataCache.delete(path);tree=Object.create(null);mounted.clear();states.clear();reserved.clear();enabled=false;scope=null;}
+  function stop(){if(timer)clearInterval(timer);timer=null;for(const path of Object.keys(tree))metadataCache.delete(path);tree=Object.create(null);mounted.clear();outgoing=[];states.clear();reserved.clear();enabled=false;scope=null;}
   function stat(path){context();const value=metadataCache.toStat(path);if(!value)fail("ENOENT");return value;}
   function readdir(path){if(!stat(path).isDirectory())fail("ENOTDIR");return metadataCache.readdir(path).map(entry=>entry.name);}
   function state(path){if(!states.has(path))states.set(path,{etag:undefined,blocked:false,busy:false});return states.get(path);}
@@ -158,6 +159,11 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
       }}catch{/* Unrelated or unsupported resource URL. */}
     }
   }
-  function describe(path){const found=[...mounted].find(([root,mount])=>!mount.blocked&&under(normalize(path),root));return found?{role:found[1].role,owner:found[1].owner || "",root:found[0]}:null;}
+  function describe(path){
+    const value=normalize(path),found=[...mounted].find(([root,mount])=>!mount.blocked&&under(value,root));
+    if(found)return {direction:"incoming",role:found[1].role,owner:found[1].owner || "",root:found[0]};
+    const sent=outgoing.find(item=>value===item.path);
+    return sent?{direction:"outgoing",root:sent.path}:null;
+  }
   return {configure,refresh,start,stop,owns,wrap,describe,subscribe(fn){subscribers.add(fn);return ()=>subscribers.delete(fn);},resourceUrl,installAdapter,assertOrdinary(path,resolved){if(owns(path)||owns(resolved))fail("ENOTSUP","File descriptors are not supported on shared resources");}};
 }

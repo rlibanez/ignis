@@ -157,7 +157,12 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
         visit("",0);
         mounts.push({id:row.id,localPath,owner:db.prepare("SELECT u.login FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.vault_id=? AND m.role='owner'").get(access.v.id)?.login || "",name:path.basename(access.row.path),kind:access.row.kind,role:access.role,tree});
       }
-      return {mounts,limits:{maxFileBytes,maxFileMiB:limits.maxFileMiB}};
+      const outgoing=[];
+      if(owner(user,input.vault))for(const row of db.prepare("SELECT id,path,kind FROM shared_resources r WHERE vault_id=? AND EXISTS (SELECT 1 FROM resource_grants g WHERE g.resource_id=r.id)").all(input.vault)){
+        try{resource(token,row.id);outgoing.push({path:row.path,kind:row.kind});}
+        catch(error){if(!["SHARE_UNAVAILABLE","VAULT_UNAVAILABLE","ENOENT"].includes(error.code))throw error;}
+      }
+      return {mounts,outgoing,limits:{maxFileBytes,maxFileMiB:limits.maxFileMiB}};
     });
   }
   function create(token,input) {
