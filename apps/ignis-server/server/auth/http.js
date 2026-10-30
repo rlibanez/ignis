@@ -313,13 +313,14 @@ function createAuthBoundary({
 
   async function authEndpoint(req, res, pathname) {
     const session = getSession(req);
-    if (["/api/auth/users", "/api/auth/users/status", "/api/auth/users/revoke-sessions", "/api/auth/users/unlink-oidc", "/api/auth/users/set-password", "/api/auth/users/reset-password"].includes(pathname)) {
+    if (["/api/auth/users", "/api/auth/users/status", "/api/auth/users/revoke-sessions", "/api/auth/users/unlink-oidc", "/api/auth/users/set-password", "/api/auth/users/reset-password", "/api/auth/users/delete"].includes(pathname)) {
+      const deletingUser = pathname.endsWith("/delete");
       const resettingPassword = pathname.endsWith("/reset-password");
       const settingPassword = pathname.endsWith("/set-password");
       const changingStatus = pathname.endsWith("/status");
       const unlinkingOidc = pathname.endsWith("/unlink-oidc");
       const revokingSessions = pathname.endsWith("/revoke-sessions");
-      if (!["GET", "POST"].includes(req.method) || ((resettingPassword || settingPassword || changingStatus || revokingSessions || unlinkingOidc) && req.method !== "POST"))
+      if (!["GET", "POST"].includes(req.method) || ((deletingUser || resettingPassword || settingPassword || changingStatus || revokingSessions || unlinkingOidc) && req.method !== "POST"))
         return safe(res, 404, "Not found");
       if (!session) return safe(res, 401, "Authentication required");
       if (!initialized() || session.user.role !== "admin")
@@ -356,6 +357,39 @@ function createAuthBoundary({
       if (!limits.createUser(session.user.id))
         return safe(res, 429, "Too many requests");
       const body = req.body;
+      if (deletingUser) {
+        if (req.headers["x-ignis-context"] !== session.id) return safe(res,409,"Session changed");
+        const preview = body?.operation === "preview";
+        const keys = preview ? "operation,userId" : "confirmLogin,deleteVaults,operation,revision,userId";
+        if (!body || Array.isArray(body) || Object.keys(body).sort().join(",") !== keys ||
+            !["preview","delete"].includes(body.operation) || typeof body.userId !== "string" || !body.userId || body.userId.length > 64 ||
+            (!preview && (typeof body.deleteVaults !== "boolean" || typeof body.confirmLogin !== "string" ||
+              typeof body.revision !== "string" || !/^[a-f0-9]{64}$/.test(body.revision))))
+          return safe(res,400,"Invalid account deletion request");
+        const service = require("./user-deletion").createUserDeletionService(db,vaultRoot,{
+          ...require("../vault/deletion-lifecycle").deletionLifecycle(), sessionsChanged:sweepSockets,
+        });
+        try {
+          if (preview) return res.json(service.plan(session.user.id,body.userId,isCurrent));
+          // A replay cannot start a second destructive operation with this CSRF token.
+          csrf.consume(req);
+          const result = await service.remove(session.user.id,body,isCurrent);
+          return res.status(result.ok ? 200 : 409).json(result);
+        } catch (error) {
+          const messages = {
+            SELF_DELETE:"You cannot delete your own account.",
+            LAST_ADMIN:"The last active administrator cannot be deleted.",
+            USER_NOT_FOUND:"This account no longer exists.",
+            USER_STATE_CHANGED:"The account or its vaults changed. Reload the deletion preview before confirming.",
+            OWNED_VAULTS:"Transfer or delete the owned vaults first, or explicitly select deletion of all owned vaults.",
+            DELETE_BUSY:"Deletion is already running. Reload the preview to check its progress.",
+            DELETE_UNAVAILABLE:"Vault deletion is unavailable.",
+          };
+          if (Object.hasOwn(messages,error.code)) return res.status(409).json({code:error.code,error:messages[error.code]});
+          if (!isCurrent()) return safe(res,403,"Administrator session required");
+          return safe(res,503,"Account deletion could not be confirmed. Reload the preview before trying again.");
+        }
+      }
       if (resettingPassword) {
         if (req.headers["x-ignis-context"] !== session.id) return safe(res, 409, "Session changed");
         if (!body || Array.isArray(body) || Object.keys(body).some(key => key !== "userId") || typeof body.userId !== "string" || !body.userId || body.userId.length > 64)
@@ -454,6 +488,7 @@ function createAuthBoundary({
             INVALID_EMAIL: [400, "Invalid email or verification confirmation."],
             EMAIL_IN_USE: [400, "Email is already assigned to another account."],
             USER_NOT_FOUND: [404, "User not found"],
+            USER_DELETION_IN_PROGRESS: [409, "Deletion is in progress. Open Delete account to review its progress."],
             USER_STATE_CHANGED: [409, "Account changed. Reload the list and try again."],
             LAST_ADMIN: [400, "The last active administrator cannot be disabled or demoted."],
             INVALID_ROLE: [400, "Invalid account role."],

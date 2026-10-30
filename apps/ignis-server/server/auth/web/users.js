@@ -286,16 +286,94 @@
       passwordSubmit.disabled = passwordCancel.disabled = false;
     }
   });
+  const deleteDialog = document.getElementById("delete-dialog");
+  const deleteForm = document.getElementById("delete-user-form");
+  const deleteStatus = document.getElementById("delete-status");
+  const deleteSubmit = document.getElementById("confirm-delete");
+  const deleteCancel = document.getElementById("cancel-delete");
+  let deletionPlan = null, deleteBusy = false;
+  function deletionEnabled() {
+    deleteSubmit.disabled = deleteBusy || !deletionPlan || deleteForm.elements.confirmLogin.value !== deletionPlan.login ||
+      ((deletionPlan.vaults.length > 0 || deletionPlan.started) && !deleteForm.elements.deleteVaults.checked);
+  }
+  deleteForm.addEventListener("input", deletionEnabled);
+  deleteCancel.addEventListener("click", () => { if (!deleteBusy) deleteDialog.close(); });
+  deleteDialog.addEventListener("cancel", event => { if (deleteBusy) event.preventDefault(); });
+  deleteDialog.addEventListener("close", () => { deletionPlan = null; deleteForm.reset(); });
+  async function deletionRequest(body) {
+    const csrf = await request("/api/auth/csrf");
+    if (!csrf.ok || locked) throw new Error();
+    return request("/api/auth/users/delete", {method:"POST",
+      headers:{"Content-Type":"application/json","X-Ignis-Csrf":(await csrf.json()).csrfToken},body:JSON.stringify(body)});
+  }
+  async function openDelete(user) {
+    if (locked || deleteBusy || user.id === currentUserId) return;
+    pendingUser = user.id; pendingDelete = true;
+    if (!await checkRecentSession()) return;
+    deletionPlan = null; deleteForm.reset(); deleteStatus.textContent = "Loading deletion preview…";
+    document.getElementById("delete-user-name").textContent = user.login;
+    document.getElementById("delete-vaults").replaceChildren();
+    deletionEnabled();
+    if (!deleteDialog.open) deleteDialog.showModal();
+    deleteBusy = true;
+    try {
+      const response = await deletionRequest({operation:"preview",userId:user.id});
+      if (locked || !deleteDialog.open) return;
+      const result = await response.json();
+      if (!response.ok) { deleteStatus.textContent = result.error || "Unable to load deletion preview."; return; }
+      deletionPlan = result;
+      const entries = result.progress.length ? result.progress : [{name:"No owned vaults",state:""}];
+      for (const entry of entries) {
+        const li = document.createElement("li");
+        li.textContent = entry.name + (entry.state && entry.state !== "not-started" ? ` — ${entry.state}` : "");
+        document.getElementById("delete-vaults").append(li);
+      }
+      deleteStatus.textContent = result.started ? "Deletion was started. The account remains disabled. Review the progress before retrying. Completed vault deletions cannot be undone." : "";
+    } catch { if (!locked) deleteStatus.textContent = "Unable to load deletion preview. Close and try again."; }
+    finally { deleteBusy = false; deletionEnabled(); }
+  }
+  deleteForm.addEventListener("submit", async event => {
+    event.preventDefault();
+    if (locked || deleteBusy || !deletionPlan || deleteSubmit.disabled) return;
+    const snapshot = deletionPlan;
+    deleteBusy = true; deletionEnabled(); deleteCancel.disabled = true;
+    deleteForm.elements.deleteVaults.disabled = deleteForm.elements.confirmLogin.disabled = true;
+    deleteStatus.textContent = "Deleting… Do not close this page until the result is confirmed.";
+    try {
+      const response = await deletionRequest({operation:"delete",userId:snapshot.userId,revision:snapshot.revision,
+        confirmLogin:deleteForm.elements.confirmLogin.value,deleteVaults:deleteForm.elements.deleteVaults.checked});
+      if (locked || !deleteDialog.open) return;
+      const result = await response.json();
+      if (response.ok) { deleteDialog.close(); status.textContent = "User deleted."; await refresh(); }
+      else {
+        deletionPlan = null;
+        deleteStatus.textContent = result.code === "DELETE_INCOMPLETE"
+          ? "Deletion is incomplete. The account remains disabled; some vaults may already be deleted. Close and reopen this dialog to review progress. " + (result.reason === "VAULT_BUSY" ? "Disable the vault’s server plugins before retrying." : result.reason === "VAULT_ALIAS" ? "Remove legacy vault aliases before retrying." : "Quarantined vaults require operator investigation before retrying.")
+          : result.error || "Deletion could not be confirmed. Close and reopen the preview before retrying.";
+      }
+    } catch {
+      deletionPlan = null;
+      if (!locked) deleteStatus.textContent = "The result could not be confirmed. Close and reopen the preview before retrying; some deletions may have completed.";
+    } finally {
+      deleteBusy = false; deleteCancel.disabled = false;
+      deleteForm.elements.deleteVaults.disabled = deleteForm.elements.confirmLogin.disabled = false;
+      deletionEnabled();
+    }
+  });
   const reauthDialog = document.getElementById("reauth-dialog");
   const reauthForm = document.getElementById("reauth-form");
   const reauthOidc = document.getElementById("reauth-oidc");
   const reauthStatus = document.getElementById("reauth-status");
   let pendingUser = null, activeSession = null, reauthBusy = false;
   const editActions = new Map();
+  const deleteActions = new Map();
+  let pendingDelete = false;
   function requireReauthentication() {
     if (locked) return;
+    if (deleteDialog.open) deleteDialog.close();
     pendingUser ||= editing?.id || null;
     clearPasswords();
+    if (deleteDialog.open) deleteDialog.close();
     if (resetDialog.open) resetDialog.close();
     if (passwordDialog.open) passwordDialog.close();
     if (dialog.open) dialog.close();
@@ -319,7 +397,7 @@
     const target = pendingUser;
     pendingUser = null;
     await refresh();
-    if (target) editActions.get(target)?.click();
+    if (target) (pendingDelete ? deleteActions : editActions).get(target)?.click();
     else addButton.click();
   }
   async function confirmIdentity(oidc) {
@@ -342,7 +420,7 @@
       if (oidc) {
         const url = new URL(result.authorizationUrl);
         if (url.protocol !== "https:") throw new Error();
-        sessionStorage.setItem("ignis-admin-reauth", JSON.stringify({ userId: currentUserId, target: pendingUser }));
+        sessionStorage.setItem("ignis-admin-reauth", JSON.stringify({ userId: currentUserId, target: pendingUser, deleting: pendingDelete }));
         location.assign(url.href);
       } else {
         if (result.userId !== currentUserId) throw new Error();
@@ -397,6 +475,7 @@
   }
   function lock() {
     locked = true;
+    if (deleteDialog.open) deleteDialog.close();
     if (resetDialog.open) resetDialog.close();
     if (passwordDialog.open) passwordDialog.close();
     if (reauthDialog.open) reauthDialog.close();
@@ -422,8 +501,9 @@
       requireReauthentication();
       return response;
     }
+    if (response.status === 409 && path === "/api/auth/users/delete") return response;
     if (response.status === 409 &&
-        (await response.clone().json()).code === "USER_STATE_CHANGED") return response;
+        ["USER_STATE_CHANGED","USER_DELETION_IN_PROGRESS"].includes((await response.clone().json()).code)) return response;
     if (response.status === 409 &&
         (await response.clone().json()).code === "OIDC_NOT_LINKED") return response;
     if (response.status === 401) location.replace("/login?reauth=users");
@@ -440,6 +520,7 @@
     if (locked) return;
     list.replaceChildren();
     editActions.clear();
+    deleteActions.clear();
     setProviderName(data.oidcButtonText);
     unlinkSection.setAttribute("aria-label", `${providerName} linking`);
     const showOidc = data.oidcAvailable === true;
@@ -467,11 +548,16 @@
         const action = document.createElement("button");
         action.type = "button";
         action.className = "icon-button";
-        action.disabled = name === "Delete";
-        action.title = name === "Edit" ? "Edit account" : "Delete — not available yet";
-        action.setAttribute("aria-label", `${name} ${user.login}${name === "Delete" ? " — not available yet" : ""}`);
+        action.disabled = name === "Delete" && user.id === currentUserId;
+        action.title = name === "Edit" ? "Edit account" : "Delete account";
+        action.setAttribute("aria-label", `${name} ${user.login}`);
+        if (name === "Delete") {
+          deleteActions.set(user.id, action);
+          action.addEventListener("click", () => openDelete(user));
+        }
         if (name === "Edit") editActions.set(user.id, action);
         if (name === "Edit") action.addEventListener("click", async () => {
+          pendingDelete = false;
           pendingUser = user.id;
           if (!await checkRecentSession() || editDialog.open || dialog.open) return;
           editing = user;
@@ -582,6 +668,7 @@
           ADMIN_CONFIRMATION_REQUIRED: "Confirm granting administrator access.",
           SELF_DISABLE: "You cannot disable your own account or change your own role.",
           USER_STATE_CHANGED: "Account changed. Close this dialog and reload the page.",
+          USER_DELETION_IN_PROGRESS: "Deletion is in progress. Close this editor and open Delete account to review its progress.",
           USER_NOT_FOUND: "Account no longer exists. Reload the page.",
         };
         editStatus.textContent = messages[data.code] || (response.status === 429
@@ -688,6 +775,7 @@
           const intent = JSON.parse(saved);
           if (intent.userId === currentUserId && session.recentAuthentication) {
             pendingUser = intent.target;
+            pendingDelete = intent.deleting === true;
             await resumeEdit();
           }
         }

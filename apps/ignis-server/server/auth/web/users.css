@@ -108,3 +108,11 @@ footer { margin-top: 1.5rem; }
 .password-copy.copied .copy-success { display: inline; }
 .copy-feedback { position: absolute; bottom: calc(100% + .35rem); right: 0; padding: .3rem .55rem; border-radius: .35rem; background: light-dark(#edeaf5, #353040); color: inherit; font-size: .8rem; pointer-events: none; }
 .copy-feedback:empty { display: none; }
+
+#delete-dialog { box-sizing:border-box; width:min(34rem,calc(100% - 2rem)); max-height:calc(100dvh - 2rem); overflow-y:auto; padding:1.5rem; border:1px solid #777d8d; border-radius:.75rem; background:light-dark(#fff,#202229); color:inherit; }
+#delete-dialog::backdrop { background:#080b1480; backdrop-filter:blur(3px); }
+#delete-user-name { color:light-dark(#6541ad,#c4a9ff); }
+#delete-status:not(:empty) { padding:.75rem; color:light-dark(#932238,#ffbdc9); background:light-dark(#fff0f2,#3c252d); border-radius:.45rem; }
+.danger-button { background:light-dark(#a5233b,#652936); color:#fff; border:1px solid #c66074; }
+.danger-button:hover:not(:disabled) { background:light-dark(#86172b,#7b3343); }
+#delete-vaults { max-height:12rem; overflow:auto; overflow-wrap:anywhere; }

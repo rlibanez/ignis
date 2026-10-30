@@ -59,12 +59,18 @@ async function purgeRetiredVaults(db, root) {
 }
 
 async function deleteRegisteredVault(db, root, actor, id, {
-  isCurrent, quiesce, invalidate, assertReady = () => {}, io = fs,
+  isCurrent, quiesce, invalidate, assertReady = () => {}, io = fs, deletingUser,
 } = {}) {
   const authorize = () => {
     if (!db.prepare("SELECT 1 FROM users WHERE id=? AND role IN ('admin','user') AND status='active'").get(actor) ||
         typeof isCurrent !== "function" || !isCurrent(true)) fail("SESSION_CHANGED");
-    if (!db.prepare("SELECT 1 FROM memberships WHERE vault_id=? AND user_id=? AND role='owner'").get(vault.id, actor))
+    // This capability is only supplied by the account deletion service, never HTTP input.
+    if (deletingUser) {
+      const job = db.prepare("SELECT d.vaults FROM user_deletions d JOIN users u ON u.id=d.user_id WHERE u.id=? AND u.status='disabled'").get(deletingUser);
+      if (!db.prepare("SELECT 1 FROM users WHERE id=? AND role='admin' AND status='active'").get(actor) ||
+          !job || !JSON.parse(job.vaults).some(item => item.id === vault.id)) fail("SESSION_CHANGED");
+    }
+    if (!db.prepare("SELECT 1 FROM memberships WHERE vault_id=? AND user_id=? AND role='owner'").get(vault.id, deletingUser || actor))
       fail("VAULT_UNAVAILABLE");
   };
   let vault, record;

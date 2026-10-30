@@ -55,6 +55,7 @@ function changeUserStatus(db, actorId, userId, status, expectedStatus, { isCurre
     const fail = (code) => { throw Object.assign(new Error("User status change rejected"), { code }); };
     const user = db.prepare("SELECT id, login, role, status FROM users WHERE id = ?").get(userId);
     if (!user) fail("USER_NOT_FOUND");
+    if (db.prepare("SELECT 1 FROM user_deletions WHERE user_id=?").get(userId)) fail("USER_DELETION_IN_PROGRESS");
     if (user.status !== expectedStatus) fail("USER_STATE_CHANGED");
     if (emailUpdate) {
       const previous = db.prepare("SELECT email, email_trust FROM users WHERE id=?").get(userId);

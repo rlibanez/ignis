@@ -281,4 +281,12 @@ module.exports = [
     session_id TEXT,
     expires_at INTEGER NOT NULL
   ) STRICT; CREATE INDEX csrf_tokens_expiry ON csrf_tokens(expires_at);`},
+  {version:17,sql:`CREATE TABLE user_deletions (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    vaults TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  ) STRICT;
+  CREATE TRIGGER prevent_reactivating_deleting_user BEFORE UPDATE OF status ON users
+  WHEN NEW.status!='disabled' AND EXISTS (SELECT 1 FROM user_deletions WHERE user_id=OLD.id)
+  BEGIN SELECT RAISE(ABORT, 'Account deletion in progress'); END;`},
 ];

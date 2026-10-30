@@ -270,22 +270,7 @@ router.delete("/remove", async (req, res) => {
     if (Object.keys(req.query).some(key => key !== "vault") || (req.body && Object.keys(req.body).length))
       return res.status(400).json({ error: "Invalid deletion request" });
     try {
-      const result = await req.deleteRegisteredVault({
-        assertReady: id => {
-          if (require("../plugin-system/manager").getDiscoveredPlugins().some(plugin => plugin.enabledVaults.includes(id)))
-            throw Object.assign(new Error("Disable server plugins before deleting"), { code: "VAULT_BUSY" });
-        },
-        quiesce: async (id, vaultPath) => {
-          treeReconcile.cancelVault(id);
-          await quiesceRegisteredVault(id, vaultPath);
-        },
-        invalidate: id => {
-          treeReconcile.cancelVault(id);
-          bootstrapCache.invalidateVault(id);
-          const trustedVaults = settings.get("trustedVaults");
-          if (trustedVaults.includes(id)) settings.update({ trustedVaults: trustedVaults.filter(value => value !== id) });
-        },
-      });
+      const result = await req.deleteRegisteredVault(require("../vault/deletion-lifecycle").deletionLifecycle());
       config.refreshVaults();
       return res.json({ ok: true, uuid: result.id, cleanupPending: result.cleanupPending });
     } catch (error) {

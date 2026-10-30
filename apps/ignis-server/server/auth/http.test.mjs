@@ -1434,3 +1434,35 @@ it('lets normal owners rename and delete via HTTP but denies other members and m
  expect(db.prepare('SELECT id FROM vaults WHERE id=?').get(uuid)).toBeUndefined();
  expect(fs.existsSync(path.join(root,'vault','note.md'))).toBe(true);
 });
+
+it('guards deletion preview and confirmation with admin freshness, context, CSRF and exact scope',async()=>{
+ const jar=await login();
+ const session=await (await request('/api/auth/session',{jar})).json();
+ const body={operation:'preview',userId:'normal'};
+ const headers={'x-ignis-context':session.sessionId,'x-ignis-csrf':await csrf(jar)};
+ expect((await request('/api/auth/users/delete',{method:'POST',body})).status).toBe(401);
+ expect((await request('/api/auth/users/delete',{jar:await login('normal'),method:'POST',body})).status).toBe(403);
+ expect((await request('/api/auth/users/delete',{jar,method:'POST',body})).status).toBe(403);
+ expect((await request('/api/auth/users/delete',{jar,method:'POST',headers:{...headers,origin:'https://evil.example'},body})).status).toBe(403);
+ expect((await request('/api/auth/users/delete',{jar,method:'POST',headers:{...headers,'x-ignis-context':'wrong'},body})).status).toBe(409);
+ expect((await request('/api/auth/users/delete',{jar,method:'POST',headers,body:{...body,deleteVaults:true}})).status).toBe(400);
+ const preview=await request('/api/auth/users/delete',{jar,method:'POST',headers,body});
+ expect(preview.status).toBe(200);
+ const plan=await preview.json();expect(plan.vaults).toEqual([]);
+ clock+=300001;
+ expect((await request('/api/auth/users/delete',{jar,method:'POST',headers,body:{operation:'delete',userId:'normal',revision:plan.revision,confirmLogin:'normal',deleteVaults:false}})).status).toBe(403);
+ expect(db.prepare("SELECT * FROM users WHERE id='normal'").get()).toBeTruthy();
+});
+it('deletes an account via HTTP, invalidates its existing session and prevents replay',async()=>{
+ const target=await login('normal'),jar=await login();
+ const session=await (await request('/api/auth/session',{jar})).json();
+ const headers={'x-ignis-context':session.sessionId,'x-ignis-csrf':await csrf(jar)};
+ const plan=await (await request('/api/auth/users/delete',{jar,method:'POST',headers,body:{operation:'preview',userId:'normal'}})).json();
+ const body={operation:'delete',userId:'normal',revision:plan.revision,confirmLogin:'normal',deleteVaults:false};
+ const result=await request('/api/auth/users/delete',{jar,method:'POST',headers,body});
+ expect(result.status).toBe(200);expect(await result.json()).toEqual({ok:true});
+ expect((await request('/api/auth/session',{jar:target})).status).toBe(401);
+ expect((await request('/api/auth/users/delete',{jar,method:'POST',headers,body})).status).toBe(403);
+ expect((await request('/api/auth/session',{jar})).status).toBe(200);
+ expect(db.prepare("SELECT * FROM users WHERE id='normal'").get()).toBeUndefined();
+});

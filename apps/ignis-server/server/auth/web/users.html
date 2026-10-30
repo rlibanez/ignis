@@ -24,7 +24,7 @@
               <tbody id="users"></tbody>
             </table>
           </div>
-          <p class="help action-help">Edit account details, roles and access status. Deletion is not available yet.</p>
+          <p class="help action-help">Manage account details, roles, access and deletion.</p>
         </section>
         <dialog id="create-dialog" aria-labelledby="create-heading">
         <h2 id="create-heading">Create user</h2>
@@ -144,10 +144,25 @@
           <div class="dialog-actions"><button id="cancel-password" type="button" class="cancel-button">Cancel</button><button type="submit">Set local password</button></div>
         </form>
       </dialog>
+      <dialog id="delete-dialog" aria-labelledby="delete-heading">
+        <h2 id="delete-heading">Delete user <span id="delete-user-name"></span></h2>
+        <p>This permanently removes the Ignis account and its access. The external identity provider account is not deleted.</p>
+        <p class="help">If automatic provisioning is enabled, a later provider sign-in can create a new Ignis account without the old permissions.</p>
+        <p>Owned vaults:</p>
+        <ul id="delete-vaults"></ul>
+        <form id="delete-user-form">
+          <label class="email-confirmation"><input name="deleteVaults" type="checkbox" /> Delete all vaults owned by this user</label>
+          <p class="help">This also deletes shared vaults and their files for every collaborator. Other users' vaults are kept. Without this option, transfer or delete all owned vaults first.</p>
+          <label for="delete-confirm-login">Type the username to confirm</label>
+          <input id="delete-confirm-login" name="confirmLogin" autocomplete="off" required />
+          <p id="delete-status" role="alert"></p>
+          <div class="dialog-actions"><button id="cancel-delete" type="button" class="cancel-button">Cancel</button><button id="confirm-delete" type="submit" class="danger-button">Delete user</button></div>
+        </form>
+      </dialog>
       <dialog id="reauth-dialog" aria-labelledby="reauth-heading">
         <h2 id="reauth-heading">Confirm your identity</h2>
         <p id="reauth-user"></p>
-        <p class="help">Confirm your identity to continue editing. No changes will be saved automatically.</p>
+        <p class="help">Confirm your identity to continue. No changes will be saved automatically.</p>
         <form id="reauth-form">
           <label for="reauth-password">Password</label>
           <input id="reauth-password" name="password" type="password" autocomplete="current-password" required maxlength="1024" />
