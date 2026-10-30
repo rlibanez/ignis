@@ -21,7 +21,6 @@
 
   export let vaultService;
 
-  const administrator = window.__ignisAuth?.role === "admin";
   let vaults = [];
   let searchQuery = "";
   let openMenuId = null;
@@ -33,8 +32,6 @@
   let errorMessage = "";
   let pendingReload = false;
   let deletedCurrentVault = false;
-  let createOwners = [];
-  let createOwner = "";
   let createError = "";
   let createBusy = false;
   let createRequest = 0;
@@ -156,27 +153,13 @@
   async function showCreateDialog() {
     const request = ++createRequest;
     dialogValue = "";
-    createOwner = "";
-    createOwners = [];
     createError = "";
-    createBusy = true;
+    createBusy = false;
     activeDialog = "create";
-    try {
-      if(!administrator)return;
-      const result = await vaultService.vaultOwners();
-      if (activeDialog !== "create" || createRequest !== request) return;
-      createOwners = result.owners;
-      if (!createOwners.length) createError = "An active user is required to own this vault.";
-    } catch (error) {
-      if (activeDialog === "create" && createRequest === request) createError = error.message;
-    } finally {
-      if (activeDialog === "create" && createRequest === request) {
-        createBusy = false;
-        await tick();
-        if (activeDialog === "create" && createRequest === request) createNameInput?.focus();
-      }
-    }
+    await tick();
+    if (activeDialog === "create" && createRequest === request) createNameInput?.focus();
   }
+
 
   function showRenameDialog(vault) {
     targetVault = vault;
@@ -198,12 +181,12 @@
   async function onCreateConfirm() {
     if (createBusy || !createForm?.reportValidity()) return;
     const name = dialogValue.trim();
-    if (!name || (administrator && !createOwner)) return;
+    if (!name) return;
     const request = createRequest;
     createBusy = true;
     createError = "";
     try {
-      vaults = await vaultService.createVault(name, administrator ? createOwner : undefined);
+      vaults = await vaultService.createVault(name);
       if (activeDialog === "create" && createRequest === request) closeDialog();
     } catch (error) {
       if (activeDialog === "create" && createRequest === request) createError = error.message;
@@ -379,20 +362,12 @@
     <form class="registration-body" bind:this={createForm} on:submit|preventDefault={onCreateConfirm}>
       <label for="new-vault-name">Vault name</label>
       <input id="new-vault-name" type="text" bind:this={createNameInput} bind:value={dialogValue} required maxlength="255" disabled={createBusy} />
-      {#if administrator}<label class="owner-label" for="new-vault-owner">Initial owner</label>
-      <select id="new-vault-owner" bind:value={createOwner} required disabled={createBusy}>
-        <option value="" disabled>Select a user</option>
-        {#each createOwners as owner (owner.id)}
-          <option value={owner.id}>{owner.login}</option>
-        {/each}
-      </select>
-      {/if}
       {#if createError}<p class="registration-error" role="alert">{createError}</p>{/if}
     </form>
     <svelte:fragment slot="footer">
       <div class="registration-actions">
         <Button variant="secondary" on:click={closeDialog}>Cancel</Button>
-        <Button variant="primary" disabled={createBusy || !dialogValue.trim() || (administrator && !createOwner)} on:click={onCreateConfirm}>
+        <Button variant="primary" disabled={createBusy || !dialogValue.trim()} on:click={onCreateConfirm}>
           <svelte:fragment slot="icon"><Plus size="0.875rem" /></svelte:fragment>
           {createBusy ? "Please wait…" : "Create Vault"}
         </Button>

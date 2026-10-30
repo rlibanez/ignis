@@ -1019,8 +1019,7 @@ function createAuthBoundary({
             });
           }
         }
-        req.createRegisteredVault = (name, ownerId) => require("./vault-creation").createRegisteredVault(db, vaultRoot, current.user.id, name, {
-          ownerId,
+        req.createRegisteredVault = name => require("./vault-creation").createRegisteredVault(db, vaultRoot, current.user.id, name, {
           isCurrent: withinTransaction => {
             const session = sessions.resolve(cookies.read(req.headers.cookie), { withinTransaction });
             return session?.id === current.id && session.user.id === current.user.id;

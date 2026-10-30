@@ -103,11 +103,11 @@ export const vaultService = {
     return fetchJson(API_BASE + "/owners");
   },
 
-  async createVault(name, ownerId) {
+  async createVault(name) {
     await fetchJson(API_BASE + "/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, ...(ownerId === undefined ? {} : { ownerId }) }),
+      body: JSON.stringify({ name }),
     });
 
     const list = await this.listVaults();

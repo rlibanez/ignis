@@ -306,7 +306,7 @@ it("protects real server routes, persists auth and does not log request secrets"
     expect(fs.readFileSync(path.join(root, "vaults", "Team", "note.md"), "utf8")).toBe("private-note-marker");
 
     expect((await request(port, "/api/vault/create", jar, { method: "POST", body: { name: "Created" } })).status).toBe(403);
-    expect((await request(port, "/api/vault/create", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { name: "Created", ownerId: "other" } })).status).toBe(409);
+    expect((await request(port, "/api/vault/create", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { name: "Created", ownerId: "other" } })).status).toBe(400);
     const ownerOptions = JSON.parse((await request(port, "/api/vault/owners", jar)).text);
     expect(ownerOptions.owners.some(user => user.id === "normal-owner")).toBe(true);
     expect((await request(port, "/api/vault/owners", ownerJar)).status).toBe(403);
@@ -315,11 +315,7 @@ it("protects real server routes, persists auth and does not log request secrets"
       expect((await request(port, "/api/vault/create", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { name: "InvalidOwner", ownerId } })).status).toBe(400);
     }
     const owned = await request(port, "/api/vault/create", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { name: "Owned", ownerId: "normal-owner" } });
-    expect(owned.status).toBe(200);
-    const ownedDb = openDatabase(path.join(root, "data"));
-    try {
-      expect(ownedDb.prepare("SELECT user_id,role FROM memberships WHERE vault_id=?").all(JSON.parse(owned.text).uuid)).toEqual([{ user_id: "normal-owner", role: "owner" }]);
-    } finally { ownedDb.close(); }
+    expect(owned.status).toBe(400);
     const created = await request(port, "/api/vault/create", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { name: "Created" } });
     expect(created.status).toBe(200);
     const result = JSON.parse(created.text);

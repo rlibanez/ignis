@@ -153,20 +153,17 @@ router.post("/refresh", async (req, res) => {
   }
 });
 
-// POST /api/vault/create { name, ownerId? } - create a new vault in VAULT_ROOT
+// POST /api/vault/create { name } - create a new vault in VAULT_ROOT
 router.post("/create", async (req, res) => {
   const name = req.body?.name;
 
-  if (!req.body || Array.isArray(req.body) || Object.keys(req.body).some(key => !["name", "ownerId"].includes(key)) || !isValidVaultName(name)) {
+  if (!req.body || Array.isArray(req.body) || Object.keys(req.body).some(key => key !== "name") || !isValidVaultName(name)) {
     return res.status(400).json({ error: "Invalid vault name" });
   }
-  if (Object.hasOwn(req.body, "ownerId") && (typeof req.body.ownerId !== "string" || !req.body.ownerId || req.body.ownerId.length > 128))
-    return res.status(400).json({ error: "Select a valid vault owner" });
-
   if (typeof req.createRegisteredVault !== "function")
     return res.status(503).json({ error: "Vault registration unavailable" });
   try {
-    const vault = req.createRegisteredVault(name, req.body.ownerId);
+    const vault = req.createRegisteredVault(name);
     config.refreshVaults();
     bootstrapCache.invalidateVault(name);
     // Keep the directory ID used by the current editor; UUID is its stable identity.

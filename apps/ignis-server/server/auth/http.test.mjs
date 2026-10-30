@@ -1406,7 +1406,7 @@ it('allows normal users to create their own vaults over HTTP without assigning o
  expect((await create({name:'NoCSRF'},{headers:{'x-ignis-context':session.sessionId}})).status).toBe(403);
  expect((await create({name:'ForeignOrigin'},{headers:{...headers,origin:'https://evil.example'}})).status).toBe(403);
  const adminId=db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
- expect((await create({name:'Forged',ownerId:adminId})).status).toBe(403);
+ expect((await create({name:'Forged',ownerId:adminId})).status).toBe(400);
  expect((await create({name:'../Escape'})).status).toBe(400);
  const result=await create({name:'Personal'});expect(result.status).toBe(200);const {uuid}=await result.json();
  expect(db.prepare('SELECT user_id,role FROM memberships WHERE vault_id=?').all(uuid)).toEqual([{user_id:'normal',role:'owner'}]);

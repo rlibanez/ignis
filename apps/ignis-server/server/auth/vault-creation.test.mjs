@@ -116,9 +116,9 @@ it.each(["before-folder", "after-folder", "prepared"])("recovers a process inter
   expect(fs.existsSync(path.join(vaultRoot, "Interrupted"))).toBe(phase !== "before-folder");
 });
 
-it("assigns an explicitly selected user while auditing the administrator who created the vault", () => {
-  const vault = create("Owned", { ownerId: "normal" });
-  expect(db.prepare("SELECT user_id,role FROM memberships WHERE vault_id=?").all(vault.id)).toEqual([{ user_id: "normal", role: "owner" }]);
+it("assigns the creating administrator as owner and audit actor", () => {
+  const vault = create("Owned");
+  expect(db.prepare("SELECT user_id,role FROM memberships WHERE vault_id=?").all(vault.id)).toEqual([{ user_id: "admin", role: "owner" }]);
   expect(db.prepare("SELECT actor_id FROM audit_events WHERE action='create-vault'").get().actor_id).toBe("admin");
 });
 it.each([null, "", "missing", [], {}])("rejects invalid or unavailable owner %j before touching disk", ownerId => {
@@ -126,19 +126,6 @@ it.each([null, "", "missing", [], {}])("rejects invalid or unavailable owner %j 
   expect(fs.readdirSync(vaultRoot)).toEqual([]);
   expect(db.prepare("SELECT count(*) n FROM vaults").get().n).toBe(0);
 });
-it("rejects a disabled owner before reservation and rechecks before activation", () => {
-  db.exec("UPDATE users SET status='disabled' WHERE id='normal'");
-  expect(() => create("Owned", { ownerId: "normal" })).toThrow();
-  db.exec("UPDATE users SET status='active' WHERE id='normal'");
-  const io = { ...fs, mkdirSync(location, options) {
-    fs.mkdirSync(location, options);
-    if (location.endsWith(".obsidian")) db.exec("UPDATE users SET status='disabled' WHERE id='normal'");
-  } };
-  expect(() => create("Owned", { ownerId: "normal", io })).toThrow();
-  expect(fs.readdirSync(vaultRoot)).toEqual([]);
-  expect(db.prepare("SELECT count(*) n FROM memberships").get().n).toBe(0);
-});
-
 it('lets a normal user create only their own stable registered vault',()=>{
  const v=createRegisteredVault(db,vaultRoot,'normal','Personal',{isCurrent:()=>true});
  expect(db.prepare('SELECT user_id,role FROM memberships WHERE vault_id=?').all(v.id)).toEqual([{user_id:'normal',role:'owner'}]);
@@ -151,8 +138,7 @@ it('revalidates normal user status and ownership before activation',()=>{
  expect(()=>createRegisteredVault(db,vaultRoot,'normal','Personal',{isCurrent:()=>true,io})).toThrow();
  expect(fs.existsSync(path.join(vaultRoot,'Personal'))).toBe(false);expect(db.prepare('SELECT count(*) n FROM vaults').get().n).toBe(0);
 });
-it('does not let a demoted administrator assign a different owner during creation',()=>{
- db.exec("INSERT INTO users(id,login,role,created_at) VALUES ('second','second','admin',0)");
- const io={...fs,mkdirSync(location,options){fs.mkdirSync(location,options);if(location===path.join(vaultRoot,'Notes'))db.prepare("UPDATE users SET role='user' WHERE id='admin'").run();}};
- expect(()=>create('Notes',{ownerId:'normal',io})).toThrow();expect(fs.existsSync(path.join(vaultRoot,'Notes'))).toBe(false);
+it.each(['admin','normal'])('rejects assigning another owner even for %s',actor=>{
+ expect(()=>createRegisteredVault(db,vaultRoot,actor,'Foreign',{isCurrent:()=>true,ownerId:actor==='admin'?'normal':'admin'})).toThrow();
+ expect(fs.readdirSync(vaultRoot)).toEqual([]);expect(db.prepare('SELECT count(*) n FROM vaults').get().n).toBe(0);
 });
