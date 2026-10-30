@@ -1,0 +1,196 @@
+import { it, expect } from "vitest";
+import { createRequire } from "node:module";
+import { spawn } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import http from "node:http";
+import WebSocket from "ws";
+import { once } from "node:events";
+const require = createRequire(import.meta.url);
+const { openDatabase } = require("./database");
+const { bootstrapAdmin } = require("./store");
+const { hashPassword } = require("./password");
+
+async function launch(root, env = {}) {
+  const child = spawn(
+    process.execPath,
+    [path.resolve("apps/ignis-server/server/index.js")],
+    {
+      env: {
+        ...process.env,
+        PORT: "0",
+        DATA_ROOT: path.join(root, "data"),
+        VAULT_ROOT: path.join(root, "vaults"),
+        OBSIDIAN_ASSETS_PATH: path.join(root, "assets"),
+        IGNIS_PUBLIC_ORIGIN: "http://localhost:8080",
+        IGNIS_ALLOW_HTTP_LOOPBACK: "true",
+        IGNIS_TRUSTED_PROXIES: "[]",
+        ...env,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  let log = "";
+  const ready = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(new Error("Server startup timed out"));
+    }, 8000);
+    child.stdout.on("data", (chunk) => {
+      log += chunk;
+      const match = log.match(/Server running on port (\d+)/);
+      if (match) {
+        clearTimeout(timer);
+        resolve(Number(match[1]));
+      }
+    });
+    child.stderr.on("data", (chunk) => {
+      log += chunk;
+    });
+    child.once("exit", (code) => {
+      clearTimeout(timer);
+      reject(new Error(`Server exited (${code})`));
+    });
+  });
+  return { child, ready, logs: () => log };
+}
+function request(port, route, jar = {}, options = {}) {
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: route,
+        method: options.method || "GET",
+        headers: {
+          host: "localhost:8080",
+          origin: "http://localhost:8080",
+          cookie: Object.entries(jar)
+            .map(([k, v]) => `${k}=${v}`)
+            .join("; "),
+          "content-type": "application/json",
+          ...(options.body ? {"content-length":Buffer.byteLength(JSON.stringify(options.body))}:{}),
+          ...options.headers,
+        },
+      },
+      (res) => {
+        let text = "";
+        res.on("data", (chunk) => {
+          text += chunk;
+        });
+        res.on("end", () => {
+          for (const cookie of res.headers["set-cookie"] || []) {
+            const [k, v] = cookie.split(";")[0].split("=");
+            jar[k] = v;
+          }
+          resolve({ status: res.statusCode, text, headers: res.headers });
+        });
+      },
+    );
+    req.on("error", reject);
+    if (options.body) req.write(JSON.stringify(options.body));
+    req.end();
+  });
+}
+async function stop(child) {
+  if (child.exitCode !== null) return;
+  await new Promise((resolve) => {
+    const timer = setTimeout(() => child.kill("SIGKILL"), 3000);
+    child.once("exit", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    child.kill("SIGTERM");
+  });
+}
+
+it('validates three independent real sessions across conflicts, downgrade, revoke, rename, deletion and restart',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'ignis-multiuser-'));
+ fs.mkdirSync(path.join(root,'vaults'));fs.mkdirSync(path.join(root,'assets'));fs.writeFileSync(path.join(root,'assets','index.html'),'<script src="app.js"></script>');
+ const password='synthetic-multiuser-password-2026',db=openDatabase(path.join(root,'data'));
+ bootstrapAdmin(db,'admin',await hashPassword(password));
+ for(const login of ['alice','bob','carol']){
+  db.prepare("INSERT INTO users(id,login,role,created_at) VALUES (?,?,'user',0)").run(login,login);
+  db.prepare('INSERT INTO local_credentials SELECT ?,password_hash,updated_at FROM local_credentials LIMIT 1').run(login);
+ }
+ db.close();let server,port;const sockets=[];
+ try{
+  server=await launch(root);port=await server.ready;
+  async function client(login){
+   const jar={},challenge=JSON.parse((await request(port,'/api/auth/csrf',jar)).text).csrfToken;
+   expect((await request(port,'/api/auth/login',jar,{method:'POST',headers:{'x-ignis-csrf':challenge},body:{login,password}})).status).toBe(200);
+   const session=JSON.parse((await request(port,'/api/auth/session',jar)).text),csrf=JSON.parse((await request(port,'/api/auth/csrf',jar)).text).csrfToken;
+   const call=(route,body,method=body?'POST':'GET')=>request(port,route,jar,{method,headers:{'x-ignis-context':session.sessionId,'x-ignis-csrf':csrf},...(body?{body}:{})});
+   return {jar,context:session.sessionId,call,share:(operation,input)=>call('/api/shares',{operation,input})};
+  }
+  const alice=await client('alice'),bob=await client('bob'),carol=await client('carol');
+  async function success(response){const r=await response;expect(r.status,r.text).toBe(200);return JSON.parse(r.text);}
+  const a=(await success(alice.call('/api/vault/create',{name:'Alice'}))).uuid;
+  const b=(await success(bob.call('/api/vault/create',{name:'Bob'}))).uuid;
+  const c=(await success(carol.call('/api/vault/create',{name:'Carol'}))).uuid;
+  // Whole-vault memberships are independent from resource grants and admin role.
+  const admin=await client('admin');
+  expect((await admin.call('/api/fs/readFile?vault='+a+'&path=private.md')).status).toBe(404);
+  let membership=await success(alice.call('/api/vault/members?vault='+a));
+  const member=async(role,expectedRole)=>{membership=await success(alice.call('/api/vault/members',{vault:a,login:'bob',role,expectedRole,revision:membership.revision}));};
+  await member('editor',null);
+  await success(alice.call('/api/fs/writeFile?vault='+a,{path:'private.md',content:'base'}));
+  const readPrivate=actor=>actor.call('/api/fs/readFile?vault='+a+'&path=private.md&encoding=utf8');
+  expect((await readPrivate(alice)).text).toBe('base');expect((await readPrivate(bob)).text).toBe('base');
+  // Characterize the OPEN acceptance gap: ordinary writes have no read-version precondition.
+  // These successful responses are evidence of last-writer-wins, NOT conflict-safety.
+  await success(alice.call('/api/fs/writeFile?vault='+a,{path:'private.md',content:'alice edit'}));
+  await success(bob.call('/api/fs/writeFile?vault='+a,{path:'private.md',content:'bob stale edit'}));
+  expect((await readPrivate(alice)).text).toBe('bob stale edit');
+  await member('reader','editor');
+  expect((await bob.call('/api/fs/writeFile?vault='+a,{path:'private.md',content:'forbidden'})).status).toBe(404);
+  expect((await readPrivate(bob)).text).toBe('bob stale edit');
+  const socket=new WebSocket(`ws://127.0.0.1:${port}/ws?vault=${a}&context=${bob.context}`,{headers:{host:'localhost:8080',origin:'http://localhost:8080',cookie:Object.entries(bob.jar).map(([k,v])=>`${k}=${v}`).join('; ')}});
+  sockets.push(socket);await once(socket,'open',{signal:AbortSignal.timeout(3000)});
+  const closed=once(socket,'close',{signal:AbortSignal.timeout(3000)});
+  await member(null,'reader');await closed;
+  expect((await readPrivate(bob)).status).toBe(404);
+  expect((await readPrivate(admin)).status).toBe(404);
+  await success(alice.call('/api/fs/mkdir?vault='+a,{path:'Project',recursive:false}));
+  await success(alice.call('/api/fs/writeFile?vault='+a,{path:'Project/note.md',content:'original'}));
+  const id=(await success(alice.share('create',{vault:a,path:'Project',login:'bob',role:'editor'}))).id;
+  await success(alice.share('grant',{action:'grant',id,login:'carol',role:'editor',revision:1}));
+  await success(bob.share('destination',{id,vault:b,localPath:'Received'}));await success(carol.share('destination',{id,vault:c,localPath:'Team'}));
+  const rb=await success(bob.share('read',{id,path:'note.md'})),rc=await success(carol.share('read',{id,path:'note.md'}));expect(rb.etag).toBe(rc.etag);
+  const write=(actor,etag,text)=>actor.share('write',{action:'write',id,path:'note.md',etag,content:Buffer.from(text).toString('base64')});
+  const race=await Promise.all([write(bob,rb.etag,'bob wins?'),write(carol,rc.etag,'carol wins?')]);expect(race.map(r=>r.status).sort()).toEqual([200,409]);
+  const latest=await success(bob.share('read',{id,path:'note.md'}));
+  // Persisted bytes and aliases survive a real server restart with the same sessions.
+  await stop(server.child);server=await launch(root);port=await server.ready;
+  expect((await success(bob.share('read',{id,path:'note.md'}))).content).toBe(latest.content);
+  expect((await success(bob.share('mounts',{vault:b}))).mounts[0].localPath).toBe('Received');
+  expect((await success(carol.share('mounts',{vault:c}))).mounts[0].localPath).toBe('Team');
+  await success(alice.share('grant',{action:'grant',id,login:'bob',role:'reader',revision:2}));
+  expect((await write(bob,latest.etag,'forbidden')).status).toBe(404);
+  expect((await success(bob.share('mounts',{vault:b}))).mounts[0].role).toBe('reader');
+  expect((await success(carol.share('read',{id,path:'note.md'}))).content).toBe(latest.content);
+  await success(alice.call('/api/fs/rename?vault='+a,{oldPath:'Project',newPath:'Renamed'}));
+  expect((await success(bob.share('mounts',{vault:b}))).mounts[0].localPath).toBe('Received');
+  expect((await success(carol.share('read',{id,path:'note.md'}))).content).toBe(latest.content);
+  await success(alice.call('/api/vault/rename',{vault:a,name:'Alice renamed'}));
+  expect((await success(bob.share('read',{id,path:'note.md'}))).content).toBe(latest.content);
+  const catalog=await success(alice.call('/api/shares')),revision=catalog.resources.find(r=>r.id===id).revision;
+  await success(alice.share('grant',{action:'grant',id,login:'bob',role:null,revision}));
+  expect((await bob.share('read',{id,path:'note.md'})).status).toBe(404);
+  expect((await success(bob.share('mounts',{vault:b}))).mounts).toEqual([]);
+  expect((await success(carol.share('read',{id,path:'note.md'}))).content).toBe(latest.content);
+  await success(alice.call('/api/vault/remove?vault='+a,undefined,'DELETE'));
+  expect((await carol.share('read',{id,path:'note.md'})).status).toBe(404);
+  expect((await write(carol,latest.etag,'must not resurrect')).status).toBe(404);
+  expect((await success(carol.share('mounts',{vault:c}))).mounts).toEqual([]);
+  expect(fs.existsSync(path.join(root,'vaults','Alice renamed'))).toBe(false);
+  await stop(server.child);server=await launch(root);port=await server.ready;
+  expect((await success(bob.share('mounts',{vault:b}))).mounts).toEqual([]);
+  expect((await success(carol.share('mounts',{vault:c}))).mounts).toEqual([]);
+ }finally{for(const socket of sockets)socket.terminate();if(server)await stop(server.child);fs.rmSync(root,{recursive:true,force:true});}
+},45000);
+
+// This is deliberately visible in the suite until the ordinary filesystem protocol
+// carries and enforces read versions, including cached reads and write retries.
+it.todo('rejects stale ordinary whole-vault edits without losing the local recovery copy');

@@ -128,9 +128,9 @@ describe("fs route handlers reconcile the coalescer buffer (WRITE_COALESCE_MS > 
     await bufferWrite("d/f.md", "v1", "v2new");
 
     expect((await rmdir("d")).ok).toBe(false); // ENOTEMPTY
-    await sleep(WINDOW + 200);
-
-    expect(onDisk("d/f.md")).toBe("v2new");
+    // A timer firing does not mean its asynchronous disk write has completed.
+    // Wait for the observable result, retaining a bounded failure deadline.
+    await vi.waitFor(() => expect(onDisk("d/f.md")).toBe("v2new"), { timeout: 2000 });
   });
 
   it("copyFile copies the buffered source content, not stale disk", async () => {

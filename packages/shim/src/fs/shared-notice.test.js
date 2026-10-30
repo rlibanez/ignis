@@ -32,3 +32,12 @@ it('renders file names as text and revokes previous download URLs',()=>{
  const f=fixture();f.notice.failure({path:'<img onerror=bad>',content:'draft',...f.context});expect(f.find('<img onerror=bad>').tag).toBe('li');
  f.find('Download shared recovery copy').click();f.find('Download shared recovery copy').click();expect(f.host.URL.revokeObjectURL).toHaveBeenCalledWith('blob:recovery');
 });
+
+it('captures a downgraded editor with an accurate read-only explanation',async()=>{
+ const f=fixture();f.leaves.push({view:{file:{path:'Shared/note.md'},editor:{getValue:()=> 'unsubmitted draft'}}});
+ f.notice.removed('Shared/note.md','read-only');
+ expect(f.nodes.some(n=>n.textContent.includes('now read-only'))).toBe(true);
+ expect(f.nodes.some(n=>n.textContent.includes('no longer available'))).toBe(false);
+ f.find('Download shared recovery copy').click();
+ expect(JSON.parse(await f.host.URL.createObjectURL.mock.calls[0][0].text()).files['Shared/note.md'].content).toBe('unsubmitted draft');
+});

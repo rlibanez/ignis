@@ -58,7 +58,7 @@ function createAuthBoundary({
   const sharesRouter = sharesService ? require("../routes/resource-shares").createResourceSharesRouter(sharesService) : null;
   const vaultConfig = vaultRoot ? require("./vault-config").createVaultConfigService(db, vaultRoot, sessions) : null;
   const vaultAccess = vaultRoot ? require("./vault-access").createVaultAccessService(db, vaultRoot, sessions) : null;
-  const csrf = createCsrf(config, { now });
+  const csrf = createCsrf(config, { now, db });
   let oidc = null;
   let initialization;
   function initialize() {

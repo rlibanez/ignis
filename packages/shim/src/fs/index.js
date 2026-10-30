@@ -39,7 +39,7 @@ contentCache.retainWhile(hasUnconfirmedWrite);
 const fsWatch = createFsWatch(transport);
 let sharedNotice;
 const notice=()=>sharedNotice ||= createSharedNotice(privateContext);
-const sharedFiles=createSharedFiles({metadataCache,watch:fsWatch,currentContext:privateContext,onFailure:event=>notice().failure(event),onNotice:message=>notice().show(message),onRemoved:path=>notice().removed(path)});
+const sharedFiles=createSharedFiles({metadataCache,watch:fsWatch,currentContext:privateContext,onFailure:event=>notice().failure(event),onNotice:message=>notice().show(message),onRemoved:(path,reason)=>notice().removed(path,reason)});
 if(typeof window !== "undefined")window.addEventListener?.("ignis:auth-lost",()=>sharedFiles.stop());
 const privateFiles=new Proxy(privateGateway,{get(target,name){
   if(name==="allowsSharedPrefetch")return path=>!sharedFiles.owns(path) && target.allowsSharedPrefetch(path);

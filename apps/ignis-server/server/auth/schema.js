@@ -275,4 +275,10 @@ module.exports = [
   {version:15,sql:`ALTER TABLE resource_destinations ADD COLUMN local_path TEXT NOT NULL DEFAULT '';
     UPDATE resource_destinations SET local_path=CASE WHEN destination_folder='' THEN '' ELSE destination_folder||'/' END ||
       (SELECT substr(path,length(rtrim(path,replace(path,'/','')))+1) FROM shared_resources WHERE id=resource_id);`},
+  {version:16,sql:`CREATE TABLE csrf_tokens (
+    token_hash TEXT PRIMARY KEY,
+    browser_hash BLOB NOT NULL,
+    session_id TEXT,
+    expires_at INTEGER NOT NULL
+  ) STRICT; CREATE INDEX csrf_tokens_expiry ON csrf_tokens(expires_at);`},
 ];

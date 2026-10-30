@@ -43,6 +43,6 @@ export function createSharedNotice(currentContext, host=window) {
     pending.set(event.path,value);show(message,!previous || previous.content!==value.content || previous.encoding!==value.encoding);
   }
   function failure(event){preserve(event,"The shared files listed below could not be saved. Saving is paused only for those files; local notes are unaffected. Download a recovery copy before reloading.");}
-  function removed(path){try{host.app?.workspace?.iterateAllLeaves?.(leaf=>{const file=leaf.view?.file?.path;if(file===path && leaf.view?.editor){preserve({path:file,content:leaf.view.editor.getValue(),code:"SHARE_UNAVAILABLE",...currentContext()},"The shared files listed below are no longer available. A recovery copy of their open editors is retained as a precaution. Local notes are unaffected.");}});}catch{}}
+  function removed(path,reason){try{host.app?.workspace?.iterateAllLeaves?.(leaf=>{const file=leaf.view?.file?.path;if(file===path && leaf.view?.editor){preserve({path:file,content:leaf.view.editor.getValue(),code:"SHARE_UNAVAILABLE",...currentContext()},reason==="read-only" ? "The shared files listed below are now read-only. A recovery copy of their open editors is retained as a precaution. Download it before reloading. Local notes are unaffected." : "The shared files listed below are no longer available. A recovery copy of their open editors is retained as a precaution. Local notes are unaffected.");}});}catch{}}
   return {show,failure,removed};
 }

@@ -47,6 +47,12 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
         state(path).blocked=true;if(notify)onRemoved(path);
       }
     }
+    // Capture open editors before a downgrade can refresh them as read-only.
+    for(const [root,oldMount] of mounted)if(oldMount.role==="editor" && map.get(root)?.role==="reader"){
+      for(const path of Object.keys(tree))if(under(path,root) && tree[path].type==="file"){
+        state(path).blocked=true;if(notify)onRemoved(path,"read-only");
+      }
+    }
     mounted=map;
     for(const path of Object.keys(tree).sort((a,b)=>b.length-a.length))if(!next[path]){
       metadataCache.delete(path);if(states.has(path))states.get(path).blocked=true;if(notify){onRemoved(path);watch._dispatch("rename",path);}
