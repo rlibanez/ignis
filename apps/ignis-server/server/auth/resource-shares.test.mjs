@@ -307,7 +307,7 @@ it('permits only one racing ordinary or mixed publication on a read version',asy
 });
 it('requires an exact version and rejects deleted files, collisions, traversal, links and unauthorized writers',async()=>{
  const id=share('Project/note.md','editor'),initial=await read(id);
- for(const missing of [undefined,'*','',false,{},'a'.repeat(63)])await expect(ordinary(missing)).rejects.toMatchObject({code:'CONTENT_VERSION_REQUIRED'});
+ for(const missing of ['*','',false,{},'a'.repeat(63)])await expect(ordinary(missing)).rejects.toMatchObject({code:'CONTENT_VERSION_REQUIRED'});
  await expect(ordinary(null)).rejects.toMatchObject({code:'CONTENT_CONFLICT'});
  for(const user of ['admin','recipient','outsider','invalid'])await expect(ordinary(initial.etag,'no','Project/note.md',user)).rejects.toThrow();
  for(const p of ['../outside','.obsidian/config','Project/../secret.md'])await expect(ordinary(null,'no',p)).rejects.toThrow();
@@ -335,4 +335,13 @@ it('preserves binary contents and file grants across an ordinary atomic save',as
  const id=share('Project/note.md','editor'),initial=await read(id),bytes=Buffer.from([0,255,128,13,10]);
  const result=await service.writeOriginal('owner',vault.id,'Project/note.md',bytes,initial.etag);
  expect(Buffer.from((await read(id)).content,'base64')).toEqual(bytes);expect((await read(id)).etag).toBe(result.etag);
+});
+
+it('allows deliberate plugin replacement but rejects an editor based on the overwritten version',async()=>{
+ const id=share('Project/note.md','editor'),initial=await read(id);
+ await ordinary(undefined,'plugin replacement');
+ expect(Buffer.from((await read(id)).content,'base64').toString()).toBe('plugin replacement');
+ await expect(ordinary(initial.etag,'stale editor')).rejects.toMatchObject({code:'CONTENT_CONFLICT'});
+ for(const user of ['admin','recipient','outsider','invalid'])await expect(ordinary(undefined,'unauthorized','Project/note.md',user)).rejects.toThrow();
+ for(const bad of ['*','',false,{}])await expect(ordinary(bad,'invalid')).rejects.toMatchObject({code:'CONTENT_VERSION_REQUIRED'});
 });

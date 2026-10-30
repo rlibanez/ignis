@@ -250,7 +250,8 @@ router.get("/readFile", async (req, res) => {
   }
 });
 
-// POST /api/fs/writeFile { path, content, encoding?, vault? }
+// POST /api/fs/writeFile { path, content, encoding?, vault?, expectedHash? }
+// Omitted version: deliberate plugin replacement. Provided version: strict CAS.
 router.post("/writeFile", async (req, res) => {
   const resolved = guardPath(req, res, "body");
 
@@ -261,9 +262,9 @@ router.post("/writeFile", async (req, res) => {
   try {
     const rel = toRelative(req._vaultRoot, resolved);
     const guarded = req.writeVaultContent && require("../auth/vault-policy").classifyVaultPath(rel) === "content";
-    if (guarded && req.body.expectedHash !== null &&
+    if (guarded && req.body.expectedHash !== undefined && req.body.expectedHash !== null &&
         (typeof req.body.expectedHash !== "string" || !/^[a-f0-9]{64}$/.test(req.body.expectedHash)))
-      return res.status(428).json({error:"Read the file before saving; a content version is required.",code:"CONTENT_VERSION_REQUIRED"});
+      return res.status(428).json({error:"Invalid content version precondition.",code:"CONTENT_VERSION_REQUIRED"});
     // Ensure parent directory exists
     const dir = path.dirname(resolved);
     await fs.promises.mkdir(dir, { recursive: true });

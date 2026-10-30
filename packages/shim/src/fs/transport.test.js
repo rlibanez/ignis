@@ -68,21 +68,21 @@ it("pins reads and writes to the opened UUID instead of a reusable directory nam
   expect(new URL(fetchMock.mock.calls.at(-1)[0]).searchParams.get("vault")).toBe("opened-uuid");
 });
 
-it('sends the first read version and pauses after a real conflict response',async()=>{
- const {contentHash}=await import('./content-versions.js');
- transport.rememberVersion('n.md','base');transport.rememberVersion('n.md','indexer refreshed');
- fetchMock.mockResolvedValueOnce({ok:false,status:409,json:async()=>({code:'CONTENT_CONFLICT',error:'Changed'})});
- // No DOM is required for the protocol test.
- window.__ignisAuth.sessionId=undefined;transport.rememberVersion('n.md','base');
- await expect(transport.writeFile('n.md','draft')).rejects.toMatchObject({code:'CONTENT_CONFLICT'});
- expect(JSON.parse(lastInit().body).expectedHash).toBe(contentHash('base'));
- await expect(transport.writeFile('n.md','draft')).rejects.toMatchObject({code:'CONTENT_CONFLICT'});
- expect(fetchMock).toHaveBeenCalledTimes(1);
+it('sends an explicit editor version and propagates conflicts without retrying',async()=>{
+ const hash='b'.repeat(64);
+ fetchMock.mockResolvedValueOnce({ok:false,status:409,json:async()=>({code:'CONTENT_CONFLICT'})});
+ await expect(transport.writeEditorFile('n.md','draft',hash)).rejects.toMatchObject({code:'CONTENT_CONFLICT'});
+ expect(JSON.parse(lastInit().body).expectedHash).toBe(hash);expect(fetchMock).toHaveBeenCalledTimes(1);
 });
-it('does not replay when publication succeeded but its response was lost',async()=>{
- window.__ignisAuth.sessionId=undefined;
- transport.rememberVersion('lost.md','old');fetchMock.mockRejectedValueOnce(new Error('Response lost'));
- await expect(transport.writeFile('lost.md','published')).rejects.toMatchObject({code:'CONTENT_WRITE_UNCERTAIN'});
- await expect(transport.writeFile('lost.md','published')).rejects.toMatchObject({code:'CONTENT_CONFLICT'});
- expect(fetchMock).toHaveBeenCalledTimes(1);
+it('never sends a conditional editor save without a valid version',async()=>{
+ for(const version of [undefined,null,'',false,'*'])await expect(transport.writeEditorFile('n.md','draft',version)).rejects.toThrow();
+ expect(fetchMock).not.toHaveBeenCalled();
+});
+it('keeps ordinary plugin writes unconditional even after reads and protected editor saves',async()=>{
+ await transport.readFile('n.md','utf8');await transport.writeEditorFile('n.md','editor','b'.repeat(64));
+ await transport.writeFile('n.md','plugin');expect(JSON.parse(lastInit().body)).not.toHaveProperty('expectedHash');
+});
+it('propagates a lost editor response without automatic retry',async()=>{
+ fetchMock.mockRejectedValueOnce(new Error('lost'));
+ await expect(transport.writeEditorFile('n.md','draft','b'.repeat(64))).rejects.toThrow('lost');expect(fetchMock).toHaveBeenCalledTimes(1);
 });

@@ -140,7 +140,13 @@ it('validates three independent real sessions across conflicts, downgrade, revok
   await success(alice.call('/api/fs/writeFile?vault='+a,{path:'private.md',content:'base',expectedHash:null}));
   const readPrivate=actor=>actor.call('/api/fs/readFile?vault='+a+'&path=private.md&encoding=utf8');
   expect((await readPrivate(alice)).text).toBe('base');expect((await readPrivate(bob)).text).toBe('base');
-  expect((await alice.call('/api/fs/writeFile?vault='+a,{path:'private.md',content:'no version'})).status).toBe(428);
+  // Generic plugin replacement is intentional, but cannot downgrade an explicit CAS.
+  expect((await alice.call('/api/fs/writeFile?vault='+a,{path:'private.md',content:'plugin'})).status).toBe(200);
+  expect((await bob.call('/api/fs/writeFile?vault='+a,{path:'private.md',content:'stale editor',expectedHash:hash('base')})).status).toBe(409);
+  for(const expectedHash of ['*','',false,{}])expect((await alice.call('/api/fs/writeFile?vault='+a,{path:'private.md',content:'bad',expectedHash})).status).toBe(428);
+  expect((await alice.call('/api/fs/writeFile?vault='+a,{path:'private.md',content:'wrong create',expectedHash:null})).status).toBe(409);
+  expect((await readPrivate(alice)).text).toBe('plugin');
+  await success(alice.call('/api/fs/writeFile?vault='+a,{path:'private.md',content:'base',expectedHash:hash('plugin')}));
   const ordinaryRace=await Promise.all([
     alice.call('/api/fs/writeFile?vault='+a,{path:'private.md',content:'alice edit',expectedHash:hash('base')}),
     bob.call('/api/fs/writeFile?vault='+a,{path:'private.md',content:'bob edit',expectedHash:hash('base')})]);

@@ -1,3 +1,4 @@
+import { contentHash } from "./content-versions.js";
 import { createSharedFiles } from "./shared-files.js";
 import { createSharedNotice } from "./shared-notice.js";
 import { createPrivateConflictNotice } from "./private-conflict-notice.js";
@@ -18,7 +19,7 @@ import {
   removeReadTransform,
   resolvePath,
 } from "./transforms.js";
-import { hasUnconfirmedWrite } from "./write-coalescer.js";
+import { enqueue, flushPending, hasUnconfirmedWrite } from "./write-coalescer.js";
 import { wsClient } from "../ws-client.js";
 
 const privateContext = () => ({
@@ -37,6 +38,7 @@ const contentCache = new ContentCache();
 contentCache.retainWhile(hasUnconfirmedWrite);
 
 const fsWatch = createFsWatch(transport);
+let editorNotice;
 let sharedNotice;
 const notice=()=>sharedNotice ||= createSharedNotice(privateContext);
 const sharedFiles=createSharedFiles({metadataCache,watch:fsWatch,currentContext:privateContext,onFailure:event=>notice().failure(event),onNotice:message=>notice().show(message),onRemoved:(path,reason)=>notice().removed(path,reason)});
@@ -105,6 +107,30 @@ export const fsShim = {
 
   _configurePrivateFiles: bootstrap => sharedFiles.configure(privateRuntime.configure(bootstrap)),
   _sharedFiles: sharedFiles,
+  _editorContext: privateContext,
+  _recoverEditor: event => {editorNotice ||= createSharedNotice(privateContext,window,true);editorNotice.failure(event);},
+  async _writeEditorFile(path,content,expectedHash,check) {
+    const resolved=resolvePath(path);
+    // Do not silently redirect a versioned edit into configuration/private state.
+    if(resolved!==path || path.split("/").some(part=>!part || part.startsWith(".")))
+      throw Object.assign(new Error("Unsupported editor path"),{code:"CONTENT_CONFLICT"});
+    flushPending(resolved);
+    return enqueue(resolved,async()=>{
+      check();
+      try {
+        const result=sharedFiles.owns(path)
+          ? await sharedFiles.writeEditor(path,content,expectedHash)
+          : await transport.writeEditorFile(path,content,expectedHash);
+        check();
+        if(result?.etag!==contentHash(content))throw Object.assign(new Error("Unconfirmed editor save"),{code:"CONTENT_WRITE_UNCERTAIN"});
+        if(!sharedFiles.owns(path)) {
+          contentCache.set(resolved,content);
+          metadataCache.set(resolved,{type:"file",size:result.size,mtime:result.mtime,ctime:metadataCache.get(resolved)?.ctime || result.mtime});
+        }
+        return result;
+      } catch(error) {contentCache.invalidate(resolved);throw error;}
+    });
+  },
   _privateFiles: privateFiles,
   _metadataCache: metadataCache,
   _contentCache: contentCache,

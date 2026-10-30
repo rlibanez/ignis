@@ -337,7 +337,7 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
     finally {try{fs.unlinkSync(temporary);}catch{/* Preserve the original failure; reserved temporary files are never shareable. */}}
   }
   async function writeOriginal(token, reference, relative, bytes, expectedHash) {
-    if (expectedHash !== null && (typeof expectedHash !== "string" || !/^[a-f0-9]{64}$/.test(expectedHash)))
+    if (expectedHash !== undefined && expectedHash !== null && (typeof expectedHash !== "string" || !/^[a-f0-9]{64}$/.test(expectedHash)))
       fail("CONTENT_VERSION_REQUIRED");
     function select() {
       const user=actor(token),v=vault(reference);
@@ -366,7 +366,7 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
           actual=hash.digest("hex");
         } finally {fs.closeSync(fd);}
       }
-      if(actual!==expectedHash)fail("CONTENT_CONFLICT");
+      if(expectedHash!==undefined && actual!==expectedHash)fail("CONTENT_CONFLICT");
       publish(item,bytes,v.id,relative);
       const stat=fs.lstatSync(item.filename);
       return {ok:true,etag:digest(bytes),mtime:stat.mtimeMs,size:stat.size};

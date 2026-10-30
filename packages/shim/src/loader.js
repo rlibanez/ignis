@@ -1,3 +1,4 @@
+import { installEditorSaves } from "./editor-saves.js";
 import { installSharedIcons } from "./shared-icons.js";
 import { installSharedPanel } from "./shared-panel.js";
 import { installAccountStorage } from "./account-storage.js";
@@ -39,6 +40,7 @@ import {
 window.__ignis = { version: __IGNIS_VERSION__, build: __IGNIS_BUILD__ };
 window.__ignis_registerUI = registerUI;
 
+let editorSaves;
 installIgnisApi(wsClient, {
   getState,
   onStateChange,
@@ -49,7 +51,7 @@ installIgnisApi(wsClient, {
   listRetryableFailed,
   retryAll,
   getDetail,
-  snapshotPending: () => [...snapshotPending(), ...snapshotBuffered()],
+  snapshotPending: () => [...snapshotPending(), ...snapshotBuffered(), ...(editorSaves?.snapshotPending() || [])],
 });
 window.addEventListener("ignis:auth-lost", () => {
   suspendWrites();
@@ -104,6 +106,15 @@ wsClient.subscribe("write-giveup", (msg) => {
 
 extractObsidianModule()
   .then(async (obsidian) => {
+    // Fail closed if an upstream change prevents installation of editor guards.
+    try {
+      editorSaves=installEditorSaves(obsidian,window.app,fsShim._writeEditorFile,fsShim._editorContext,fsShim._recoverEditor);
+    } catch(error) {
+      const message=document.createElement("p");
+      message.textContent="Editor protection could not initialize. Reload or contact your administrator. Editing is unavailable.";
+      document.body.replaceChildren(message);
+      throw error;
+    }
     // window.app exists once Obsidian's module is extracted.
     if (
       window.app &&

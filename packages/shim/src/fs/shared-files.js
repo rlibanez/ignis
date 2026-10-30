@@ -84,15 +84,25 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
   function readSync(path,encoding){return readAccepted(path,exchangeSync("read",target(path)),encoding);}
   function writeStart(path,data,encoding){context();const destination=target(path);if(destination.role!=="editor")fail("EACCES","This shared resource is read-only");const value=state(path);if(value.blocked)fail("SHARE_CONFLICT","Shared saves paused; preserve your changes and reload");if(value.busy)fail("EBUSY");value.busy=true;return {destination,value,content:base64(inputBytes(data,encoding))};}
   function writeError(path,data,error){const value=state(path);value.blocked=true;try{onFailure({path,content:typeof data==="string"?data:base64(data),binary:typeof data!=="string",code:error.code,...scope});}catch{}throw error;}
-  async function write(path,data,encoding){let operation;try{
+  async function write(path,data,encoding,expected){let operation;try{
     operation=writeStart(path,data,encoding);const {destination,value,content}=operation;
-    if(value.etag===undefined)value.etag=metadataCache.has(path)?(await exchange("read",destination)).etag:null;
+    value.etag=expected!==undefined?expected:metadataCache.has(path)?(await exchange("read",destination)).etag:null;
     const response=await exchange("write",{...destination,role:undefined,action:"write",etag:value.etag,content});value.etag=response.etag;
     await refresh();
   }catch(error){writeError(path,data,error);}finally{if(operation)operation.value.busy=false;}}
-  function writeSync(path,data,encoding){let operation;try{
+  async function writeEditor(path,data,expectedHash) {
+    const selectedPath=selected(path);
+    if(!selectedPath)fail("EACCES");
+    const destination=target(selectedPath);
+    if(destination.role!=="editor")fail("EACCES");
+    if(state(selectedPath).blocked)fail("SHARE_CONFLICT");
+    if(typeof expectedHash!=="string" || !/^[a-f0-9]{64}$/.test(expectedHash))fail("SHARE_CONFLICT");
+    const result=await exchange("write",{...destination,action:"write",etag:expectedHash,content:base64(inputBytes(data,"utf8"))});
+    await refresh();return result;
+  }
+  function writeSync(path,data,encoding,expected){let operation;try{
     operation=writeStart(path,data,encoding);const {destination,value,content}=operation;
-    if(value.etag===undefined)value.etag=metadataCache.has(path)?exchangeSync("read",destination).etag:null;
+    value.etag=expected!==undefined?expected:metadataCache.has(path)?exchangeSync("read",destination).etag:null;
     const response=exchangeSync("write",{...destination,role:undefined,action:"write",etag:value.etag,content});value.etag=response.etag;
     accept(exchangeSync("mounts",{vault:scope.vault}),true);
   }catch(error){writeError(path,data,error);}finally{if(operation)operation.value.busy=false;}}
@@ -144,7 +154,13 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
       if(method==="access")return access(path,args[1]);
       if(method==="readFile")return sync?readSync(path,args[1]):read(path,args[1]);
       if(method==="writeFile")return sync?writeSync(path,args[1],args[2]):write(path,args[1],args[2]);
-      if(method==="appendFile") {if(sync){const current=readSync(path);const append=inputBytes(args[1],args[2]);const joined=new Uint8Array(current.length+append.length);joined.set(current);joined.set(append,current.length);return writeSync(path,joined);}return read(path).then(current=>{const append=inputBytes(args[1],args[2]),joined=new Uint8Array(current.length+append.length);joined.set(current);joined.set(append,current.length);return write(path,joined);});}
+      if(method==="appendFile") {
+        // Append is read/modify/write, unlike an intentional full replacement.
+        // Its precondition must describe the bytes used to assemble the result.
+        const join=file=>{const current=decode(file),append=inputBytes(args[1],args[2]),joined=new Uint8Array(current.length+append.length);joined.set(current);joined.set(append,current.length);return joined;};
+        if(sync){const file=exchangeSync("read",target(path));return writeSync(path,join(file),undefined,file.etag);}
+        return exchange("read",target(path)).then(file=>write(path,join(file),undefined,file.etag));
+      }
       if(method==="mkdir") {if(args[1]?.recursive && metadataCache.get(path)?.type==="directory")return;return sync?mutateSync("mkdir",path):mutate("mkdir",path);}
       if(["unlink","rmdir","rm"].includes(method)){if(args[1]?.recursive)fail("ENOTSUP","Recursive removal of shared resources is not supported");return sync?mutateSync("remove",path):mutate("remove",path);}
       fail("ENOTSUP");
@@ -171,5 +187,5 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
     const sent=outgoing.find(item=>value===item.path);
     return sent?{direction:"outgoing",root:sent.path}:null;
   }
-  return {configure,refresh,start,stop,owns,wrap,describe,subscribe(fn){subscribers.add(fn);return ()=>subscribers.delete(fn);},resourceUrl,installAdapter,assertOrdinary(path,resolved){if(owns(path)||owns(resolved))fail("ENOTSUP","File descriptors are not supported on shared resources");}};
+  return {configure,refresh,start,stop,owns,wrap,writeEditor,describe,subscribe(fn){subscribers.add(fn);return ()=>subscribers.delete(fn);},resourceUrl,installAdapter,assertOrdinary(path,resolved){if(owns(path)||owns(resolved))fail("ENOTSUP","File descriptors are not supported on shared resources");}};
 }

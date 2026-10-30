@@ -1,8 +1,3 @@
-import {createContentVersions} from "./content-versions.js";
-import {createSharedNotice} from "./shared-notice.js";
-const context=()=>({sessionId:window.__ignisAuth?.blocked?null:window.__ignisAuth?.sessionId,vault:window.__currentVaultUuid || window.__currentVaultId});
-let notice;
-const versions=createContentVersions(context,event=>{if(event.sessionId){notice ||= createSharedNotice(context,window,true);notice.failure(event);}});
 const API_BASE = "/api/fs";
 
 function normPath(p) {
@@ -124,8 +119,6 @@ function requestSync(method, endpoint, params = {}) {
 }
 
 export const transport = {
-  rememberVersion: versions.remember,
-  prepareWrite: versions.prepare,
   async fetchTree(etag) {
     const headers = etag ? { "If-None-Match": etag } : undefined;
     const res = await request("GET", "/tree", {}, headers);
@@ -157,17 +150,16 @@ export const transport = {
 
   async writeFile(path, content, encoding) {
     const isText = typeof content === "string";
-    let operation;
-    try {
-      operation=versions.begin(path);
-      const result=await requestJson("POST", "/writeFile", {
-        path: normPath(path), content: isText ? content : uint8ToBase64(content),
-        encoding: encoding || (isText ? "utf-8" : "binary"), base64: !isText,
-        ...(operation?{expectedHash:operation.expectedHash}:{}),
-      });
-      versions.complete(operation,result.etag);
-      return result;
-    }catch(error){return versions.rejected(path,content,error,operation);}
+    return requestJson("POST", "/writeFile", {
+      path: normPath(path), content: isText ? content : uint8ToBase64(content),
+      encoding: encoding || (isText ? "utf-8" : "binary"), base64: !isText,
+    });
+  },
+
+  async writeEditorFile(path, content, expectedHash) {
+    if (typeof expectedHash !== "string" || !/^[a-f0-9]{64}$/.test(expectedHash))
+      throw Object.assign(new Error("Missing editor version"), {code:"CONTENT_VERSION_REQUIRED"});
+    return requestJson("POST", "/writeFile", {path:normPath(path),content,encoding:"utf8",expectedHash});
   },
 
   async appendFile(path, content) {
@@ -183,7 +175,7 @@ export const transport = {
 
   async rename(oldPath, newPath) {
     const result=await requestJson("POST", "/rename", {oldPath:normPath(oldPath),newPath:normPath(newPath)});
-    versions.moved(oldPath,newPath);return result;
+    return result;
   },
 
   async copyFile(src, dest) {
@@ -195,7 +187,7 @@ export const transport = {
 
   async unlink(path) {
     const result=await requestJson("DELETE", "/unlink", { path: normPath(path) });
-    versions.removed(path);return result;
+    return result;
   },
 
   async rmdir(path) {
@@ -243,15 +235,9 @@ export const transport = {
 
   writeFileSync(path, content, encoding) {
     const isText = typeof content === "string";
-    let operation;
-    try {
-      operation=versions.begin(path);
-      const response=requestSync("POST", "/writeFile", {
-        path:normPath(path),content:isText?content:uint8ToBase64(content),
-        encoding:encoding || (isText?"utf-8":"binary"),base64:!isText,
-        ...(operation?{expectedHash:operation.expectedHash}:{}),
-      });
-      versions.complete(operation,JSON.parse(response.responseText).etag);
-    }catch(error){return versions.rejected(path,content,error,operation);}
+    requestSync("POST", "/writeFile", {
+      path:normPath(path),content:isText?content:uint8ToBase64(content),
+      encoding:encoding || (isText?"utf-8":"binary"),base64:!isText,
+    });
   },
 };
