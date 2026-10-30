@@ -62,6 +62,7 @@ function createRequestLimits({ now = Date.now, capacity = 10000 } = {}) {
       ]),
     sharedResourceReads: actorId => allow([["share-reads-global",12000,60000],["share-reads-actor:"+key(actorId),2400,60000]]),
     sharedResources: actorId => allow([["shares-global",600,60000],["shares-actor:"+key(actorId),120,60000]]),
+    vaultCreation: actorId => allow([["vault-create-global",60,60000],["vault-create-actor:"+key(actorId),10,60000]]),
     vaultMembers: actorId => allow([
       ["vault-members-global", 300, 60000],
       ["vault-members-actor:" + key(actorId), 60, 60000],

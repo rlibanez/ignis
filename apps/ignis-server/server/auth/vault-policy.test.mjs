@@ -8,7 +8,7 @@ it.each(["reader", "editor", "owner"])("allows ordinary reads for %s without gra
   const context = { ...principal, membership };
   expect(allowed({ ...context, capability: "content.read", path: "Notes/Hello.md" })).toBe(true);
   expect(allowed({ ...context, capability: "content.write", path: "Images/photo.png" })).toBe(membership !== "reader");
-  for (const capability of ["users.manage", "instance.configure", "audit.read", "vault.create", "plugins.manage", "sync.manage"])
+  for (const capability of ["users.manage", "instance.configure", "audit.read", "plugins.manage", "sync.manage"])
     expect(allowed({ ...context, capability })).toBe(false);
   for (const capability of ["members.manage", "ownership.transfer", "vault.rename", "vault.delete", "vault.refresh"])
     expect(allowed({ ...context, capability })).toBe(membership === "owner");
@@ -59,4 +59,9 @@ it.each([undefined, "reader", "editor", "owner"])("admin data access requires ex
  for(const capability of ["vault.rename","vault.delete","vault.refresh","members.manage","ownership.transfer"])
   expect(allowed({...context,capability})).toBe(membership==="owner");
  expect(allowed({...context,capability:"users.manage"})).toBe(true);
+});
+
+it("allows active accounts to create without existing membership",()=>{
+ expect(allowed({...principal,capability:"vault.create"})).toBe(true);
+ expect(allowed({...principal,status:"disabled",capability:"vault.create"})).toBe(false);
 });

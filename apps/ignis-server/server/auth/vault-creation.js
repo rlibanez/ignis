@@ -18,8 +18,10 @@ function createRegisteredVault(db, root, actor, name, { isCurrent, ownerId = act
   if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) fail("INVALID_VAULT_ROOT");
   const target = path.join(root, name), id = randomUUID();
   const authorize = () => {
-    if (typeof actor !== "string" || !db.prepare("SELECT 1 FROM users WHERE id=? AND role='admin' AND status='active'").get(actor) ||
+    const user=typeof actor === "string" && db.prepare("SELECT role FROM users WHERE id=? AND status='active'").get(actor);
+    if (!user || !["admin","user"].includes(user.role) ||
         typeof isCurrent !== "function" || !isCurrent(true)) fail("SESSION_CHANGED");
+    if(user.role!=="admin" && ownerId!==actor)fail("OWNER_FORBIDDEN");
     if (typeof ownerId !== "string" || !db.prepare("SELECT 1 FROM users WHERE id=? AND status='active'").get(ownerId)) fail("OWNER_UNAVAILABLE");
   };
   // Durable reservation before touching disk. Pending entries are hidden from discovery.

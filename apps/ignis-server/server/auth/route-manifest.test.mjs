@@ -57,7 +57,7 @@ it("detects new API mounts in the server entry point", () => {
 it("classifies reviewed owner APIs and rejects unknown paths/methods", () => {
   for (const route of routes) {
     const owner = route.mount === "/api/fs" || route.mount === "/api/vault-config" ||
-      ["/api/shares/content", "/api/shares", "/api/vault/transfer-ownership", "/api/vault/members", "/api/bootstrap", "/api/vault/list", "/api/vault/info", "/api/version"].includes(route.path);
+      ["/api/vault/create", "/api/shares/content", "/api/shares", "/api/vault/transfer-ownership", "/api/vault/members", "/api/bootstrap", "/api/vault/list", "/api/vault/info", "/api/version"].includes(route.path);
     expect(route.currentAccess).toBe(owner ? "owner" : "admin");
     expect(Object.isFrozen(route)).toBe(true);
     expect(permittedResource(route.method, route.path, [])).toBe(true);

@@ -1396,3 +1396,23 @@ it("enforces session context, CSRF and owner authority on resource sharing witho
  expect((await request(contentUrl,{jar:normal})).status).toBe(404);
 
 });
+
+it('allows normal users to create their own vaults over HTTP without assigning owners or gaining administration',async()=>{
+ const jar=await login('normal'),session=await (await request('/api/auth/session',{jar})).json();
+ const csrf=(await (await request('/api/auth/csrf',{jar})).json()).csrfToken;
+ const headers={'x-ignis-context':session.sessionId,'x-ignis-csrf':csrf};
+ const create=(body,extra={})=>request('/api/vault/create',{jar,method:'POST',headers,body,...extra});
+ expect((await request('/api/vault/create',{method:'POST',body:{name:'Anonymous'}})).status).toBe(401);
+ expect((await create({name:'NoCSRF'},{headers:{'x-ignis-context':session.sessionId}})).status).toBe(403);
+ expect((await create({name:'ForeignOrigin'},{headers:{...headers,origin:'https://evil.example'}})).status).toBe(403);
+ const adminId=db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
+ expect((await create({name:'Forged',ownerId:adminId})).status).toBe(403);
+ expect((await create({name:'../Escape'})).status).toBe(400);
+ const result=await create({name:'Personal'});expect(result.status).toBe(200);const {uuid}=await result.json();
+ expect(db.prepare('SELECT user_id,role FROM memberships WHERE vault_id=?').all(uuid)).toEqual([{user_id:'normal',role:'owner'}]);
+ expect((await create({name:'Personal'})).status).toBe(409);
+ expect((await request('/api/vault/owners',{jar})).status).toBe(403);
+ expect((await request('/api/vault/register',{jar,method:'POST',headers,body:{directory:'vault',ownerId:'normal'}})).status).toBe(403);
+ const admin=await login('admin');expect((await request('/api/bootstrap?vault='+uuid,{jar:admin})).status).toBe(404);
+ expect((await request('/api/bootstrap?vault='+uuid,{jar})).status).toBe(200);
+});

@@ -61,3 +61,11 @@ it("separates assets and auth reads from sensitive request budgets and expires t
   expect(limits.authRead("ip")).toBe(true);
   expect(limits.oidcStart("ip")).toBe(false);
 });
+it('bounds vault creation per account and globally and recovers after a minute',()=>{
+ let now=0;const limits=createRequestLimits({now:()=>now});
+ for(let i=0;i<10;i++)expect(limits.vaultCreation('one')).toBe(true);
+ expect(limits.vaultCreation('one')).toBe(false);expect(limits.vaultCreation('two')).toBe(true);
+ now=60001;expect(limits.vaultCreation('one')).toBe(true);
+ const global=createRequestLimits();for(let i=0;i<60;i++)expect(global.vaultCreation(String(i))).toBe(true);
+ expect(global.vaultCreation('next')).toBe(false);
+});

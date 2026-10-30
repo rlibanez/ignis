@@ -6,7 +6,7 @@ const personalCandidates = new Set([
   "workspace.json", "workspace-mobile.json", "workspaces.json",
 ]);
 const instanceCapabilities = new Set([
-  "users.manage", "instance.configure", "audit.read", "vault.create",
+  "users.manage", "instance.configure", "audit.read",
   "plugins.manage", "sync.manage",
 ]);
 const ownerCapabilities = new Set([
@@ -38,6 +38,7 @@ function classifyVaultPath(value) {
 
 function vaultCapabilityAllowed({ status, instanceRole, membership, capability, path } = {}) {
   if (status !== "active" || !["admin", "user"].includes(instanceRole)) return false;
+  if(capability === "vault.create")return true; // Ownership assignment is enforced by vault-creation.
   const admin = instanceRole === "admin";
   if (instanceCapabilities.has(capability)) return admin;
   if (ownerCapabilities.has(capability)) return membership === "owner";

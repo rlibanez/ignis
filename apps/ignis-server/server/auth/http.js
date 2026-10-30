@@ -841,6 +841,8 @@ function createAuthBoundary({
         return safe(res, 429, "Too many network requests");
       if (["/api/vault/members", "/api/vault/transfer-ownership"].includes(pathname) && !limits.vaultMembers(session.user.id))
         return safe(res, 429, "Too many access requests; try again in a minute.");
+      if (pathname === "/api/vault/create" && !limits.vaultCreation(session.user.id))
+        return safe(res,429,"Too many vault creation requests; try again in a minute.");
       // Authorized resource requests extend inactivity; session/status polling and WS do not.
       req.auth = getSession(req, true);
       if (!req.auth) return safe(res, 401, "Authentication required");
@@ -1018,7 +1020,7 @@ function createAuthBoundary({
           ownerId,
           isCurrent: withinTransaction => {
             const session = sessions.resolve(cookies.read(req.headers.cookie), { withinTransaction });
-            return session?.id === current.id && session.user.role === "admin";
+            return session?.id === current.id && session.user.id === current.user.id;
           },
         });
       }

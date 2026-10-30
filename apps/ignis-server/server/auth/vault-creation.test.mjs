@@ -29,8 +29,8 @@ it("creates one stable identity and owner, preserves registration on reopen and 
 it.each(["", ".hidden", "../escape", "a/b", "a\\b", "con", " Notes", "Notes.", "N\0", "é".repeat(128)])("rejects invalid name %j before touching disk", name => {
   expect(() => create(name)).toThrow(); expect(fs.readdirSync(vaultRoot)).toEqual([]);
 });
-it("rejects missing authorization and non-admin creation", () => {
-  expect(() => createRegisteredVault(db, vaultRoot, "normal", "Notes", { isCurrent: () => true })).toThrow();
+it("rejects missing authorization and forged ownership", () => {
+  expect(() => createRegisteredVault(db, vaultRoot, "normal", "Notes", { isCurrent: () => true, ownerId:"admin" })).toThrow();
   expect(() => createRegisteredVault(db, vaultRoot, "admin", "Notes")).toThrow();
   expect(() => create("Notes", { isCurrent: () => false })).toThrow();
   expect(db.prepare("SELECT count(*) n FROM vaults").get().n).toBe(0);
@@ -137,4 +137,22 @@ it("rejects a disabled owner before reservation and rechecks before activation",
   expect(() => create("Owned", { ownerId: "normal", io })).toThrow();
   expect(fs.readdirSync(vaultRoot)).toEqual([]);
   expect(db.prepare("SELECT count(*) n FROM memberships").get().n).toBe(0);
+});
+
+it('lets a normal user create only their own stable registered vault',()=>{
+ const v=createRegisteredVault(db,vaultRoot,'normal','Personal',{isCurrent:()=>true});
+ expect(db.prepare('SELECT user_id,role FROM memberships WHERE vault_id=?').all(v.id)).toEqual([{user_id:'normal',role:'owner'}]);
+ expect(db.prepare("SELECT actor_id FROM audit_events WHERE action='create-vault'").get().actor_id).toBe('normal');
+ expect(fs.statSync(path.join(vaultRoot,'Personal','.obsidian')).isDirectory()).toBe(true);
+ expect(()=>createRegisteredVault(db,vaultRoot,'normal','Personal',{isCurrent:()=>true})).toThrow();
+});
+it('revalidates normal user status and ownership before activation',()=>{
+ const io={...fs,mkdirSync(location,options){fs.mkdirSync(location,options);if(location===path.join(vaultRoot,'Personal'))db.prepare("UPDATE users SET status='disabled' WHERE id='normal'").run();}};
+ expect(()=>createRegisteredVault(db,vaultRoot,'normal','Personal',{isCurrent:()=>true,io})).toThrow();
+ expect(fs.existsSync(path.join(vaultRoot,'Personal'))).toBe(false);expect(db.prepare('SELECT count(*) n FROM vaults').get().n).toBe(0);
+});
+it('does not let a demoted administrator assign a different owner during creation',()=>{
+ db.exec("INSERT INTO users(id,login,role,created_at) VALUES ('second','second','admin',0)");
+ const io={...fs,mkdirSync(location,options){fs.mkdirSync(location,options);if(location===path.join(vaultRoot,'Notes'))db.prepare("UPDATE users SET role='user' WHERE id='admin'").run();}};
+ expect(()=>create('Notes',{ownerId:'normal',io})).toThrow();expect(fs.existsSync(path.join(vaultRoot,'Notes'))).toBe(false);
 });

@@ -162,6 +162,7 @@
     createBusy = true;
     activeDialog = "create";
     try {
+      if(!administrator)return;
       const result = await vaultService.vaultOwners();
       if (activeDialog !== "create" || createRequest !== request) return;
       createOwners = result.owners;
@@ -197,12 +198,12 @@
   async function onCreateConfirm() {
     if (createBusy || !createForm?.reportValidity()) return;
     const name = dialogValue.trim();
-    if (!name || !createOwner) return;
+    if (!name || (administrator && !createOwner)) return;
     const request = createRequest;
     createBusy = true;
     createError = "";
     try {
-      vaults = await vaultService.createVault(name, createOwner);
+      vaults = await vaultService.createVault(name, administrator ? createOwner : undefined);
       if (activeDialog === "create" && createRequest === request) closeDialog();
     } catch (error) {
       if (activeDialog === "create" && createRequest === request) createError = error.message;
@@ -306,7 +307,7 @@
   <div class="section-body">
     <div class="vault-list">
       {#if vaults.length === 0}
-        <div class="empty">{administrator ? "No vaults yet. Create one below." : "No vaults assigned. Ask an administrator to create a vault for you."}</div>
+        <div class="empty">No vaults yet. Create one below.</div>
       {:else if filteredVaults.length === 0}
         <div class="empty">No vaults match your search.</div>
       {:else}
@@ -358,12 +359,12 @@
         <Button variant="ghost" on:click={() => window.location.assign("/account")}>Account</Button>
         <Button variant="ghost" on:click={() => window.__ignisAuth.logout()}>Sign out</Button>
       {/if}
-      {#if administrator}<Button variant="ghost" on:click={showCreateDialog}>
+      <Button variant="ghost" on:click={showCreateDialog}>
         <svelte:fragment slot="icon">
           <Plus size="1rem" />
         </svelte:fragment>
         Create New Vault
-      </Button>{/if}
+      </Button>
     </div>
   </svelte:fragment>
 </Modal>
@@ -378,19 +379,20 @@
     <form class="registration-body" bind:this={createForm} on:submit|preventDefault={onCreateConfirm}>
       <label for="new-vault-name">Vault name</label>
       <input id="new-vault-name" type="text" bind:this={createNameInput} bind:value={dialogValue} required maxlength="255" disabled={createBusy} />
-      <label class="owner-label" for="new-vault-owner">Initial owner</label>
+      {#if administrator}<label class="owner-label" for="new-vault-owner">Initial owner</label>
       <select id="new-vault-owner" bind:value={createOwner} required disabled={createBusy}>
         <option value="" disabled>Select a user</option>
         {#each createOwners as owner (owner.id)}
           <option value={owner.id}>{owner.login}</option>
         {/each}
       </select>
+      {/if}
       {#if createError}<p class="registration-error" role="alert">{createError}</p>{/if}
     </form>
     <svelte:fragment slot="footer">
       <div class="registration-actions">
         <Button variant="secondary" on:click={closeDialog}>Cancel</Button>
-        <Button variant="primary" disabled={createBusy || !dialogValue.trim() || !createOwner} on:click={onCreateConfirm}>
+        <Button variant="primary" disabled={createBusy || !dialogValue.trim() || (administrator && !createOwner)} on:click={onCreateConfirm}>
           <svelte:fragment slot="icon"><Plus size="0.875rem" /></svelte:fragment>
           {createBusy ? "Please wait…" : "Create Vault"}
         </Button>

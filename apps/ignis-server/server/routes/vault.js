@@ -172,7 +172,7 @@ router.post("/create", async (req, res) => {
     // Keep the directory ID used by the current editor; UUID is its stable identity.
     res.json({ ok: true, id: name, uuid: vault.id, path: vault.path });
   } catch (e) {
-    const statuses = { OWNER_UNAVAILABLE: 409, INVALID_VAULT_NAME: 400, INVALID_VAULT_ROOT: 503, VAULT_EXISTS: 409, SESSION_CHANGED: 401, VAULT_STATE_CHANGED: 409 };
+    const statuses = { OWNER_FORBIDDEN: 403, OWNER_UNAVAILABLE: 409, INVALID_VAULT_NAME: 400, INVALID_VAULT_ROOT: 503, VAULT_EXISTS: 409, SESSION_CHANGED: 401, VAULT_STATE_CHANGED: 409 };
     return res.status(statuses[e.code] || 503).json({ error: e.code === "VAULT_EXISTS" ? "Vault already exists" : e.code === "OWNER_UNAVAILABLE" ? "Select an active user as the vault owner" : "Vault creation could not be completed" });
   }
 });
