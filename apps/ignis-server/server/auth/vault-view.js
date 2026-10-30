@@ -1,7 +1,7 @@
 const { createHash } = require("node:crypto");
 
 // Callbacks are server-owned and consult the current session and policy.
-function createVaultView({ administrator, authorize, uuid }) {
+function createVaultView({ administrator, authorize, uuid, membership }) {
   function select(reference, { candidates = [], allowDefault = false } = {}) {
     // A stale or forbidden explicit selection must never open another vault.
     if (reference !== null && reference !== undefined) {
@@ -18,6 +18,7 @@ function createVaultView({ administrator, authorize, uuid }) {
       id: item.id,
       name: item.name,
       uuid: uuid(item.id),
+      ...(membership ? { membership: membership(item.id) } : {}),
     }));
   }
 
@@ -29,6 +30,7 @@ function createVaultView({ administrator, authorize, uuid }) {
       id: item.id,
       name: item.name,
       uuid: uuid(item.id),
+      ...(membership ? { membership: membership(item.id) } : {}),
       path: "/",
       platform: item.platform,
       version: item.version,

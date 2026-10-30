@@ -10,6 +10,7 @@ const groups = [
   ] },
   { mount: "/api/vault", source: "routes/vault.js", surface: "vault-lifecycle", routes: [
     ["GET", "/list", "list"], ["GET", "/info", "read"],
+    ["GET", "/members", "read"], ["POST", "/members", "manage"],
     ["POST", "/refresh", "manage"], ["POST", "/create", "manage"],
     ["POST", "/rename", "manage"], ["DELETE", "/remove", "manage"],
     ["GET", "/owners", "read"], ["GET", "/registration", "read"], ["POST", "/register", "manage"],
@@ -32,6 +33,7 @@ const routes = Object.freeze(groups.flatMap(group => group.routes.map(([method, 
   source: group.source, sourcePath: sourcePath || suffix,
   surface: group.surface, operation, currentAccess:
     ["vault-content", "private-configuration", "mixed-bootstrap"].includes(group.surface) ||
+    (group.mount === "/api/vault" && suffix === "/members") ||
     (method === "GET" && ["/api/vault/list", "/api/vault/info", "/api/version"].includes(group.mount + (suffix === "/" ? "" : suffix)))
       ? "owner" : "admin",
 }))));

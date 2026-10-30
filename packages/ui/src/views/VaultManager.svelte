@@ -9,6 +9,7 @@
     Trash2,
     Check,
   } from "lucide-svelte";
+  import VaultAccessDialog from "./VaultAccessDialog.svelte";
   import Modal from "../components/layout/Modal.svelte";
   import PromptDialog from "../components/layout/PromptDialog.svelte";
   import ConfirmDialog from "../components/layout/ConfirmDialog.svelte";
@@ -47,6 +48,7 @@
   let version = "";
 
   const menuItems = [
+    { id: "access", label: "Manage access" },
     { id: "rename", label: "Rename" },
     { id: "delete", label: "Delete", danger: true },
   ];
@@ -98,7 +100,9 @@
 
   function onMenuSelect(vault, item) {
     openMenuId = null;
-    if (item.id === "register") {
+    if (item.id === "access") {
+      targetVault = vault; activeDialog = "access";
+    } else if (item.id === "register") {
       showRegistrationDialog(vault);
     } else if (item.id === "rename") {
       showRenameDialog(vault);
@@ -330,9 +334,9 @@
               {#if vault.path}<span class="vault-path">{vault.path}</span>{/if}
             </svelte:fragment>
             <svelte:fragment slot="action">
-              {#if administrator}<PopoverMenu
+              {#if vault.membership === "owner"}<PopoverMenu
                 open={openMenuId === vault.id}
-                items={!vault.uuid && window.__ignisAuth ? [{ id: "register", label: "Register vault" }] : menuItems}
+                items={!vault.uuid && window.__ignisAuth ? [{ id: "register", label: "Register vault" }] : (administrator ? menuItems : menuItems.filter(item => item.id === "access"))}
                 on:toggle={() => toggleMenu(vault.id)}
                 on:select={(e) => onMenuSelect(vault, e.detail)}
               />{/if}
@@ -363,6 +367,10 @@
     </div>
   </svelte:fragment>
 </Modal>
+
+{#if activeDialog === "access" && targetVault}
+  <VaultAccessDialog vault={targetVault} {vaultService} on:close={closeDialog} />
+{/if}
 
 {#if activeDialog === "create"}
   <Modal title="Create Vault" width="500px" closeOnOverlayClick={false} on:escape={closeDialog} on:close={closeDialog}>

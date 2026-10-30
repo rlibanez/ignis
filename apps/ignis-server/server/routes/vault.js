@@ -49,6 +49,27 @@ router.get("/list", (req, res) => {
   res.json(req.vaultView ? req.vaultView.list(list) : list);
 });
 
+function membersRequest(req, res, operation) {
+  if (!req.vaultMembers) return res.status(503).json({ error: "Access management unavailable" });
+  if ((operation === "list" && (Object.keys(req.query).length !== 1 || typeof req.query.vault !== "string")) ||
+      (operation === "update" && (Object.keys(req.query).length || !req.body || Array.isArray(req.body))))
+    return res.status(400).json({ error: "Invalid access request" });
+  try { res.json(req.vaultMembers(operation, operation === "list" ? req.query.vault : req.body)); }
+  catch (error) {
+    const errors = {
+      VAULT_UNAVAILABLE: [404, "Vault unavailable or you are no longer its owner."],
+      INVALID_MEMBERSHIP: [400, "Select a username and a valid permission."],
+      MEMBER_UNAVAILABLE: [409, "No active account with that username is available."],
+      OWNER_PROTECTED: [409, "The owner cannot be changed here."],
+      MEMBERSHIP_CONFLICT: [409, "Access changed in another window. Reload members before trying again."],
+    };
+    const [status, message] = errors[error.code] || [503, "Unable to manage vault access."];
+    res.status(status).json({ error: message });
+  }
+}
+router.get("/members", (req,res) => membersRequest(req,res,"list"));
+router.post("/members", (req,res) => membersRequest(req,res,"update"));
+
 router.get("/owners", (req, res) => {
   if (!req.vaultOwners) return res.status(503).json({ error: "Vault owners unavailable" });
   try { res.json({ owners: req.vaultOwners() }); }

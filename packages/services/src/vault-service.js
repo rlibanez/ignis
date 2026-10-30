@@ -81,6 +81,17 @@ export const vaultService = {
     });
   },
 
+  async vaultMembers(uuid) {
+    return fetchJson(API_BASE + "/members?vault=" + encodeURIComponent(uuid));
+  },
+
+  async updateVaultMember(vault, login, role, expectedRole, revision) {
+    return fetchJson(API_BASE + "/members", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vault, login, role, expectedRole, revision }),
+    });
+  },
+
   async vaultOwners() {
     return fetchJson(API_BASE + "/owners");
   },

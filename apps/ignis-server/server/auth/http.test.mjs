@@ -53,6 +53,7 @@ beforeEach(async () => {
   app.use("/api/vault-config", require("../routes/vault-config"));
   app.get("/api/bootstrap", (req, res) => res.json({ privateConfiguration: req.privateVaultConfiguration(req.query.vault) }));
   app.get("/api/vault/list", (req, res) => res.json(["private vault"]));
+  app.use("/api/vault", require("../routes/vault"));
   app.post("/api/fs/writeFile", (req, res) => res.json({ ok: true }));
   app.get("/api/fs/readFile", (req, res) => {
     if (!req.authorizeVaultFile("vault", "content.read", "note.md")) return res.sendStatus(404);
@@ -1257,4 +1258,69 @@ it("requires admin membership on sockets and immediately observes its revocation
  await closed;
  expect((await request(`/api/fs/readFile?vault=${vault.id}&path=note.md`,{jar})).status).toBe(404);
  expect((await request("/api/auth/users",{jar})).status).toBe(200);
+});
+
+it("lets a normal owner share via HTTP, enforces CSRF and closes revoked member sockets",async()=>{
+ const vault=require("./store").registerVault(db,root,"vault","normal");
+ const owner=await login("normal"),admin=await login();
+ const adminId=db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
+ const url=`/api/vault/members?vault=${vault.id}`;
+ expect((await request(url)).status).toBe(401);
+ expect((await request(url,{jar:admin})).status).toBe(404);
+ const current=await (await request(url,{jar:owner})).json();
+ const body={vault:vault.id,login:"admin",role:"reader",expectedRole:null,revision:current.revision};
+ expect((await request("/api/vault/members",{jar:owner,method:"POST",body})).status).toBe(403);
+ const headers={"x-ignis-csrf":await csrf(owner)};
+ expect((await request("/api/vault/members",{jar:owner,method:"POST",body,headers:{...headers,origin:"https://evil.example"}})).status).toBe(403);
+ const added=await request("/api/vault/members",{jar:owner,method:"POST",body,headers});expect(added.status).toBe(200);
+ expect(db.prepare("SELECT role FROM memberships WHERE user_id=?").get(adminId).role).toBe("reader");
+ expect((await request(url,{jar:admin})).status).toBe(404);
+ expect((await request(`/api/fs/readFile?vault=${vault.id}&path=note.md`,{jar:admin})).status).toBe(200);
+ const ws=connect(admin,ORIGIN,vault.id);await once(ws,"open");const closed=once(ws,"close");
+ const remove={...body,role:null,expectedRole:"reader",revision:(await added.json()).revision};
+ expect((await request("/api/vault/members",{jar:owner,method:"POST",body:remove,headers})).status).toBe(200);
+ await closed;
+ expect((await request(`/api/fs/readFile?vault=${vault.id}&path=note.md`,{jar:admin})).status).toBe(404);
+ expect((await request("/api/vault/members",{jar:owner,method:"POST",body,headers})).status).toBe(409);
+});
+
+it.each(["admin", "normal"])("accepts Traefik secure WebSockets for an authorized %s without trusting insecure forwarding",async user=>{
+ const adminJar=await login();
+ const vault=db.prepare("SELECT id FROM vaults WHERE directory='vault'").get();
+ if(user==="normal") db.prepare("INSERT INTO memberships VALUES (?,'normal','reader')").run(vault.id);
+ const jar=user==="admin"?adminJar:await login("normal");
+ const session=await (await request("/api/auth/session",{jar})).json();
+ const b=createAuthBoundary({dataRoot:path.join(root,"data"),vaultRoot:root,config:readAuthConfig({
+  IGNIS_PUBLIC_ORIGIN:"https://ignis.example",IGNIS_TRUSTED_PROXIES:'["127.0.0.1/32"]',
+ })});
+ const app=express();b.install(app);
+ const req={url:`/ws?vault=${vault.id}&context=${session.sessionId}`,socket:{remoteAddress:"127.0.0.1"},headers:{
+  host:"ignis.example",origin:"https://ignis.example",cookie:`__Host-ignis-session=${jar["ignis-dev-session"]}`,"x-forwarded-proto":"wss",
+ }};
+ try {
+  expect(b.wsSecurity.verify(req)).toBe(true);
+  for(const proto of ["ws","http","wss, https","https, wss",undefined])
+   expect(b.wsSecurity.verify({...req,headers:{...req.headers,"x-forwarded-proto":proto}})).toBe(false);
+  expect(b.wsSecurity.verify({...req,socket:{remoteAddress:"192.0.2.15"}})).toBe(false);
+  expect(b.wsSecurity.verify({...req,headers:{...req.headers,origin:"https://evil.example"}})).toBe(false);
+  expect(b.wsSecurity.verify({...req,headers:{...req.headers,cookie:""}})).toBe(false);
+  expect(b.wsSecurity.verify({...req,url:`/ws?vault=${vault.id}&context=stale`})).toBe(false);
+  expect(b.wsSecurity.verify({...req,headers:{...req.headers,"x-forwarded-proto":"https"}})).toBe(true);
+  const listener=http.createServer(app);
+  const sockets=setupWebSocket(listener,{security:b.wsSecurity,getVaultPath:id=>id==="vault"?path.join(root,"vault"):null});
+  await new Promise(resolve=>listener.listen(0,"127.0.0.1",resolve));
+  let ws;
+  try {
+   ws=new WebSocket(`ws://127.0.0.1:${listener.address().port}${req.url}`,{headers:req.headers});
+   await once(ws,"open");const message=once(ws,"message");
+   sockets.broadcastToVault("vault",{type:"modified",path:"forwarded.md"});
+   expect(JSON.parse((await message)[0].toString()).path).toBe("forwarded.md");
+   // wss is not a TLS assertion for ordinary HTTP routes.
+   const response=await fetch(`http://127.0.0.1:${listener.address().port}/api/auth/status`,{headers:req.headers});
+   expect(response.status).toBe(403);
+  } finally {
+   if(ws) ws.terminate();for(const client of sockets.clients)client.terminate();
+   sockets.close();await new Promise(resolve=>listener.close(resolve));
+  }
+ } finally {b.close();}
 });

@@ -106,14 +106,17 @@ function createAuthBoundary({
     initialized,
   });
 
-  function transportAllowed(req) {
+  function transportAllowed(req, { websocket = false } = {}) {
     if (req.headers.host?.toLowerCase() !== publicUrl.host.toLowerCase())
       return false;
     if (publicUrl.protocol === "https:") {
       return (
         !!req.socket.encrypted ||
         (trustProxy(req.socket.remoteAddress, 0) &&
-          req.headers["x-forwarded-proto"] === "https")
+          (req.headers["x-forwarded-proto"] === "https" ||
+            // Traefik uses wss for TLS WebSocket upgrades. Never accept it
+            // on ordinary HTTP routes or from an untrusted forwarding peer.
+            (websocket && req.headers["x-forwarded-proto"] === "wss")))
       );
     }
     // Docker NAT makes even host-loopback clients appear as a bridge IP.
@@ -188,7 +191,7 @@ function createAuthBoundary({
     vaultId(req) { return socketVaults.get(req)?.directory; },
     verify(req) {
       if (
-        !transportAllowed(req) ||
+        !transportAllowed(req, { websocket: true }) ||
         !originAllowed(req, true) ||
         !limits.upgrade(req.socket.remoteAddress)
       )
@@ -821,6 +824,8 @@ function createAuthBoundary({
       }
       if (pathname === "/api/proxy" && session.user.role === "user" && !limits.publicRequest(req.ip))
         return safe(res, 429, "Too many network requests");
+      if (pathname === "/api/vault/members" && !limits.vaultMembers(session.user.id))
+        return safe(res, 429, "Too many access requests; try again in a minute.");
       // Authorized resource requests extend inactivity; session/status polling and WS do not.
       req.auth = getSession(req, true);
       if (!req.auth) return safe(res, 401, "Authentication required");
@@ -930,10 +935,20 @@ function createAuthBoundary({
             throw new Error("Configuration unavailable");
           return vaultConfig.snapshot(cookies.read(req.headers.cookie), reference);
         };
+        req.vaultMembers = (operation, input) => {
+          const service = require("./vault-members").createVaultMembersService(db, vaultRoot, sessions);
+          const token = cookies.read(req.headers.cookie);
+          const result = service[operation](token, input);
+          const reference = operation === "list" ? input : input.vault;
+          req.revalidateVaultFile = () => { service.list(token, reference); return true; };
+          if (operation === "update") sweepSockets();
+          return result;
+        };
         req.vaultView = require("./vault-view").createVaultView({
           administrator: current.user.role === "admin",
           authorize: directory => req.authorizeVaultFile(directory, "content.list", ""),
           uuid: directory => req.vaultUUID(directory),
+          membership: directory => db.prepare("SELECT m.role FROM memberships m JOIN vaults v ON v.id=m.vault_id WHERE v.directory=? AND m.user_id=?").get(directory,current.user.id)?.role,
         });
         req.canReadVault = directory => req.authorizeVaultFile(directory, "content.list", "");
         req.vaultOwners = () => db.prepare("SELECT id,login FROM users WHERE status='active' ORDER BY login,id").all();
