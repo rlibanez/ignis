@@ -92,6 +92,13 @@ export const vaultService = {
     });
   },
 
+  async transferVaultOwnership(vault, userId, expectedRole, revision) {
+    return fetchJson(API_BASE + "/transfer-ownership", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vault, userId, expectedRole, revision, confirm: true }),
+    });
+  },
+
   async vaultOwners() {
     return fetchJson(API_BASE + "/owners");
   },

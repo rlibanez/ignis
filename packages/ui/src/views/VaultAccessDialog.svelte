@@ -7,6 +7,9 @@
   export let vaultService;
   const dispatch = createEventDispatcher();
   let data = null, busy = false, error = "", login = "", role = "reader", removal = null;
+  let transferOpen = false, transferTarget = "", transferConfirmed = false;
+  $: candidates = data?.members.filter(member => member.role !== "owner" && member.status === "active") || [];
+  $: recipient = candidates.find(member => member.id === transferTarget);
   let alive = true;
   onDestroy(() => { alive = false; });
   const close = () => dispatch("close");
@@ -25,6 +28,17 @@
       const result = await vaultService.updateVaultMember(vault.uuid, username, permission, previous, data.revision);
       if (alive) { apply(result); login = ""; removal = null; }
     } catch (failure) { if (alive) { error = failure.message; removal = null; } }
+    finally { if (alive) busy = false; }
+  }
+  async function transfer() {
+    if (busy || !recipient || !transferConfirmed || !data) return;
+    busy = true; error = "";
+    try {
+      await vaultService.transferVaultOwnership(vault.uuid,recipient.id,recipient.role,data.revision);
+      // The former owner no longer has permission to load the members endpoint.
+      dispatch("transferred");
+      if (alive) dispatch("close");
+    } catch (failure) { if (alive) { error = failure.message; transferOpen = false; transferConfirmed = false; } }
     finally { if (alive) busy = false; }
   }
   onMount(reload);
@@ -72,6 +86,7 @@
   </div>
   <svelte:fragment slot="footer"><div class="footer">
     <Button variant="secondary" disabled={busy} on:click={reload}>Reload members</Button>
+    <Button variant="secondary" disabled={busy || !data || !candidates.length} title="Transfer ownership to an active member" on:click={() => {transferOpen=true; transferTarget=""; transferConfirmed=false;}}>Transfer ownership</Button>
     <Button variant="primary" disabled={busy} on:click={close}>Done</Button>
   </div></svelte:fragment>
 </Modal>
@@ -84,7 +99,28 @@
     </div></svelte:fragment>
   </Modal>
 {/if}
+{#if transferOpen}
+  <Modal title={"Transfer ownership · " + vault.name} width="500px" closeOnOverlayClick={false} on:escape={() => {transferOpen=false;}} on:close={() => {transferOpen=false;}}>
+    <div class="access-body">
+      <label>New owner<select bind:value={transferTarget} disabled={busy} on:change={() => {transferConfirmed=false;}}>
+        <option value="" disabled>Select a member</option>
+        {#each candidates as member (member.id)}<option value={member.id}>{member.login}</option>{/each}
+      </select></label>
+      <p class="hint">The new owner will control access to this vault. You will keep Read / Write access and will no longer manage its members.</p>
+      <label class="confirmation"><input type="checkbox" bind:checked={transferConfirmed} disabled={busy || !recipient} />
+        <span>I confirm the transfer{recipient ? " to " + recipient.login : ""}. Only the new owner can transfer it back.</span>
+      </label>
+    </div>
+    <svelte:fragment slot="footer"><div class="footer">
+      <Button variant="secondary" disabled={busy} on:click={() => {transferOpen=false;}}>Cancel</Button>
+      <Button variant="primary" disabled={busy || !recipient || !transferConfirmed} on:click={transfer}>Transfer ownership</Button>
+    </div></svelte:fragment>
+  </Modal>
+{/if}
+
 <style>
+  .confirmation { flex-direction:row; align-items:flex-start; margin-top:1rem; }
+  .confirmation input { appearance:auto; width:1rem; height:1rem; padding:0; flex-shrink:0; margin:.2rem 0 0; accent-color:var(--interactive-accent); }
   .access-body { padding: 1.25rem 1.5rem; }
   .table-scroll { overflow-x: auto; max-height: 300px; }
   table { width: 100%; border-collapse: collapse; }

@@ -1324,3 +1324,24 @@ it.each(["admin", "normal"])("accepts Traefik secure WebSockets for an authorize
   }
  } finally {b.close();}
 });
+
+it("transfers ownership through the owner session without granting an admin bypass or losing the response",async()=>{
+ const vault=require("./store").registerVault(db,root,"vault","normal");
+ const owner=await login("normal"),admin=await login();
+ const adminId=db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
+ db.prepare("INSERT INTO memberships VALUES (?,?,'reader')").run(vault.id,adminId);
+ const route="/api/vault/transfer-ownership";
+ const body={vault:vault.id,userId:adminId,expectedRole:"reader",revision:1,confirm:true};
+ const headers={"x-ignis-csrf":await csrf(owner)};
+ expect((await request(route,{method:"POST",body})).status).toBe(401);
+ expect((await request(route,{jar:owner,method:"POST",body})).status).toBe(403);
+ expect((await request(route,{jar:owner,method:"POST",body,headers:{...headers,origin:"https://evil.example"}})).status).toBe(403);
+ expect((await request(route,{jar:admin,method:"POST",body,headers:{"x-ignis-csrf":await csrf(admin)}})).status).toBe(404);
+ expect((await request(route,{jar:owner,method:"POST",body:{...body,confirm:false},headers})).status).toBe(400);
+ const response=await request(route,{jar:owner,method:"POST",body,headers});
+ expect(response.status).toBe(200);expect(await response.json()).toMatchObject({ok:true,membership:"editor"});
+ expect((await request(`/api/vault/members?vault=${vault.id}`,{jar:owner})).status).toBe(404);
+ expect((await request(`/api/fs/readFile?vault=${vault.id}&path=note.md`,{jar:owner})).status).toBe(200);
+ expect((await request(`/api/vault/members?vault=${vault.id}`,{jar:admin})).status).toBe(200);
+ expect((await request(route,{jar:owner,method:"POST",body,headers})).status).toBe(404);
+});

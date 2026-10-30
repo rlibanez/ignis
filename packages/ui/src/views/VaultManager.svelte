@@ -369,7 +369,7 @@
 </Modal>
 
 {#if activeDialog === "access" && targetVault}
-  <VaultAccessDialog vault={targetVault} {vaultService} on:close={closeDialog} />
+  <VaultAccessDialog vault={targetVault} {vaultService} on:close={closeDialog} on:transferred={async () => { closeDialog(); await refreshVaults(); }} />
 {/if}
 
 {#if activeDialog === "create"}

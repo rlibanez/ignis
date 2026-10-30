@@ -824,7 +824,7 @@ function createAuthBoundary({
       }
       if (pathname === "/api/proxy" && session.user.role === "user" && !limits.publicRequest(req.ip))
         return safe(res, 429, "Too many network requests");
-      if (pathname === "/api/vault/members" && !limits.vaultMembers(session.user.id))
+      if (["/api/vault/members", "/api/vault/transfer-ownership"].includes(pathname) && !limits.vaultMembers(session.user.id))
         return safe(res, 429, "Too many access requests; try again in a minute.");
       // Authorized resource requests extend inactivity; session/status polling and WS do not.
       req.auth = getSession(req, true);
@@ -940,8 +940,10 @@ function createAuthBoundary({
           const token = cookies.read(req.headers.cookie);
           const result = service[operation](token, input);
           const reference = operation === "list" ? input : input.vault;
-          req.revalidateVaultFile = () => { service.list(token, reference); return true; };
-          if (operation === "update") sweepSockets();
+          req.revalidateVaultFile = operation === "transfer"
+            ? () => canReadVault(token, reference)
+            : () => { service.list(token, reference); return true; };
+          if (operation !== "list") sweepSockets();
           return result;
         };
         req.vaultView = require("./vault-view").createVaultView({

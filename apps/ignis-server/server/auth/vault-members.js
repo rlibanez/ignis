@@ -51,6 +51,29 @@ function createVaultMembersService(db, root, sessions) {
       return snapshot(vault);
     });
   }
-  return { list, update };
+  function transfer(token, input) {
+    return transaction(db, () => {
+      const { vault, session } = authorize(token, input?.vault);
+      if (!input || Object.keys(input).sort().join(",") !== "confirm,expectedRole,revision,userId,vault" ||
+          input.confirm !== true || typeof input.userId !== "string" ||
+          !["reader", "editor"].includes(input.expectedRole) ||
+          !Number.isSafeInteger(input.revision) || input.revision < 1 || input.revision >= Number.MAX_SAFE_INTEGER)
+        fail("INVALID_TRANSFER");
+      const target = db.prepare(`SELECT u.id,u.status,m.role FROM memberships m JOIN users u ON u.id=m.user_id
+        WHERE m.vault_id=? AND u.id=?`).get(vault.id,input.userId);
+      if (!target || target.status !== "active" || target.id === session.user.id || target.role === "owner")
+        fail("TRANSFER_TARGET_UNAVAILABLE");
+      if (target.role !== input.expectedRole || vault.policy_version !== input.revision ||
+          db.prepare("SELECT count(*) n FROM memberships WHERE vault_id=? AND role='owner'").get(vault.id).n !== 1)
+        fail("MEMBERSHIP_CONFLICT");
+      db.prepare("UPDATE memberships SET role='editor' WHERE vault_id=? AND user_id=?").run(vault.id,session.user.id);
+      db.prepare("UPDATE memberships SET role='owner' WHERE vault_id=? AND user_id=?").run(vault.id,target.id);
+      db.prepare("UPDATE vaults SET policy_version=policy_version+1 WHERE id=?").run(vault.id);
+      db.prepare("INSERT INTO audit_events VALUES (?,?,?,?,?)").run(randomUUID(),session.user.id,"transfer-vault-ownership",
+        JSON.stringify({vaultId:vault.id,from:session.user.id,to:target.id,formerOwnerRole:"editor"}),Date.now());
+      return { ok:true, vault:vault.id, ownerId:target.id, membership:"editor" };
+    });
+  }
+  return { list, update, transfer };
 }
 module.exports = { createVaultMembersService };

@@ -63,3 +63,41 @@ it("rolls back membership and revision if auditing fails",()=>{
  expect(service.list("owner",vault.id).revision).toBe(1);
  expect(db.prepare("SELECT 1 FROM memberships WHERE user_id='target'").get()).toBeUndefined();
 });
+
+const transferInput=(extra={})=>({vault:vault.id,userId:"reader",expectedRole:"reader",revision:1,confirm:true,...extra});
+it("atomically transfers ownership to an existing reader and leaves the former owner as editor",()=>{
+ expect(service.transfer("owner",transferInput())).toMatchObject({ok:true,ownerId:"reader",membership:"editor"});
+ const next=service.list("reader",vault.id);
+ expect(next.revision).toBe(2);
+ expect(next.members.filter(m=>m.role==="owner").map(m=>m.id)).toEqual(["reader"]);
+ expect(next.members.find(m=>m.id==="owner").role).toBe("editor");
+ expect(()=>service.list("owner",vault.id)).toThrow();
+ expect(()=>service.transfer("owner",transferInput())).toThrow();
+ expect(db.prepare("SELECT count(*) n FROM audit_events WHERE action='transfer-vault-ownership'").get().n).toBe(1);
+ expect(db.prepare("SELECT role FROM users WHERE id='reader'").get().role).toBe("user");
+});
+it.each(["reader","editor","admin","invalid"])("does not let %s take ownership",token=>{
+ expect(()=>service.transfer(token,transferInput())).toThrow();
+ expect(service.list("owner",vault.id).revision).toBe(1);
+});
+it("requires explicit confirmation, stable identity, valid revision and another active member",()=>{
+ for(const extra of [{confirm:false},{confirm:"true"},{userId:"target"},{userId:"owner"},{userId:"missing"},{vault:"Notes"},{revision:0},{expectedRole:"owner"},{role:"owner"}])
+  expect(()=>service.transfer("owner",transferInput(extra))).toThrow();
+ db.prepare("UPDATE users SET status='disabled' WHERE id='reader'").run();
+ expect(()=>service.transfer("owner",transferInput())).toThrow();
+ expect(service.list("owner",vault.id).revision).toBe(1);
+});
+it("rejects stale roles/revisions and ambiguous ownership",()=>{
+ expect(()=>service.transfer("owner",transferInput({expectedRole:"editor"}))).toThrow(expect.objectContaining({code:"MEMBERSHIP_CONFLICT"}));
+ service.update("owner",change());
+ expect(()=>service.transfer("owner",transferInput())).toThrow(expect.objectContaining({code:"MEMBERSHIP_CONFLICT"}));
+ db.prepare("UPDATE memberships SET role='owner' WHERE user_id='editor'").run();
+ expect(()=>service.transfer("owner",transferInput({revision:2}))).toThrow(expect.objectContaining({code:"MEMBERSHIP_CONFLICT"}));
+});
+it("rolls back both roles and revision when transfer audit fails",()=>{
+ db.exec("CREATE TRIGGER fail_transfer BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT,'test'); END");
+ expect(()=>service.transfer("owner",transferInput())).toThrow();
+ const state=service.list("owner",vault.id);
+ expect(state.revision).toBe(1);expect(state.members.find(m=>m.id==="reader").role).toBe("reader");
+ expect(state.members.find(m=>m.id==="owner").role).toBe("owner");
+});

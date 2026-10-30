@@ -52,7 +52,7 @@ router.get("/list", (req, res) => {
 function membersRequest(req, res, operation) {
   if (!req.vaultMembers) return res.status(503).json({ error: "Access management unavailable" });
   if ((operation === "list" && (Object.keys(req.query).length !== 1 || typeof req.query.vault !== "string")) ||
-      (operation === "update" && (Object.keys(req.query).length || !req.body || Array.isArray(req.body))))
+      (operation !== "list" && (Object.keys(req.query).length || !req.body || Array.isArray(req.body))))
     return res.status(400).json({ error: "Invalid access request" });
   try { res.json(req.vaultMembers(operation, operation === "list" ? req.query.vault : req.body)); }
   catch (error) {
@@ -60,6 +60,8 @@ function membersRequest(req, res, operation) {
       VAULT_UNAVAILABLE: [404, "Vault unavailable or you are no longer its owner."],
       INVALID_MEMBERSHIP: [400, "Select a username and a valid permission."],
       MEMBER_UNAVAILABLE: [409, "No active account with that username is available."],
+      INVALID_TRANSFER: [400, "Confirm the ownership transfer and select an existing member."],
+      TRANSFER_TARGET_UNAVAILABLE: [409, "Select another active member as the new owner."],
       OWNER_PROTECTED: [409, "The owner cannot be changed here."],
       MEMBERSHIP_CONFLICT: [409, "Access changed in another window. Reload members before trying again."],
     };
@@ -69,6 +71,7 @@ function membersRequest(req, res, operation) {
 }
 router.get("/members", (req,res) => membersRequest(req,res,"list"));
 router.post("/members", (req,res) => membersRequest(req,res,"update"));
+router.post("/transfer-ownership", (req,res) => membersRequest(req,res,"transfer"));
 
 router.get("/owners", (req, res) => {
   if (!req.vaultOwners) return res.status(503).json({ error: "Vault owners unavailable" });
