@@ -1416,3 +1416,21 @@ it('allows normal users to create their own vaults over HTTP without assigning o
  const admin=await login('admin');expect((await request('/api/bootstrap?vault='+uuid,{jar:admin})).status).toBe(404);
  expect((await request('/api/bootstrap?vault='+uuid,{jar})).status).toBe(200);
 });
+
+it('lets normal owners rename and delete via HTTP but denies other members and missing CSRF',async()=>{
+ const jar=await login('normal'),session=await (await request('/api/auth/session',{jar})).json();
+ const csrf=(await (await request('/api/auth/csrf',{jar})).json()).csrfToken;
+ const headers={'x-ignis-context':session.sessionId,'x-ignis-csrf':csrf};
+ const post=(route,body,extra={})=>request('/api/vault/'+route+(route==='remove'?'?vault='+encodeURIComponent(body.vault):''),{jar,method:route==='remove'?'DELETE':'POST',headers,...(route==='remove'?{}:{body}),...extra});
+ const created=await post('create',{name:'Personal'});expect(created.status).toBe(200);const {uuid}=await created.json();
+ expect((await post('rename',{vault:uuid,name:'Renamed'},{headers:{}})).status).toBe(403);
+ expect((await post('remove',{vault:uuid},{headers:{...headers,origin:'https://evil.example'}})).status).toBe(403);
+ const rename=await post('rename',{vault:uuid,name:'Renamed'});expect(rename.status).toBe(200);expect((await rename.json()).uuid).toBe(uuid);
+ const {registerVault}=require('./store'),adminId=db.prepare("SELECT id FROM users WHERE login='admin'").get().id,foreign=registerVault(db,root,'vault',adminId);
+ db.prepare("INSERT INTO memberships VALUES (?,'normal','editor')").run(foreign.id);
+ expect((await post('rename',{vault:foreign.id,name:'Stolen'})).status).toBe(404);
+ expect((await post('remove',{vault:foreign.id})).status).toBe(404);
+ expect((await post('remove',{vault:uuid})).status).toBe(200);
+ expect(db.prepare('SELECT id FROM vaults WHERE id=?').get(uuid)).toBeUndefined();
+ expect(fs.existsSync(path.join(root,'vault','note.md'))).toBe(true);
+});

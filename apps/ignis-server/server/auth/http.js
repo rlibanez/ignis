@@ -839,7 +839,7 @@ function createAuthBoundary({
       }
       if (pathname === "/api/proxy" && session.user.role === "user" && !limits.publicRequest(req.ip))
         return safe(res, 429, "Too many network requests");
-      if (["/api/vault/members", "/api/vault/transfer-ownership"].includes(pathname) && !limits.vaultMembers(session.user.id))
+      if (["/api/vault/members", "/api/vault/transfer-ownership", "/api/vault/rename", "/api/vault/remove"].includes(pathname) && !limits.vaultMembers(session.user.id))
         return safe(res, 429, "Too many access requests; try again in a minute.");
       if (pathname === "/api/vault/create" && !limits.vaultCreation(session.user.id))
         return safe(res,429,"Too many vault creation requests; try again in a minute.");
@@ -986,6 +986,9 @@ function createAuthBoundary({
         req.vaultUUID = directory => db.prepare("SELECT id FROM vaults WHERE directory=? AND status='active'").get(directory)?.id;
         if (["/api/vault/rename", "/api/vault/remove"].includes(pathname)) {
           const reference = require("./vault-selection").selectVaultReference(req.query, req.body);
+          const registered=db.prepare("SELECT id FROM vaults WHERE id=? OR directory=?").get(reference,reference);
+          if(registered && !db.prepare("SELECT 1 FROM memberships WHERE vault_id=? AND user_id=? AND role='owner'").get(registered.id,current.user.id))
+            return safe(res,404,"Vault unavailable");
           if (!db.prepare("SELECT 1 FROM vaults WHERE id=? OR directory=?").get(reference, reference) &&
               !db.prepare("SELECT 1 FROM vault_deletions WHERE vault_id=?").get(reference))
             return safe(res, 409, "Register this vault before renaming or deleting it");
@@ -999,7 +1002,7 @@ function createAuthBoundary({
               ...lifecycle,
               isCurrent: withinTransaction => {
                 const session = sessions.resolve(cookies.read(req.headers.cookie), { withinTransaction });
-                return session?.id === current.id && session.user.role === "admin";
+                return session?.id === current.id && session.user.id === current.user.id;
               },
             });
           }
@@ -1011,7 +1014,7 @@ function createAuthBoundary({
               ...lifecycle,
               isCurrent: withinTransaction => {
                 const session = sessions.resolve(cookies.read(req.headers.cookie), { withinTransaction });
-                return session?.id === current.id && session.user.role === "admin";
+                return session?.id === current.id && session.user.id === current.user.id;
               },
             });
           }

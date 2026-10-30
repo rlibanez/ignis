@@ -337,7 +337,7 @@
             <svelte:fragment slot="action">
               {#if vault.membership === "owner"}<PopoverMenu
                 open={openMenuId === vault.id}
-                items={!vault.uuid && window.__ignisAuth ? [{ id: "register", label: "Register vault" }] : (administrator ? menuItems : menuItems.filter(item => item.id === "access"))}
+                items={!vault.uuid && window.__ignisAuth ? [{ id: "register", label: "Register vault" }] : menuItems}
                 on:toggle={() => toggleMenu(vault.id)}
                 on:select={(e) => onMenuSelect(vault, e.detail)}
               />{/if}

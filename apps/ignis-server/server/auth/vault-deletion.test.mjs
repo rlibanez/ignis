@@ -46,7 +46,7 @@ it("allows the old name with a new UUID and no inherited reader, never reuses th
   expect(fs.existsSync(replacement.path)).toBe(true);
   expect(() => createRegisteredVault(db, vaultRoot, "admin", vault.id, { isCurrent: () => true })).toThrow();
 });
-it("requires the stable UUID, a current administrator and lifecycle callbacks", async () => {
+it("requires the stable UUID, a current owner and lifecycle callbacks", async () => {
   await expect(deleteRegisteredVault(db, vaultRoot, "admin", "Notes", { isCurrent: () => true })).rejects.toMatchObject({ code: "VAULT_ID_REQUIRED" });
   await expect(deleteRegisteredVault(db, vaultRoot, "normal", vault.id, { isCurrent: () => true })).rejects.toThrow();
   await expect(remove({ isCurrent: () => false })).rejects.toThrow();
@@ -169,4 +169,24 @@ it("rechecks admin ownership after asynchronous shutdown",async()=>{
   .rejects.toMatchObject({code:"VAULT_UNAVAILABLE"});
  expect(fs.readFileSync(path.join(vault.path,"keep.md"),"utf8")).toBe("valuable");
  expect(db.prepare("SELECT status FROM vaults WHERE id=?").get(vault.id).status).toBe("quarantine");
+});
+
+it('allows a normal owner to delete and removes memberships without touching another vault',async()=>{
+ db.prepare("UPDATE memberships SET role='editor' WHERE vault_id=? AND user_id='admin'").run(vault.id);
+ db.prepare("UPDATE memberships SET role='owner' WHERE vault_id=? AND user_id='normal'").run(vault.id);
+ const other=createRegisteredVault(db,vaultRoot,'admin','Other',{isCurrent:()=>true});
+ await deleteRegisteredVault(db,vaultRoot,'normal',vault.id,{isCurrent:()=>true,quiesce:async()=>{},invalidate:()=>{}});
+ expect(fs.existsSync(vault.path)).toBe(false);expect(fs.existsSync(other.path)).toBe(true);
+ expect(db.prepare('SELECT * FROM memberships WHERE vault_id=?').all(vault.id)).toEqual([]);
+});
+it.each(['reader','editor'])('denies normal %s deletion and preserves data',async role=>{
+ db.prepare("UPDATE memberships SET role=? WHERE vault_id=? AND user_id='normal'").run(role,vault.id);
+ await expect(deleteRegisteredVault(db,vaultRoot,'normal',vault.id,{isCurrent:()=>true,quiesce:async()=>{},invalidate:()=>{}})).rejects.toThrow();
+ expect(fs.readFileSync(path.join(vault.path,'keep.md'),'utf8')).toBe('valuable');
+});
+it('rechecks normal session after draining writes before deletion',async()=>{
+ db.prepare("UPDATE memberships SET role='editor' WHERE vault_id=? AND user_id='admin'").run(vault.id);
+ db.prepare("UPDATE memberships SET role='owner' WHERE vault_id=? AND user_id='normal'").run(vault.id);let live=true;
+ await expect(deleteRegisteredVault(db,vaultRoot,'normal',vault.id,{isCurrent:()=>live,invalidate:()=>{},quiesce:async()=>{live=false;}})).rejects.toThrow();
+ expect(fs.readFileSync(path.join(vault.path,'keep.md'),'utf8')).toBe('valuable');
 });

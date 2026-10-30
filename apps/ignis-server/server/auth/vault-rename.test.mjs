@@ -38,7 +38,7 @@ it.each(["../escape", ".hidden", "x/y", "con", " trailing ", "x\0", "é".repeat(
   expect(db.prepare("SELECT status FROM vaults").get().status).toBe("active");
   expect(fs.existsSync(path.join(vault.path, "keep.md"))).toBe(true);
 });
-it("requires a current administrator even for a no-op", async () => {
+it("requires a current owner even for a no-op", async () => {
   await expect(rename("Notes", { isCurrent: () => false })).rejects.toMatchObject({ code: "SESSION_CHANGED" });
   await expect(renameRegisteredVault(db, vaultRoot, "normal", vault.id, "Renamed", { isCurrent: () => true })).rejects.toThrow();
   expect((await rename("Notes")).id).toBe(vault.id);
@@ -136,4 +136,24 @@ it("rechecks admin ownership after asynchronous shutdown",async()=>{
   .rejects.toMatchObject({code:"VAULT_UNAVAILABLE"});
  expect(fs.readFileSync(path.join(vault.path,"keep.md"),"utf8")).toBe("valuable");
  expect(db.prepare("SELECT status FROM vaults WHERE id=?").get(vault.id).status).toBe("quarantine");
+});
+
+it('allows a normal owner to rename while preserving UUID and other memberships',async()=>{
+ db.prepare("UPDATE memberships SET role='editor' WHERE vault_id=? AND user_id='admin'").run(vault.id);
+ db.prepare("UPDATE memberships SET role='owner' WHERE vault_id=? AND user_id='normal'").run(vault.id);
+ const result=await renameRegisteredVault(db,vaultRoot,'normal',vault.id,'Personal',{isCurrent:()=>true,quiesce:async()=>{},invalidate:()=>{}});
+ expect(result.id).toBe(vault.id);expect(fs.readFileSync(path.join(result.path,'keep.md'),'utf8')).toBe('valuable');
+ expect(db.prepare("SELECT role FROM memberships WHERE vault_id=? AND user_id='admin'").get(vault.id).role).toBe('editor');
+ await expect(rename()).rejects.toThrow();
+});
+it.each(['reader','editor'])('denies normal %s rename and preserves disk',async role=>{
+ db.prepare("UPDATE memberships SET role=? WHERE vault_id=? AND user_id='normal'").run(role,vault.id);
+ await expect(renameRegisteredVault(db,vaultRoot,'normal',vault.id,'Stolen',{isCurrent:()=>true,quiesce:async()=>{},invalidate:()=>{}})).rejects.toThrow();
+ expect(fs.readFileSync(path.join(vault.path,'keep.md'),'utf8')).toBe('valuable');
+});
+it('rechecks normal ownership after draining writes',async()=>{
+ db.prepare("UPDATE memberships SET role='editor' WHERE vault_id=? AND user_id='admin'").run(vault.id);
+ db.prepare("UPDATE memberships SET role='owner' WHERE vault_id=? AND user_id='normal'").run(vault.id);
+ await expect(renameRegisteredVault(db,vaultRoot,'normal',vault.id,'Changed',{isCurrent:()=>true,invalidate:()=>{},quiesce:async()=>{db.prepare("UPDATE memberships SET role='editor' WHERE vault_id=? AND user_id='normal'").run(vault.id);}})).rejects.toThrow();
+ expect(fs.existsSync(path.join(vaultRoot,'Changed'))).toBe(false);expect(fs.readFileSync(path.join(vault.path,'keep.md'),'utf8')).toBe('valuable');
 });

@@ -34,7 +34,7 @@ const routes = Object.freeze(groups.flatMap(group => group.routes.map(([method, 
   source: group.source, sourcePath: sourcePath || suffix,
   surface: group.surface, operation, currentAccess:
     ["vault-content", "private-configuration", "mixed-bootstrap", "resource-sharing"].includes(group.surface) ||
-    (group.mount === "/api/vault" && ["/members", "/transfer-ownership", "/create"].includes(suffix)) ||
+    (group.mount === "/api/vault" && ["/members", "/transfer-ownership", "/create", "/rename", "/remove"].includes(suffix)) ||
     (method === "GET" && ["/api/vault/list", "/api/vault/info", "/api/version"].includes(group.mount + (suffix === "/" ? "" : suffix)))
       ? "owner" : "admin",
 }))));

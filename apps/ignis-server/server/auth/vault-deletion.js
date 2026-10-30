@@ -62,7 +62,7 @@ async function deleteRegisteredVault(db, root, actor, id, {
   isCurrent, quiesce, invalidate, assertReady = () => {}, io = fs,
 } = {}) {
   const authorize = () => {
-    if (!db.prepare("SELECT 1 FROM users WHERE id=? AND role='admin' AND status='active'").get(actor) ||
+    if (!db.prepare("SELECT 1 FROM users WHERE id=? AND role IN ('admin','user') AND status='active'").get(actor) ||
         typeof isCurrent !== "function" || !isCurrent(true)) fail("SESSION_CHANGED");
     if (!db.prepare("SELECT 1 FROM memberships WHERE vault_id=? AND user_id=? AND role='owner'").get(vault.id, actor))
       fail("VAULT_UNAVAILABLE");
