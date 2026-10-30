@@ -16,8 +16,8 @@ function canonical(value, empty = false) {
   if (typeof value !== "string" || value.length > 1024 || (!value && !empty) || (value && classifyVaultPath(value) !== "content")) fail("INVALID_SHARE_PATH");
   return value;
 }
-function inspect(root, relative, missing = false) {
-  canonical(relative, true);
+function inspect(root, relative, missing = false, trash = false) {
+  if(trash && relative.startsWith(".trash/"))canonical(relative.slice(7));else canonical(relative, true);
   let filename = root, stat = fs.lstatSync(root);
   if (!stat.isDirectory() || stat.isSymbolicLink()) fail();
   const parts = relative.split("/").filter(Boolean);
@@ -224,13 +224,13 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
     const current=resource(token,input.id,input.path || ""),bytes=readFile(target(current),maxFileBytes);
     return {kind:"file",role:current.role,name:path.basename(item.filename),content:bytes.toString("base64"),etag:digest(bytes)};
   }
-  function renameDisk(user,v,oldPath,newPath,etag) {
-    canonical(oldPath);canonical(newPath);
+  function renameDisk(user,v,oldPath,newPath,etag,trash=false) {
+    canonical(oldPath);if(trash)canonical(newPath.slice(7));else canonical(newPath);
     if(oldPath===newPath || newPath.toLowerCase().startsWith(oldPath.toLowerCase()+"/"))fail("INVALID_SHARE_PATH");
     const crossDirectory=path.posix.dirname(oldPath)!==path.posix.dirname(newPath);
     let published=false;
     try{return transaction(db,()=>{
-      const source=inspect(v.path,oldPath),destination=inspect(v.path,newPath,true);
+      const source=inspect(v.path,oldPath),destination=inspect(v.path,newPath,true,trash);
         if(destination.stat || writeCoalescer.hasPendingSubtree(source.filename) || writeCoalescer.hasPendingSubtree(destination.filename))fail("SHARE_CONFLICT");
         const expected=etag===undefined?undefined:source.stat.isDirectory()?directoryTag(source.stat):digest(readFile(source,maxFileBytes));
         if(etag!==undefined && etag!==expected)fail("SHARE_CONFLICT");
@@ -240,7 +240,7 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
         function validate(item,depth){if(++total>5000 || depth>32)fail("SHARE_LIMIT");if(!item.stat.isDirectory())return;const dir=fs.opendirSync(item.filename);try{for(let entry;(entry=dir.readSync());)validate(inspect(item.filename,canonical(entry.name)),depth+1);}finally{dir.closeSync();}}
         validate(source,0);
         const shares=db.prepare("SELECT * FROM shared_resources WHERE vault_id=?").all(v.id),affected=[];
-        if(crossDirectory){
+        if(crossDirectory && !trash){
           // Moving must not silently add or remove access inherited from a folder
           // grant. Explicit grants within the moved subtree travel with that subtree.
           const enclosing=target=>shares.filter(row=>row.kind==="directory" && target.startsWith(row.path+"/")).map(row=>row.id).sort();
@@ -254,10 +254,13 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
             affected.push(row);
           }
         }
-        audit(user,"rename-shared-content",{vault:v.id,path:oldPath,to:newPath});
+        audit(user,trash?"trash-shared-content":"rename-shared-content",{vault:v.id,path:oldPath,to:newPath});
         fs.renameSync(source.filename,destination.filename);published=true;
         for(const directory of new Set([parent,destinationParent])){const fd=fs.openSync(directory,fs.constants.O_RDONLY|fs.constants.O_DIRECTORY);try{fs.fsyncSync(fd);}finally{fs.closeSync(fd);}}
-        for(const row of affected)db.prepare("UPDATE shared_resources SET path=?,revision=revision+1 WHERE id=?").run(newPath+row.path.slice(oldPath.length),row.id);
+        for(const row of affected){
+          if(trash)db.prepare("DELETE FROM shared_resources WHERE id=?").run(row.id);
+          else db.prepare("UPDATE shared_resources SET path=?,revision=revision+1 WHERE id=?").run(newPath+row.path.slice(oldPath.length),row.id);
+        }
       return {ok:true};
     });}catch(error){if(published)fail("SHARE_RENAME_UNCERTAIN");throw error;}
   }
@@ -287,8 +290,62 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
     const shared=db.prepare("SELECT path FROM shared_resources WHERE vault_id=?").all(v.id).some(row=>overlaps(row.path.toLowerCase(),oldPath.toLowerCase()) || overlaps(row.path.toLowerCase(),newPath.toLowerCase()));
     if(db.prepare("SELECT 1 FROM shared_resources WHERE vault_id=? AND path=?").get(v.id,oldPath) &&
       db.prepare("SELECT role FROM memberships WHERE vault_id=? AND user_id=?").get(v.id,user.id)?.role!=="owner")fail();
-    if(shared)return renameDisk(user,v,oldPath,newPath);
+    if(shared)return renameDisk(user,v,oldPath,newPath,undefined,newPath.startsWith(".trash/") && !newPath.slice(7).includes("/"));
     fs.renameSync(path.join(v.path,oldPath),path.join(v.path,newPath));return {ok:true};
+  }
+  // Preview binds confirmation to the exact current subtree, not just its name.
+  function removalSnapshot(token,input) {
+    canonical(input.path); // A received root is never deletable through its grant.
+    const access=resource(token,input.id,input.path,true),item=target(access);
+    const hash=createHash("sha256");let files=0,folders=0;
+    function visit(relative,depth=0) {
+      if(depth>32 || files+folders>=5000)fail("SHARE_LIMIT");
+      const entry=inspect(access.base.filename,relative),s=entry.stat;
+      if(s.dev!==item.stat.dev)fail();
+      hash.update(JSON.stringify([relative,s.dev,identity(s),s.size,s.mtimeMs,s.ctimeMs]));
+      if(s.isDirectory()) {
+        folders++;
+        const names=fs.readdirSync(entry.filename).sort();
+        if(names.length>5000)fail("SHARE_LIMIT");
+        for(const name of names)visit(relative+"/"+name,depth+1);
+      } else files++;
+    }
+    visit(input.path);
+    const original=access.row.path+"/"+input.path;
+    const affected=db.prepare("SELECT id,path,revision FROM shared_resources WHERE vault_id=? ORDER BY id").all(access.v.id)
+      .filter(row=>row.path===original || row.path.startsWith(original+"/"));
+    hash.update(JSON.stringify([access.row.id,access.role,affected]));
+    return {access,item,affected,original,revision:hash.digest("hex"),files,folders};
+  }
+  async function previewRemoval(token,input) {
+    const access=resource(token,input.id,canonical(input.path),true);
+    await writeCoalescer.flushPendingSubtree(target(access).filename);
+    const {revision,files,folders}=removalSnapshot(token,input);
+    return {revision,files,folders};
+  }
+  async function removeConfirmed(token,input) {
+    if(input.confirm!==true || typeof input.revision!=="string")fail("INVALID_SHARE");
+    const access=resource(token,input.id,canonical(input.path),true),item=target(access);
+    await writeCoalescer.flushPendingSubtree(item.filename);
+    return writeCoalescer.supersedePendingSubtree(item.filename,()=>{
+      const snapshot=removalSnapshot(token,input);
+      if(snapshot.revision!==input.revision || writeCoalescer.hasPendingSubtree(snapshot.item.filename))fail("SHARE_CONFLICT");
+      // Detach atomically before purging: a failed recursive purge cannot expose a
+      // half-deleted tree or let old grants point at a replacement with this name.
+      const retired=path.join(path.dirname(snapshot.item.filename),".ignis-delete-"+randomUUID());
+      let detached=false;
+      try {
+        transaction(db,()=>{
+          audit(snapshot.access.user,"delete-shared-content",{vault:snapshot.access.v.id,path:snapshot.original,files:snapshot.files,folders:snapshot.folders});
+          for(const row of snapshot.affected)db.prepare("DELETE FROM shared_resources WHERE id=?").run(row.id);
+          fs.renameSync(snapshot.item.filename,retired);detached=true;
+          const fd=fs.openSync(path.dirname(retired),fs.constants.O_RDONLY|fs.constants.O_DIRECTORY);
+          try{fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
+        });
+        fs.rmSync(retired,{recursive:true});
+      } catch(error) {if(detached)fail("SHARE_DELETE_UNCERTAIN");throw error;}
+      return {ok:true};
+    });
   }
   async function mutate(token,input) {
     const relative=input.path || "", access=resource(token,input.id,relative,true),item=target(access,true);
@@ -379,6 +436,6 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
       return {ok:true,etag:digest(bytes),mtime:stat.mtimeMs,size:stat.size};
     });
   }
-  return {catalog,mounts,destination,create,grant,browseOwner,read,rename,renameOriginal,writeOriginal,mutate,limits};
+  return {catalog,mounts,destination,create,grant,browseOwner,read,rename,renameOriginal,writeOriginal,previewRemoval,removeConfirmed,mutate,limits};
 }
 module.exports={createResourceSharesService};

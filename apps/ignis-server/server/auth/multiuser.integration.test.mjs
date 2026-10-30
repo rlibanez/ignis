@@ -162,6 +162,17 @@ it('validates three independent real sessions across conflicts, downgrade, revok
   await member(null,'reader');await closed;
   expect((await readPrivate(bob)).status).toBe(404);
   expect((await readPrivate(admin)).status).toBe(404);
+  // Exercise Obsidian's real local-trash mkdir/rename sequence as a normal owner.
+  await success(alice.call('/api/fs/mkdir?vault='+a,{path:'.trash',recursive:true}));
+  await success(alice.call('/api/fs/writeFile?vault='+a,{path:'Discard.md',content:'trash me',expectedHash:null}));
+  await success(alice.call('/api/fs/rename?vault='+a,{oldPath:'Discard.md',newPath:'.trash/Discard.md'}));
+  await success(alice.call('/api/fs/rename?vault='+a,{oldPath:'.trash/Discard.md',newPath:'Restored.md'}));
+  await success(alice.call('/api/fs/mkdir?vault='+a,{path:'DiscardFolder',recursive:false}));
+  await success(alice.call('/api/fs/writeFile?vault='+a,{path:'DiscardFolder/file.md',content:'shared trash',expectedHash:null}));
+  const trashedShare=(await success(alice.share('create',{vault:a,path:'DiscardFolder',login:'carol',role:'editor'}))).id;
+  await success(alice.call('/api/fs/rename?vault='+a,{oldPath:'DiscardFolder',newPath:'.trash/DiscardFolder'}));
+  expect((await carol.share('read',{id:trashedShare,path:'file.md'})).status).toBe(404);
+  expect((await alice.call('/api/fs/readFile?vault='+a+'&path=.trash/DiscardFolder/file.md')).text).toBe('shared trash');
   await success(alice.call('/api/fs/mkdir?vault='+a,{path:'Project',recursive:false}));
   await success(alice.call('/api/fs/writeFile?vault='+a,{path:'Project/note.md',content:'original',expectedHash:null}));
   const id=(await success(alice.share('create',{vault:a,path:'Project',login:'bob',role:'editor'}))).id;

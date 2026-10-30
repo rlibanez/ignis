@@ -65,3 +65,11 @@ it("allows active accounts to create without existing membership",()=>{
  expect(allowed({...principal,capability:"vault.create"})).toBe(true);
  expect(allowed({...principal,status:"disabled",capability:"vault.create"})).toBe(false);
 });
+
+it('allows the vault trash only with explicit membership and protects hidden nested state',()=>{
+ for(const membership of [undefined,'reader','editor','owner'])for(const path of ['.trash','.trash/note.md','.trash/Folder/note.md']){
+  expect(allowed({...principal,membership,path,capability:'content.read'})).toBe(!!membership);
+  expect(allowed({...principal,membership,path,capability:'content.write'})).toBe(['editor','owner'].includes(membership));
+ }
+ for(const path of ['.trash/.env','.trash/.ignis-secret','Nested/.trash/note.md','.trash/../secret'])expect(allowed({...principal,membership:'owner',path,capability:'content.write'})).toBe(false);
+});

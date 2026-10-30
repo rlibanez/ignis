@@ -385,3 +385,85 @@ it('rechecks Write after draining a cross-directory move',async()=>{
  try{await expect(service.rename('recipient',{id,path:'note.md',to:'Sub/note.md',etag})).rejects.toThrow();}finally{flush.mockRestore();}
  expect(fs.existsSync(path.join(root,'Notes/Project/note.md'))).toBe(true);
 });
+
+it('confirms and deletes a populated subtree, revoking nested grants but preserving siblings',async()=>{
+ const id=share('Project','editor');fs.mkdirSync(path.join(root,'Notes/Project/sub'));
+ fs.writeFileSync(path.join(root,'Notes/Project/sub/a.md'),'a');
+ const nested=share('Project/sub/a.md');
+ const input={id,path:'sub'},preview=await service.previewRemoval('recipient',input);
+ expect(preview).toMatchObject({files:1,folders:1});
+ await expect(service.removeConfirmed('recipient',{...input,revision:preview.revision,confirm:false})).rejects.toThrow();
+ await service.removeConfirmed('recipient',{...input,revision:preview.revision,confirm:true});
+ expect(fs.existsSync(path.join(root,'Notes/Project/sub'))).toBe(false);
+ expect(fs.existsSync(path.join(root,'Notes/Project/note.md'))).toBe(true);
+ expect(db.prepare('SELECT id FROM shared_resources WHERE id=?').get(nested)).toBeUndefined();
+});
+it('rejects stale deletion confirmation after content changes and after permission downgrade',async()=>{
+ const id=share('Project','editor'),input={id,path:'note.md'};
+ const preview=await service.previewRemoval('recipient',input);
+ fs.writeFileSync(path.join(root,'Notes/Project/note.md'),'changed');
+ await expect(service.removeConfirmed('recipient',{...input,revision:preview.revision,confirm:true})).rejects.toMatchObject({code:'SHARE_CONFLICT'});
+ const fresh=await service.previewRemoval('recipient',input);
+ db.prepare("UPDATE resource_grants SET role='reader' WHERE resource_id=?").run(id);
+ await expect(service.removeConfirmed('recipient',{...input,revision:fresh.revision,confirm:true})).rejects.toThrow();
+ expect(fs.existsSync(path.join(root,'Notes/Project/note.md'))).toBe(true);
+});
+it.each(['','../secret.md','.obsidian/config'])('protects root and invalid removal paths %s',async p=>{
+ const id=share('Project','editor');await expect(service.previewRemoval('recipient',{id,path:p})).rejects.toThrow();
+});
+it.each(['reader','outsider','admin'])('does not authorize confirmed deletion through %s',async who=>{
+ const id=share('Project',who==='reader'?'reader':'editor');
+ await expect(service.previewRemoval(who==='reader'?'recipient':who,{id,path:'note.md'})).rejects.toThrow();
+});
+it('rejects recursive deletion containing links or hidden configuration',async()=>{
+ const id=share('Project','editor');fs.mkdirSync(path.join(root,'Notes/Project/sub'));
+ fs.symlinkSync('../../secret.md',path.join(root,'Notes/Project/sub/link'));
+ await expect(service.previewRemoval('recipient',{id,path:'sub'})).rejects.toThrow();
+ fs.unlinkSync(path.join(root,'Notes/Project/sub/link'));fs.mkdirSync(path.join(root,'Notes/Project/sub/.obsidian'));
+ await expect(service.previewRemoval('recipient',{id,path:'sub'})).rejects.toThrow();
+ expect(fs.readFileSync(path.join(root,'Notes/secret.md'),'utf8')).toBe('private');
+});
+it('deletes a writable descendant file after confirmation but never an individually shared root',async()=>{
+ const single=share('Project/note.md','editor');await expect(service.previewRemoval('recipient',{id:single,path:''})).rejects.toThrow();
+ const id=share('Project','editor'),input={id,path:'note.md'},preview=await service.previewRemoval('recipient',input);
+ await service.removeConfirmed('recipient',{...input,confirm:true,revision:preview.revision});
+ await expect(read(single)).rejects.toThrow();
+});
+it('keeps original content and grants if detaching fails',async()=>{
+ const id=share('Project','editor'),nested=share('Project/note.md'),input={id,path:'note.md'};
+ const preview=await service.previewRemoval('recipient',input);
+ const stub=vi.spyOn(fs,'renameSync').mockImplementation(()=>{throw Object.assign(new Error('disk'),{code:'EIO'});});
+ try{await expect(service.removeConfirmed('recipient',{...input,confirm:true,revision:preview.revision})).rejects.toMatchObject({code:'EIO'});}finally{stub.mockRestore();}
+ expect(db.prepare('SELECT id FROM shared_resources WHERE id=?').get(nested)).toBeTruthy();
+ expect(fs.existsSync(path.join(root,'Notes/Project/note.md'))).toBe(true);
+});
+it('reports uncertain cleanup without restoring grants or exposing retired content',async()=>{
+ const id=share('Project','editor'),nested=share('Project/note.md'),input={id,path:'note.md'};
+ const preview=await service.previewRemoval('recipient',input);
+ const stub=vi.spyOn(fs,'rmSync').mockImplementation(()=>{throw new Error('disk');});
+ try{await expect(service.removeConfirmed('recipient',{...input,confirm:true,revision:preview.revision})).rejects.toMatchObject({code:'SHARE_DELETE_UNCERTAIN'});}finally{stub.mockRestore();}
+ expect(db.prepare('SELECT id FROM shared_resources WHERE id=?').get(nested)).toBeUndefined();
+ const retired=fs.readdirSync(path.join(root,'Notes/Project')).find(n=>n.startsWith('.ignis-delete-'));
+ expect(retired).toBeTruthy();await expect(read(id,retired)).rejects.toThrow();
+ fs.writeFileSync(path.join(root,'Notes/Project/note.md'),'replacement');await expect(read(nested)).rejects.toThrow();
+});
+
+it('lets owners trash shared originals and revokes grants without sharing the trash',async()=>{
+ const id=share('Project','editor'),nested=share('Project/note.md');fs.mkdirSync(path.join(root,'Notes/.trash'));
+ service.renameOriginal('owner',vault.id,'Project','.trash/Project');
+ expect(fs.readFileSync(path.join(root,'Notes/.trash/Project/note.md'),'utf8')).toBe('hello');
+ for(const grant of [id,nested])expect(db.prepare('SELECT id FROM shared_resources WHERE id=?').get(grant)).toBeUndefined();
+ service.renameOriginal('owner',vault.id,'.trash/Project','Restored');
+ expect(fs.existsSync(path.join(root,'Notes/Restored/note.md'))).toBe(true);
+ await expect(read(id)).rejects.toThrow();
+});
+it('trashes a shared descendant without revoking its parent and rejects outsiders and received moves to trash',async()=>{
+ const id=share('Project','editor'),nested=share('Project/note.md');fs.mkdirSync(path.join(root,'Notes/.trash'));
+ expect(()=>service.renameOriginal('recipient',vault.id,'Project/note.md','.trash/note.md')).toThrow();
+ expect(()=>service.renameOriginal('admin',vault.id,'Project/note.md','.trash/note.md')).toThrow();
+ await expect(service.rename('recipient',{id,path:'note.md',to:'.trash/note.md',etag:(await read(id,'note.md')).etag})).rejects.toThrow();
+ service.renameOriginal('owner',vault.id,'Project/note.md','.trash/note.md');
+ expect(db.prepare('SELECT id FROM shared_resources WHERE id=?').get(id)).toBeTruthy();
+ expect(db.prepare('SELECT id FROM shared_resources WHERE id=?').get(nested)).toBeUndefined();
+ expect((await read(id)).entries).toEqual([]);
+});

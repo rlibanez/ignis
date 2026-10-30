@@ -162,15 +162,39 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
         return exchange("read",target(path)).then(file=>write(path,join(file),undefined,file.etag));
       }
       if(method==="mkdir") {if(args[1]?.recursive && metadataCache.get(path)?.type==="directory")return;return sync?mutateSync("mkdir",path):mutate("mkdir",path);}
-      if(["unlink","rmdir","rm"].includes(method)){if(args[1]?.recursive)fail("ENOTSUP","Recursive removal of shared resources is not supported");return sync?mutateSync("remove",path):mutate("remove",path);}
+      if(["unlink","rmdir","rm"].includes(method)){if(args[1]?.recursive){if(sync)fail("ENOTSUP","Use the file explorer to confirm recursive deletion");return removeReceived(path);}return sync?mutateSync("remove",path):mutate("remove",path);}
       fail("ENOTSUP");
     };
     return sync?run():Promise.resolve().then(run);
   };methods.set(name,wrapped);return wrapped;}});}
   function resourceUrl(path){const selectedPath=selected(path);if(!selectedPath)return null;const destination=target(selectedPath);return "/api/shares/content?"+new URLSearchParams({id:destination.id,path:destination.path,context:scope.sessionId});}
+  async function removeReceived(path) {
+    const destination=target(path);
+    if(!destination.path || destination.role!=="editor")fail("EACCES","A received root cannot be deleted. Remove its destination in Shared instead. Read-only resources cannot be deleted.");
+    for(const [name,value] of states)if(under(name,path)&&(value.busy||value.blocked))fail("SHARE_CONFLICT","Save or download pending changes before deleting this resource.");
+    const input={id:destination.id,path:destination.path};
+    const preview=await exchange("previewRemoval",input);
+    if(!globalThis.confirm(`Permanently delete “${path}” and its contents (${preview.files} files, ${preview.folders} folders) for everyone? This deletes the original, bypasses the trash and cannot be undone.`))fail("ECANCELED","Deletion canceled");
+    context();
+    await exchange("removeConfirmed",{...input,confirm:true,revision:preview.revision});
+    for(const name of states.keys())if(under(name,path))states.delete(name);
+    await refresh();
+  }
   function installAdapter(app){
     const adapter=app?.vault?.adapter;
     if(!adapter?.getResourcePath)return;
+    // Obsidian's local trash renames into .trash outside the received grant.
+    // Do not relax that boundary: explicitly confirm permanent server deletion.
+    for(const method of ["trashLocal","trashSystem","remove","rmdir"]) {
+      if(typeof adapter[method]!=="function")continue;
+      const fallback=adapter[method].bind(adapter);
+      adapter[method]=async(path,...args)=>{
+        const sharedPath=selected(path);
+        if(!sharedPath)return fallback(path,...args);
+        const run=async()=>{await removeReceived(sharedPath);if(adapter.reconcileInternalFile)await adapter.reconcileInternalFile(path);return method==="trashSystem"?true:undefined;};
+        return adapter.queue?adapter.queue(run):run();
+      };
+    }
     const original=adapter.getResourcePath.bind(adapter);
     adapter.getResourcePath=(path,...args)=>resourceUrl(path) || original(path,...args);
     // Repair attachments rendered before the runtime bridge became available.

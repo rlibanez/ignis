@@ -12,6 +12,8 @@ function fixture(role='editor',initial={},mountPath='Project') {
   if(revoked)return {status:404,data:{}};
   if(operation==='destination'){localPath=input.localPath;return {status:200,data:{ok:true}};}
   if(operation==='rename'){if(input.path==='')localPath=input.to;else notePath=input.to;return {status:200,data:{ok:true}};}
+  if(operation==='previewRemoval')return {status:200,data:{revision:'snapshot',files:1,folders:0}};
+  if(operation==='removeConfirmed')return {status:200,data:{ok:true}};
   if(operation==='read')return {status:200,data:{kind:'file',content:btoa(content),etag}};
   if(operation==='write'){if(input.etag!==etag)return {status:409,data:{code:'SHARE_CONFLICT'}};content=atob(input.content);etag=contentHash(content);return {status:200,data:{etag}};}
  };
@@ -112,4 +114,35 @@ it('routes a move inside one received folder through the shared API and preserve
  expect(f.cache.has(f.file)).toBe(false);
  await f.fs.writeFile('Project/Sub/note.md','moved content');
  expect(f.ordinary.rename).not.toHaveBeenCalled();expect(f.ordinary.writeFile).not.toHaveBeenCalled();
+});
+
+function adapterFixture(f) {
+ const adapter={getResourcePath:vi.fn(),trashLocal:vi.fn(),trashSystem:vi.fn(),remove:vi.fn(),rmdir:vi.fn(),reconcileInternalFile:vi.fn(),queue:fn=>fn()};
+ vi.stubGlobal('document',{querySelectorAll:()=>[]});
+ f.shared.installAdapter({vault:{adapter}});return adapter;
+}
+it('routes Obsidian local trash to confirmed permanent deletion without moving outside the share',async()=>{
+ const f=fixture(),adapter=adapterFixture(f);vi.stubGlobal('confirm',vi.fn(()=>true));
+ try{await adapter.trashLocal(f.file);expect(globalThis.confirm).toHaveBeenCalledWith(expect.stringContaining('for everyone'));
+ expect(f.calls.find(c=>c.operation==='removeConfirmed').input).toEqual({id:'12345678-1234-1234-1234-123456789abc',path:'note.md',confirm:true,revision:'snapshot'});
+ expect(f.ordinary.rename).not.toHaveBeenCalled();expect(adapter.reconcileInternalFile).toHaveBeenCalledWith(f.file);
+ }finally{vi.unstubAllGlobals();}
+});
+it('does not delete or reconcile after cancellation',async()=>{
+ const f=fixture(),adapter=adapterFixture(f);vi.stubGlobal('confirm',()=>false);
+ try{await expect(adapter.trashSystem(f.file)).rejects.toMatchObject({code:'ECANCELED'});
+ expect(f.calls.some(c=>c.operation==='removeConfirmed')).toBe(false);expect(adapter.reconcileInternalFile).not.toHaveBeenCalled();
+ }finally{vi.unstubAllGlobals();}
+});
+it.each(['reader','editor'])('protects received roots from adapter deletion (%s)',async role=>{
+ const f=fixture(role),adapter=adapterFixture(f);vi.stubGlobal('confirm',vi.fn(()=>true));
+ try{await expect(adapter.rmdir(f.folder,true)).rejects.toMatchObject({code:'EACCES'});expect(globalThis.confirm).not.toHaveBeenCalled();
+ if(role==='reader')await expect(adapter.remove(f.file)).rejects.toMatchObject({code:'EACCES'});
+ }finally{vi.unstubAllGlobals();}
+});
+it('keeps ordinary trash behavior and refuses deletion after a context change during confirmation',async()=>{
+ const f=fixture(),adapter=adapterFixture(f);vi.stubGlobal('confirm',()=>{f.ctx.sessionId='changed';return true;});
+ try{await adapter.trashLocal('local.md');expect(f.calls.some(c=>c.operation==='previewRemoval')).toBe(false);
+ await expect(adapter.trashLocal(f.file)).rejects.toMatchObject({code:'AUTH_CONTEXT_CHANGED'});expect(f.calls.some(c=>c.operation==='removeConfirmed')).toBe(false);
+ }finally{vi.unstubAllGlobals();}
 });

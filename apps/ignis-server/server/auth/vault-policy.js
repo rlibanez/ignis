@@ -50,7 +50,8 @@ function vaultCapabilityAllowed({ status, instanceRole, membership, capability, 
   // Trust is granted to vault editors; this is not a plugin sandbox.
   const sharedConfiguration = typeof path === "string" &&
     (path === ".obsidian" || path.startsWith(".obsidian/") || path === ".OBSIDIANTEST");
-  if (!roles.has(membership) || (kind !== "content" && !sharedConfiguration)) return false;
+  const trash = path === ".trash" || (typeof path === "string" && path.startsWith(".trash/") && classifyVaultPath(path.slice(7)) === "content");
+  if (!roles.has(membership) || (kind !== "content" && !sharedConfiguration && !trash)) return false;
   return capability !== "content.write" || ["editor", "owner"].includes(membership);
 }
 

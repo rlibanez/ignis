@@ -1466,3 +1466,38 @@ it('deletes an account via HTTP, invalidates its existing session and prevents r
  expect((await request('/api/auth/session',{jar})).status).toBe(200);
  expect(db.prepare("SELECT * FROM users WHERE id='normal'").get()).toBeUndefined();
 });
+
+it('requires context, CSRF and an exact explicit confirmation for shared subtree deletion',async()=>{
+ const {registerVault}=require('./store'),adminId=db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
+ const vault=registerVault(db,root,'vault',adminId);fs.mkdirSync(path.join(root,'vault','Project','sub'),{recursive:true});fs.writeFileSync(path.join(root,'vault','Project','sub','note.md'),'shared');
+ const admin=await login('admin'),normal=await login('normal');
+ const headersFor=async jar=>({'x-ignis-context':(await (await request('/api/auth/session',{jar})).json()).sessionId,'x-ignis-csrf':(await (await request('/api/auth/csrf',{jar})).json()).csrfToken});
+ const ah=await headersFor(admin),nh=await headersFor(normal);
+ const created=await request('/api/shares',{jar:admin,method:'POST',headers:ah,body:{operation:'create',input:{vault:vault.id,path:'Project',login:'normal',role:'editor'}}});expect(created.status).toBe(200);const {id}=await created.json();
+ const preview=await request('/api/shares',{jar:normal,method:'POST',headers:nh,body:{operation:'previewRemoval',input:{id,path:'sub'}}});expect(preview.status).toBe(200);
+ const {revision}=await preview.json(),body={operation:'removeConfirmed',input:{id,path:'sub',revision,confirm:true}};
+ expect((await request('/api/shares',{method:'POST',body})).status).toBe(401);
+ expect((await request('/api/shares',{jar:normal,method:'POST',body})).status).toBe(403);
+ expect((await request('/api/shares',{jar:normal,method:'POST',headers:{...nh,'x-ignis-context':'wrong'},body})).status).toBe(409);
+ expect((await request('/api/shares',{jar:normal,method:'POST',headers:{...nh,origin:'https://evil.example'},body})).status).toBe(403);
+ expect((await request('/api/shares',{jar:normal,method:'POST',headers:nh,body:{...body,input:{...body.input,confirm:false}}})).status).toBe(400);
+ expect((await request('/api/shares',{jar:normal,method:'POST',headers:nh,body:{...body,input:{...body.input,extra:true}}})).status).toBe(400);
+ expect((await request('/api/shares',{jar:normal,method:'POST',headers:nh,body})).status).toBe(200);
+ expect(fs.existsSync(path.join(root,'vault','Project','sub'))).toBe(false);
+});
+
+it('lets a normal owner trash and restore private files and revoke shares when trashing shared folders',async()=>{
+ const {registerVault}=require('./store'),userId=db.prepare("SELECT id FROM users WHERE login='normal'").get().id;
+ const vault=registerVault(db,root,'vault',userId),jar=await login('normal');
+ const session=await (await request('/api/auth/session',{jar})).json(),csrf=(await (await request('/api/auth/csrf',{jar})).json()).csrfToken;
+ const headers={'x-ignis-context':session.sessionId,'x-ignis-csrf':csrf};
+ const post=(route,body)=>request(route+'?vault='+vault.id,{jar,method:'POST',headers,body});
+ fs.mkdirSync(path.join(root,'vault','.trash'));
+ expect((await post('/api/fs/rename',{oldPath:'note.md',newPath:'.trash/note.md'})).status).toBe(200);
+ expect((await post('/api/fs/rename',{oldPath:'.trash/note.md',newPath:'note.md'})).status).toBe(200);
+ fs.mkdirSync(path.join(root,'vault','Shared'));fs.writeFileSync(path.join(root,'vault','Shared','file.md'),'content');
+ const created=await request('/api/shares',{jar,method:'POST',headers,body:{operation:'create',input:{vault:vault.id,path:'Shared',login:'admin',role:'editor'}}});expect(created.status).toBe(200);const {id}=await created.json();
+ expect((await post('/api/fs/rename',{oldPath:'Shared',newPath:'.trash/Shared'})).status).toBe(200);
+ expect(db.prepare('SELECT id FROM shared_resources WHERE id=?').get(id)).toBeUndefined();
+ expect(fs.readFileSync(path.join(root,'vault','.trash','Shared','file.md'),'utf8')).toBe('content');
+});
