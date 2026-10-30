@@ -33,11 +33,13 @@ async function renameRegisteredVault(db, root, actor, reference, name, {
   const authorize = () => {
     if (!db.prepare("SELECT 1 FROM users WHERE id=? AND role='admin' AND status='active'").get(actor) ||
         typeof isCurrent !== "function" || !isCurrent(true)) fail("SESSION_CHANGED");
+    if (!db.prepare("SELECT 1 FROM memberships WHERE vault_id=? AND user_id=? AND role='owner'").get(vault.id, actor))
+      fail("VAULT_UNAVAILABLE");
   };
   let vault, identity;
   transaction(db, () => {
-    authorize();
     vault = resolveRegisteredVault(db, root, reference);
+    authorize();
     if (name === vault.directory) return;
     // Legacy aliases have independent watchers/plugin state. Until that catalog
     // is migrated, do not move their underlying directory behind those clients.

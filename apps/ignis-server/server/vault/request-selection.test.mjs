@@ -44,9 +44,10 @@ it("checks live access and rejects malformed or conflicting selections", () => {
   expect(() => selectRequestVault(req, config)).toThrow();
 });
 
-it("preserves administrator defaults and explicit selections", () => {
-  const req = { query: {}, vaultView: createVaultView({ administrator: true }) };
-  expect(selectRequestVault(req, config)).toBe("Foreign");
+it("requires authorized explicit selections for administrators too", () => {
+  const req = { query: {}, vaultView: createVaultView({ administrator: true, authorize: id => id === "Own" }) };
+  expect(selectRequestVault(req, config)).toBeNull();
+  expect(selectRequestVault(req, config, {allowDefault:true})).toBe("Own");
   req.query.vault = "Own";
   expect(selectRequestVault(req, config)).toBe("Own");
 });

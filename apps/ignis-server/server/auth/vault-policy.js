@@ -40,13 +40,16 @@ function vaultCapabilityAllowed({ status, instanceRole, membership, capability, 
   if (status !== "active" || !["admin", "user"].includes(instanceRole)) return false;
   const admin = instanceRole === "admin";
   if (instanceCapabilities.has(capability)) return admin;
-  if (ownerCapabilities.has(capability)) return admin || membership === "owner";
+  if (ownerCapabilities.has(capability)) return membership === "owner";
   if (!["content.read", "content.write", "content.list"].includes(capability)) return false;
   const kind = classifyVaultPath(path);
   if (["invalid", "reserved"].includes(kind)) return false;
-  if (kind === "root") return capability === "content.list" && (admin || roles.has(membership));
-  if (admin) return true;
-  if (!roles.has(membership) || kind !== "content") return false;
+  if (kind === "root") return capability === "content.list" && roles.has(membership);
+  // Shared Obsidian configuration includes community code and its settings.
+  // Trust is granted to vault editors; this is not a plugin sandbox.
+  const sharedConfiguration = typeof path === "string" &&
+    (path === ".obsidian" || path.startsWith(".obsidian/") || path === ".OBSIDIANTEST");
+  if (!roles.has(membership) || (kind !== "content" && !sharedConfiguration)) return false;
   return capability !== "content.write" || ["editor", "owner"].includes(membership);
 }
 

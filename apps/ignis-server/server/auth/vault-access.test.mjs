@@ -56,19 +56,21 @@ it("requires a live session and observes disablement and expiry", () => {
   clock += 1001;
   expect(access.check(admin, read(a.id))).toEqual({ allowed: false });
 });
-it("marks administrative bypass but cannot bypass invalid paths or unavailable vaults", () => {
-  expect(access.check(admin, read(b.id))).toMatchObject({ allowed: true, administrator: true, membership: null });
+it("requires admin membership and cannot bypass invalid paths or unavailable vaults", () => {
+  expect(access.check(admin, read(b.id))).toEqual({ allowed: false });
+  expect(access.check(admin, read(a.id))).toMatchObject({ allowed: true, administrator: true, membership: "owner" });
   for (const reference of ["missing", "Legacy"]) expect(access.check(admin, read(reference))).toEqual({ allowed: false });
   for (const target of ["../note.md", ".ignis-trash/note.md", ""])
     expect(access.check(admin, { ...read(a.id), path: target })).toEqual({ allowed: false });
   db.prepare("UPDATE vaults SET status='quarantine' WHERE id=?").run(a.id);
   expect(access.check(admin, read(a.id))).toEqual({ allowed: false });
 });
-it("does not give vault owners access to shared configuration or Sync", () => {
+it("allows shared plugins but does not grant server Sync administration", () => {
   db.prepare("UPDATE memberships SET role='owner' WHERE user_id='alice'").run();
   expect(access.check(alice, { reference: a.id, capability: "members.manage" }).allowed).toBe(true);
   expect(access.check(alice, { reference: a.id, capability: "sync.manage" })).toEqual({ allowed: false });
-  expect(access.check(alice, { ...read(a.id), path: ".obsidian/plugins/example/data.json" })).toEqual({ allowed: false });
+  expect(access.check(alice, { ...read(a.id), path: ".obsidian/plugins/example/data.json" }).allowed).toBe(true);
+  expect(access.check(alice, { ...read(b.id), path: ".obsidian/plugins/example/data.json" })).toEqual({ allowed: false });
 });
 it("keeps identity across rename and never transfers grants to a replacement", () => {
   fs.renameSync(path.join(vaultRoot, "A"), path.join(vaultRoot, "Renamed"));

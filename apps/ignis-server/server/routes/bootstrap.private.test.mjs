@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { gzipSync, gunzipSync, brotliCompressSync, brotliDecompressSync } from "node:zlib";
 const require = createRequire(import.meta.url);
 
-it("keeps private configuration out of shared bootstrap and compressed caches", async () => {
+it("projects shared configuration without leaking other vaults or server code through compressed caches", async () => {
   const config = require("../config");
   const cache = require("../cache");
   const savedConfig = { refreshVaults: config.refreshVaults, getVaultPathOrRescan: config.getVaultPathOrRescan, getVaultPath: config.getVaultPath };
@@ -35,14 +35,14 @@ it("keeps private configuration out of shared bootstrap and compressed caches", 
         });
         const res = {setHeader:(key,value)=>{headers[key]=value;},status:()=>res,json:value=>{result=value;},end:bytes=>{result=JSON.parse((encoding==="br"?brotliDecompressSync(bytes):gunzipSync(bytes)).toString());}};
         await handler(req,res);
-        expect(result.privateConfiguration).toEqual({owner:user});
+        expect(result.privateConfiguration).toBeUndefined();
         if (user === "admin") {
-          expect(result.vaultList).toHaveLength(2);
+          expect(result.vaultList).toHaveLength(1);
           expect(result.plugins).toEqual(["shared-plugin"]);
         } else {
           expect(result.vaultList).toEqual([{id:"Notes",uuid:"uuid"}]);
           expect(result.vault.path).toBe("/");
-          expect(result.configurationMode).toBe("private");
+          expect(result.configurationMode).toBe("shared");
           expect(JSON.stringify(result)).not.toMatch(/Other|shared-plugin|shared-code|shared-etag|\/vaults/);
         }
         expect(headers["Cache-Control"]).toBe("no-store");

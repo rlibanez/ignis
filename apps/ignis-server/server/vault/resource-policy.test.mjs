@@ -16,14 +16,14 @@ beforeEach(() => {
 afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
 it("filters metadata without mutating shared entries", () => {
   const tree = { "note.md": { type: "file" }, ".obsidian": { type: "directory" }, ".obsidian/app.json": { type: "file" }, "Folder": { type: "directory" } };
-  expect(Object.keys(filterTree(req, root, tree))).toEqual(["note.md", "Folder"]);
+  expect(Object.keys(filterTree(req, root, tree))).toEqual(["note.md", ".obsidian", ".obsidian/app.json", "Folder"]);
   expect(Object.keys(tree)).toHaveLength(4);
 });
 it("rejects a mixed subtree as a whole and checks the destination too", async () => {
   const source = path.join(root, "Folder");
   fs.mkdirSync(source); fs.writeFileSync(path.join(source, "note.md"), "keep");
   expect(await permitSubtree(req, root, source, "content.write", path.join(root, "Other"))).toBe(true);
-  expect(await permitSubtree(req, root, source, "content.write", path.join(root, ".obsidian"))).toBe(false);
+  expect(await permitSubtree(req, root, source, "content.write", path.join(root, ".git"))).toBe(false);
   fs.mkdirSync(path.join(source, ".obsidian"));
   expect(await permitSubtree(req, root, source, "content.write")).toBe(false);
   expect(fs.readFileSync(path.join(source, "note.md"), "utf8")).toBe("keep");

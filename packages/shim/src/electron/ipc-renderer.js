@@ -20,7 +20,8 @@ const syncHandlers = {
 
   policy: () => Object.fromEntries(
     ["plugins", "themes", "snippets", "sync", "publish", "webViewer", "devTools", "insider"]
-      .map(key => [key, window.__ignisAuth?.role === "admin"]),
+      .map(key => [key, window.__ignisAuth?.role === "admin" ||
+        (window.__ignisAuth?.role === "user" && ["plugins", "themes", "snippets"].includes(key))]),
   ),
 
   terms: () => {

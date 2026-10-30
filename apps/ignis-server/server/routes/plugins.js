@@ -10,7 +10,8 @@ const bootstrapCache = require("../cache");
 const router = express.Router();
 
 router.get("/", (req, res) => {
-  res.json(getDiscoveredPlugins());
+  res.json(getDiscoveredPlugins().map(plugin => req.canReadVault
+    ? { ...plugin, enabledVaults: plugin.enabledVaults.filter(req.canReadVault) } : plugin));
 });
 
 router.post("/:pluginId/enable", async (req, res) => {

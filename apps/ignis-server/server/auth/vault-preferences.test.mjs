@@ -146,3 +146,9 @@ it("persists projected workspace per user and rejects stale layout saves",()=>{
  expect(config.read(bob,target).content).toBe("{}");
  expect(()=>config.write(alice,{...target,content,expectedRevision:0})).toThrow(expect.objectContaining({code:"PREFERENCES_CONFLICT"}));
 });
+
+it("requires membership even for the administrator's private preferences",()=>{
+ db.prepare("DELETE FROM memberships WHERE user_id='admin'").run();
+ expect(()=>preferences.read(admin,target())).toThrow();
+ expect(()=>save(admin,"{}")).toThrow();
+});

@@ -40,7 +40,7 @@ function createVaultPreferencesService(db, vaultRoot, sessions) {
     const user = db.prepare("SELECT role,status,auth_version FROM users WHERE id=?").get(session.user.id);
     const member = db.prepare("SELECT role FROM memberships WHERE user_id=? AND vault_id=?").get(session.user.id, vault.id);
     if (!user || user.status !== "active" || user.auth_version !== session.user.authVersion ||
-        (user.role !== "admin" && !(user.role === "user" && ["reader", "editor", "owner"].includes(member?.role)))) fail("PREFERENCES_UNAVAILABLE");
+        (!["admin", "user"].includes(user.role) || !["reader", "editor", "owner"].includes(member?.role))) fail("PREFERENCES_UNAVAILABLE");
     return { userId: session.user.id, vaultId: vault.id };
   }
   function read(token, { reference, path } = {}) {

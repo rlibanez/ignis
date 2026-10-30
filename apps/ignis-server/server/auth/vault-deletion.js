@@ -64,11 +64,13 @@ async function deleteRegisteredVault(db, root, actor, id, {
   const authorize = () => {
     if (!db.prepare("SELECT 1 FROM users WHERE id=? AND role='admin' AND status='active'").get(actor) ||
         typeof isCurrent !== "function" || !isCurrent(true)) fail("SESSION_CHANGED");
+    if (!db.prepare("SELECT 1 FROM memberships WHERE vault_id=? AND user_id=? AND role='owner'").get(vault.id, actor))
+      fail("VAULT_UNAVAILABLE");
   };
   let vault, record;
   transaction(db, () => {
-    authorize();
     vault = resolveRegisteredVault(db, root, id);
+    authorize();
     if (id !== vault.id) fail("VAULT_ID_REQUIRED");
     if (typeof quiesce !== "function" || typeof invalidate !== "function") fail("VAULT_STATE_CHANGED");
     rejectLegacyAliases(root, vault);

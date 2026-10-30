@@ -141,17 +141,17 @@ function createAuthBoundary({
   function sameSocketVault(left, right) {
     return left.directory === right.directory && left.id === right.id;
   }
-  function ownsVault(token, directory) {
+  function canReadVault(token, directory) {
     if (!vaultAccess || !directory) return false;
     const decision = vaultAccess.check(token, { reference: directory, capability: "content.list", path: "" });
-    return decision.allowed && decision.membership === "owner";
+    return decision.allowed;
   }
   function checkSocket(ws) {
     const entry = socketEntries.get(ws);
     if (!entry) return false;
     try {
       const session = sessions.resolve(entry.token);
-      if (session && initialized() && (session.user.role === "admin" || ownsVault(entry.token, entry.vault?.id))) {
+      if (session && initialized()) {
         if (entry.vault) {
           try {
             if (!sameSocketVault(entry.vault, socketVault(entry.vault.id || entry.vault.directory)))
@@ -161,6 +161,7 @@ function createAuthBoundary({
             return false;
           }
         }
+        if (!canReadVault(entry.token, entry.vault?.id)) { ws.terminate(); return false; }
         return true;
       }
     } catch {
@@ -213,7 +214,7 @@ function createAuthBoundary({
           (!url.searchParams.has("context") || url.searchParams.get("context") === session.id))) return false;
       try {
         const vault = socketVault(url.searchParams.get("vault"));
-        if (session.user.role !== "admin" && !ownsVault(token, vault.id)) return false;
+        if (!canReadVault(token, vault.id)) return false;
         socketVaults.set(req, vault);
         return true;
       } catch { return false; }
@@ -226,7 +227,7 @@ function createAuthBoundary({
         return;
       }
       const vault = socketVaults.get(req);
-      if (!vault || (session.user.role !== "admin" && !ownsVault(token, vault.id)) || !sameSocketVault(vault, socketVault(vault.id || vault.directory))) {
+      if (!vault || (!canReadVault(token, vault.id)) || !sameSocketVault(vault, socketVault(vault.id || vault.directory))) {
         ws.close(4002, "Vault changed");
         return;
       }
@@ -242,9 +243,7 @@ function createAuthBoundary({
         }
         try {
           const permitted = (capability, path) => {
-            if (!vault.id) return require("./vault-policy").vaultCapabilityAllowed({
-              status: "active", instanceRole: "admin", capability, path,
-            });
+            if (!vault.id) return false;
             return vaultAccess.check(token, { reference: vault.id, capability, path }).allowed;
           };
           const projected = require("./vault-events").projectVaultEvent(message, {
@@ -820,6 +819,8 @@ function createAuthBoundary({
       ) {
         return safe(res, 403, "Request rejected");
       }
+      if (pathname === "/api/proxy" && session.user.role === "user" && !limits.publicRequest(req.ip))
+        return safe(res, 429, "Too many network requests");
       // Authorized resource requests extend inactivity; session/status polling and WS do not.
       req.auth = getSession(req, true);
       if (!req.auth) return safe(res, 401, "Authentication required");
@@ -843,14 +844,13 @@ function createAuthBoundary({
       }
       if (current.user.role !== "admin" && !vaultRoot) return safe(res, 403, "Vault access unavailable");
       if (vaultRoot) {
-        if (current.user.role !== "admin" && pathname?.startsWith("/vault-files/") &&
-            !ownsVault(cookies.read(req.headers.cookie), pathname.split("/")[2])) return safe(res, 404, "Vault unavailable");
+        if (pathname?.startsWith("/vault-files/") &&
+            !canReadVault(cookies.read(req.headers.cookie), pathname.split("/")[2])) return safe(res, 404, "Vault unavailable");
         if (pathname?.startsWith("/api/fs/") || pathname === "/api/bootstrap" ||
             ["/api/vault/info", "/api/vault/refresh"].includes(pathname)) {
           try {
             const directory = require("./vault-request").resolveVaultRequest(db, vaultRoot, req.query, req.body);
-            if (current.user.role !== "admin" &&
-                (directory !== null ? !ownsVault(cookies.read(req.headers.cookie), directory) : pathname !== "/api/vault/info"))
+            if ((directory !== null ? !canReadVault(cookies.read(req.headers.cookie), directory) : pathname !== "/api/vault/info"))
               return safe(res, 404, "Vault unavailable");
             if (directory !== null) {
               req.query.vault = directory;
@@ -861,11 +861,11 @@ function createAuthBoundary({
               error.code === "INVALID_VAULT_SELECTION" ? "Invalid or conflicting vault selection" : "Vault unavailable");
           }
         }
-        if (pathname === "/api/vault-config" && current.user.role !== "admin") {
+        if (pathname === "/api/vault-config") {
           let reference;
           try { reference = require("./vault-selection").selectVaultReference(req.query, req.body); }
           catch { return safe(res, 400, "Invalid vault selection"); }
-          if (!ownsVault(cookies.read(req.headers.cookie), reference)) return safe(res, 404, "Vault unavailable");
+          if (!canReadVault(cookies.read(req.headers.cookie), reference)) return safe(res, 404, "Vault unavailable");
         }
         const pluginToggle = /^\/api\/plugins\/[^/]+\/(enable|disable)$/.test(pathname);
         const syncVault = /^\/api\/ext\/headless-sync\/(setup|config|start|stop|unlink|logs)$/.test(pathname);
@@ -873,6 +873,9 @@ function createAuthBoundary({
           const field = syncVault ? "vaultId" : "vault";
           try {
             const directory = require("./vault-request").resolvePluginVaultRequest(db, vaultRoot, req.query, req.body, field);
+            const capability = syncVault && pathname.endsWith("/logs") ? "content.list" : "vault.refresh";
+            if (!vaultAccess.check(cookies.read(req.headers.cookie), { reference: directory, capability, path: "" }).allowed)
+              return safe(res, 404, "Vault unavailable");
             req.query[field] = directory;
             if (req.body) req.body[field] = directory;
           } catch (error) {
@@ -881,25 +884,27 @@ function createAuthBoundary({
               error.code === "INVALID_VAULT_SELECTION" ? "Invalid or conflicting vault selection" : "Vault unavailable");
           }
         }
+        if (pathname === "/api/vault/refresh" && !vaultAccess.check(cookies.read(req.headers.cookie), {
+          reference: req.query.vault || req.body?.vault, capability: "vault.refresh", path: "",
+        }).allowed) return safe(res, 404, "Vault unavailable");
         const fileChecks = new Map();
         req.authorizeVaultFile = (directory, capability, relativePath) => {
           const identity = db.prepare("SELECT id FROM vaults WHERE directory=?").get(directory);
-          // Legacy folders remain administrator-only; membership access will
-          // require registration when the outer boundary is opened in future.
-          if (!identity) return current.user.role === "admin";
+          // No content access before registration and explicit membership.
+          if (!identity) return false;
           const reference = identity.id;
           const check = () => {
             const decision = vaultAccess.check(cookies.read(req.headers.cookie), {
               reference, capability, path: relativePath,
             });
-            return decision.allowed && decision.sessionId === current.id && (current.user.role === "admin" || decision.membership === "owner");
+            return decision.allowed && decision.sessionId === current.id;
           };
           if (!check()) return false;
           if (!fileChecks.has(reference)) fileChecks.set(reference, new Map());
           fileChecks.get(reference).set(JSON.stringify([capability, relativePath]), { capability, path: relativePath });
           req.revalidateVaultFile = () => [...fileChecks].every(([id, operations]) => {
             const decision = vaultAccess.checkMany(cookies.read(req.headers.cookie), id, [...operations.values()]);
-            return decision.allowed && decision.sessionId === current.id && (current.user.role === "admin" || decision.membership === "owner");
+            return decision.allowed && decision.sessionId === current.id;
           });
           return true;
         };
@@ -907,12 +912,12 @@ function createAuthBoundary({
           const reference = require("./vault-selection").selectVaultReference(req.query, req.body);
           if (!reference) throw Object.assign(new Error("Configuration unavailable"), {code:"INVALID_VAULT_SELECTION"});
           const token = cookies.read(req.headers.cookie);
-          if (current.user.role !== "admin" && !ownsVault(token, reference)) throw new Error("Configuration unavailable");
+          if (!canReadVault(token, reference)) throw new Error("Configuration unavailable");
           const result = vaultConfig[operation](token, { reference, path: input.path,
             content: input.content, expectedRevision: input.expectedRevision });
           // Preserve a response-time authorization check as well as the service check.
           req.revalidateVaultFile = () => {
-            try { vaultConfig.read(token, { reference, path: input.path }); return current.user.role === "admin" || ownsVault(token, reference); }
+            try { vaultConfig.read(token, { reference, path: input.path }); return canReadVault(token, reference); }
             catch { return false; }
           };
           return result;
@@ -930,6 +935,7 @@ function createAuthBoundary({
           authorize: directory => req.authorizeVaultFile(directory, "content.list", ""),
           uuid: directory => req.vaultUUID(directory),
         });
+        req.canReadVault = directory => req.authorizeVaultFile(directory, "content.list", "");
         req.vaultOwners = () => db.prepare("SELECT id,login FROM users WHERE status='active' ORDER BY login,id").all();
         req.vaultRegistrationOptions = () => require("./vault-registration").registrationOptions(db, vaultRoot);
         req.registerExistingVault = (directory, ownerId, expectedIdentity) => require("./vault-registration").registerExistingVault(db, vaultRoot, directory, ownerId, {

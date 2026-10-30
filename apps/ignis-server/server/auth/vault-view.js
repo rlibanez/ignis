@@ -2,8 +2,7 @@ const { createHash } = require("node:crypto");
 
 // Callbacks are server-owned and consult the current session and policy.
 function createVaultView({ administrator, authorize, uuid }) {
-  function select(reference, { defaultVault, candidates = [], allowDefault = false } = {}) {
-    if (administrator) return reference ?? defaultVault ?? null;
+  function select(reference, { candidates = [], allowDefault = false } = {}) {
     // A stale or forbidden explicit selection must never open another vault.
     if (reference !== null && reference !== undefined) {
       return authorize(reference) ? reference : null;
@@ -15,7 +14,6 @@ function createVaultView({ administrator, authorize, uuid }) {
   }
 
   function list(items) {
-    if (administrator) return items;
     return items.filter(item => authorize(item.id)).map(item => ({
       id: item.id,
       name: item.name,
@@ -24,7 +22,6 @@ function createVaultView({ administrator, authorize, uuid }) {
   }
 
   function info(item) {
-    if (administrator) return item;
     if (!authorize(item.id)) {
       throw Object.assign(new Error("Vault unavailable"), { code: "VAULT_UNAVAILABLE" });
     }
@@ -35,13 +32,17 @@ function createVaultView({ administrator, authorize, uuid }) {
       path: "/",
       platform: item.platform,
       version: item.version,
-      trustPlugins: false,
+      trustPlugins: true,
     };
   }
 
   function bootstrap(response) {
-    if (administrator) return response;
     const vault = info(response.vault);
+    if (administrator) return {
+      ...response, vault, vaultList: list(response.vaultList),
+      plugins: (response.plugins || []).map(plugin => typeof plugin === "object" && Array.isArray(plugin.enabledVaults)
+        ? { ...plugin, enabledVaults: plugin.enabledVaults.filter(authorize) } : plugin),
+    };
     // The route has already filtered this tree using the resource policy.
     const tree = response.tree;
     // New upstream properties must not become visible by default.
@@ -50,8 +51,7 @@ function createVaultView({ administrator, authorize, uuid }) {
       vaultList: list(response.vaultList),
       tree,
       etag: '"' + createHash("sha256").update(JSON.stringify(tree)).digest("hex") + '"',
-      configurationMode: "private",
-      privateConfiguration: response.privateConfiguration,
+      configurationMode: "shared",
       plugins: [],
       virtualPlugins: [],
       settings: {

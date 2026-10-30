@@ -144,6 +144,9 @@ async function csrf(jar) {
   return (await response.json()).csrfToken;
 }
 async function login(user = "admin", password = PASSWORD) {
+  // Tests using the default admin exercise an explicitly owned fixture vault.
+  if (user === "admin" && !db.prepare("SELECT 1 FROM vaults WHERE directory='vault'").get())
+    require("./store").registerVault(db, root, "vault", db.prepare("SELECT id FROM users WHERE login='admin'").get().id);
   const jar = {};
   const token = await csrf(jar);
   const result = await request("/api/auth/login", {
@@ -270,7 +273,7 @@ describe("HTTP boundary", () => {
     const mutation = {
       jar,
       method: "POST",
-      body: {},
+      body: {vault:"vault"},
       headers: { "x-ignis-csrf": token },
     };
     expect((await request("/api/fs/writeFile", mutation)).status).toBe(200);
@@ -729,6 +732,7 @@ describe("account status administration", () => {
     db.prepare("INSERT INTO users(id,login,role,created_at) VALUES ('second','second','admin',1)").run();
     db.prepare("INSERT INTO local_credentials VALUES ('second',?,1)").run(hash);
     const second = await login("second");
+    db.prepare("INSERT INTO memberships SELECT id, 'second', 'reader' FROM vaults WHERE directory='vault'").run();
     const ws = connect(second);
     await once(ws, "open");
     const closed = once(ws, "close");
@@ -1036,6 +1040,7 @@ it("requires confirmed, recent and context-bound administrator requests to chang
   expect((await request("/api/auth/session", { jar: normal })).status).toBe(401);
   const promoted = await login("normal");
   expect((await request("/api/auth/users", { jar: promoted })).status).toBe(200);
+  db.prepare("INSERT INTO memberships SELECT id, 'normal', 'reader' FROM vaults WHERE directory='vault'").run();
   const socket = connect(promoted); await once(socket, "open");
   const closed = once(socket, "close");
   const demotion = { ...body, role: "user", expectedRole: "admin", confirmAdmin: false };
@@ -1053,7 +1058,7 @@ it("rejects duplicate, malformed and conflicting vault selectors after parsing a
   expect((await request("/api/fs/writeFile?vault=first", { jar, method: "POST", body: { vault: "second", path: "note.md", data: "test" },
     headers: { "x-ignis-csrf": await csrf(jar) } })).status).toBe(400);
   expect((await request("/api/fs/writeFile?vault=first", { jar, method: "POST", body: { vault: "first", path: "note.md", data: "test" },
-    headers: { "x-ignis-csrf": await csrf(jar) } })).status).toBe(200);
+    headers: { "x-ignis-csrf": await csrf(jar) } })).status).toBe(404);
   const normal = await login("normal");
   expect((await request("/api/fs/readFile?vault=first", { jar: normal })).status).toBe(404);
 });
@@ -1221,15 +1226,35 @@ it("allows an owner socket and file reads, then stops both after membership revo
   expect((await request(`/api/fs/readFile?vault=${vault.id}&path=note.md`, { jar })).status).toBe(404);
 });
 
-it("does not open the owner runtime for reader or editor memberships", async () => {
+it("allows reader and editor sessions to read their vault and subscribe to events", async () => {
   const owner = db.prepare("SELECT id FROM users WHERE login='normal'").get().id;
   const vault = require("./store").registerVault(db, root, "vault", owner);
   const jar = await login("normal");
   for (const role of ["reader", "editor"]) {
     db.prepare("UPDATE memberships SET role=? WHERE vault_id=? AND user_id=?").run(role, vault.id, owner);
-    expect((await request(`/api/fs/readFile?vault=${vault.id}&path=note.md`, { jar })).status).toBe(404);
-    expect((await request(`/api/vault-config?vault=${vault.id}&path=.obsidian/app.json`, { jar })).status).toBe(404);
+    expect((await request(`/api/fs/readFile?vault=${vault.id}&path=note.md`, { jar })).status).toBe(200);
+    expect((await request(`/api/vault-config?vault=${vault.id}&path=.obsidian/app.json`, { jar })).status).toBe(200);
     const ws = connect(jar, ORIGIN, vault.id);
-    await new Promise(resolve => { ws.once("error", resolve); });
+    await once(ws, "open");
+    ws.close();
+    await once(ws, "close");
   }
+});
+
+it("requires admin membership on sockets and immediately observes its revocation",async()=>{
+ const owner="normal";
+ const vault=require("./store").registerVault(db,root,"vault",owner);
+ const jar=await login();
+ expect(await rejectedSocket(jar,ORIGIN)).toBe(401);
+ expect((await request(`/api/fs/readFile?vault=${vault.id}&path=note.md`,{jar})).status).toBe(404);
+ const admin=db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
+ db.prepare("INSERT INTO memberships VALUES (?,?,'reader')").run(vault.id,admin);
+ const ws=connect(jar,ORIGIN,vault.id); await once(ws,"open");
+ expect((await request(`/api/fs/readFile?vault=${vault.id}&path=note.md`,{jar})).status).toBe(200);
+ const closed=once(ws,"close");
+ db.prepare("DELETE FROM memberships WHERE user_id=? AND vault_id=?").run(admin,vault.id);
+ wss.broadcastToVault("vault",{type:"modified",path:"no-access.md"});
+ await closed;
+ expect((await request(`/api/fs/readFile?vault=${vault.id}&path=note.md`,{jar})).status).toBe(404);
+ expect((await request("/api/auth/users",{jar})).status).toBe(200);
 });

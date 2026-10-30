@@ -6,7 +6,7 @@ const other={...vault,id:"Other",name:"Other"};
 it("filters catalog and strips physical paths and unknown metadata for normal accounts",()=>{
  const view=createVaultView({administrator:false,authorize:id=>id==="Own",uuid:()=>"own-id"});
  expect(view.list([vault,other])).toEqual([{id:"Own",name:"Own",uuid:"own-id"}]);
- expect(view.info(vault)).toEqual({id:"Own",name:"Own",uuid:"own-id",path:"/",platform:"linux",version:"1.14.4",trustPlugins:false});
+ expect(view.info(vault)).toEqual({id:"Own",name:"Own",uuid:"own-id",path:"/",platform:"linux",version:"1.14.4",trustPlugins:true});
  expect(()=>view.info(other)).toThrow();
 });
 it("does not include shared plugins, server settings, unknown properties or shared etags",()=>{
@@ -20,11 +20,20 @@ it("does not include shared plugins, server settings, unknown properties or shar
  expect(view.bootstrap({...response,etag:"new-global"}).etag).toBe(output.etag);
  expect(response.vault.path).toBe("/vaults/Own");
 });
-it("rechecks permission on every projection and preserves administrator behavior",()=>{
+it("rechecks permission on every projection and checks administrators too",()=>{
  let allowed=true;
  const view=createVaultView({administrator:false,authorize:()=>allowed,uuid:()=>"own-id"});
  expect(view.list([vault])).toHaveLength(1);allowed=false;
  expect(view.list([vault])).toEqual([]);expect(()=>view.bootstrap({vault})).toThrow();
- const admin=createVaultView({administrator:true});const response={vault};
- expect(admin.bootstrap(response)).toBe(response);expect(admin.info(vault)).toBe(vault);
+ const admin=createVaultView({administrator:true,authorize:id=>id==="Own" && allowed,uuid:()=>"own-id"});
+ expect(admin.list([vault,other])).toEqual([]); expect(()=>admin.info(vault)).toThrow();
+ allowed=true; const response={vault,vaultList:[vault,other]};
+ expect(admin.bootstrap(response).vaultList).toEqual([{id:"Own",name:"Own",uuid:"own-id"}]);
+ expect(()=>admin.info(other)).toThrow();
+});
+
+it("filters foreign vault references in server-plugin metadata for administrators",()=>{
+ const view=createVaultView({administrator:true,authorize:id=>id==="Own",uuid:()=>"own-id"});
+ const result=view.bootstrap({vault,vaultList:[vault,other],plugins:[{id:"sync",enabledVaults:["Own","Other"]}]});
+ expect(result.plugins[0].enabledVaults).toEqual(["Own"]);
 });

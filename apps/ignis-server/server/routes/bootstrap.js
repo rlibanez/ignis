@@ -28,11 +28,9 @@ router.get("/", async (req, res) => {
     const tree = require("../vault/resource-policy").filterTree(req, config.getVaultPath(vaultId), entry.response.tree);
     // Never put a caller-specific projection back into the shared cache.
     entry = { ...entry, response: { ...entry.response, tree }, compressed: {} };
-    // Administrators retain shared configuration; owners use private configuration.
-    // It must stay outside the shared entry and its compressed variants.
-    const privateConfiguration = req.privateVaultConfiguration?.(vaultId);
-    if (privateConfiguration) entry.response.privateConfiguration = privateConfiguration;
-    entry.response.configurationMode = req.auth?.user.role === "user" ? "private" : "shared";
+    // Trusted community plugins use the vault's shared Obsidian configuration.
+    // The resource policy still enforces membership and read/write permissions.
+    entry.response.configurationMode = "shared";
     entry.response.vault = { ...entry.response.vault, uuid: req.vaultUUID?.(vaultId) };
     entry.response.vaultList = entry.response.vaultList.map(vault => ({ ...vault, uuid: req.vaultUUID?.(vault.id) }));
 

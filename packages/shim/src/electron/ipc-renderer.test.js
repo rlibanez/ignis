@@ -85,3 +85,15 @@ it("does not start Obsidian with a shared default browser identity", () => {
   window.__ignisAuth = { blocked: true };
   expect(() => ipcRenderer.sendSync("vault")).toThrow("Authenticated vault identity required");
 });
+
+describe("trusted community plugin policy",()=>{
+ it.each(["admin","user"])("allows community plugins for %s without granting server integrations",role=>{
+  window.__ignisAuth={role};
+  const policy=ipcRenderer.sendSync("policy");
+  expect(policy.plugins).toBe(true);expect(policy.themes).toBe(true);expect(policy.snippets).toBe(true);
+  expect(policy.sync).toBe(role==="admin");expect(policy.publish).toBe(role==="admin");
+ });
+ it("does not enable plugins without an authenticated role",()=>{
+  expect(ipcRenderer.sendSync("policy").plugins).toBe(false);
+ });
+});

@@ -20,6 +20,7 @@ const express = require("express");
 
 const realLookup = dns.promises.lookup;
 
+let role;
 let server;
 let base;
 let upstream;
@@ -28,6 +29,7 @@ let upstreamBase;
 beforeAll(async () => {
   const app = express();
   app.use(express.json());
+  app.use((req,res,next)=>{ req.auth = role ? {user:{role}} : undefined; next(); });
   app.use("/api/proxy", proxyRouter);
 
   await new Promise((resolve) => {
@@ -63,6 +65,7 @@ afterAll(() => {
 });
 
 beforeEach(() => {
+  role = undefined;
   dns.promises.lookup = realLookup;
   settings.update({ proxyMode: "any", proxyAllowlist: [] });
 });
@@ -154,4 +157,10 @@ describe("proxy guard responses", () => {
     expect(res.status).toBe(400);
     expect(body.code).toBeUndefined();
   });
+});
+
+it("does not give normal accounts the administrator's private proxy exceptions",async()=>{
+ role="user";
+ const response=await proxy("https://127.0.0.1/anything");
+ expect(response.status).toBe(403);
 });

@@ -155,3 +155,18 @@ it.each(["reserved", "moved", "retired", "removed"])("recovers after a real proc
     expect(fs.existsSync(trashPath())).toBe(false);
   }
 });
+
+it.each(["reader","editor",null])("does not let an admin with %s membership mutate vault lifecycle",async role=>{
+ if(role) db.prepare("UPDATE memberships SET role=? WHERE user_id='admin'").run(role);
+ else db.prepare("DELETE FROM memberships WHERE user_id='admin'").run();
+ await expect(remove()).rejects.toMatchObject({code:"VAULT_UNAVAILABLE"});
+ expect(fs.readFileSync(path.join(vault.path,"keep.md"),"utf8")).toBe("valuable");
+ expect(db.prepare("SELECT status FROM vaults WHERE id=?").get(vault.id).status).toBe("active");
+});
+
+it("rechecks admin ownership after asynchronous shutdown",async()=>{
+ await expect(remove( {quiesce:async()=>{db.prepare("DELETE FROM memberships WHERE user_id='admin'").run();}}))
+  .rejects.toMatchObject({code:"VAULT_UNAVAILABLE"});
+ expect(fs.readFileSync(path.join(vault.path,"keep.md"),"utf8")).toBe("valuable");
+ expect(db.prepare("SELECT status FROM vaults WHERE id=?").get(vault.id).status).toBe("quarantine");
+});
