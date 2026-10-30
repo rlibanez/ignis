@@ -17,6 +17,7 @@ const setupAssets = new Map(
     ["/auth/users.css", ["text/css", "users.css"]],
     ["/auth/password-visibility.js", ["text/javascript", "password-visibility.js"]],
     ["/auth/login.js", ["text/javascript", "login.js"]],
+    ["/auth/oidc-start.js", ["text/javascript", "oidc-start.js"]],
     ["/auth/account.css", ["text/css", "account.css"]],
     ["/auth/client.js", ["text/javascript", "client.js"]],
     ["/auth/setup.js", ["text/javascript", "setup.js"]],

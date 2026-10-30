@@ -26,35 +26,46 @@
   }
   const rateLimitMessage = "Too many requests or sign-in attempts. Access is temporarily limited. Wait before trying again and avoid repeatedly reloading the page.";
   async function beginOidc(link) {
+    if (oidcButton.disabled || linkButton.disabled) return;
     oidcButton.disabled = linkButton.disabled = true;
+    status.classList.remove("auth-error");
+    status.textContent = "Preparing secure sign-in…";
     try {
       channel?.postMessage("lock");
-      await clearBrowserData();
-      const response = await request(
-        link ? "/api/auth/oidc/link" : "/api/auth/oidc/start",
-        {},
-      );
+      const response = await window.ignisOidcStart({
+        clear: clearBrowserData,
+        request: signal => {
+          status.textContent = `Connecting to ${providerName}…`;
+          return request(link ? "/api/auth/oidc/link" : "/api/auth/oidc/start", {}, signal);
+        },
+      });
       if (response.status === 429) {
+        status.classList.add("auth-error");
         status.textContent = rateLimitMessage;
         oidcButton.disabled = linkButton.disabled = false;
         return;
       }
       if (response.status === 403 &&
-          (await response.clone().json()).code === "REAUTH_REQUIRED") {
+          response.body.code === "REAUTH_REQUIRED") {
         oidcButton.disabled = linkButton.disabled = false;
+        status.textContent = "Confirm your identity before linking your account.";
         reauthDialog.showModal();
         return;
       }
       if (!response.ok) throw new Error();
       if (!link && intent) sessionStorage.setItem("ignis-reauth-return", intent);
-      const url = new URL((await response.json()).authorizationUrl);
+      const url = new URL(response.body.authorizationUrl);
       if (url.protocol !== "https:" || url.username || url.password)
         throw new Error();
       location.assign(url.href);
-    } catch {
-      status.textContent = link
-        ? "Unable to link. Sign in again and retry."
-        : `Unable to start ${providerName} sign-in. Please try again later.`;
+    } catch (error) {
+      status.classList.add("auth-error");
+      status.textContent = error.stage === "storage"
+        ? "Browser data cleanup did not complete. Close other Ignis tabs, reload this page and try again. No sign-in request was sent."
+        : error.code === "OIDC_START_TIMEOUT"
+          ? `The sign-in request timed out. Ignis or ${providerName} did not respond in time. Please try again later.`
+          : `Unable to start ${providerName} sign-in. Please try again later.`;
+    } finally {
       oidcButton.disabled = linkButton.disabled = false;
     }
   }
@@ -64,30 +75,37 @@
     typeof BroadcastChannel === "function"
       ? new BroadcastChannel("ignis-auth")
       : null;
-  async function request(path, body) {
+  async function request(path, body, signal) {
     const csrf = await fetch("/api/auth/csrf", {
+      signal,
       cache: "no-store",
       credentials: "same-origin",
     });
     if (csrf.status === 429) return csrf;
     if (!csrf.ok) throw new Error();
+    const csrfToken = (await csrf.json()).csrfToken;
+    signal?.throwIfAborted();
     return fetch(path, {
+      signal,
       method: "POST",
       credentials: "same-origin",
       headers: {
         "Content-Type": "application/json",
-        "X-Ignis-Csrf": (await csrf.json()).csrfToken,
+        "X-Ignis-Csrf": csrfToken,
       },
       body: JSON.stringify(body),
     });
   }
-  async function clearBrowserData() {
+  async function clearBrowserData(signal) {
+    signal?.throwIfAborted();
     localStorage.clear();
     sessionStorage.clear();
     if (window.caches)
-      await Promise.all((await caches.keys()).map((key) => caches.delete(key)));
+      await Promise.all((await caches.keys()).map((key) => { signal?.throwIfAborted(); return caches.delete(key); }));
+    signal?.throwIfAborted();
     if (window.indexedDB?.databases)
       for (const { name } of await indexedDB.databases()) {
+        signal?.throwIfAborted();
         await new Promise((resolve, reject) => {
           const request = indexedDB.deleteDatabase(name);
           request.onsuccess = resolve;

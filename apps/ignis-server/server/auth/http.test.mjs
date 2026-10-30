@@ -588,7 +588,7 @@ it("rejects requests and sockets carrying a previous browser session context", a
   expect(boundary.wsSecurity.verify(req)).toBe(true);
 });
 it("serves login assets without exposing the app to unauthenticated clients", async () => {
-  for (const route of ["/login", "/auth/login.js", "/auth/client.js"]) {
+  for (const route of ["/login", "/auth/login.js", "/auth/oidc-start.js", "/auth/client.js"]) {
     const response = await request(route);
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");

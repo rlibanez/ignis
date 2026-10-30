@@ -84,3 +84,5 @@
 body:not(.account-page) .login-actions { display: grid; gap: .6rem; margin-top: .6rem; }
 body:not(.account-page) .login-actions > * { margin: 0; }
 .login-actions:not(:has(> :not([hidden]))) { display: none; }
+
+#status.auth-error { padding:.75rem; border:1px solid light-dark(#c75169,#a45c6d); border-radius:.5rem; background:light-dark(#fff0f2,#3c252d); color:light-dark(#932238,#ffbdc9); }
