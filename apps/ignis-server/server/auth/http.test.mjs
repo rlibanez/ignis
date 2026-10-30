@@ -54,6 +54,7 @@ beforeEach(async () => {
   app.get("/api/bootstrap", (req, res) => res.json({ privateConfiguration: req.privateVaultConfiguration(req.query.vault) }));
   app.get("/api/vault/list", (req, res) => res.json(["private vault"]));
   app.use("/api/vault", require("../routes/vault"));
+  app.post("/api/fs/rename", (req,res) => res.json(req.renameVaultResource("vault",req.body.oldPath,req.body.newPath)));
   app.post("/api/fs/writeFile", (req, res) => res.json({ ok: true }));
   app.get("/api/fs/readFile", (req, res) => {
     if (!req.authorizeVaultFile("vault", "content.read", "note.md")) return res.sendStatus(404);
@@ -1363,8 +1364,35 @@ it("enforces session context, CSRF and owner authority on resource sharing witho
  const nh={"x-ignis-context":normalSession.sessionId,"x-ignis-csrf":csrfNormal};
  const read=await request("/api/shares",{jar:normal,method:"POST",headers:nh,body:{operation:"read",input:{id,path:""}}});expect(read.status).toBe(200);
  expect(Buffer.from((await read.json()).content,"base64").toString()).toBe("private note");
+ const contentUrl=`/api/shares/content?id=${id}&path=&context=${normalSession.sessionId}`;
+ expect((await request(contentUrl)).status).toBe(401);
+ expect((await request(contentUrl.replace(normalSession.sessionId,'other'),{jar:normal})).status).toBe(403);
+ const attachment=await request(contentUrl,{jar:normal});expect(attachment.status).toBe(200);expect(await attachment.text()).toBe('private note');expect(attachment.headers.get('content-disposition')).toBe('attachment');expect(attachment.headers.get('content-security-policy')).toContain('sandbox');
+ expect((await request(contentUrl+'&extra=true',{jar:normal})).status).toBe(400);
+ fs.mkdirSync(path.join(root,'Inbox'));const inbox=registerVault(db,root,'Inbox',db.prepare("SELECT id FROM users WHERE login='normal'").get().id);
+ const placement={operation:'destination',input:{id,vault:inbox.id,localPath:'note.md'}};
+ const renameAttempt={operation:'rename',input:{id,path:'note.md',to:'Renamed.md',etag:'bad'}};
+ expect((await request('/api/shares',{jar:normal,method:'POST',body:renameAttempt})).status).toBe(403);
+ expect((await request('/api/shares',{jar:normal,method:'POST',headers:nh,body:renameAttempt})).status).toBe(404);
+ expect((await request('/api/shares',{jar:normal,method:'POST',headers:nh,body:{...renameAttempt,input:{...renameAttempt.input,userId:adminId}}})).status).toBe(400);
+
+ expect((await request('/api/shares',{jar:normal,method:'POST',body:placement})).status).toBe(403);
+ expect((await request('/api/shares',{jar:admin,method:'POST',headers,body:placement})).status).toBe(404);
+ expect((await request('/api/shares',{jar:normal,method:'POST',headers:nh,body:{...placement,input:{...placement.input,userId:adminId}}})).status).toBe(400);
+ expect((await request('/api/shares',{jar:normal,method:'POST',headers:nh,body:placement})).status).toBe(200);
+ const mounts=await request('/api/shares',{jar:normal,method:'POST',headers:nh,body:{operation:'mounts',input:{vault:inbox.id}}});expect(mounts.status).toBe(200);expect((await mounts.json()).mounts[0].id).toBe(id);
+
  expect((await request("/api/shares",{jar:normal,method:"POST",headers:nh,body:{operation:"revoke",input:{action:"revoke",id,revision:1}}})).status).toBe(404);
  expect((await request("/api/fs/readFile?vault="+vault.id+"&path=note.md",{jar:normal})).status).toBe(404);
  expect((await request("/api/shares",{jar:normal,method:"POST",headers:nh,body:{operation:"read",input:{id,path:"",extra:true}}})).status).toBe(400);
  expect((await request("/api/shares",{jar:normal,method:"POST",headers:{...nh,"x-ignis-context":"other"},body:{operation:"read",input:{id,path:""}}})).status).toBe(409);
+ const originalRename=await request('/api/fs/rename?vault='+vault.id,{jar:admin,method:'POST',headers,body:{oldPath:'note.md',newPath:'Renamed.md'}});
+ expect(originalRename.status).toBe(200);
+ expect(db.prepare('SELECT path FROM shared_resources WHERE id=?').get(id).path).toBe('Renamed.md');
+ expect((await request(contentUrl,{jar:normal})).status).toBe(200);
+ const afterRename=await request('/api/shares',{jar:normal,method:'POST',headers:nh,body:{operation:'mounts',input:{vault:inbox.id}}});
+ expect((await afterRename.json()).mounts[0].localPath).toBe('note.md');
+ expect((await request('/api/shares',{jar:admin,method:'POST',headers,body:{operation:'revoke',input:{action:'revoke',id,revision:2}}})).status).toBe(200);
+ expect((await request(contentUrl,{jar:normal})).status).toBe(404);
+
 });

@@ -363,7 +363,11 @@ router.post("/rename", async (req, res) => {
       return res.status(404).json({ error: "Resource unavailable" });
     await flushPendingSubtree(oldResolved);
     // Drop the destination's buffer so a stale write cannot land on the renamed file.
-    await supersedePending(newResolved, () =>
+    if(req.renameVaultResource) {
+      await flushPendingSubtree(newResolved);
+      await supersedePendingSubtree(oldResolved,()=>supersedePendingSubtree(newResolved,()=>
+        checkedMutation(req,()=>req.renameVaultResource(req._vaultId,toRelative(vaultRoot,oldResolved),toRelative(vaultRoot,newResolved)))));
+    } else await supersedePending(newResolved, () =>
       checkedMutation(req, () => fs.promises.rename(oldResolved, newResolved)),
     );
 

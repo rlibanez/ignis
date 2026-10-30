@@ -1,3 +1,5 @@
+import { createSharedFiles } from "./shared-files.js";
+import { createSharedNotice } from "./shared-notice.js";
 import { createPrivateConflictNotice } from "./private-conflict-notice.js";
 import { createPrivateRuntime } from "./private-runtime.js";
 import { MetadataCache } from "./metadata-cache.js";
@@ -28,15 +30,24 @@ const privateRuntime = createPrivateRuntime(privateContext, undefined, event => 
   privateNotice ||= createPrivateConflictNotice(privateContext);
   privateNotice(event);
 });
-const privateFiles = privateRuntime.gateway;
+const privateGateway = privateRuntime.gateway;
 const metadataCache = new MetadataCache();
 const contentCache = new ContentCache();
 
 contentCache.retainWhile(hasUnconfirmedWrite);
 
-const fsPromises = createFsPromises(metadataCache, contentCache, transport, privateFiles);
-const fsSync = createFsSync(metadataCache, contentCache, transport, privateFiles);
 const fsWatch = createFsWatch(transport);
+let sharedNotice;
+const notice=()=>sharedNotice ||= createSharedNotice(privateContext);
+const sharedFiles=createSharedFiles({metadataCache,watch:fsWatch,currentContext:privateContext,onFailure:event=>notice().failure(event),onNotice:message=>notice().show(message),onRemoved:path=>notice().removed(path)});
+if(typeof window !== "undefined")window.addEventListener?.("ignis:auth-lost",()=>sharedFiles.stop());
+const privateFiles=new Proxy(privateGateway,{get(target,name){
+  if(name==="allowsSharedPrefetch")return path=>!sharedFiles.owns(path) && target.allowsSharedPrefetch(path);
+  if(name==="assertOrdinary")return (path,resolved)=>{sharedFiles.assertOrdinary(path,resolved);return target.assertOrdinary(path,resolved);};
+  return target[name];
+}});
+const fsPromises = sharedFiles.wrap(createFsPromises(metadataCache, contentCache, transport, privateFiles));
+const fsSync = sharedFiles.wrap(createFsSync(metadataCache, contentCache, transport, privateFiles),true);
 const watcherClient = createWatcherClient(
   metadataCache,
   contentCache,
@@ -92,7 +103,8 @@ export const fsShim = {
     contentCache.invalidate(resolvePath(path));
   },
 
-  _configurePrivateFiles: privateRuntime.configure,
+  _configurePrivateFiles: bootstrap => sharedFiles.configure(privateRuntime.configure(bootstrap)),
+  _sharedFiles: sharedFiles,
   _privateFiles: privateFiles,
   _metadataCache: metadataCache,
   _contentCache: contentCache,

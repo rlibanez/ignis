@@ -259,4 +259,20 @@ module.exports = [
       ) STRICT;
     `,
   },
+  {
+    version: 12,
+    sql: `CREATE TABLE resource_destinations (
+      resource_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      vault_id TEXT NOT NULL,
+      PRIMARY KEY(resource_id,user_id),
+      FOREIGN KEY(resource_id,user_id) REFERENCES resource_grants(resource_id,user_id) ON DELETE CASCADE,
+      FOREIGN KEY(vault_id,user_id) REFERENCES memberships(vault_id,user_id) ON DELETE CASCADE
+    ) STRICT;`,
+  },
+  {version:13,sql:`ALTER TABLE resource_destinations ADD COLUMN local_path TEXT NOT NULL DEFAULT '';`},
+  {version:14,sql:`ALTER TABLE resource_destinations RENAME COLUMN local_path TO destination_folder; UPDATE resource_destinations SET destination_folder=rtrim(rtrim(destination_folder,replace(destination_folder,'/','')),'/');`},
+  {version:15,sql:`ALTER TABLE resource_destinations ADD COLUMN local_path TEXT NOT NULL DEFAULT '';
+    UPDATE resource_destinations SET local_path=CASE WHEN destination_folder='' THEN '' ELSE destination_folder||'/' END ||
+      (SELECT substr(path,length(rtrim(path,replace(path,'/','')))+1) FROM shared_resources WHERE id=resource_id);`},
 ];

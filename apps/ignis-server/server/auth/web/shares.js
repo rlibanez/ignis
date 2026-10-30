@@ -20,6 +20,14 @@
         const actions=node("div");actions.className="toolbar";
         const open=button("Open",()=>run(async()=>{opened=resource;relative="";await view();$("viewer-dialog").showModal();}));open.disabled=!resource.available;actions.append(open);
         if(owned)actions.append(button("Manage",()=>manage(resource)));
+        else {
+          const select=node("select");select.setAttribute("aria-label","Destination vault for "+resource.name);
+          const none=node("option","Not placed — choose a vault");none.value="";select.append(none);
+          for(const vault of catalog.destinationVaults){const option=node("option",vault.name);option.value=vault.id;select.append(option);}
+          select.value=resource.destination || "";
+          const local=node("input");local.value=resource.localPath || resource.name;local.setAttribute("aria-label","Local path for "+resource.name);local.title="Local name and optional existing destination folder";
+          actions.append(select,local,button("Save location",()=>run(async()=>{await api("destination",{id:resource.id,vault:select.value || null,localPath:local.value});await reload();})));
+        }
         return [resource.name,resource.kind,owned?(catalog.ownedVaults.find(v=>v.id===resource.vault)?.name || "Vault")+" / "+resource.path:resource.owner,resource.available?(owned?"Owner":resource.role==="editor"?"Read / Write":"Read"):"Unavailable",actions];
       });
       $(id).replaceChildren(rows.length?table(["Resource","Type",owned?"Path":"Owner","Access","Actions"],rows):node("p","No shared resources."));

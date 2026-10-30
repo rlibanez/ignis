@@ -54,8 +54,8 @@ function createAuthBoundary({
   const publicUrl = new URL(config.publicOrigin);
   const db = openDatabase(dataRoot);
   const sessions = createSessionService(db, { ...sessionOptions, now });
-  const sharesRouter = vaultRoot ? require("../routes/resource-shares").createResourceSharesRouter(
-    require("./resource-shares").createResourceSharesService(db, vaultRoot, sessions, config.sharedResourceLimits)) : null;
+  const sharesService = vaultRoot ? require("./resource-shares").createResourceSharesService(db, vaultRoot, sessions, config.sharedResourceLimits) : null;
+  const sharesRouter = sharesService ? require("../routes/resource-shares").createResourceSharesRouter(sharesService) : null;
   const vaultConfig = vaultRoot ? require("./vault-config").createVaultConfigService(db, vaultRoot, sessions) : null;
   const vaultAccess = vaultRoot ? require("./vault-access").createVaultAccessService(db, vaultRoot, sessions) : null;
   const csrf = createCsrf(config, { now });
@@ -817,11 +817,13 @@ function createAuthBoundary({
         return res
           .status(409)
           .json({ error: "Session changed", code: "AUTH_CONTEXT_CHANGED" });
-      if (pathname === "/api/shares") {
+      if (["/api/shares", "/api/shares/content"].includes(pathname)) {
         if (!sharesRouter || !["GET","POST"].includes(req.method)) return safe(res,404,"Not found");
-        if (req.headers["x-ignis-context"] !== session.id ||
+        if ((pathname === "/api/shares/content" ? req.query.context : req.headers["x-ignis-context"]) !== session.id ||
             (req.method === "POST" && (!originAllowed(req,true) || !csrf.valid(req,session)))) return safe(res,403,"Request rejected");
-        if (!limits.sharedResources(session.user.id)) {res.set("Retry-After","60");return safe(res,429,"Too many requests");}
+        if (!limits.sharedResourceReads(session.user.id)) {res.set("Retry-After","60");return safe(res,429,"Too many requests");}
+        if(pathname === "/api/shares/content" && req.method !== "GET") return safe(res,404,"Not found");
+        req.shareOperationAllowed = read => read || limits.sharedResources(session.user.id);
         req.shareToken = cookies.read(req.headers.cookie);
         return sharesRouter(req,res,()=>safe(res,404,"Not found"));
       }
@@ -925,6 +927,10 @@ function createAuthBoundary({
             return decision.allowed && decision.sessionId === current.id;
           });
           return true;
+        };
+        req.renameVaultResource = (directory,oldPath,newPath) => {
+          const reference=db.prepare("SELECT id FROM vaults WHERE directory=? AND status='active'").get(directory)?.id;
+          return sharesService.renameOriginal(cookies.read(req.headers.cookie),reference,oldPath,newPath);
         };
         req.vaultConfiguration = (operation, input) => {
           const reference = require("./vault-selection").selectVaultReference(req.query, req.body);

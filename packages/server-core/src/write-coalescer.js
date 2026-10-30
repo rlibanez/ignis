@@ -400,6 +400,7 @@ function _reset() {
 module.exports = {
   writeCoalesced,
   getPending,
+  hasPendingSubtree: absDir => [...pending.keys(), ...inFlight.keys()].some(p => isAtOrUnder(p,absDir)),
   estimateSize,
   pendingBuffer,
   pendingPaths,

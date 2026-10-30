@@ -60,6 +60,7 @@ function createRequestLimits({ now = Date.now, capacity = 10000 } = {}) {
         ["oidc-callback-global", 120, 60000],
         ["oidc-callback-ip:" + key(ip), 30, 900000],
       ]),
+    sharedResourceReads: actorId => allow([["share-reads-global",12000,60000],["share-reads-actor:"+key(actorId),2400,60000]]),
     sharedResources: actorId => allow([["shares-global",600,60000],["shares-actor:"+key(actorId),120,60000]]),
     vaultMembers: actorId => allow([
       ["vault-members-global", 300, 60000],

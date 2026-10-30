@@ -288,7 +288,9 @@ export function initialize() {
   if (bootstrap) {
     applyVaultInfo(bootstrap.vault);
     window.__vaultList = bootstrap.vaultList;
-    const tree = fsShim._configurePrivateFiles(bootstrap);
+    let tree;
+    try { tree = fsShim._configurePrivateFiles(bootstrap); }
+    catch (error) { window.__ignisBootstrapFailed = true; throw error; }
     applyTree(tree);
     fsShim._watcherClient.setTreeEtag(bootstrap.etag);
     applyCoreSyncGuard(bootstrap.plugins);

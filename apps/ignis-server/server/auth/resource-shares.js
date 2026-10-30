@@ -10,6 +10,7 @@ const { readResourceShareLimits } = require("./resource-share-limits");
 const MAX_ENTRIES = 1000;
 const fail = (code = "SHARE_UNAVAILABLE") => { throw Object.assign(new Error("Shared resource unavailable"), { code }); };
 const identity = stat => `${stat.ino}:${stat.birthtimeMs}`;
+const directoryTag = stat => "dir:" + createHash("sha256").update([stat.dev,identity(stat),stat.mtimeMs,stat.ctimeMs].join(":")).digest("hex");
 const digest = bytes => createHash("sha256").update(bytes).digest("hex");
 function canonical(value, empty = false) {
   if (typeof value !== "string" || value.length > 1024 || (!value && !empty) || (value && classifyVaultPath(value) !== "content")) fail("INVALID_SHARE_PATH");
@@ -89,7 +90,74 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
         else result.owner=db.prepare("SELECT u.login FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.vault_id=? AND m.role='owner'").get(row.vault_id)?.login || "";
         return [result];
       });
-      return {ownedVaults,resources,limits:{maxFileBytes,maxFileMiB:limits.maxFileMiB}};
+      const destinationVaults=db.prepare("SELECT v.id,v.name FROM vaults v JOIN memberships m ON m.vault_id=v.id WHERE m.user_id=? AND v.status='active' ORDER BY v.name").all(user.id);
+      for(const item of resources)if(!item.owned){
+        const placement=db.prepare("SELECT d.vault_id,d.local_path FROM resource_destinations d JOIN vaults v ON v.id=d.vault_id WHERE d.resource_id=? AND d.user_id=? AND v.status='active'").get(item.id,user.id);
+        item.destination=placement?.vault_id || null;item.localPath=placement?.local_path || item.name;item.folder=path.posix.dirname(item.localPath)==="."?"":path.posix.dirname(item.localPath);
+      }
+      return {ownedVaults,destinationVaults,resources,limits:{maxFileBytes,maxFileMiB:limits.maxFileMiB}};
+    });
+  }
+  function checkPlacement(user,vaultId,localPath,id,kind,sourceName) {
+    canonical(localPath);
+    if(kind==="file" && path.extname(localPath).toLowerCase()!==path.extname(sourceName).toLowerCase())fail("INVALID_SHARE_PATH");
+    const v=vault(vaultId),parent=path.posix.dirname(localPath);
+    const folder=inspect(v.path,parent==="."?"":parent);
+    if(!folder.stat.isDirectory())fail("INVALID_SHARE_PATH");
+    const name=path.posix.basename(localPath).toLowerCase();
+    const directory=fs.opendirSync(folder.filename);let count=0;
+    try{for(let entry;(entry=directory.readSync());){if(++count>10000)fail("SHARE_LIMIT");if(entry.name.toLowerCase()===name)fail("SHARE_PLACEMENT_CONFLICT");}}finally{directory.closeSync();}
+    const lower=localPath.toLowerCase();
+    for(const other of db.prepare("SELECT d.resource_id,d.local_path,r.path FROM resource_destinations d JOIN shared_resources r ON r.id=d.resource_id WHERE d.user_id=? AND d.vault_id=? AND d.resource_id<>?").all(user.id,vaultId,id)){
+      const key=other.local_path.toLowerCase();
+      if(lower===key || lower.startsWith(key+"/") || key.startsWith(lower+"/"))fail("SHARE_PLACEMENT_CONFLICT");
+    }
+    return localPath;
+  }
+  function destination(token,input) {
+    if(Object.hasOwn(input,"folder") || Object.hasOwn(input,"name"))fail("INVALID_SHARE_PATH");
+    return transaction(db,()=>{
+      const access=resource(token,input.id),user=access.user;
+      if(access.owns || !db.prepare("SELECT 1 FROM resource_grants WHERE resource_id=? AND user_id=?").get(input.id,user.id))fail();
+      if(input.vault!==null){
+        if(typeof input.vault!=="string" || !db.prepare("SELECT 1 FROM memberships m JOIN vaults v ON v.id=m.vault_id WHERE m.user_id=? AND v.id=? AND v.status='active'").get(user.id,input.vault))fail();
+        const localPath=canonical(input.localPath ?? path.basename(access.row.path));
+        checkPlacement(user,input.vault,localPath,input.id,access.row.kind,access.row.path);
+        db.prepare("INSERT INTO resource_destinations(resource_id,user_id,vault_id,local_path) VALUES (?,?,?,?) ON CONFLICT(resource_id,user_id) DO UPDATE SET vault_id=excluded.vault_id,local_path=excluded.local_path").run(input.id,user.id,input.vault,localPath);
+      }else db.prepare("DELETE FROM resource_destinations WHERE resource_id=? AND user_id=?").run(input.id,user.id);
+      audit(user,"set-resource-destination",{id:input.id,vault:input.vault});return {ok:true};
+    });
+  }
+  function mounts(token,input) {
+    return transaction(db,()=>{
+      const user=actor(token);
+      if(typeof input?.vault!=="string" || !db.prepare("SELECT 1 FROM memberships m JOIN vaults v ON v.id=m.vault_id WHERE m.user_id=? AND v.id=? AND v.status='active'").get(user.id,input.vault))fail();
+      vault(input.vault);
+      const rows=db.prepare(`SELECT r.id,d.local_path FROM shared_resources r JOIN resource_grants g ON g.resource_id=r.id
+        JOIN resource_destinations d ON d.resource_id=g.resource_id AND d.user_id=g.user_id
+        WHERE d.vault_id=? AND g.user_id=? AND NOT EXISTS (SELECT 1 FROM memberships m WHERE m.vault_id=r.vault_id AND m.user_id=? AND m.role='owner')
+        ORDER BY r.id`).all(input.vault,user.id,user.id);
+      if(rows.length>MAX_ENTRIES) fail("SHARE_LIMIT");
+      let total=0;
+      const mounts=[];
+      for(const row of rows) {
+        let access;
+        try {access=resource(token,row.id);} catch(error) {if(["SHARE_UNAVAILABLE","VAULT_UNAVAILABLE","ENOENT"].includes(error.code))continue;throw error;}
+        const localPath=row.local_path;
+        try{checkPlacement(user,input.vault,localPath,row.id,access.row.kind,access.row.path);}catch{
+          mounts.push({id:row.id,localPath,kind:access.row.kind,role:access.role,blocked:true,tree:{}});continue;
+        }
+        const tree=Object.create(null);
+        function visit(relative,depth) {
+          if(++total>5000 || depth>32) fail("SHARE_LIMIT");
+          const item=relative?inspect(access.base.filename,relative):access.base;
+          tree[relative]={type:item.stat.isDirectory()?"directory":"file",size:item.stat.size,mtime:item.stat.mtimeMs,ctime:item.stat.birthtimeMs};
+          if(item.stat.isDirectory())for(const entry of listing(item).entries) visit(relative?relative+"/"+entry.name:entry.name,depth+1);
+        }
+        visit("",0);
+        mounts.push({id:row.id,localPath,owner:db.prepare("SELECT u.login FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.vault_id=? AND m.role='owner'").get(access.v.id)?.login || "",name:path.basename(access.row.path),kind:access.row.kind,role:access.role,tree});
+      }
+      return {mounts,limits:{maxFileBytes,maxFileMiB:limits.maxFileMiB}};
     });
   }
   function create(token,input) {
@@ -146,10 +214,69 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
   }
   async function read(token,input) {
     const access=resource(token,input.id,input.path || ""),item=target(access);
-    if(item.stat.isDirectory()) return {...listing(item),kind:"directory",role:access.role};
+    if(item.stat.isDirectory()) return {...listing(item),kind:"directory",role:access.role,etag:directoryTag(item.stat)};
     await writeCoalescer.flushPending(item.filename);
     const current=resource(token,input.id,input.path || ""),bytes=readFile(target(current),maxFileBytes);
     return {kind:"file",role:current.role,name:path.basename(item.filename),content:bytes.toString("base64"),etag:digest(bytes)};
+  }
+  function renameDisk(user,v,oldPath,newPath,etag) {
+    canonical(oldPath);canonical(newPath);
+    if(path.posix.dirname(oldPath)!==path.posix.dirname(newPath) || oldPath===newPath)fail("INVALID_SHARE_PATH");
+    let published=false;
+    try{return transaction(db,()=>{
+      const source=inspect(v.path,oldPath),destination=inspect(v.path,newPath,true);
+        if(destination.stat || writeCoalescer.hasPendingSubtree(source.filename) || writeCoalescer.hasPendingSubtree(destination.filename))fail("SHARE_CONFLICT");
+        const expected=etag===undefined?undefined:source.stat.isDirectory()?directoryTag(source.stat):digest(readFile(source,maxFileBytes));
+        if(etag!==undefined && etag!==expected)fail("SHARE_CONFLICT");
+        const parent=path.dirname(source.filename),entries=fs.opendirSync(parent);let count=0;
+        try{for(let entry;(entry=entries.readSync());){if(++count>10000)fail("SHARE_LIMIT");if(entry.name.toLowerCase()===path.basename(destination.filename).toLowerCase())fail("SHARE_CONFLICT");}}finally{entries.closeSync();}
+        let total=0;
+        function validate(item,depth){if(++total>5000 || depth>32)fail("SHARE_LIMIT");if(!item.stat.isDirectory())return;const dir=fs.opendirSync(item.filename);try{for(let entry;(entry=dir.readSync());)validate(inspect(item.filename,canonical(entry.name)),depth+1);}finally{dir.closeSync();}}
+        validate(source,0);
+        const shares=db.prepare("SELECT * FROM shared_resources WHERE vault_id=?").all(v.id),affected=[];
+        for(const row of shares){
+          if(row.path.toLowerCase()===newPath.toLowerCase() || row.path.toLowerCase().startsWith(newPath.toLowerCase()+"/"))fail("SHARE_CONFLICT");
+          if(row.path===oldPath || row.path.startsWith(oldPath+"/")){
+            const item=inspect(v.path,row.path);if(String(item.stat.dev)!==row.device || identity(item.stat)!==row.inode)fail("SHARE_CONFLICT");
+            affected.push(row);
+          }
+        }
+        audit(user,"rename-shared-content",{vault:v.id,path:oldPath,to:newPath});
+        fs.renameSync(source.filename,destination.filename);published=true;
+        const fd=fs.openSync(parent,fs.constants.O_RDONLY|fs.constants.O_DIRECTORY);try{fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
+        for(const row of affected)db.prepare("UPDATE shared_resources SET path=?,revision=revision+1 WHERE id=?").run(newPath+row.path.slice(oldPath.length),row.id);
+      return {ok:true};
+    });}catch(error){if(published)fail("SHARE_RENAME_UNCERTAIN");throw error;}
+  }
+  async function rename(token,input) {
+    const relative=canonical(input.path),to=canonical(input.to);
+    if(path.posix.dirname(relative)!==path.posix.dirname(to))fail("INVALID_SHARE_PATH");
+    function resolve(){
+      const access=resource(token,input.id,relative,true);
+      const oldPath=access.row.path+"/"+relative;
+      const newPath=access.row.path+"/"+to;
+      return {...access,oldPath,newPath};
+    }
+    const initial=resolve(),source=path.join(initial.v.path,initial.oldPath),dest=path.join(initial.v.path,initial.newPath);
+    await writeCoalescer.flushPendingSubtree(source);await writeCoalescer.flushPendingSubtree(dest);
+    return writeCoalescer.supersedePendingSubtree(source,()=>writeCoalescer.supersedePendingSubtree(dest,()=>{
+      const fresh=resolve();if(initial.oldPath!==fresh.oldPath)fail("SHARE_CONFLICT");
+      if(typeof input.etag!=="string")fail("SHARE_CONFLICT");
+      return renameDisk(fresh.user,fresh.v,fresh.oldPath,fresh.newPath,input.etag);
+    }));
+  }
+  // Called synchronously after the ordinary filesystem route has drained writes
+  // and revalidated every permission. No gap for a new grant before disk mutation.
+  function renameOriginal(token,reference,oldPath,newPath) {
+    for(const value of [oldPath,newPath])if(["invalid","reserved","root"].includes(classifyVaultPath(value)))fail("INVALID_SHARE_PATH");
+    const user=actor(token),v=vault(reference);
+    if(!["owner","editor"].includes(db.prepare("SELECT role FROM memberships WHERE vault_id=? AND user_id=?").get(v.id,user.id)?.role))fail();
+    const overlaps=(a,b)=>a===b || a.startsWith(b+"/") || b.startsWith(a+"/");
+    const shared=db.prepare("SELECT path FROM shared_resources WHERE vault_id=?").all(v.id).some(row=>overlaps(row.path.toLowerCase(),oldPath.toLowerCase()) || overlaps(row.path.toLowerCase(),newPath.toLowerCase()));
+    if(db.prepare("SELECT 1 FROM shared_resources WHERE vault_id=? AND path=?").get(v.id,oldPath) &&
+      db.prepare("SELECT role FROM memberships WHERE vault_id=? AND user_id=?").get(v.id,user.id)?.role!=="owner")fail();
+    if(shared)return renameDisk(user,v,oldPath,newPath);
+    fs.renameSync(path.join(v.path,oldPath),path.join(v.path,newPath));return {ok:true};
   }
   async function mutate(token,input) {
     const relative=input.path || "", access=resource(token,input.id,relative,true),item=target(access,true);
@@ -200,6 +327,6 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
       return {ok:true,...(bytes?{etag:digest(bytes)}:{})};
     });
   }
-  return {catalog,create,grant,browseOwner,read,mutate,limits};
+  return {catalog,mounts,destination,create,grant,browseOwner,read,rename,renameOriginal,mutate,limits};
 }
 module.exports={createResourceSharesService};

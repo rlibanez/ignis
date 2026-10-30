@@ -1,3 +1,5 @@
+import { installSharedIcons } from "./shared-icons.js";
+import { installSharedPanel } from "./shared-panel.js";
 import { installAccountStorage } from "./account-storage.js";
 import { snapshotBuffered, suspendCoalescer } from "./fs/write-coalescer.js";
 import { installRequire } from "./require.js";
@@ -79,6 +81,7 @@ setTimeout(() => {
 initialize(); // vault config, metadata cache, plugin prompt
 
 function onLayoutReady() {
+  fsShim._sharedFiles.start();
   window.__ignisBooting = false;
 }
 
@@ -113,6 +116,8 @@ extractObsidianModule()
       installExternalFilesOverrides(obsidian, window.app);
     }
 
+    fsShim._sharedFiles.installAdapter(window.app);
+    if(obsidian){installSharedPanel(obsidian,window.app,fsShim._sharedFiles);installSharedIcons(obsidian,fsShim._sharedFiles);}
     installMobileVaultSwitcher(window.app);
     installOpenFileParam(window.app);
 
