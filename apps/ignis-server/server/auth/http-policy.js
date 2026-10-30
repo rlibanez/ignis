@@ -55,6 +55,7 @@ function readAuthConfig(env = process.env) {
     allowHttpLoopback: env.IGNIS_ALLOW_HTTP_LOOPBACK === "true",
     allowHttpPrivateNetwork: env.IGNIS_ALLOW_HTTP_PRIVATE_NETWORK === "true",
     trustedProxies,
+    sharedResourceLimits: require("./resource-share-limits").readResourceShareLimits(env),
     passwordPolicy: readPasswordPolicy(env),
     initialAdminKeyDigest: readInitialAdminKey(env),
   };

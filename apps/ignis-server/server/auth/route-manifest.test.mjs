@@ -51,13 +51,13 @@ it("detects new API mounts in the server entry point", () => {
   const mounts = registrations
     .filter(call => call.method === "use" && call.path.startsWith("/api/"))
     .map(call => call.path).sort();
-  const expected = [...new Set(routes.filter(route => !route.mount.startsWith("/api/ext/")).map(route => route.mount))].sort();
+  const expected = [...new Set(routes.filter(route => route.mount && !route.mount.startsWith("/api/ext/")).map(route => route.mount))].sort();
   expect(mounts).toEqual(expected);
 });
 it("classifies reviewed owner APIs and rejects unknown paths/methods", () => {
   for (const route of routes) {
     const owner = route.mount === "/api/fs" || route.mount === "/api/vault-config" ||
-      ["/api/vault/transfer-ownership", "/api/vault/members", "/api/bootstrap", "/api/vault/list", "/api/vault/info", "/api/version"].includes(route.path);
+      ["/api/shares", "/api/vault/transfer-ownership", "/api/vault/members", "/api/bootstrap", "/api/vault/list", "/api/vault/info", "/api/version"].includes(route.path);
     expect(route.currentAccess).toBe(owner ? "owner" : "admin");
     expect(Object.isFrozen(route)).toBe(true);
     expect(permittedResource(route.method, route.path, [])).toBe(true);

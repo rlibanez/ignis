@@ -9,6 +9,9 @@ const setupAssets = new Map(
     ["/auth/reset-password.js", ["text/javascript", "reset-password.js"]],
     ["/login", ["text/html", "login.html"]],
     ["/account", ["text/html", "login.html"]],
+    ["/shares", ["text/html", "shares.html"]],
+    ["/auth/shares.js", ["text/javascript", "shares.js"]],
+    ["/auth/shares.css", ["text/css", "shares.css"]],
     ["/admin/users", ["text/html", "users.html"]],
     ["/auth/users.js", ["text/javascript", "users.js"]],
     ["/auth/users.css", ["text/css", "users.css"]],
@@ -51,6 +54,8 @@ function createAuthBoundary({
   const publicUrl = new URL(config.publicOrigin);
   const db = openDatabase(dataRoot);
   const sessions = createSessionService(db, { ...sessionOptions, now });
+  const sharesRouter = vaultRoot ? require("../routes/resource-shares").createResourceSharesRouter(
+    require("./resource-shares").createResourceSharesService(db, vaultRoot, sessions, config.sharedResourceLimits)) : null;
   const vaultConfig = vaultRoot ? require("./vault-config").createVaultConfigService(db, vaultRoot, sessions) : null;
   const vaultAccess = vaultRoot ? require("./vault-access").createVaultAccessService(db, vaultRoot, sessions) : null;
   const csrf = createCsrf(config, { now });
@@ -744,7 +749,7 @@ function createAuthBoundary({
         req.url.split("?")[0] === "/api/auth/oidc/callback";
       const authNavigation =
         req.method === "GET" &&
-        ["/login", "/account", "/admin/users"].includes(req.url.split("?")[0]) &&
+        ["/login", "/account", "/admin/users", "/shares"].includes(req.url.split("?")[0]) &&
         req.headers["sec-fetch-mode"] === "navigate" &&
         req.headers["sec-fetch-dest"] === "document";
       if (!transportAllowed(req) || (!callback && !authNavigation && !originAllowed(req)))
@@ -812,6 +817,14 @@ function createAuthBoundary({
         return res
           .status(409)
           .json({ error: "Session changed", code: "AUTH_CONTEXT_CHANGED" });
+      if (pathname === "/api/shares") {
+        if (!sharesRouter || !["GET","POST"].includes(req.method)) return safe(res,404,"Not found");
+        if (req.headers["x-ignis-context"] !== session.id ||
+            (req.method === "POST" && (!originAllowed(req,true) || !csrf.valid(req,session)))) return safe(res,403,"Request rejected");
+        if (!limits.sharedResources(session.user.id)) {res.set("Retry-After","60");return safe(res,429,"Too many requests");}
+        req.shareToken = cookies.read(req.headers.cookie);
+        return sharesRouter(req,res,()=>safe(res,404,"Not found"));
+      }
       if (session.user.role !== "admin" && !require("./member-routes").memberResource(req.method, pathname))
         return safe(res, 403, "Administrator access required");
       if (!permittedResource(req.method, pathname, staticRoots))

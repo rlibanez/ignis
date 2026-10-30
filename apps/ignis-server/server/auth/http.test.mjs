@@ -1345,3 +1345,26 @@ it("transfers ownership through the owner session without granting an admin bypa
  expect((await request(`/api/vault/members?vault=${vault.id}`,{jar:admin})).status).toBe(200);
  expect((await request(route,{jar:owner,method:"POST",body,headers})).status).toBe(404);
 });
+
+it("enforces session context, CSRF and owner authority on resource sharing without granting vault access",async()=>{
+ const {registerVault}=require("./store");const adminId=db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
+ const vault=registerVault(db,root,"vault",adminId);
+ const admin=await login("admin"),normal=await login("normal");
+ const adminSession=await (await request("/api/auth/session",{jar:admin})).json();
+ const normalSession=await (await request("/api/auth/session",{jar:normal})).json();
+ const csrfAdmin=(await (await request("/api/auth/csrf",{jar:admin})).json()).csrfToken;
+ const csrfNormal=(await (await request("/api/auth/csrf",{jar:normal})).json()).csrfToken;
+ const headers={"x-ignis-context":adminSession.sessionId,"x-ignis-csrf":csrfAdmin};
+ const body={operation:"create",input:{vault:vault.id,path:"note.md",login:"normal",role:"reader"}};
+ expect((await request("/api/shares",{method:"POST",body})).status).toBe(401);
+ expect((await request("/api/shares",{jar:admin,method:"POST",body})).status).toBe(403);
+ expect((await request("/api/shares",{jar:admin,method:"POST",body,headers:{...headers,origin:"https://evil.example"}})).status).toBe(403);
+ const response=await request("/api/shares",{jar:admin,method:"POST",body,headers});expect(response.status).toBe(200);const {id}=await response.json();
+ const nh={"x-ignis-context":normalSession.sessionId,"x-ignis-csrf":csrfNormal};
+ const read=await request("/api/shares",{jar:normal,method:"POST",headers:nh,body:{operation:"read",input:{id,path:""}}});expect(read.status).toBe(200);
+ expect(Buffer.from((await read.json()).content,"base64").toString()).toBe("private note");
+ expect((await request("/api/shares",{jar:normal,method:"POST",headers:nh,body:{operation:"revoke",input:{action:"revoke",id,revision:1}}})).status).toBe(404);
+ expect((await request("/api/fs/readFile?vault="+vault.id+"&path=note.md",{jar:normal})).status).toBe(404);
+ expect((await request("/api/shares",{jar:normal,method:"POST",headers:nh,body:{operation:"read",input:{id,path:"",extra:true}}})).status).toBe(400);
+ expect((await request("/api/shares",{jar:normal,method:"POST",headers:{...nh,"x-ignis-context":"other"},body:{operation:"read",input:{id,path:""}}})).status).toBe(409);
+});

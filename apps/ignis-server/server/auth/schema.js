@@ -238,4 +238,25 @@ module.exports = [
       ) STRICT;
     `,
   },
+  {
+    version: 11,
+    sql: `
+      CREATE TABLE shared_resources (
+        id TEXT PRIMARY KEY,
+        vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
+        path TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK(kind IN ('file','directory')),
+        device TEXT NOT NULL,
+        inode TEXT NOT NULL,
+        revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0),
+        UNIQUE(vault_id,path)
+      ) STRICT;
+      CREATE TABLE resource_grants (
+        resource_id TEXT NOT NULL REFERENCES shared_resources(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        role TEXT NOT NULL CHECK(role IN ('reader','editor')),
+        PRIMARY KEY(resource_id,user_id)
+      ) STRICT;
+    `,
+  },
 ];
