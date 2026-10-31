@@ -1524,3 +1524,18 @@ it("forces a local-password change through the admin API and issues no vault ses
   const final = await request("/api/auth/login", { jar: user, method: "POST", body: { login: "normal", password: "new-required-password!" }, headers: { "x-ignis-csrf": await csrf(user) } });
   expect(final.status).toBe(200); expect((await final.json()).user.login).toBe("normal");
 });
+
+
+it("allows external top-level PWA entry navigation without bypassing authentication or API origin checks", async () => {
+  const headers = { origin: "https://external.example", "sec-fetch-site": "cross-site", "sec-fetch-mode": "navigate", "sec-fetch-dest": "document" };
+  const entry = await request("/", {headers});
+  expect(entry.status).toBe(303);
+  expect(entry.headers.get("location")).toBe("/login");
+  for (const route of ["/api/auth/session", "/api/vault/list", "/api/fs/readFile?vault=vault&path=note.md"]) {
+    expect((await request(route, {headers})).status).toBe(403);
+  }
+  expect((await request("/", {headers:{...headers,"sec-fetch-mode":"cors","sec-fetch-dest":"empty"}})).status).toBe(403);
+  expect((await request("/", {headers:{...headers,"sec-fetch-dest":"iframe"}})).status).toBe(403);
+  expect((await request("/", {method:"POST",headers})).status).toBe(403);
+  expect((await request("/", {headers:{...headers,host:"wrong.example"}})).status).toBe(403);
+});

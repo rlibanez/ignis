@@ -259,7 +259,12 @@ describe("setup HTTP boundary", () => {
       passwordPolicy: { minLength: 8, minSpecialChars: 0, maxBytes: 1024 },
     });
     expect((await request("/")).headers.location).toBe("/setup");
-    for (const route of ["/setup", "/auth/setup.js", "/auth/setup.css"]) {
+    const manifest = await request("/manifest.webmanifest");
+    expect(manifest.headers["content-type"]).toContain("application/manifest+json");
+    expect(JSON.parse(manifest.text)).toMatchObject({id:"/",start_url:"/",scope:"/",display:"standalone"});
+    expect((await request("/pwa/icon-512.png")).status).toBe(200);
+    expect((await request("/login")).headers["content-security-policy"]).toContain("manifest-src 'self'");
+    for (const route of ["/setup", "/auth/setup.js", "/auth/setup.css", "/manifest.webmanifest", "/auth/pwa.js", "/pwa/icon-192.svg", "/pwa/icon-maskable.svg"]) {
       const result = await request(route);
       expect(result.status).toBe(200);
       expect(result.text).not.toContain(KEY);

@@ -4,6 +4,10 @@ const path = require("node:path");
 const { createInitialAdminSetup } = require("./initial-admin");
 const setupAssets = new Map(
   [
+    ["/manifest.webmanifest", ["application/manifest+json", "manifest.webmanifest"]],
+    ["/pwa/icon-192.svg", ["image/svg+xml", "icon-192.svg"]],
+    ["/pwa/icon-maskable.svg", ["image/svg+xml", "icon-maskable.svg"]],
+    ["/auth/pwa.js", ["text/javascript", "pwa.js"]],
     ["/setup", ["text/html", "setup.html"]],
     ["/reset-password", ["text/html", "reset-password.html"]],
     ["/auth/reset-password.js", ["text/javascript", "reset-password.js"]],
@@ -32,6 +36,7 @@ setupAssets.set("/favicon.png", {
   type: "image/png",
   content: fs.readFileSync(path.join(__dirname, "../../../../images/favicon.png")),
 });
+setupAssets.set("/pwa/icon-512.png", {type:"image/png",content:fs.readFileSync(path.join(__dirname,"../../../../images/ignis.png"))});
 const { openDatabase } = require("./database");
 const { createSessionService } = require("./sessions");
 const { createSessionCookies } = require("./session-cookies");
@@ -788,16 +793,17 @@ function createAuthBoundary({
     res.set("X-Frame-Options", "DENY");
     try {
       // Redirect chains retain cross-site Fetch Metadata. Allow only top-level
-      // navigation to the public auth HTML; API and mutation checks remain strict.
+      // navigation to entry documents (including installed PWA launches).
+      // Session, transport, API and mutation checks remain strict.
       const callback =
         req.method === "GET" &&
         req.url.split("?")[0] === "/api/auth/oidc/callback";
-      const authNavigation =
+      const entryNavigation =
         req.method === "GET" &&
-        ["/login", "/account", "/admin/users", "/shares"].includes(req.url.split("?")[0]) &&
+        ["/", "/index.html", "/login", "/account", "/admin/users", "/shares"].includes(req.url.split("?")[0]) &&
         req.headers["sec-fetch-mode"] === "navigate" &&
         req.headers["sec-fetch-dest"] === "document";
-      if (!transportAllowed(req) || (!callback && !authNavigation && !originAllowed(req)))
+      if (!transportAllowed(req) || (!callback && !entryNavigation && !originAllowed(req)))
         return safe(res, 403, "Request rejected");
       const pathname = canonicalRequestPath(req);
       if (!pathname) return safe(res, 400, "Invalid request");
@@ -809,8 +815,10 @@ function createAuthBoundary({
         const asset = setupAssets.get(pathname);
         res.set(
           "Content-Security-Policy",
-          "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+          "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; manifest-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
         );
+        // Static PWA SVGs embed the existing logo; only these images need data URLs.
+        if (asset.type === "image/svg+xml") res.set("Content-Security-Policy", "default-src 'none'; img-src data:; frame-ancestors 'none'; base-uri 'none'");
         return res.type(asset.type).send(asset.content);
       }
       if (

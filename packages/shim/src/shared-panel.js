@@ -108,7 +108,7 @@ export function installSharedPanel(obsidian, app, sharedFiles, host = window) {
         status.textContent="";
         const toolbar=element("div");toolbar.style.display="flex";toolbar.style.gap="8px";
         const refresh=element("button","Refresh");refresh.onclick=()=>this.reload();
-        const manage=element("button","Manage sharing");manage.onclick=()=>host.open("/shares","_blank","noopener");
+        const manage=element("button","Manage sharing");manage.onclick=()=>{if(host.matchMedia("(display-mode: standalone)").matches || host.navigator.standalone===true)host.location.assign("/shares");else host.open("/shares","_blank","noopener");};
         toolbar.append(refresh,manage);this.contentEl.append(toolbar);
         for(const owned of [false,true]) {
           this.contentEl.append(element("h4",owned?"Shared from my vaults":"Shared with me"));
