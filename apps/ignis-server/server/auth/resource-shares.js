@@ -98,7 +98,7 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
       return {ownedVaults,destinationVaults,resources,limits:{maxFileBytes,maxFileMiB:limits.maxFileMiB}};
     });
   }
-  function checkPlacement(user,vaultId,localPath,id,kind,sourceName) {
+  function checkPlacement(user,vaultId,localPath,id,kind,sourceName,placements) {
     canonical(localPath);
     if(kind==="file" && path.extname(localPath).toLowerCase()!==path.extname(sourceName).toLowerCase())fail("INVALID_SHARE_PATH");
     const v=vault(vaultId),parent=path.posix.dirname(localPath);
@@ -108,7 +108,8 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
     const directory=fs.opendirSync(folder.filename);let count=0;
     try{for(let entry;(entry=directory.readSync());){if(++count>10000)fail("SHARE_LIMIT");if(entry.name.toLowerCase()===name)fail("SHARE_PLACEMENT_CONFLICT");}}finally{directory.closeSync();}
     const lower=localPath.toLowerCase();
-    for(const other of db.prepare("SELECT d.resource_id,d.local_path,r.path FROM resource_destinations d JOIN shared_resources r ON r.id=d.resource_id WHERE d.user_id=? AND d.vault_id=? AND d.resource_id<>?").all(user.id,vaultId,id)){
+    for(const other of placements ?? db.prepare("SELECT d.resource_id,d.local_path FROM resource_destinations d JOIN shared_resources r ON r.id=d.resource_id WHERE d.user_id=? AND d.vault_id=?").all(user.id,vaultId)){
+      if(other.resource_id===id)continue;
       const key=other.local_path.toLowerCase();
       if(lower===key || lower.startsWith(key+"/") || key.startsWith(lower+"/"))fail("SHARE_PLACEMENT_CONFLICT");
     }
@@ -138,13 +139,16 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
         WHERE d.vault_id=? AND g.user_id=? AND NOT EXISTS (SELECT 1 FROM memberships m WHERE m.vault_id=r.vault_id AND m.user_id=? AND m.role='owner')
         ORDER BY r.id`).all(input.vault,user.id,user.id);
       if(rows.length>MAX_ENTRIES) fail("SHARE_LIMIT");
+      // This synchronous transaction observes one placement snapshot. Reuse only
+      // within this request; retain even stale grants for collision protection.
+      const placements=db.prepare("SELECT d.resource_id,d.local_path FROM resource_destinations d JOIN shared_resources r ON r.id=d.resource_id WHERE d.user_id=? AND d.vault_id=?").all(user.id,input.vault);
       let total=0;
       const mounts=[];
       for(const row of rows) {
         let access;
         try {access=resource(token,row.id);} catch(error) {if(["SHARE_UNAVAILABLE","VAULT_UNAVAILABLE","ENOENT"].includes(error.code))continue;throw error;}
         const localPath=row.local_path;
-        try{checkPlacement(user,input.vault,localPath,row.id,access.row.kind,access.row.path);}catch{
+        try{checkPlacement(user,input.vault,localPath,row.id,access.row.kind,access.row.path,placements);}catch{
           mounts.push({id:row.id,localPath,kind:access.row.kind,role:access.role,blocked:true,tree:{}});continue;
         }
         const tree=Object.create(null);

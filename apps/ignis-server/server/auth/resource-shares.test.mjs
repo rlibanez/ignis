@@ -526,3 +526,70 @@ it('cleans staging on disk write failure without publishing or deleting the sour
  try{await expect(service.copy('recipient',{from:received(id),to:own(dest,'Copy')})).rejects.toThrow();}finally{stub.mockRestore();}
  expect(fs.readdirSync(path.join(root,'Inbox'))).toEqual([]);expect(fs.readFileSync(path.join(root,'Notes/Project/note.md'),'utf8')).toBe('hello');
 });
+
+it('bounds concurrent copies and releases capacity after completion and rejection',async()=>{
+ const id=share('Project','editor'),dest=inbox();
+ const copy=name=>service.copy('recipient',{from:received(id),to:own(dest,name)});
+ const result=await Promise.allSettled([copy('First'),copy('Second'),copy('Third')]);
+ expect(result.map(r=>r.status)).toEqual(['fulfilled','fulfilled','rejected']);
+ expect(result[2].reason.code).toBe('SHARE_COPY_BUSY');
+ expect(fs.existsSync(path.join(root,'Inbox/Third'))).toBe(false);
+ await expect(copy('First')).rejects.toMatchObject({code:'SHARE_CONFLICT'});
+ await expect(copy('After')).resolves.toEqual({ok:true});
+ expect(fs.readdirSync(path.join(root,'Inbox')).some(name=>name.startsWith('.ignis-copy-'))).toBe(false);
+});
+it('rejects a copy above 5000 entries before publishing or staging',async()=>{
+ const id=share('Project','editor'),dest=inbox();
+ for(let i=0;i<4999;i++)fs.writeFileSync(path.join(root,'Notes/Project',`entry${i}.md`),'');
+ await expect(service.copy('recipient',{from:received(id),to:own(dest,'TooMany')})).rejects.toMatchObject({code:'SHARE_LIMIT'});
+ expect(fs.readdirSync(path.join(root,'Inbox'))).toEqual([]);
+ expect(fs.readFileSync(path.join(root,'Notes/Project/note.md'),'utf8')).toBe('hello');
+});
+it('accepts depth 32 but rejects depth 33 without a partial destination',async()=>{
+ const id=share('Project','editor'),dest=inbox();let current=path.join(root,'Notes/Project');
+ for(let i=0;i<32;i++){current=path.join(current,'d');fs.mkdirSync(current);}
+ await expect(service.copy('recipient',{from:received(id),to:own(dest,'AtLimit')})).resolves.toEqual({ok:true});
+ fs.mkdirSync(path.join(current,'d'));
+ await expect(service.copy('recipient',{from:received(id),to:own(dest,'BeyondLimit')})).rejects.toMatchObject({code:'SHARE_LIMIT'});
+ expect(fs.readdirSync(path.join(root,'Inbox'))).toEqual(['AtLimit']);
+});
+it('rejects a copy exceeding the aggregate 128 MiB bound even when every file fits',async()=>{
+ const id=share('Project','editor'),dest=inbox();
+ for(let i=0;i<16;i++){const file=path.join(root,'Notes/Project',`large${i}.bin`);fs.writeFileSync(file,'');fs.truncateSync(file,8*1024*1024);}
+ // Sixteen files hit 128 MiB; the existing note makes the aggregate exceed it.
+ await expect(service.copy('recipient',{from:received(id),to:own(dest,'TooLarge')})).rejects.toMatchObject({code:'SHARE_LIMIT'});
+ expect(fs.readdirSync(path.join(root,'Inbox'))).toEqual([]);
+});
+
+it('accepts 5000 mounted entries but rejects a larger aggregate without truncating it',()=>{
+ const dest=inbox();
+ for(let n=0;n<5;n++){
+  const name='Group'+n,directory=path.join(root,'Notes',name);fs.mkdirSync(directory);
+  for(let i=0;i<999;i++)fs.writeFileSync(path.join(directory,i+'.md'),'');
+  const id=share(name);service.destination('recipient',{id,vault:dest,localPath:name});
+ }
+ const result=service.mounts('recipient',{vault:dest});
+ expect(result.mounts.reduce((n,m)=>n+Object.keys(m.tree).length,0)).toBe(5000);
+ fs.writeFileSync(path.join(root,'Notes/Group0/extra.md'),'');
+ expect(()=>service.mounts('recipient',{vault:dest})).toThrow(expect.objectContaining({code:'SHARE_LIMIT'}));
+});
+it('rejects the 1001st shared root without recording an extra grant',()=>{
+ for(let i=0;i<1000;i++){const name='Shared'+i;fs.mkdirSync(path.join(root,'Notes',name));share(name);}
+ expect(()=>share()).toThrow(expect.objectContaining({code:'SHARE_LIMIT'}));
+ expect(db.prepare('SELECT count(*) n FROM shared_resources').get().n).toBe(1000);
+ expect(db.prepare('SELECT count(*) n FROM resource_grants').get().n).toBe(1000);
+});
+
+it('refreshes placement snapshots per request and retains collisions from stale resources',()=>{
+ const dest=inbox(),first=share('Project'),second=share('secret.md');
+ service.destination('recipient',{id:first,vault:dest,localPath:'Team'});
+ service.destination('recipient',{id:second,vault:dest,localPath:'Secret.md'});
+ // Simulate a pre-existing overlapping placement and then an unavailable source.
+ db.prepare("UPDATE resource_destinations SET local_path='Team/Secret.md' WHERE resource_id=?").run(second);
+ fs.renameSync(path.join(root,'Notes/secret.md'),path.join(root,'Notes/moved.md'));
+ let mounts=service.mounts('recipient',{vault:dest}).mounts;
+ expect(mounts).toHaveLength(1);expect(mounts[0].blocked).toBe(true);expect(mounts[0].tree).toEqual({});
+ service.grant('owner',{action:'revoke',id:second,revision:1});
+ mounts=service.mounts('recipient',{vault:dest}).mounts;
+ expect(mounts).toHaveLength(1);expect(mounts[0].blocked).not.toBe(true);expect(mounts[0].tree).toHaveProperty('note.md');
+});

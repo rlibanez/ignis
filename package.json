@@ -15,7 +15,8 @@
     "docker:build": "node apps/ignis-server/scripts/build-image.js",
     "lint": "oxlint packages apps/ignis-server/server --max-warnings 0 && node scripts/check-error-leaks.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:load": "node scripts/check-load.mjs"
   },
   "dependencies": {
     "acorn": "^8.18.0",
