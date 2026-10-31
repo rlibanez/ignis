@@ -166,16 +166,27 @@
       button.disabled = false;
     }
   });
+  let logoutConfirmed = false;
   logout.addEventListener("click", async () => {
     logout.disabled = true;
     try {
-      const response = await request("/api/auth/logout", {});
-      if (!response.ok) throw new Error();
-      channel?.postMessage("lock");
+      if (!logoutConfirmed) {
+        const response = await request("/api/auth/logout", {});
+        if (!response.ok) throw new Error();
+        logoutConfirmed = true;
+        channel?.postMessage("lock");
+        document.getElementById("account").hidden = true;
+        document.getElementById("manage-account").hidden = true;
+        form.hidden = oidcButton.hidden = linkButton.hidden = true;
+      }
       await clearBrowserData();
       location.replace("/login");
     } catch {
-      status.textContent = "Unable to sign out. Please try again.";
+      status.classList.add("auth-error");
+      status.textContent = logoutConfirmed
+        ? "You are signed out. Close other Ignis tabs, then retry cleanup to remove this account's local browser data."
+        : "Unable to confirm sign-out. Please try again.";
+      logout.textContent = logoutConfirmed ? "Retry cleanup" : "Sign out";
       logout.disabled = false;
     }
   });
