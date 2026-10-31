@@ -1,9 +1,15 @@
 :root {
   color-scheme: light dark;
+  background: light-dark(#f4f5f8, #17191e);
   font-family: system-ui, sans-serif;
 }
 body {
   margin: 0;
+  box-sizing: border-box;
+  min-height: 100dvh;
+  /* Paint through the gesture area while keeping form controls clear of it. */
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+    env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
   background: light-dark(#f4f5f8, #17191e);
   color: light-dark(#222631, #e9ebf0);
 }

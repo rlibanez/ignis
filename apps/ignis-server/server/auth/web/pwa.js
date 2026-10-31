@@ -1,5 +1,40 @@
-// Installation only: no service worker, offline cache or credential persistence.
+// Browser appearance and installation only: no service worker, offline cache or credential persistence.
 (() => {
+  // Keep browser/system chrome in step with the current page or vault theme.
+  // Android may still apply its own contrast scrim to system navigation bars.
+  const themeMeta = document.querySelector('meta[name="theme-color"]');
+  const syncTheme = () => {
+    const body = document.body;
+    if (!body || !themeMeta) return;
+    const style = window.getComputedStyle(body);
+    const color = style.backgroundColor;
+    if (color && color !== 'transparent' && color !== 'rgba(0, 0, 0, 0)') {
+      if (themeMeta.content !== color) themeMeta.content = color;
+      themeMeta.removeAttribute('media');
+      // Edge-to-edge browsers may paint the root canvas behind system bars.
+      const rootStyle = document.documentElement.style;
+      if (rootStyle.backgroundColor !== color) rootStyle.backgroundColor = color;
+    }
+    // Obsidian selects its theme independently of the OS preference.
+    const scheme = body.classList.contains('theme-dark') ? 'dark'
+      : body.classList.contains('theme-light') ? 'light' : '';
+    if (document.documentElement.style.colorScheme !== scheme)
+      document.documentElement.style.colorScheme = scheme;
+  };
+  let themeFrame = null;
+  const scheduleTheme = () => {
+    if (themeFrame !== null) return;
+    themeFrame = window.requestAnimationFrame(() => { themeFrame = null; syncTheme(); });
+  };
+  const themeObserver = new MutationObserver(scheduleTheme);
+  themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class', 'style'] });
+  // Theme stylesheets can load or be replaced without changing the body class.
+  themeObserver.observe(document.head, { childList: true, subtree: true, characterData: true });
+  document.addEventListener('load', scheduleTheme, true);
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', scheduleTheme);
+  window.addEventListener('pageshow', scheduleTheme);
+  syncTheme();
+
   let pending = null, busy = false;
   const standalone = window.matchMedia('(display-mode: standalone)');
   const installed = () => standalone.matches || window.navigator.standalone === true;
