@@ -114,6 +114,12 @@ router.get("/info", async (req, res) => {
   const vaultPath = vaultId && config.getVaultPathOrRescan(vaultId);
 
   if (!vaultPath) {
+    // Only an unselected initial probe with no accessible default is expected.
+    // A missing directory for a selected vault must remain a warning.
+    if (!vaultId && req.vaultView &&
+        require("../auth/vault-selection").selectVaultReference(req.query, req.body) === null) {
+      req.ignisExpectedLogOutcome = "no-initial-vault";
+    }
     return res.status(404).json({ error: "Vault unavailable" });
   }
 
@@ -166,6 +172,7 @@ router.post("/create", async (req, res) => {
     const vault = req.createRegisteredVault(name);
     config.refreshVaults();
     bootstrapCache.invalidateVault(name);
+    req.ignisLogVaultName = name;
     // Keep the directory ID used by the current editor; UUID is its stable identity.
     res.json({ ok: true, id: name, uuid: vault.id, path: vault.path });
   } catch (e) {
@@ -205,6 +212,8 @@ router.post("/rename", async (req, res) => {
         },
       });
       config.refreshVaults();
+      req.ignisLogVaultName = vault.directory;
+      req.ignisLogPreviousVaultName = vault.previousDirectory;
       return res.json({ ok: true, id: vault.directory, uuid: vault.id, path: vault.path });
     } catch (error) {
       config.refreshVaults();
@@ -251,6 +260,8 @@ router.post("/rename", async (req, res) => {
     bootstrapCache.invalidateVault(vaultId);
     bootstrapCache.invalidateVault(newName);
 
+    req.ignisLogVaultName = newName;
+    req.ignisLogPreviousVaultName = vaultId;
     res.json({ ok: true, id: newName, path: newPath });
   } catch (e) {
     if (e.code === "ENOTEMPTY" || e.code === "EEXIST") {
@@ -272,6 +283,7 @@ router.delete("/remove", async (req, res) => {
     try {
       const result = await req.deleteRegisteredVault(require("../vault/deletion-lifecycle").deletionLifecycle());
       config.refreshVaults();
+      req.ignisLogVaultName = result.directory;
       return res.json({ ok: true, uuid: result.id, cleanupPending: result.cleanupPending });
     } catch (error) {
       config.refreshVaults();
@@ -309,6 +321,7 @@ router.delete("/remove", async (req, res) => {
     treeReconcile.cancelVault(vaultId);
     bootstrapCache.invalidateVault(vaultId);
 
+    req.ignisLogVaultName = vaultId;
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json(sanitizeError(e));

@@ -53,7 +53,7 @@ function getOrCompress(entry) {
       return compressed;
     })
     .catch((e) => {
-      console.warn("[bootstrap] precompression failed:", e.message);
+      require("@ignis/server-core/src/logger").emit("warn", "server.cache.compress.compression_failed");
 
       return {};
     })

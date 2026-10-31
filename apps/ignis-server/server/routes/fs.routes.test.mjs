@@ -1,3 +1,4 @@
+import { captureLogs as captureEventLogs } from "../../../../packages/server-core/src/log-test-helper.mjs";
 import {
   describe,
   it,
@@ -213,7 +214,7 @@ describe("tree route root responses come from the bootstrap cache", () => {
     fs.writeFileSync(abs("direct.md"), "direct");
 
     const logs = [];
-    const spy = vi.spyOn(console, "log").mockImplementation((...args) => {
+    const spy = captureEventLogs("info").mockImplementation((...args) => {
       logs.push(args.join(" "));
     });
     let stale;
@@ -225,7 +226,7 @@ describe("tree route root responses come from the bootstrap cache", () => {
     }
 
     expect(stale["direct.md"]).toBeUndefined();
-    expect(logs.filter((l) => l.includes("build files="))).toEqual([]);
+    expect(logs.filter((l) => l.includes("server.cache.crawl.built"))).toEqual([]);
 
     await bootstrapCache.reconcileVault(VAULT_ID);
 
@@ -239,7 +240,7 @@ describe("tree route root responses come from the bootstrap cache", () => {
     await writeFile("dedup.md", "x");
 
     const logs = [];
-    const spy = vi.spyOn(console, "log").mockImplementation((...args) => {
+    const spy = captureEventLogs("info").mockImplementation((...args) => {
       logs.push(args.join(" "));
     });
     let first, second;
@@ -255,7 +256,7 @@ describe("tree route root responses come from the bootstrap cache", () => {
 
     expect(first["dedup.md"]).toMatchObject({ type: "file" });
     expect(second).toEqual(first);
-    expect(logs.filter((l) => l.includes("[bootstrap]"))).toHaveLength(1);
+    expect(logs.filter((l) => l.includes("server.cache.crawl.built"))).toHaveLength(1);
   });
 });
 
@@ -320,12 +321,12 @@ describe("mutation routes apply to a watched vault's tree", () => {
   function captureLogs() {
     logs = [];
 
-    return vi.spyOn(console, "log").mockImplementation((...args) => {
+    return captureEventLogs("info").mockImplementation((...args) => {
       logs.push(args.join(" "));
     });
   }
 
-  const crawlLines = () => logs.filter((l) => l.includes("build files="));
+  const crawlLines = () => logs.filter((l) => l.includes("server.cache.crawl.built"));
 
   beforeEach(() => {
     bootstrapCache.invalidateAll();

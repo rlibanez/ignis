@@ -37,7 +37,7 @@ async function launch(root, env = {}) {
     }, 8000);
     child.stdout.on("data", (chunk) => {
       log += chunk;
-      const match = log.match(/Server running on port (\d+)/);
+      const match = log.match(/"event":"server.started"[^\n]*"port":(\d+)/);
       if (match) {
         clearTimeout(timer);
         resolve(Number(match[1]));
@@ -261,7 +261,7 @@ it("protects real server routes, persists auth and does not log request secrets"
     const ownUuid = JSON.parse(registered.text).uuid;
     const ownerList = JSON.parse((await request(port, "/api/vault/list", ownerJar)).text);
     expect(ownerList.map(v => v.id)).toEqual(["Team"]);
-    expect(ownerList[0].path).toBeUndefined();
+    expect(ownerList[0].path).toBe(path.join(root, "vaults/Team"));
     const ownBoot = await request(port, `/api/bootstrap?vault=${ownUuid}`, ownerJar);
     expect(ownBoot.status).toBe(200);
     expect(JSON.parse(ownBoot.text)).toMatchObject({ configurationMode: "shared", plugins: [], virtualPlugins: [] });
@@ -445,6 +445,16 @@ it("protects real server routes, persists auth and does not log request secrets"
     expect(processState.logs()).not.toContain(password);
     expect(processState.logs()).not.toContain("SECRET_CALLBACK_MARKER");
     expect(processState.logs()).not.toContain(challenge);
+    await stop(processState.child);
+    const persisted = fs.readFileSync(path.join(root, "data/logs/ignis.jsonl"), "utf8");
+    expect(persisted).toContain('"event":"server.started"');
+    expect(persisted).toContain('"event":"http.request"');
+    const logRecords = persisted.trim().split("\n").map(JSON.parse);
+    expect(logRecords.some(r => r.operation === "auth.login" && r.status === 200 && r.username === "admin")).toBe(true);
+    expect(logRecords.every(r => !Object.hasOwn(r, "userId"))).toBe(true);
+    expect(logRecords.some(r => r.operation === "auth.logout" && r.status === 204 && r.username === "admin")).toBe(true);
+    for (const secret of [password, "SECRET_CALLBACK_MARKER", challenge]) expect(persisted).not.toContain(secret);
+    for (const line of persisted.trim().split("\n")) expect(() => JSON.parse(line)).not.toThrow();
   } finally {
     await stop(processState.child);
     fs.rmSync(root, { recursive: true, force: true });
@@ -462,7 +472,7 @@ it("does not listen when security configuration or identity storage is invalid",
     ]) {
       const state = await launch(root, env);
       await expect(state.ready).rejects.toThrow(/exited/);
-      expect(state.logs()).not.toContain("Server running");
+      expect(state.logs()).not.toContain('"event":"server.started"');
       await stop(state.child);
     }
     fs.mkdirSync(path.join(root, "data/auth"), { recursive: true });
@@ -472,7 +482,7 @@ it("does not listen when security configuration or identity storage is invalid",
     );
     const state = await launch(root);
     await expect(state.ready).rejects.toThrow(/exited/);
-    expect(state.logs()).not.toContain("Server running");
+    expect(state.logs()).not.toContain('"event":"server.started"');
     await stop(state.child);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

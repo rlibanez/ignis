@@ -1,3 +1,4 @@
+import { captureLogs } from "../../../../packages/server-core/src/log-test-helper.mjs";
 import {
   describe,
   it,
@@ -72,7 +73,7 @@ function bodyOf(answer) {
 }
 
 function warnLines() {
-  return console.warn.mock.calls.map((args) => args.join(" "));
+  return captureLogs("warn").mock.calls.map((args) => args.join(" "));
 }
 
 beforeEach(() => {
@@ -82,7 +83,7 @@ beforeEach(() => {
 
   relayAgain = vi.fn(async () => relayedAnswer(200, OVERLOADED));
 
-  vi.spyOn(console, "warn").mockImplementation(() => {});
+  captureLogs("warn").mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -174,7 +175,7 @@ describe("the sign-in ladder", () => {
     expect(bodyOf(answer)).toBe(OVERLOADED);
     expect(obLogin).toHaveBeenCalledTimes(3);
     expect(warnLines()).toEqual([
-      "[proxy] signin: relay shed, ob login failed (overload)",
+      "server.obsidian-account.signin.signin_failed",
     ]);
   });
 
@@ -195,7 +196,7 @@ describe("the sign-in ladder", () => {
     expect(bodyOf(answer)).toBe(LOGIN_FAILED);
     expect(obLogin).toHaveBeenCalledTimes(1);
     expect(warnLines()).toEqual([
-      "[proxy] signin: relay shed, ob login failed (error)",
+      "server.obsidian-account.signin.signin_failed",
     ]);
   });
 
@@ -208,7 +209,7 @@ describe("the sign-in ladder", () => {
     expect(relayAgain).toHaveBeenCalledTimes(2);
     expect(obLogin).not.toHaveBeenCalled();
     expect(warnLines()).toEqual([
-      "[proxy] signin: relay shed, ob not installed (overloaded)",
+      "server.obsidian-account.signin.cli_unavailable",
     ]);
   });
 

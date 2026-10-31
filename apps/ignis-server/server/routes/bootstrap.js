@@ -64,7 +64,7 @@ router.get("/", async (req, res) => {
 
     res.json(entry.response);
   } catch (e) {
-    console.error("[bootstrap] error:", e);
+    require("@ignis/server-core/src/logger").emit("error", "server.routes.bootstrap.failed", { errorCode: e?.code });
     res.status(500).json(sanitizeError(e));
   }
 });

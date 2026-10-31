@@ -59,7 +59,7 @@ function emitGiveUp(absPath, err) {
     try {
       fn(absPath, err);
     } catch (e) {
-      console.error("[write-coalesce] give-up subscriber threw:", e);
+      require("./logger").emit("error", "core.write-coalescer.giveup_listener_failed", { errorCode: e?.code });
     }
   }
 }
@@ -81,7 +81,7 @@ function emitFlushSuccess(absPath) {
     try {
       fn(absPath);
     } catch (e) {
-      console.error("[write-coalesce] flush-success subscriber threw:", e);
+      require("./logger").emit("error", "core.write-coalescer.success_listener_failed", { errorCode: e?.code });
     }
   }
 }
@@ -143,10 +143,7 @@ function requeueFailed(absPath, entry, err) {
   const attempts = entry.attempts + 1;
 
   if (attempts > MAX_FLUSH_ATTEMPTS) {
-    console.error(
-      `[write-coalesce] Giving up on ${absPath} after ${MAX_FLUSH_ATTEMPTS} retries:`,
-      err,
-    );
+    require("./logger").emit("error", "core.write-coalescer.write_abandoned", { count: attempts, errorCode: err?.code });
     emitGiveUp(absPath, err);
     return;
   }
@@ -178,7 +175,7 @@ function flushEntry(absPath) {
   queueDiskWrite(absPath, entry).then(
     () => emitFlushSuccess(absPath),
     (err) => {
-      console.error(`[write-coalesce] Flush failed for ${absPath}:`, err);
+      require("./logger").emit("error", "core.write-coalescer.flush_failed");
       requeueFailed(absPath, entry, err);
     },
   );
@@ -355,9 +352,7 @@ async function flushAll() {
     return;
   }
 
-  console.log(
-    `[write-coalesce] Flushing ${paths.length} pending write(s), ${writing.length} in flight...`,
-  );
+  require("./logger").emit("info", "core.write-coalescer.flushing");
 
   for (const entry of pending.values()) {
     clearTimeout(entry.timer);
@@ -370,14 +365,14 @@ async function flushAll() {
     return queueDiskWrite(absPath, entry).then(
       () => emitFlushSuccess(absPath),
       (err) => {
-        console.error(`[write-coalesce] Failed to flush ${absPath}:`, err);
+        require("./logger").emit("error", "core.write-coalescer.flush_all_failed");
       },
     );
   });
 
   const timeout = new Promise((resolve) => {
     setTimeout(() => {
-      console.warn("[write-coalesce] Flush timeout. Some writes may be lost");
+      require("./logger").emit("warn", "core.write-coalescer.flush_timeout");
       resolve();
     }, FLUSH_TIMEOUT_MS);
   });

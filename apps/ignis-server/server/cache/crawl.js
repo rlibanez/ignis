@@ -88,11 +88,8 @@ async function walkTree(rootPath) {
 }
 
 function logIgnoreSuggestions(vaultId, tree) {
-  for (const { pluginDir, fileCount, patterns } of suggestionsForTree(tree)) {
-    console.log(
-      `[ignore-suggest] vault=${vaultId} plugin=${pluginDir} ` +
-        `files=${fileCount} patterns=${patterns.join(" ")}`,
-    );
+  for (const { fileCount } of suggestionsForTree(tree)) {
+    require("@ignis/server-core/src/logger").emit("info", "server.cache.crawl.ignore_suggestions", { vaultId, count: fileCount });
   }
 }
 
@@ -203,9 +200,7 @@ async function buildEntry(vaultId) {
     ).length;
     const dirCount = Object.keys(dirMtimes).length;
 
-    console.log(
-      `[bootstrap] vault=${vaultId} build files=${fileCount} dirs=${dirCount} time=${ms}ms`,
-    );
+    require("@ignis/server-core/src/logger").emit("info", "server.cache.crawl.built", { vaultId, count: fileCount + dirCount, durationMs: ms });
 
     return entry;
   } finally {
@@ -230,7 +225,7 @@ async function swapEntry(vaultId, vaultPath, entry, crawl) {
       markCompressionStale(entry);
     }
   } catch (e) {
-    console.warn(`[bootstrap] replay failed on vault ${vaultId}:`, e.message);
+    require("@ignis/server-core/src/logger").emit("warn", "server.cache.crawl.replay_failed", { errorCode: e?.code });
     invalidateVault(vaultId);
 
     return;
@@ -347,19 +342,8 @@ function diffTrees(stored, fresh, excluded) {
   return { missing, extra, changed };
 }
 
-const DRIFT_SAMPLE = 5;
 
-function describeDrift(drift) {
-  const paths = [...drift.missing, ...drift.extra, ...drift.changed];
-  const rest = paths.length - DRIFT_SAMPLE;
-  const sample =
-    paths.slice(0, DRIFT_SAMPLE).join(", ") + (rest > 0 ? `, +${rest}` : "");
 
-  return (
-    `missing=${drift.missing.length} extra=${drift.extra.length} ` +
-    `changed=${drift.changed.length} (${sample})`
-  );
-}
 
 function adoptDirMtimes(vaultId, crawl, entry, dirMtimes) {
   if (activeCrawls.get(vaultId) !== crawl || cache.get(vaultId) !== entry) {
@@ -415,9 +399,7 @@ async function reconcileVault(vaultId, { includeIgnored = false } = {}) {
       return { drifted, ...drift };
     }
 
-    console.warn(
-      `[tree-reconcile] vault=${vaultId} drift ${describeDrift(drift)}`,
-    );
+    require("@ignis/server-core/src/logger").emit("warn", "server.cache.crawl.drift_detected");
 
     const etag = nextEtag();
     const replacement = {
@@ -462,7 +444,7 @@ async function warmUp() {
     try {
       await getOrBuild(id);
     } catch (e) {
-      console.warn(`[bootstrap] warm-up failed for vault ${id}:`, e.message);
+      require("@ignis/server-core/src/logger").emit("warn", "server.cache.crawl.warmup_failed", { errorCode: e?.code });
     }
   }
 }

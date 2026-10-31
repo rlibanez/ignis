@@ -179,7 +179,8 @@ function setupWebSocket(server, opts = {}) {
     }
 
     const vaultPath = getVaultPath(vaultId);
-    console.log(`[ws] Client connected to vault: ${vaultId}`);
+    const logContext = { username: req.ignisLogUsername, vaultName: req.ignisLogVaultName, vaultId, component: "websocket" };
+    require("./logger").emit("info", "core.ws.connected", logContext);
 
     // isAlive is reset by each pong; the heartbeat sweep terminates sockets that miss one.
     ws.isAlive = true;
@@ -216,7 +217,7 @@ function setupWebSocket(server, opts = {}) {
       try {
         msg = JSON.parse(data);
       } catch {
-        console.warn("[ws] Invalid JSON message");
+        require("./logger").emit("warn", "core.ws.invalid_json", logContext);
         return;
       }
 
@@ -262,19 +263,16 @@ function setupWebSocket(server, opts = {}) {
           }
         }
       } catch (e) {
-        console.warn(
-          `[ws] handler for ${msg.channel ? msg.channel + ":" : ""}${msg.type} threw:`,
-          e.message,
-        );
+        require("./logger").emit("warn", "core.ws.handler_failed", { ...logContext, errorCode: e?.code });
       }
     });
 
     ws.on("error", (e) => {
-      console.warn(`[ws] Socket error on vault "${vaultId}":`, e.message);
+      require("./logger").emit("warn", "core.ws.socket_error", { ...logContext, errorCode: e?.code });
     });
 
     ws.on("close", () => {
-      console.log(`[ws] Client disconnected from vault: ${vaultId}`);
+      require("./logger").emit("info", "core.ws.disconnected", logContext);
       watcher.removeListener(vaultId, listener);
 
       const set = clientsByVault.get(vaultId);

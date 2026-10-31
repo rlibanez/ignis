@@ -183,7 +183,9 @@ it("disables web setup for an unreadable key without preventing CLI bootstrap", 
 });
 describe("initial administrator transaction", () => {
   it("rejects disabled, missing and incorrect keys without side effects", async () => {
-    expect((await service("").create(body())).status).toBe(403);
+    const rejected = await service("").create(body());
+    expect(rejected.status).toBe(403);
+    expect(rejected).not.toHaveProperty("username");
     for (const value of [undefined, "", OTHER, [], {}])
       expect(
         (await service().create(body({ initialAdminKey: value }))).status,
@@ -204,7 +206,7 @@ describe("initial administrator transaction", () => {
     expect(count("bootstrap_state")).toBe(0);
   });
   it("creates one local administrator with audit but no automatic session, and cannot reopen", async () => {
-    expect((await service().create(body())).status).toBe(201);
+    expect(await service().create(body())).toEqual({ status: 201, username: "admin" });
     expect(db.prepare("SELECT login, role FROM users").get()).toEqual({
       login: "admin",
       role: "admin",

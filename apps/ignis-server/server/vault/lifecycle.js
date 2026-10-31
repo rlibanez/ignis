@@ -52,10 +52,7 @@ async function withWatcherStopped(vaultId, vaultPath, mutate) {
       try {
         watcher.startWatching(vaultId, vaultPath);
       } catch (err) {
-        console.error(
-          `[vault] Watcher restore failed for "${vaultId}":`,
-          err.message,
-        );
+        require("@ignis/server-core/src/logger").emit("error", "server.vault.lifecycle.watcher_restore_failed", { errorCode: err?.code });
       }
 
       if (wss) {

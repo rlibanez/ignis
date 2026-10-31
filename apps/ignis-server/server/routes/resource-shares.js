@@ -32,7 +32,10 @@ function createResourceSharesRouter(service) {
       if(["grant","revoke","write","mkdir","remove"].includes(operation) && input.action!==operation) return res.status(400).json({error:"Invalid request"});
       if(req.shareOperationAllowed && !req.shareOperationAllowed(["read","mounts","browse"].includes(operation))) {res.set("Retry-After","60");return res.status(429).json({error:"Too many requests"});}
       const fn={copy:"copy",previewRemoval:"previewRemoval",removeConfirmed:"removeConfirmed",mounts:"mounts",destination:"destination",rename:"rename",create:"create",grant:"grant",revoke:"grant",browse:"browseOwner",read:"read",write:"mutate",mkdir:"mutate",remove:"mutate"}[operation];
-      res.json(await service[fn](req.shareToken,input));
+      req.ignisLogOperation = `shares.${operation}`;
+      const result = await service[fn](req.shareToken,input);
+      if (["create", "grant"].includes(operation)) req.ignisLogTargetUsername = require("../auth/store").normalizeLogin(input.login);
+      res.json(result);
     } catch(error) {
       const [status,message]=messages[error.code] || (error.code==="ENOTEMPTY"?[409,"The folder must be empty before removing it."]:[404,"Shared resource unavailable"]);
       res.status(status).json({error:message,code:messages[error.code]?error.code:"SHARE_UNAVAILABLE"});

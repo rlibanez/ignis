@@ -97,12 +97,9 @@ async function applyToTree(req, events) {
 
     await bootstrapCache.applyMutation(vaultId, batch);
   } catch (e) {
-    const paths = batch ? batch.map((event) => event.path).join(", ") : "";
 
-    console.warn(
-      `[bootstrap] route apply failed on vault ${vaultId}${paths ? ` for ${paths}` : ""}:`,
-      e.message,
-    );
+
+    require("@ignis/server-core/src/logger").emit("warn", "server.routes.fs.cache_update_failed", { errorCode: e?.code });
   }
 }
 

@@ -1,3 +1,4 @@
+import { captureLogs } from "../../../../packages/server-core/src/log-test-helper.mjs";
 import {
   describe,
   it,
@@ -67,7 +68,7 @@ function runMidCrawl(fn) {
 const verifyLines = () =>
   warn.mock.calls
     .map((args) => args.join(" "))
-    .filter((line) => line.includes("[tree-reconcile]"));
+    .filter((line) => line.includes("server.cache.crawl.drift_detected"));
 
 beforeEach(() => {
   bootstrapCache.invalidateAll();
@@ -77,7 +78,7 @@ beforeEach(() => {
   fs.rmSync(vaultDir, { recursive: true, force: true });
   fs.mkdirSync(vaultDir, { recursive: true });
   vi.spyOn(watcher, "isWatching").mockReturnValue(true);
-  warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  warn = captureLogs("warn").mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -227,7 +228,7 @@ describe("a vault that has drifted from its stored tree", () => {
     ]);
   });
 
-  it("names the vault and what drifted", async () => {
+  it("reports drift without exposing filenames", async () => {
     seed("a.md", "a");
     seed("gone.md", "gone");
 
@@ -244,8 +245,7 @@ describe("a vault that has drifted from its stored tree", () => {
       extra: ["gone.md"],
     });
     expect(verifyLines()).toEqual([
-      "[tree-reconcile] vault=v drift missing=1 extra=1 changed=0 " +
-        "(appeared.md, gone.md)",
+      "server.cache.crawl.drift_detected",
     ]);
   });
 

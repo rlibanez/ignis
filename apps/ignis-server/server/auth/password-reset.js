@@ -76,7 +76,8 @@ function readPasswordResetGrant(db, token, { now = Date.now } = {}) {
 async function completePasswordResetGrant(db, token, context, password, policy, { now = Date.now } = {}) {
   const grant = readPasswordResetGrant(db, token, { now });
   if (!grant || grant.context !== context) fail("INVALID_RESET");
-  return completeByHash(db, grant.resetHash, password, policy, now);
+  await completeByHash(db, grant.resetHash, password, policy, now);
+  return { username: grant.login };
 }
 module.exports = { issuePasswordReset, completePasswordReset, beginPasswordReset, readPasswordResetGrant, completePasswordResetGrant };
 

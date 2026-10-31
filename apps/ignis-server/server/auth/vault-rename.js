@@ -55,7 +55,7 @@ async function renameRegisteredVault(db, root, actor, reference, name, {
     db.prepare("UPDATE vaults SET status='pending' WHERE id=?").run(vault.id);
     audit(db, actor, "begin-rename-vault", vault.id);
   });
-  if (name === vault.directory) return { ...vault, path: vault.path };
+  if (name === vault.directory) return { ...vault, previousDirectory: vault.directory, path: vault.path };
   const target = path.join(root, name);
   try {
     // Reservation precedes the async watcher shutdown: neither name is routable.
@@ -82,7 +82,7 @@ async function renameRegisteredVault(db, root, actor, reference, name, {
       db.prepare("DELETE FROM vault_renames WHERE vault_id=?").run(vault.id);
       audit(db, actor, "rename-vault", vault.id);
     });
-    return { ...vault, name, directory: name, status: "active", path: target };
+    return { ...vault, previousDirectory: vault.directory, name, directory: name, status: "active", path: target };
   } catch (error) {
     transaction(db, () => {
       db.prepare("UPDATE vaults SET status='quarantine' WHERE id=?").run(vault.id);

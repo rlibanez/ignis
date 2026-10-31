@@ -14,13 +14,13 @@ const dataRoot = process.env.DATA_ROOT || path.join(REPO_ROOT, "data");
 try {
   fs.mkdirSync(vaultRoot, { recursive: true });
 } catch (e) {
-  console.error("[config] Failed to create VAULT_ROOT:", vaultRoot, e.message);
+  require("@ignis/server-core/src/logger").emit("error", "server.config.vault_root_failed", { errorCode: e?.code });
 }
 
 try {
   fs.mkdirSync(dataRoot, { recursive: true });
 } catch (e) {
-  console.error("[config] Failed to create DATA_ROOT:", dataRoot, e.message);
+  require("@ignis/server-core/src/logger").emit("error", "server.config.data_root_failed", { errorCode: e?.code });
 }
 
 let vaultDirectoryAvailable = () => true;
@@ -44,11 +44,7 @@ function discoverVaults() {
         try {
           isDir = fs.statSync(path.join(vaultRoot, entry.name)).isDirectory();
         } catch (e) {
-          console.error(
-            "[config] Skipping unreadable vault entry:",
-            entry.name,
-            e.message,
-          );
+          require("@ignis/server-core/src/logger").emit("error", "server.config.vault_unreadable", { errorCode: e?.code });
         }
       }
 
@@ -57,7 +53,7 @@ function discoverVaults() {
       }
     }
   } catch (e) {
-    console.error("[config] Failed to read VAULT_ROOT:", vaultRoot, e.message);
+    require("@ignis/server-core/src/logger").emit("error", "server.config.vault_scan_failed", { errorCode: e?.code });
   }
 
   // Optionally create a default vault if none exist
@@ -73,9 +69,9 @@ function discoverVaults() {
       fs.mkdirSync(path.join(defaultPath, ".obsidian"), { recursive: true });
       vaults["My Vault"] = defaultPath;
 
-      console.log("[config] Created default vault: My Vault");
+      require("@ignis/server-core/src/logger").emit("info", "server.config.default_vault_created");
     } catch (e) {
-      console.error("[config] Failed to create default vault:", e.message);
+      require("@ignis/server-core/src/logger").emit("error", "server.config.default_vault_failed", { errorCode: e?.code });
     }
   }
   return vaults;

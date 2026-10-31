@@ -114,7 +114,7 @@ async function retryRelay(relayAgain, relayed) {
     }
   }
 
-  console.warn(`[proxy] signin: relay shed, ob not installed (${outcome})`);
+  require("@ignis/server-core/src/logger").emit("warn", "server.obsidian-account.signin.cli_unavailable");
   return latest;
 }
 
@@ -143,7 +143,7 @@ async function retryWithOb(credentials, relayed, relayOverloaded) {
     }
   }
 
-  console.warn(`[proxy] signin: relay shed, ob login failed (${failure})`);
+  require("@ignis/server-core/src/logger").emit("warn", "server.obsidian-account.signin.signin_failed");
   return relayed;
 }
 

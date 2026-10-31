@@ -31,7 +31,7 @@ async function migratePluginFromVault(vaultPath, vaultName, pluginId) {
   } catch {}
 
   if (didWork) {
-    console.log(`[ignis] Migrated ${pluginId} out of vault: ${vaultName}`);
+    require("@ignis/server-core/src/logger").emit("info", "server.plugin-system.migrate-bridge.migrated");
   }
 
   return didWork;

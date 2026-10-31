@@ -1,3 +1,4 @@
+import { captureLogs } from "../../../../packages/server-core/src/log-test-helper.mjs";
 import {
   describe,
   it,
@@ -171,7 +172,7 @@ describe("one verify at a time", () => {
   });
 
   it("releases the slot for a reconcile that never comes back", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = captureLogs("warn").mockImplementation(() => {});
 
     bootstrapCache.reconcileVault.mockImplementation((id) => {
       verified.push(id);
@@ -198,13 +199,12 @@ describe("one verify at a time", () => {
 
     expect(verified).toEqual([VAULT_ID, OTHER_ID]);
     expect(warn.mock.calls.map((args) => args.join(" "))).toEqual([
-      `[tree-reconcile] vault=${VAULT_ID} reconcile has not completed in 300s, ` +
-        "resuming schedule",
+      "server.cache.reconcile.timeout",
     ]);
   });
 
   it("keeps going after a verify throws", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = captureLogs("warn").mockImplementation(() => {});
 
     bootstrapCache.reconcileVault.mockImplementation(async (id) => {
       verified.push(id);

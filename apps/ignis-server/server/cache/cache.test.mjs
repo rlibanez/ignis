@@ -1,3 +1,4 @@
+import { captureLogs } from "../../../../packages/server-core/src/log-test-helper.mjs";
 import {
   describe,
   it,
@@ -135,7 +136,7 @@ describe("watched and unwatched serving modes", () => {
     seed("direct.md", "direct");
 
     const logs = [];
-    const spy = vi.spyOn(console, "log").mockImplementation((...args) => {
+    const spy = captureLogs("info").mockImplementation((...args) => {
       logs.push(args.join(" "));
     });
     let second;
@@ -148,7 +149,7 @@ describe("watched and unwatched serving modes", () => {
 
     expect(second).toBe(first);
     expect(second.response.tree["direct.md"]).toBeUndefined();
-    expect(logs.filter((l) => l.includes("build files="))).toEqual([]);
+    expect(logs.filter((l) => l.includes("server.cache.crawl.built"))).toEqual([]);
     expect(staleServed).toEqual([VAULT_ID]);
   });
 
@@ -294,7 +295,7 @@ describe("watcher-driven invalidation", () => {
   it("evicts the entry when the watcher is rebuilt", async () => {
     seed("a.md", "a");
 
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+    captureLogs("warn").mockImplementation(() => {});
     watcher.onWatcherRebuild((vaultId) =>
       bootstrapCache.invalidateVault(vaultId),
     );
@@ -317,7 +318,7 @@ describe("watcher-driven invalidation", () => {
   it("rejects until the vault root a rebuild was triggered by comes back", async () => {
     seed("a.md", "a");
 
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+    captureLogs("warn").mockImplementation(() => {});
     watcher.onWatcherRebuild((vaultId) =>
       bootstrapCache.invalidateVault(vaultId),
     );
@@ -424,8 +425,8 @@ describe("warm-up", () => {
     seed("warm.md", "warm");
 
     const logs = [];
-    const spy = vi.spyOn(console, "log").mockImplementation((...args) => {
-      logs.push(args.join(" "));
+    const spy = captureLogs("info").mockImplementation((...args) => {
+      logs.push(args);
     });
     let warmed, requested;
 
@@ -442,7 +443,7 @@ describe("warm-up", () => {
     expect(requested.response.tree["warm.md"]).toMatchObject({ type: "file" });
     expect(warmed).toBe(requested);
     expect(
-      logs.filter((l) => l.includes(`vault=${VAULT_ID} build`)),
+      logs.filter(([event, fields]) => event === "server.cache.crawl.built" && fields.vaultId === VAULT_ID),
     ).toHaveLength(1);
   });
 });

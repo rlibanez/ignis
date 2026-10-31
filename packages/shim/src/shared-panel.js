@@ -197,7 +197,7 @@ export function installSharedPanel(obsidian, app, sharedFiles, host = window) {
         } catch { /* Preserve unread state during connection failures. */ }
         finally {checking=false;}
       };
-      const interval=host.setInterval(check,15000);
+      const interval=host.setInterval(check,60000);
       host.document.addEventListener("visibilitychange",check);
       this.register(()=>{stopped=true;host.clearInterval(interval);host.document.removeEventListener("visibilitychange",check);for(const leaf of app.workspace.getLeavesOfType(type))leaf.view.observer?.disconnect();});
       void check();

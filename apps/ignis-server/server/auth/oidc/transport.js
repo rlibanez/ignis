@@ -167,23 +167,26 @@ function createOidcTransport(
         let request,
           response,
           done = false;
+        let logEvent = "oidc.transport_failed", errorCode;
         const finish = (error, value) => {
           if (done) return;
           done = true;
           clearTimeout(timer);
           init.signal?.removeEventListener("abort", abort);
           if (error) {
+            require("@ignis/server-core/src/logger").emit("warn", logEvent, { errorCode });
             response?.destroy();
             request?.destroy();
             reject(failure());
           } else resolve(value);
         };
         const abort = () => finish(true);
-        const timer = setTimeout(abort, timeoutMs);
+        const timer = setTimeout(() => { logEvent = "oidc.timeout"; abort(); }, timeoutMs);
         init.signal?.addEventListener("abort", abort, { once: true });
         const permitted = policies.get(url.origin);
         const hostname = url.hostname.replace(/^\[|\]$/g, "");
         if (isIP(hostname) && !permitted(hostname)) {
+          logEvent = "oidc.address_rejected";
           finish(true);
           return;
         }
@@ -224,6 +227,8 @@ function createOidcTransport(
                           !permitted(record.address),
                       )
                     ) {
+                      logEvent = error ? "oidc.dns_failed" : "oidc.address_rejected";
+                      errorCode = error?.code;
                       callback(failure());
                       return;
                     }
@@ -289,7 +294,7 @@ function createOidcTransport(
               });
             },
           );
-          request.on("error", abort);
+          request.on("error", error => { errorCode = error?.code; abort(); });
           request.end(body);
         } catch {
           finish(true);

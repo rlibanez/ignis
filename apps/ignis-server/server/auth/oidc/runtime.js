@@ -77,10 +77,12 @@ async function createOidcRuntime(
           nextManual.clear();
           throw new Error("OIDC unavailable");
         }
+        require("@ignis/server-core/src/logger").emit("info", "oidc.initialized");
         login = nextLogin;
         manual = nextManual;
         reauth = nextReauth;
       })().catch(() => {
+        require("@ignis/server-core/src/logger").emit("warn", "oidc.initialize_failed");
         const error = new Error("OpenID Connect is unavailable; try again later");
         error.code = "OIDC_UNAVAILABLE";
         throw error;

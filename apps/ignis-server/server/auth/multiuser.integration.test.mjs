@@ -41,7 +41,7 @@ async function launch(root, env = {}) {
     }, 8000);
     child.stdout.on("data", (chunk) => {
       log += chunk;
-      const match = log.match(/Server running on port (\d+)/);
+      const match = log.match(/"event":"server.started"[^\n]*"port":(\d+)/);
       if (match) {
         clearTimeout(timer);
         resolve(Number(match[1]));

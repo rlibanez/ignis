@@ -1,3 +1,4 @@
+import { captureLogs } from "../../../../packages/server-core/src/log-test-helper.mjs";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { createRequire } from "module";
 import fs from "fs";
@@ -104,7 +105,7 @@ describe("resolveObsidianTerms", () => {
   });
 
   it("uses app.js and warns when main.js disagrees", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = captureLogs("warn").mockImplementation(() => {});
     const dir = assetsDir({
       "app.js": RENDERER,
       "main.js": mainWithTerms("something else"),
@@ -114,12 +115,12 @@ describe("resolveObsidianTerms", () => {
       MOCK_TERMS,
     );
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining("app.js and main.js disagree"),
+      "server.static.obsidian-terms.disagreement",
     );
   });
 
   it("falls back to main.js when app.js has no comparison", () => {
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+    captureLogs("warn").mockImplementation(() => {});
     const dir = assetsDir({
       "app.js": RENDERER_WITHOUT_TERMS,
       "main.js": mainWithTerms(MOCK_TERMS),

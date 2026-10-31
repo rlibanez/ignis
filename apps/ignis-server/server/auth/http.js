@@ -255,6 +255,8 @@ function createAuthBoundary({
         ws.close(4002, "Vault changed");
         return;
       }
+      req.ignisLogUsername = session.user.login;
+      req.ignisLogVaultName = vault.directory;
       socketEntries.set(ws, { token, vault, window: now(), messages: 0 });
       const original = ws.send.bind(ws);
       ws.send = (...args) => {
@@ -329,6 +331,10 @@ function createAuthBoundary({
 
   async function authEndpoint(req, res, pathname) {
     const session = getSession(req);
+    // Authentication endpoints return before the ordinary resource boundary.
+    // Preserve a verified actor for all of them, except identity-establishing flows.
+    if (session && !["/api/auth/login", "/api/auth/oidc/callback", "/api/auth/setup", "/api/auth/reset-password"].includes(pathname))
+      req.ignisLogUsername = session.user.login;
     if (["/api/auth/users", "/api/auth/users/status", "/api/auth/users/revoke-sessions", "/api/auth/users/unlink-oidc", "/api/auth/users/set-password", "/api/auth/users/reset-password", "/api/auth/users/delete"].includes(pathname)) {
       const deletingUser = pathname.endsWith("/delete");
       const resettingPassword = pathname.endsWith("/reset-password");
@@ -339,6 +345,7 @@ function createAuthBoundary({
       if (!["GET", "POST"].includes(req.method) || ((deletingUser || resettingPassword || settingPassword || changingStatus || revokingSessions || unlinkingOidc) && req.method !== "POST"))
         return safe(res, 404, "Not found");
       if (!session) return safe(res, 401, "Authentication required");
+      req.ignisLogUsername = session.user.login;
       if (!initialized() || session.user.role !== "admin")
         return safe(res, 403, "Administrator access required");
       if (req.headers["x-ignis-context"] &&
@@ -373,6 +380,9 @@ function createAuthBoundary({
       if (!limits.createUser(session.user.id))
         return safe(res, 429, "Too many requests");
       const body = req.body;
+      // Capture before deletion/revocation, using the database, never a supplied login.
+      if (typeof body?.userId === "string" && body.userId.length <= 64)
+        req.ignisLogTargetUsername = db.prepare("SELECT login FROM users WHERE id=?").get(body.userId)?.login;
       if (deletingUser) {
         if (req.headers["x-ignis-context"] !== session.id) return safe(res,409,"Session changed");
         const preview = body?.operation === "preview";
@@ -492,6 +502,7 @@ function createAuthBoundary({
              !["unverified", "admin_confirmed", "oidc_verified"].includes(body.expectedEmailTrust)))
           return safe(res, 400, "Invalid email update");
         try {
+          const before = db.prepare("SELECT status, role, email, email_trust, password_change_required FROM users WHERE id=?").get(body.userId);
           const user = changeUserStatus(
             db, session.user.id, body.userId, body.status, body.expectedStatus, {
               passwordUpdate: Object.hasOwn(body, "requirePasswordChange") ? body : undefined,
@@ -503,6 +514,15 @@ function createAuthBoundary({
           sweepSockets();
           const signedOut = body.userId === session.user.id && !sessions.resolve(cookies.read(req.headers.cookie));
           if (signedOut) res.append("Set-Cookie", cookies.clear());
+          const after = db.prepare("SELECT status, role, email, email_trust, password_change_required FROM users WHERE id=?").get(user.id);
+          req.ignisLogTargetUsername = user.login;
+          const changes = {};
+          if (before.status !== after.status) Object.assign(changes, { previousAccountStatus: before.status, accountStatus: after.status });
+          if (before.role !== after.role) Object.assign(changes, { previousRole: before.role, role: after.role });
+          if (before.email !== after.email) changes.emailChanged = true;
+          if (before.email_trust !== after.email_trust) Object.assign(changes, { previousEmailVerification: before.email_trust, emailVerification: after.email_trust });
+          if (before.password_change_required !== after.password_change_required) Object.assign(changes, { previousPasswordChangeRequired: !!before.password_change_required, passwordChangeRequired: !!after.password_change_required });
+          req.ignisLogChanges = { ...changes, changed: Object.keys(changes).length > 0 };
           return res.json({ user, signedOut });
         } catch (error) {
           const messages = {
@@ -537,6 +557,7 @@ function createAuthBoundary({
           config.passwordPolicy, { isCurrent, requirePasswordChange: body.requirePasswordChange ?? false, email: body.email ?? null, emailVerified: body.emailVerified ?? false },
         );
         csrf.consume(req);
+        req.ignisLogTargetUsername = user.login;
         return res.status(201).json({ user });
       } catch (error) {
         if (!isCurrent()) return safe(res, 403, "Administrator session required");
@@ -559,6 +580,7 @@ function createAuthBoundary({
         : safe(res, 429, "Too many requests");
     }
     if (req.method === "GET" && pathname === "/api/auth/session") {
+      if (!session) req.ignisExpectedLogOutcome = "no-session";
       return session
         ? res.json({
             user: session.user,
@@ -587,7 +609,8 @@ function createAuthBoundary({
       if (!body || Array.isArray(body) || Object.keys(body).some(key => key !== "password") ||
           typeof body.password !== "string") return safe(res, 400, "Invalid reset request");
       try {
-        await require("./password-reset").completePasswordResetGrant(db, resetCookies.read(req.headers.cookie), req.headers["x-ignis-reset-context"], body.password, config.passwordPolicy, { now });
+        const completed = await require("./password-reset").completePasswordResetGrant(db, resetCookies.read(req.headers.cookie), req.headers["x-ignis-reset-context"], body.password, config.passwordPolicy, { now });
+        req.ignisLogUsername = completed.username;
       } catch (error) {
         if (["INVALID_RESET", "PASSWORD_POLICY", "PASSWORD_UNCHANGED"].includes(error.code)) return res.status(400).json({ code: error.code, error: "Invalid reset secret or password policy" });
         throw error;
@@ -623,6 +646,7 @@ function createAuthBoundary({
     }
     if (pathname === "/api/auth/password" && req.method === "POST") {
       if (!session) return safe(res, 401, "Authentication required");
+      req.ignisLogUsername = session.user.login;
       if (!originAllowed(req, true) || !csrf.valid(req, session))
         return safe(res, 403, "Request rejected");
       if (!limits.login(req.ip, session.user.login))
@@ -688,6 +712,7 @@ function createAuthBoundary({
           ),
         );
         sweepSockets();
+        req.ignisLogUsername = authentication.session.user.login;
         return res.redirect(
           303,
           result.kind === "reauth" ? "/admin/users?reauth=success" : result.kind === "link"
@@ -696,6 +721,7 @@ function createAuthBoundary({
         );
       } catch {
         // Never render provider errors, code, state, URLs or claims.
+        require("@ignis/server-core/src/logger").emit("warn", "oidc.callback_failed", {requestId:req.ignisRequestId});
         return res.redirect(303, "/login?oidc=failed");
       }
     }
@@ -756,6 +782,7 @@ function createAuthBoundary({
       const result = await setup.create(req.body);
       if (result.error) return safe(res, result.status, result.error);
       csrf.consume(req);
+      req.ignisLogUsername = result.username;
       return res.status(201).json({ initialized: true });
     }
     if (pathname === "/api/auth/logout") {
@@ -765,6 +792,7 @@ function createAuthBoundary({
       csrf.consume(req);
       res.append("Set-Cookie", cookies.clear());
       sweepSockets();
+      req.ignisLogUsername = session?.user.login;
       return res.status(204).end();
     }
     if (req.body?.rememberMe !== undefined && typeof req.body.rememberMe !== "boolean") return safe(res,400,"Invalid remember preference");
@@ -774,6 +802,7 @@ function createAuthBoundary({
     } catch {
       /* Account-independent failure. */
     }
+    req.ignisLogAttemptedUsername = login;
     if (!limits.login(req.ip, login)) {
       res.set("Retry-After", "60");
       return safe(res, 429, "Too many requests");
@@ -790,6 +819,7 @@ function createAuthBoundary({
       res.append("Set-Cookie",rememberCookies.clear());
       res.append("Set-Cookie", resetCookies.serialize(reset.token, reset.expiresAt, now()));
       sweepSockets();
+      req.ignisLogUsername = login;
       return res.json({ passwordResetRequired: true });
     }
     res.append("Set-Cookie", resetCookies.clear());
@@ -802,6 +832,7 @@ function createAuthBoundary({
       cookies.serialize(result.token, result.session.expiresAt, now()),
     );
     sweepSockets();
+    req.ignisLogUsername = result.session.user.login;
     return res.json({
       user: result.session.user,
       expiresAt: result.session.expiresAt,
@@ -894,6 +925,7 @@ function createAuthBoundary({
           return res.redirect(303, "/login");
         return safe(res, 401, "Authentication required");
       }
+      req.ignisLogUsername = session.user.login;
       if (
         req.headers["x-ignis-context"] &&
         req.headers["x-ignis-context"] !== session.id
@@ -907,6 +939,7 @@ function createAuthBoundary({
             (req.method === "POST" && (!originAllowed(req,true) || !csrf.valid(req,session)))) return safe(res,403,"Request rejected");
         if (!limits.sharedResourceReads(session.user.id)) {res.set("Retry-After","60");return safe(res,429,"Too many requests");}
         if(pathname === "/api/shares/content" && req.method !== "GET") return safe(res,404,"Not found");
+        req.ignisLogUsername = session.user.login;
         req.shareOperationAllowed = read => read || limits.sharedResources(session.user.id);
         req.shareToken = cookies.read(req.headers.cookie);
         return sharesRouter(req,res,()=>safe(res,404,"Not found"));
@@ -1047,6 +1080,9 @@ function createAuthBoundary({
           const token = cookies.read(req.headers.cookie);
           const result = service[operation](token, input);
           const reference = operation === "list" ? input : input.vault;
+          req.ignisLogVaultName = db.prepare("SELECT directory FROM vaults WHERE id=? OR directory=?").get(reference, reference)?.directory;
+          if (operation === "transfer") req.ignisLogTargetUsername = db.prepare("SELECT login FROM users WHERE id=?").get(input.userId)?.login;
+          if (operation === "update") req.ignisLogTargetUsername = normalizeLogin(input.login);
           req.revalidateVaultFile = operation === "transfer"
             ? () => canReadVault(token, reference)
             : () => { service.list(token, reference); return true; };
@@ -1142,16 +1178,7 @@ function createAuthBoundary({
     app.disable("x-powered-by");
     app.set("trust proxy", config.trustedProxies);
     trustProxy = app.get("trust proxy fn");
-    app.use((req, res, next) => {
-      const start = Date.now();
-      // Never log URL, query, body, cookies or authorization headers (including OIDC callbacks).
-      res.once("finish", () =>
-        console.log(
-          `[http] ${["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"].includes(req.method) ? req.method : "OTHER"} ${res.statusCode} ${Date.now() - start}ms`,
-        ),
-      );
-      next();
-    });
+    app.use(require("@ignis/server-core/src/logger").httpMiddleware);
     app.use(middleware);
   }
   function errorHandler(error, _req, res, _next) {

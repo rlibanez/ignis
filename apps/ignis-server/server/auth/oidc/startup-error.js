@@ -45,4 +45,8 @@ function startupErrorMessage(error) {
     ? `[ignis] Startup failed: ${detail} Server remains closed.`
     : "[ignis] Startup failed; server remains closed";
 }
-module.exports = { startupErrorMessage };
+function startupLogEvent(error) {
+  const index = [...diagnostics.keys()].indexOf(error?.message);
+  return index < 0 ? "server.start_failed" : `server.startup.oidc_${index}`;
+}
+module.exports = { startupErrorMessage, startupLogEvent, diagnostics };

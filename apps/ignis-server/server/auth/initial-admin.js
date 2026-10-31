@@ -82,7 +82,7 @@ function createInitialAdminSetup(
           return { status: 409, error: "Initial setup is closed" };
         throw error;
       }
-      return { status: 201 };
+      return { status: 201, username: login };
     },
   };
 }

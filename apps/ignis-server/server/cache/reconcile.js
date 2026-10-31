@@ -23,10 +23,7 @@ function runReconcile(vaultId) {
 
   const released = new Promise((resolve) => {
     timer = setTimeout(() => {
-      console.warn(
-        `[tree-reconcile] vault=${vaultId} reconcile has not completed in ` +
-          `${Math.round(RECONCILE_RELEASE_MS / 1000)}s, resuming schedule`,
-      );
+      require("@ignis/server-core/src/logger").emit("warn", "server.cache.reconcile.timeout");
       resolve();
     }, RECONCILE_RELEASE_MS);
     timer.unref?.();
@@ -37,7 +34,7 @@ function runReconcile(vaultId) {
     .catch((e) => {
       // no need to warn if vault removed mid-crawl
       if (config.getVaultPath(vaultId)) {
-        console.warn(`[tree-reconcile] vault=${vaultId} failed:`, e.message);
+        require("@ignis/server-core/src/logger").emit("warn", "server.cache.reconcile.failed");
       }
     })
     .finally(() => clearTimeout(timer));

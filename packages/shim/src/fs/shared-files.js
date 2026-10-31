@@ -73,7 +73,7 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
     return {...safe,...tree};
   }
   async function refresh(){if(!enabled || refreshing)return;refreshing=true;try{accept(await exchange("mounts",{vault:scope.vault}),true);}catch(error){onNotice(error.message);}finally{refreshing=false;}}
-  function start(){if(enabled&&!timer)timer=setInterval(refresh,15000);}
+  function start(){if(enabled&&!timer)timer=setInterval(refresh,60000);}
   function stop(){if(timer)clearInterval(timer);timer=null;for(const path of Object.keys(tree))metadataCache.delete(path);tree=Object.create(null);mounted.clear();outgoing=[];states.clear();reserved.clear();enabled=false;scope=null;}
   function stat(path){context();const value=metadataCache.toStat(path);if(!value)fail("ENOENT");return value;}
   function readdir(path){if(!stat(path).isDirectory())fail("ENOTDIR");return metadataCache.readdir(path).map(entry=>entry.name);}

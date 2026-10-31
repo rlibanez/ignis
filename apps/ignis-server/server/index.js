@@ -1,3 +1,9 @@
+const logging = require("@ignis/server-core/src/logger");
+function logStartupFailure(error) {
+  const known = require("./auth/oidc/startup-error").startupLogEvent(error);
+  logging.emit("error", known);
+}
+function boot() {
 const express = require("express");
 const path = require("path");
 const compression = require("compression");
@@ -192,11 +198,11 @@ async function start() {
     ...bundledPluginDirs.map((d) => d.bundledPluginId),
   ], auth.vaultDirectoryAvailable);
   server.listen(config.port, () =>
-    console.log(`[ignis] Server running on port ${server.address().port}`),
+    logging.emit("info", "server.started", { port: server.address().port }),
   );
   bootstrapCache
     .warmUp()
-    .catch(() => console.warn("[bootstrap] warm-up failed"));
+    .catch(() => logging.emit("warn", "server.cache.crawl.warmup_failed"));
 }
 
 const wss = setupWebSocket(server, {
@@ -245,7 +251,7 @@ writeCoalescer.onFlushGiveUp((absPath) => {
 });
 
 async function gracefulShutdown(signal) {
-  console.log(`\n[ignis] Received ${signal}, shutting down gracefully...`);
+  logging.emit("info", "server.stopping");
 
   await flushAll();
   await shutdownPlugins();
@@ -253,12 +259,14 @@ async function gracefulShutdown(signal) {
   wss.close();
 
   server.close(() => {
-    console.log("[ignis] Server closed");
+    logging.emit("info", "server.stopped");
+    logging.close();
     process.exit(0);
   });
 
   setTimeout(() => {
-    console.error("[ignis] Forced shutdown after timeout");
+    logging.emit("error", "server.shutdown_timeout");
+    logging.close();
     process.exit(1);
   }, 10000);
 }
@@ -267,6 +275,27 @@ process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 start().catch((error) => {
-  console.error(require("./auth/oidc/startup-error").startupErrorMessage(error));
+  logStartupFailure(error);
+  logging.close();
   process.exit(1);
 });
+
+}
+try {
+  logging.configure({ dataRoot: process.env.DATA_ROOT || require("node:path").join(__dirname, "../../..", "data"), ...logging.readLogConfig() });
+  const fatal = () => {
+    logging.emit("error", "server.fatal");
+    logging.close();
+    process.exit(1);
+  };
+  process.on("uncaughtException", fatal);
+  process.on("unhandledRejection", fatal);
+  boot();
+} catch (error) {
+  // Configuration is validated before logger creation. No raw exception output.
+  const configured = (() => { try { logging.readLogConfig(); return true; } catch { return false; } })();
+  if (!configured) process.stderr.write(JSON.stringify({ time: new Date().toISOString(), level: "error", event: "logging.invalid_config", message: "Invalid logging configuration; check IGNIS_LOG_FORMAT, IGNIS_LOG_LEVEL, IGNIS_LOG_FILE_ENABLED, IGNIS_LOG_MAX_SIZE_MIB and IGNIS_LOG_MAX_FILES." }) + "\n");
+  else logStartupFailure(error);
+  logging.close();
+  process.exit(1);
+}
