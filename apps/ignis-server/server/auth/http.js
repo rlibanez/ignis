@@ -11,6 +11,7 @@ const setupAssets = new Map(
     ["/account", ["text/html", "login.html"]],
     ["/shares", ["text/html", "shares.html"]],
     ["/auth/shares.js", ["text/javascript", "shares.js"]],
+    ["/auth/components.css", ["text/css", "components.css"]],
     ["/auth/shares.css", ["text/css", "shares.css"]],
     ["/admin/users", ["text/html", "users.html"]],
     ["/auth/users.js", ["text/javascript", "users.js"]],

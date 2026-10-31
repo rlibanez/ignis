@@ -11,6 +11,18 @@
     if(response.status===401 || response.headers.get("content-type")?.includes("text/html")){lock();throw new Error("Session unavailable");}
     const data=await response.json();if(locked)throw new Error("Session unavailable");if(!response.ok){if(data.code==="AUTH_CONTEXT_CHANGED")lock();throw new Error(data.error || "Request failed");}return data;
   }
+  function confirmAction(title, message, action) {
+    return new Promise(resolve => {
+      const dialog=node("dialog");dialog.className="ignis-confirm";
+      const heading=node("h2",title),description=node("p",message),actions=node("div");actions.className="dialog-actions";
+      dialog.setAttribute("aria-label",title);
+      const cancel=button("Cancel",()=>dialog.close(),false),accept=button(action,()=>dialog.close("confirmed"),false);
+      cancel.className="account-button secondary";accept.className="account-button danger";
+      actions.append(cancel,accept);dialog.append(heading,description,actions);document.body.append(dialog);
+      dialog.addEventListener("close",()=>{const accepted=dialog.returnValue==="confirmed" && !locked;dialog.remove();resolve(accepted);},{once:true});
+      dialog.showModal();cancel.focus();
+    });
+  }
   async function run(fn,dialog){if(busy||locked)return;busy=true;const status=dialog?dialog.querySelector(".error"):$("status");status.textContent="";try{await fn();}catch(error){(dialog && !dialog.open ? $("status") : status).textContent=error.message;}finally{busy=false;}}
   const button=(text,action,secondary=true)=>{const el=node("button",text);el.type="button";if(secondary)el.className="secondary table-action";el.onclick=action;return el;};
   function iconButton(label,paths,action){
@@ -28,7 +40,7 @@
         const title=node("div",resource.name);
         if(!owned){
           const vault=catalog.destinationVaults.find(v=>v.id===resource.destination);
-          const detail=node("span",vault?`${vault.name} / ${resource.localPath || resource.name}`:"Not placed in a vault");
+          const detail=node("span",vault?`${vault.name} / ${resource.localPath || resource.name}`:"Not placed — choose a vault");
           detail.className="resource-detail";title.append(detail);
         }
         if(owned && !resource.available){const state=node("span","Unavailable");state.className="resource-detail";title.append(state);}
@@ -43,7 +55,7 @@
   async function reload(){catalog=await api();render();}
   function locationDialog(resource){
     placed=resource;$("location-resource").textContent=resource.name;
-    const select=$("destination-vault");const none=node("option","Not placed in a vault");none.value="";
+    const select=$("destination-vault");const none=node("option","Not placed — choose a vault");none.value="";
     select.replaceChildren(none,...catalog.destinationVaults.map(v=>{const option=node("option",v.name);option.value=v.id;return option;}));
     select.value=resource.destination || "";$("destination-path").value=resource.localPath || resource.name;
     $("location-dialog").querySelector(".error").textContent="";$("location-dialog").showModal();
@@ -69,7 +81,7 @@
       const save=iconButton("Save permission for "+grant.login,["M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2Z","M17 21v-8H7v8","M7 3v5h8"],()=>run(()=>updateGrant(grant.login,select.value),$("manage-dialog")));save.disabled=true;
       select.onchange=()=>{save.disabled=select.value===grant.role;};
       const remove=iconButton("Remove access for "+grant.login,["M3 6h18","M9 6V4h6v2","M5 6l1 14h12l1-14","M10 10v6","M14 10v6"],()=>run(async()=>{
-        if(confirm(`Remove ${grant.login}'s access to this resource? Other permissions are unaffected.`))await updateGrant(grant.login,null);
+        if(await confirmAction("Remove access", `Remove ${grant.login}'s access to “${managed.name}”? Other permissions are unaffected.`, "Remove access"))await updateGrant(grant.login,null);
       },$("manage-dialog")));remove.classList.add("danger");actions.append(save,remove);
       return [grant.login,select,actions];
     });
@@ -164,7 +176,7 @@
     await updateGrant($("grant-login").value,$("grant-role").value);$("grant-dialog").close();
   },$("grant-dialog"));};
   $("revoke").onclick=()=>run(async()=>{
-    if(!confirm("Stop sharing this resource with all recipients? Other shares and vault memberships are unaffected."))return;
+    if(!await confirmAction("Stop sharing", `Stop sharing “${managed.name}” with all recipients? Other shares and vault memberships are unaffected.`, "Stop sharing"))return;
     await api("revoke",{action:"revoke",id:managed.id,revision:managed.revision});$("manage-dialog").close();await reload();
   },$("manage-dialog"));
   if(typeof BroadcastChannel==="function"){const channel=new BroadcastChannel("ignis-auth");channel.onmessage=()=>lock();}

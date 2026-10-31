@@ -1,3 +1,4 @@
+import {errorBlock} from "./shared-ui.js";
 // This picker is only a convenience; the server rechecks both endpoints.
 export function copyDestinationFolders(files, source, describe) {
   return files.filter(file=>Array.isArray(file.children) && file.path &&
@@ -43,8 +44,8 @@ export function openCopyDialog(obsidian,app,file,describe,copy) {
       const list=create('div');list.style.cssText='max-height:240px;overflow:auto;min-height:90px;border:1px solid var(--background-modifier-border);border-radius:6px;padding:6px';
       const hint=create('p');hint.style.cssText='color:var(--text-muted);font-size:var(--font-smallest)';
       const nameLabel=create('label','Name of the copy'),name=create('input');name.type='text';name.value=file.name;name.style.cssText='width:100%;margin:8px 0 12px';nameLabel.append(name);
-      const error=create('div');error.setAttribute('role','alert');error.style.color='var(--text-error)';
-      const actions=create('div');actions.style.cssText='display:flex;justify-content:flex-end;gap:8px;margin-top:16px';
+      const error=errorBlock(create('div'));
+      const actions=create('div');actions.className='ignis-ui-actions';
       const cancel=create('button','Cancel'),submit=create('button','Copy here');submit.className='mod-cta';actions.append(cancel,submit);
       const render=()=>{
         location.textContent='Destination: '+(folder || 'Vault root');list.replaceChildren();search.disabled=busy;

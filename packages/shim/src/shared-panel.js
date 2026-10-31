@@ -1,3 +1,4 @@
+import {addFieldHelp, errorBlock} from "./shared-ui.js";
 import { openShareDialog } from "./share-dialog.js";
 
 // The panel changes only the recipient's placement preference, never share grants.
@@ -110,7 +111,7 @@ export function installSharedPanel(obsidian, app, sharedFiles, host = window) {
         const manage=element("button","Manage sharing");manage.onclick=()=>host.open("/shares","_blank","noopener");
         toolbar.append(refresh,manage);this.contentEl.append(toolbar);
         for(const owned of [false,true]) {
-          this.contentEl.append(element("h4",owned?"Shared by me":"Shared with me"));
+          this.contentEl.append(element("h4",owned?"Shared from my vaults":"Shared with me"));
           const resources=data.resources.filter(resource=>resource.owned===owned);
           if(!resources.length)this.contentEl.append(element("p","No shared resources."));
           for(const resource of resources){
@@ -139,10 +140,10 @@ export function installSharedPanel(obsidian, app, sharedFiles, host = window) {
               const none=element("option","Not placed — choose a vault");none.value="";select.append(none);
               for(const vault of data.destinationVaults){const option=element("option",vault.name);option.value=vault.id;select.append(option);}
               select.value=resource.destination || "";label.append(select);card.append(label);
-              const folderLabel=element("label","Local path"),folder=element("input");folder.type="text";folder.value=resource.localPath || resource.name;folder.placeholder="Folder/local name";folderLabel.title="Choose a local name, optionally inside an existing folder. This does not rename the original.";
+              const folderLabel=element("label","Local path"),folder=element("input");folder.type="text";folder.value=resource.localPath || resource.name;folder.placeholder="Folder/local name";addFieldHelp(host,folderLabel,"Choose a local name, optionally inside an existing folder. This does not rename the original.");
               Object.assign(folderLabel.style,{display:"block",marginTop:"12px"});Object.assign(folder.style,{width:"100%",marginTop:"6px"});folderLabel.append(folder);card.append(folderLabel);
               const save=element("button","Save location");save.style.marginTop="12px";card.append(save);
-              const error=element("p");error.setAttribute("role","alert");error.style.color="var(--text-error)";card.append(error);
+              const error=errorBlock(element("p"));card.append(error);
               save.onclick=async()=>{save.disabled=true;error.textContent="";try{
                 await api({id:resource.id,vault:select.value || null,localPath:folder.value});await sharedFiles.refresh();await this.reload();
               }catch(e){error.textContent=e.message;}finally{save.disabled=false;}};
@@ -151,7 +152,7 @@ export function installSharedPanel(obsidian, app, sharedFiles, host = window) {
           }
         }
         this.observeUnread();
-      }catch(error){status.textContent=error.message;}finally{this.loading=false;}
+      }catch(error){errorBlock(status);status.textContent=error.message;}finally{this.loading=false;}
     }
   }
   class SharedPlugin extends obsidian.Plugin {

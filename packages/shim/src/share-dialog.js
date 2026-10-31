@@ -1,3 +1,4 @@
+import {confirmSharedAction, errorBlock} from "./shared-ui.js";
 // The catalog controls UI availability; the server authorizes every operation.
 export function openShareDialog(obsidian, app, file, sharedFiles, host = window) {
   const session = host.__ignisAuth?.sessionId;
@@ -38,7 +39,7 @@ export function openShareDialog(obsidian, app, file, sharedFiles, host = window)
     if (icon) {
       el.textContent = ""; obsidian.setIcon(el, icon);
       el.title = text; el.setAttribute("aria-label", text);
-      style(el, { width: "2rem", height: "2rem", padding: ".4rem" });
+      el.classList.add("ignis-ui-icon");
     }
     return el;
   }
@@ -64,10 +65,10 @@ export function openShareDialog(obsidian, app, file, sharedFiles, host = window)
       const add = button("Add access", () => { if (!this.busy && this.ready) { this.child = new AddAccessDialog(app, this); this.child.open(); } }); add.className = "mod-cta";
       header.append(title, add);
       this.grants = create("div"); this.grants.style.overflowX = "auto"; this.panel.append(header, this.grants);
-      const actions = create("div"); style(actions, { display: "flex", justifyContent: "flex-end", gap: ".75rem", marginTop: "1.5rem" });
-      this.revoke = button("Stop sharing", () => {
+      const actions = create("div"); actions.className="ignis-ui-actions";
+      this.revoke = button("Stop sharing", async () => {
         if (!this.ready || this.busy || !this.resource) return;
-        if (!host.confirm("Stop sharing this resource with all recipients? Other shares and vault memberships are unaffected.")) return;
+        if (!await confirmSharedAction(obsidian,app,host,"Stop sharing",`Stop sharing “${path}” with all recipients? Other shares and vault memberships are unaffected.`,"Stop sharing")) return;
         void this.change(() => request("revoke", { action: "revoke", id: this.resource.id, revision: this.resource.revision }));
       });
       this.revoke.className = "mod-warning"; this.revoke.hidden = true;
@@ -78,7 +79,7 @@ export function openShareDialog(obsidian, app, file, sharedFiles, host = window)
     }
     error(error) {
       if (!this.active) return;
-      this.status.textContent = error.message; this.status.style.color = "var(--text-error)";
+      errorBlock(this.status); this.status.textContent = error.message; this.status.style.color = "var(--text-error)";
     }
     async load() {
       this.ready = false;
@@ -106,9 +107,9 @@ export function openShareDialog(obsidian, app, file, sharedFiles, host = window)
           if (this.ready) void this.change(() => this.grant(grant.login, select.value));
         }, "save"); save.disabled = true;
         select.onchange = () => { save.disabled = select.value === grant.role; };
-        const remove = button("Remove access for " + grant.login, () => {
+        const remove = button("Remove access for " + grant.login, async () => {
           if (!this.ready || this.busy) return;
-          if (host.confirm(`Remove ${grant.login}'s access to this resource? Other permissions are unaffected.`)) void this.change(() => this.grant(grant.login, null));
+          if (await confirmSharedAction(obsidian,app,host,"Remove access",`Remove ${grant.login}'s access to “${path}”? Other permissions are unaffected.`,"Remove access")) void this.change(() => this.grant(grant.login, null));
         }, "trash-2");
         const controls = create("div"); style(controls, { display: "flex", gap: ".5rem", justifyContent: "flex-end" });
         controls.append(save, remove); access.append(select); actions.append(controls); row.append(user, access, actions); body.append(row);
@@ -137,7 +138,7 @@ export function openShareDialog(obsidian, app, file, sharedFiles, host = window)
         } catch { new obsidian.Notice("Sharing updated. Refresh Shared to update its display."); }
         return true;
       } catch (error) {
-        if (this.active) { errorTarget.textContent = error.message; errorTarget.style.color = "var(--text-error)"; }
+        if (this.active) { errorBlock(errorTarget); errorTarget.textContent = error.message; errorTarget.style.color = "var(--text-error)"; }
         return false;
       } finally { this.busy = false; controls.forEach((el, i) => { el.disabled = disabled[i]; }); }
     }
@@ -156,7 +157,7 @@ export function openShareDialog(obsidian, app, file, sharedFiles, host = window)
       for (const label of [loginLabel, roleLabel]) style(label, { display: "block", marginTop: "1rem" });
       for (const field of [login, role]) style(field, { display: "block", width: "100%", marginTop: ".5rem" });
       const status = create("p"); status.setAttribute("role", "alert");
-      const actions = create("div"); style(actions, { display: "flex", justifyContent: "flex-end", gap: ".75rem", marginTop: "1.5rem" });
+      const actions = create("div"); actions.className="ignis-ui-actions";
       const cancel = button("Cancel", () => this.close()), submit = create("button", "Add access"); submit.type = "submit"; submit.className = "mod-cta";
       actions.append(cancel, submit); form.append(loginLabel, roleLabel, status, actions); this.contentEl.append(form);
       form.onsubmit = async event => {

@@ -29,3 +29,14 @@ body {
     top: calc(100dvh - var(--keyboard-height) - var(--mobile-toolbar-height));
   }
 }
+
+/* Ignis controls inherit the active Obsidian theme. */
+.ignis-ui-actions { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:.6rem; margin-top:1.5rem; }
+.ignis-ui-icon { width:2.75rem; height:2.75rem; padding:.5rem; flex-shrink:0; }
+.ignis-ui-error:empty { display:none; }
+.ignis-ui-error:not(:empty) { padding:.75rem; border:1px solid var(--text-error); border-radius:.5rem; background:var(--background-secondary); color:var(--text-error); overflow-wrap:anywhere; }
+.ignis-ui-help { position:relative; display:inline-flex; margin-left:.5rem; vertical-align:middle; }
+.ignis-ui-help > button { width:1.75rem; height:1.75rem; padding:0; border-radius:50%; }
+.ignis-ui-tooltip { position:absolute; z-index:10; top:100%; left:0; width:min(16rem,50vw); padding:.75rem; border:1px solid var(--background-modifier-border); border-radius:.5rem; background:var(--background-primary); color:var(--text-normal); box-shadow:var(--shadow-s); font-size:var(--font-small); font-weight:normal; }
+.ignis-ui-tooltip[hidden] { display:none; }
+@media (pointer:coarse) { .ignis-ui-help > button { width:2.75rem;height:2.75rem; } }

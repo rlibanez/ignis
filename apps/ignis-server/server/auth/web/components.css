@@ -1,0 +1,18 @@
+/* Shared visual primitives for the standalone account pages. */
+:root { --ignis-action-gap: .6rem; --ignis-radius: .6rem; --ignis-error-bg: light-dark(#fff0f3,#432631); --ignis-error-text: light-dark(#8c1e35,#ffc2cf); }
+.account-button, .dialog-actions > button, .password-actions > button, .reauth-actions > button, .login-submit > button, .login-actions > button {
+  box-sizing:border-box; min-height:2.75rem; padding:.75rem 1rem; border-radius:var(--ignis-radius); font:inherit; font-size:.95rem; font-weight:650; line-height:1.25;
+}
+.dialog-actions { gap:var(--ignis-action-gap); flex-wrap:wrap; }
+.account-actions, .password-actions, .reauth-actions, .login-actions { gap:var(--ignis-action-gap); }
+.icon-button { width:2.75rem; height:2.75rem; flex-shrink:0; border-radius:var(--ignis-radius); }
+.setup-field-help .setup-help-toggle, .field-help .help-toggle { width:1.75rem; height:1.75rem; flex-shrink:0; }
+@media (pointer:coarse) { .setup-field-help .setup-help-toggle, .field-help .help-toggle { min-width:2.75rem; min-height:2.75rem; } }
+.error:not(:empty), .form-error:not(:empty), .field-error:not(:empty), #create-status:not(:empty), #reauth-status:not(:empty) {
+ padding:.75rem; border:1px solid light-dark(#bd5266,#ae6375); border-radius:.5rem; background:var(--ignis-error-bg); color:var(--ignis-error-text); overflow-wrap:anywhere;
+}
+.ignis-confirm { box-sizing:border-box; width:min(30rem,calc(100% - 2rem)); max-height:calc(100dvh - 2rem); overflow:auto; padding:1.5rem; border:1px solid light-dark(#d4d7e1,#414653); border-radius:.75rem; background:light-dark(#fff,#20232b); color:inherit; }
+.ignis-confirm h2 { margin-top:0; }.ignis-confirm::backdrop { background:#080b1480;backdrop-filter:blur(3px); }
+
+/* Edit status also carries successful operation feedback. */
+#edit-status:not(:empty) { padding:.75rem; border:1px solid light-dark(#b9bdc9,#696d7b); border-radius:.5rem; background:light-dark(#f6f5fb,#272933); overflow-wrap:anywhere; }
