@@ -6,8 +6,17 @@
 .dialog-actions { gap:var(--ignis-action-gap); flex-wrap:wrap; }
 .account-actions, .password-actions, .reauth-actions, .login-actions { gap:var(--ignis-action-gap); }
 .icon-button { width:2.75rem; height:2.75rem; flex-shrink:0; border-radius:var(--ignis-radius); }
-.setup-field-help .setup-help-toggle, .field-help .help-toggle { width:1.75rem; height:1.75rem; flex-shrink:0; }
-@media (pointer:coarse) { .setup-field-help .setup-help-toggle, .field-help .help-toggle { min-width:2.75rem; min-height:2.75rem; } }
+/* Keep help glyphs proportional to labels; enlarge only the invisible touch target. */
+.setup-field-help .setup-help-toggle, .field-help .help-toggle {
+  position:relative; box-sizing:border-box; width:1.15rem; height:1.15rem;
+  min-width:0; min-height:0; flex-shrink:0; font-size:.75rem; line-height:1;
+}
+@media (pointer:coarse) {
+  .setup-help-toggle::before, .help-toggle::before {
+    content:""; position:absolute; width:2.75rem; height:2.75rem;
+    top:50%; left:50%; transform:translate(-50%,-50%);
+  }
+}
 .error:not(:empty), .form-error:not(:empty), .field-error:not(:empty), #create-status:not(:empty), #reauth-status:not(:empty) {
  padding:.75rem; border:1px solid light-dark(#bd5266,#ae6375); border-radius:.5rem; background:var(--ignis-error-bg); color:var(--ignis-error-text); overflow-wrap:anywhere;
 }
