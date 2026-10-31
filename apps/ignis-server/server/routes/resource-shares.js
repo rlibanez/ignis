@@ -3,6 +3,8 @@ function createResourceSharesRouter(service) {
   const router = express.Router();
   const json = express.json({limit:service.limits.maxRequestBytes,strict:true});
   const messages = {
+    SHARE_COPY_BUSY:[503,"Other copies are running. Try again shortly."],
+    SHARE_COPY_UNCERTAIN:[503,"The copy was published but could not be confirmed. Check the destination before retrying."],
     SHARE_DELETE_UNCERTAIN:[503,"The resource was removed from its original location, but cleanup could not be confirmed. Ask the administrator to check the server."],
     SHARE_MOVE_BOUNDARY:[409,"Move within the same shared folder without crossing another shared folder boundary."],
     SHARE_PLACEMENT_CONFLICT:[409,"This location overlaps a local file or another shared resource. Choose another existing destination folder."],
@@ -13,7 +15,7 @@ function createResourceSharesRouter(service) {
     SHARE_EXISTS:[409,"This resource is already shared. Manage its existing permissions."],
     SHARE_LIMIT:[413,"Too many resources or directory entries."], SHARE_TOO_LARGE:[413,`The file exceeds the ${service.limits.maxFileMiB} MiB limit.`],
   };
-  const fields={previewRemoval:"id,path",removeConfirmed:"confirm,id,path,revision",mounts:"vault",destination:"id,localPath,vault",rename:"etag,id,path,to",create:"login,path,role,vault",grant:"action,id,login,revision,role",revoke:"action,id,revision",browse:"path,vault",read:"id,path",write:"action,content,etag,id,path",mkdir:"action,etag,id,path",remove:"action,etag,id,path"};
+  const fields={copy:"from,to",previewRemoval:"id,path",removeConfirmed:"confirm,id,path,revision",mounts:"vault",destination:"id,localPath,vault",rename:"etag,id,path,to",create:"login,path,role,vault",grant:"action,id,login,revision,role",revoke:"action,id,revision",browse:"path,vault",read:"id,path",write:"action,content,etag,id,path",mkdir:"action,etag,id,path",remove:"action,etag,id,path"};
   router.get("/api/shares",(req,res)=>{
     try {if(Object.keys(req.query).length) return res.status(400).json({error:"Invalid request"});res.json(service.catalog(req.shareToken));}
     catch {res.status(404).json({error:"Shared resources unavailable"});}
@@ -29,7 +31,7 @@ function createResourceSharesRouter(service) {
         return res.status(400).json({error:"Invalid request"});
       if(["grant","revoke","write","mkdir","remove"].includes(operation) && input.action!==operation) return res.status(400).json({error:"Invalid request"});
       if(req.shareOperationAllowed && !req.shareOperationAllowed(["read","mounts","browse"].includes(operation))) {res.set("Retry-After","60");return res.status(429).json({error:"Too many requests"});}
-      const fn={previewRemoval:"previewRemoval",removeConfirmed:"removeConfirmed",mounts:"mounts",destination:"destination",rename:"rename",create:"create",grant:"grant",revoke:"grant",browse:"browseOwner",read:"read",write:"mutate",mkdir:"mutate",remove:"mutate"}[operation];
+      const fn={copy:"copy",previewRemoval:"previewRemoval",removeConfirmed:"removeConfirmed",mounts:"mounts",destination:"destination",rename:"rename",create:"create",grant:"grant",revoke:"grant",browse:"browseOwner",read:"read",write:"mutate",mkdir:"mutate",remove:"mutate"}[operation];
       res.json(await service[fn](req.shareToken,input));
     } catch(error) {
       const [status,message]=messages[error.code] || (error.code==="ENOTEMPTY"?[409,"The folder must be empty before removing it."]:[404,"Shared resource unavailable"]);

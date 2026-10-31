@@ -177,6 +177,14 @@ it('validates three independent real sessions across conflicts, downgrade, revok
   await success(alice.call('/api/fs/writeFile?vault='+a,{path:'Project/note.md',content:'original',expectedHash:null}));
   const id=(await success(alice.share('create',{vault:a,path:'Project',login:'bob',role:'editor'}))).id;
   await success(alice.share('grant',{action:'grant',id,login:'carol',role:'editor',revision:1}));
+  const receivedSource={id,vault:null,path:''},localCopy={id:null,vault:c,path:'CopiedProject'};
+  await success(carol.share('copy',{from:receivedSource,to:localCopy}));
+  expect((await carol.call('/api/fs/readFile?vault='+c+'&path=CopiedProject/note.md')).text).toBe('original');
+  expect((await carol.share('copy',{from:receivedSource,to:localCopy})).status).toBe(409);
+  await success(carol.share('copy',{from:{id:null,vault:c,path:'CopiedProject/note.md'},to:{id,vault:null,path:'CopiedBack.md'}}));
+  expect((await alice.call('/api/fs/readFile?vault='+a+'&path=Project/CopiedBack.md')).text).toBe('original');
+  expect((await admin.share('copy',{from:receivedSource,to:{id:null,vault:c,path:'Stolen'}})).status).toBe(404);
+  expect((await request(port,'/api/shares',carol.jar,{method:'POST',body:{operation:'copy',input:{from:receivedSource,to:{...localCopy,path:'NoCsrf'}}}})).status).toBe(403);
   await success(bob.share('destination',{id,vault:b,localPath:'Received'}));await success(carol.share('destination',{id,vault:c,localPath:'Team'}));
   const rb=await success(bob.share('read',{id,path:'note.md'})),rc=await success(carol.share('read',{id,path:'note.md'}));expect(rb.etag).toBe(rc.etag);
   const write=(actor,etag,text)=>actor.share('write',{action:'write',id,path:'note.md',etag,content:Buffer.from(text).toString('base64')});

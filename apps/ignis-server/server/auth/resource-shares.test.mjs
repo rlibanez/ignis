@@ -467,3 +467,62 @@ it('trashes a shared descendant without revoking its parent and rejects outsider
  expect(db.prepare('SELECT id FROM shared_resources WHERE id=?').get(nested)).toBeUndefined();
  expect((await read(id)).entries).toEqual([]);
 });
+
+const own=(vault,path)=>({vault,id:null,path});
+const received=(id,path='')=>({id,vault:null,path});
+function inbox(){fs.mkdirSync(path.join(root,'Inbox'));return registerVault(db,root,'Inbox','recipient').id;}
+it('copies a received Read folder to an owned vault without duplicating grants or changing originals',async()=>{
+ const id=share(),dest=inbox();await service.copy('recipient',{from:received(id),to:own(dest,'Copy')});
+ expect(fs.readFileSync(path.join(root,'Inbox/Copy/note.md'),'utf8')).toBe('hello');
+ fs.writeFileSync(path.join(root,'Inbox/Copy/note.md'),'independent');expect(fs.readFileSync(path.join(root,'Notes/Project/note.md'),'utf8')).toBe('hello');
+ expect(db.prepare('SELECT id FROM shared_resources WHERE vault_id=?').all(dest)).toEqual([]);
+});
+it('copies owned content into a writable received folder and between two received resources',async()=>{
+ const id=share('Project','editor'),dest=inbox();fs.writeFileSync(path.join(root,'Inbox/local.md'),'local');
+ await service.copy('recipient',{from:own(dest,'local.md'),to:received(id,'new.md')});
+ const single=share('secret.md','reader');await service.copy('recipient',{from:received(single),to:received(id,'second.md')});
+ expect(fs.readFileSync(path.join(root,'Notes/Project/new.md'),'utf8')).toBe('local');expect(fs.readFileSync(path.join(root,'Notes/Project/second.md'),'utf8')).toBe('private');
+});
+it('rejects copies to Read, received roots, occupied names, traversal and unauthorized vaults',async()=>{
+ const id=share(),dest=inbox();fs.writeFileSync(path.join(root,'Inbox/local.md'),'local');
+ for(const to of [received(id,'new.md'),received(id),own(dest,'local.md'),own(dest,'LOCAL.md'),own(dest,'../escape'),own(vault.id,'new.md')])await expect(service.copy('recipient',{from:own(dest,'local.md'),to})).rejects.toThrow();
+ await expect(service.copy('admin',{from:own(vault.id,'secret.md'),to:own(dest,'new.md')})).rejects.toThrow();
+ await expect(service.copy('recipient',{from:own(vault.id,'secret.md'),to:own(dest,'new.md')})).rejects.toThrow();
+});
+it('rejects symlinks, hidden files, hardlinks and self-descendant copies without publishing a partial folder',async()=>{
+ const id=share('Project','editor'),dest=inbox();
+ await expect(service.copy('recipient',{from:received(id),to:received(id,'Self')})).rejects.toThrow();
+ for(const kind of ['symlink','hidden','hardlink']){
+ const filename=path.join(root,'Notes/Project',kind==='hidden'?'.env':'bad');
+ if(kind==='symlink')fs.symlinkSync('../secret.md',filename);else if(kind==='hardlink')fs.linkSync(path.join(root,'Notes/secret.md'),filename);else fs.writeFileSync(filename,'secret');
+ await expect(service.copy('recipient',{from:received(id),to:own(dest,'Copy')})).rejects.toThrow();fs.unlinkSync(filename);
+ expect(fs.existsSync(path.join(root,'Inbox/Copy'))).toBe(false);
+ }
+});
+it('revalidates permissions during staging and removes partial staging data',async()=>{
+ const id=share(),dest=inbox();
+ const promise=service.copy('recipient',{from:received(id),to:own(dest,'Copy')});
+ await new Promise(resolve=>setImmediate(resolve));db.prepare('DELETE FROM resource_grants WHERE resource_id=?').run(id);
+ await expect(promise).rejects.toThrow();expect(fs.readdirSync(path.join(root,'Inbox'))).toEqual([]);
+});
+it('detects concurrent source edits and occupied destinations before publication',async()=>{
+ const id=share(),dest=inbox();
+ let promise=service.copy('recipient',{from:received(id),to:own(dest,'Copy')});
+ await new Promise(resolve=>setImmediate(resolve));fs.writeFileSync(path.join(root,'Notes/Project/note.md'),'changed');
+ await expect(promise).rejects.toMatchObject({code:'SHARE_CONFLICT'});expect(fs.readdirSync(path.join(root,'Inbox'))).toEqual([]);
+ promise=service.copy('recipient',{from:received(id),to:own(dest,'Copy')});
+ await new Promise(resolve=>setImmediate(resolve));fs.mkdirSync(path.join(root,'Inbox/Copy'));fs.writeFileSync(path.join(root,'Inbox/Copy/keep'),'keep');
+ await expect(promise).rejects.toThrow();expect(fs.readFileSync(path.join(root,'Inbox/Copy/keep'),'utf8')).toBe('keep');
+});
+it('enforces file limits and exact selector shapes before copying',async()=>{
+ const id=share(),dest=inbox();const input={from:received(id),to:own(dest,'Copy')};
+ await expect(service.copy('recipient',{...input,from:{...input.from,user:'owner'}})).rejects.toThrow();
+ await expect(service.copy('recipient',{...input,from:{...input.from,vault:vault.id}})).rejects.toThrow();
+ fs.truncateSync(path.join(root,'Notes/Project/note.md'),service.limits.maxFileBytes+1);
+ await expect(service.copy('recipient',input)).rejects.toMatchObject({code:'SHARE_TOO_LARGE'});expect(fs.readdirSync(path.join(root,'Inbox'))).toEqual([]);
+});
+it('cleans staging on disk write failure without publishing or deleting the source',async()=>{
+ const id=share(),dest=inbox();const stub=vi.spyOn(fs,'writeFileSync').mockImplementation(()=>{throw new Error('disk full');});
+ try{await expect(service.copy('recipient',{from:received(id),to:own(dest,'Copy')})).rejects.toThrow();}finally{stub.mockRestore();}
+ expect(fs.readdirSync(path.join(root,'Inbox'))).toEqual([]);expect(fs.readFileSync(path.join(root,'Notes/Project/note.md'),'utf8')).toBe('hello');
+});

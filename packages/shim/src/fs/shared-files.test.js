@@ -12,6 +12,7 @@ function fixture(role='editor',initial={},mountPath='Project') {
   if(revoked)return {status:404,data:{}};
   if(operation==='destination'){localPath=input.localPath;return {status:200,data:{ok:true}};}
   if(operation==='rename'){if(input.path==='')localPath=input.to;else notePath=input.to;return {status:200,data:{ok:true}};}
+  if(operation==='copy')return {status:200,data:{ok:true}};
   if(operation==='previewRemoval')return {status:200,data:{revision:'snapshot',files:1,folders:0}};
   if(operation==='removeConfirmed')return {status:200,data:{ok:true}};
   if(operation==='read')return {status:200,data:{kind:'file',content:btoa(content),etag}};
@@ -144,5 +145,27 @@ it('keeps ordinary trash behavior and refuses deletion after a context change du
  const f=fixture(),adapter=adapterFixture(f);vi.stubGlobal('confirm',()=>{f.ctx.sessionId='changed';return true;});
  try{await adapter.trashLocal('local.md');expect(f.calls.some(c=>c.operation==='previewRemoval')).toBe(false);
  await expect(adapter.trashLocal(f.file)).rejects.toMatchObject({code:'AUTH_CONTEXT_CHANGED'});expect(f.calls.some(c=>c.operation==='removeConfirmed')).toBe(false);
+ }finally{vi.unstubAllGlobals();}
+});
+
+it('copies a received folder using its grant and a local destination using the current vault UUID',async()=>{
+ const f=fixture('reader');await f.shared.copyContent(f.folder,'LocalCopy');
+ expect(f.calls.find(c=>c.operation==='copy').input).toEqual({from:{id:'12345678-1234-1234-1234-123456789abc',vault:null,path:''},to:{id:null,vault:'vault',path:'LocalCopy'}});
+});
+it('routes local to received copies without ordinary filesystem fallback',async()=>{
+ const f=fixture(),ordinary={copyFile:vi.fn()};await f.shared.wrap(ordinary).copyFile('local.md',f.folder+'/copy.md');
+ expect(ordinary.copyFile).not.toHaveBeenCalled();expect(f.calls.find(c=>c.operation==='copy').input.to).toMatchObject({path:'copy.md',vault:null});
+});
+it('rejects malformed, hidden and changed-context copy selectors before sending a copy',async()=>{
+ const f=fixture();for(const to of ['../escape','Project/../escape','.obsidian/file','/absolute','Project//file'])await expect(f.shared.copyContent(f.file,to)).rejects.toThrow();
+ f.ctx.sessionId='changed';await expect(f.shared.copyContent(f.file,'Copy')).rejects.toThrow();expect(f.calls.some(c=>c.operation==='copy')).toBe(false);
+});
+it('adds a folder-capable Copy to menu without making a request before selection',async()=>{
+ const f=fixture();let listener,click;
+ vi.stubGlobal('document',{querySelectorAll:()=>[]});
+ try{
+ f.shared.installAdapter({vault:{adapter:{getResourcePath:vi.fn()}},workspace:{on:(event,fn)=>{listener=fn;}}},{Notice:vi.fn()});
+ const item={setTitle:vi.fn(()=>item),setIcon:()=>item,onClick:fn=>{click=fn;}};listener({addItem:fn=>fn(item)},{path:f.folder});
+ expect(item.setTitle).toHaveBeenCalledWith('Copy to…');expect(typeof click).toBe('function');expect(f.calls.some(c=>c.operation==='copy')).toBe(false);
  }finally{vi.unstubAllGlobals();}
 });

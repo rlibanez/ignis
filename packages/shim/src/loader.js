@@ -129,7 +129,7 @@ extractObsidianModule()
       installExternalFilesOverrides(obsidian, window.app);
     }
 
-    fsShim._sharedFiles.installAdapter(window.app);
+    fsShim._sharedFiles.installAdapter(window.app,obsidian);
     if(obsidian){installSharedPanel(obsidian,window.app,fsShim._sharedFiles);installSharedIcons(obsidian,fsShim._sharedFiles);}
     installMobileVaultSwitcher(window.app);
     installOpenFileParam(window.app);

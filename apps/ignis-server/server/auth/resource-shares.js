@@ -293,6 +293,88 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
     if(shared)return renameDisk(user,v,oldPath,newPath,undefined,newPath.startsWith(".trash/") && !newPath.slice(7).includes("/"));
     fs.renameSync(path.join(v.path,oldPath),path.join(v.path,newPath));return {ok:true};
   }
+  let activeCopies=0;
+  async function copy(token,input) {
+    if(activeCopies>=2)fail("SHARE_COPY_BUSY");
+    activeCopies++;
+    try{return await copyContent(token,input);}finally{activeCopies--;}
+  }
+  async function copyContent(token,input) {
+    const overlaps=(a,b)=>a===b || a.startsWith(b+"/") || b.startsWith(a+"/");
+    function select(selector,write) {
+      if(!selector || typeof selector!=="object" || Array.isArray(selector) ||
+        Object.keys(selector).sort().join(",")!=="id,path,vault" ||
+        !((typeof selector.id==="string" && selector.vault===null) || (selector.id===null && typeof selector.vault==="string")))fail("INVALID_SHARE");
+      canonical(selector.path,!write && selector.id!==null);
+      if(selector.id!==null){
+        const access=resource(token,selector.id,selector.path,write);
+        return {user:access.user,v:access.v,item:target(access,write)};
+      }
+      const user=actor(token),v=vault(selector.vault);
+      const role=db.prepare("SELECT role FROM memberships WHERE vault_id=? AND user_id=?").get(v.id,user.id)?.role;
+      if(!(write?["owner","editor"]:["owner","editor","reader"]).includes(role))fail();
+      // Virtual mounts cannot be resolved as ordinary physical paths or copied
+      // accidentally as empty local containers. Select their grant explicitly.
+      for(const row of db.prepare("SELECT local_path FROM resource_destinations WHERE vault_id=? AND user_id=?").all(v.id,user.id))
+        if(overlaps(selector.path.toLowerCase(),row.local_path.toLowerCase()))fail("SHARE_PLACEMENT_CONFLICT");
+      return {user,v,item:inspect(v.path,selector.path,write)};
+    }
+    function destination() {
+      const selected=select(input.to,true),{filename,stat}=selected.item;
+      if(stat || writeCoalescer.hasPendingSubtree(filename))fail("SHARE_CONFLICT");
+      const dir=fs.opendirSync(path.dirname(filename));let count=0;
+      try{for(let entry;(entry=dir.readSync());){if(++count>10000)fail("SHARE_LIMIT");if(entry.name.toLowerCase()===path.basename(filename).toLowerCase())fail("SHARE_CONFLICT");}}finally{dir.closeSync();}
+      const relative=path.relative(selected.v.path,filename).split(path.sep).join("/");
+      for(const row of db.prepare("SELECT path FROM shared_resources WHERE vault_id=?").all(selected.v.id))
+        if(row.path.toLowerCase()===relative.toLowerCase() || row.path.toLowerCase().startsWith(relative.toLowerCase()+"/"))fail("SHARE_CONFLICT");
+      return selected;
+    }
+    function scan(source) {
+      const entries=[];let total=0;
+      function visit(filename,relative,depth) {
+        if(entries.length>=5000 || depth>32)fail("SHARE_LIMIT");
+        const stat=fs.lstatSync(filename);
+        if(stat.isSymbolicLink() || stat.dev!==source.item.stat.dev || (!stat.isDirectory()&&!stat.isFile()) || (stat.isFile()&&stat.nlink!==1))fail();
+        if(stat.isFile()){if(stat.size>maxFileBytes)fail("SHARE_TOO_LARGE");total+=stat.size;if(total>128*1024*1024)fail("SHARE_LIMIT");}
+        entries.push({filename,relative,stat});
+        if(stat.isDirectory()) {const dir=fs.opendirSync(filename);try{for(let entry;(entry=dir.readSync());){canonical(entry.name);visit(path.join(filename,entry.name),relative?relative+"/"+entry.name:entry.name,depth+1);}}finally{dir.closeSync();}}
+      }
+      visit(source.item.filename,"",0);
+      entries.sort((a,b)=>a.relative.localeCompare(b.relative));
+      const revision=digest(JSON.stringify(entries.map(e=>[e.relative,e.stat.dev,identity(e.stat),e.stat.size,e.stat.mtimeMs,e.stat.ctimeMs])));
+      return {entries,revision};
+    }
+    const first=select(input.from,false),initial=destination();
+    if(overlaps(first.item.filename,initial.item.filename))fail("INVALID_SHARE_PATH");
+    await writeCoalescer.flushPendingSubtree(first.item.filename);
+    const source=select(input.from,false),dest=destination(),snapshot=scan(source);
+    if(source.item.filename!==first.item.filename || dest.item.filename!==initial.item.filename)fail("SHARE_CONFLICT");
+    const parent=path.dirname(dest.item.filename),parentStat=fs.lstatSync(parent);
+    const stage=path.join(parent,".ignis-copy-"+randomUUID());let published=false;
+    try {
+      // Yield between bounded file copies so sessions and grants can be revoked.
+      for(const entry of snapshot.entries){
+        const output=entry.relative?path.join(stage,entry.relative):stage;
+        if(entry.stat.isDirectory())fs.mkdirSync(output,{mode:0o700});
+        else {const bytes=readFile(entry,maxFileBytes);const fd=fs.openSync(output,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);try{fs.writeFileSync(fd,bytes);fs.fsyncSync(fd);}finally{fs.closeSync(fd);}}
+        await new Promise(resolve=>setImmediate(resolve));
+        select(input.from,false);select(input.to,true);
+      }
+      const fresh=select(input.from,false),final=destination(),currentParent=fs.lstatSync(parent);
+      if(fresh.item.filename!==source.item.filename || final.item.filename!==dest.item.filename || currentParent.dev!==parentStat.dev || identity(currentParent)!==identity(parentStat) ||
+        writeCoalescer.hasPendingSubtree(source.item.filename) || scan(fresh).revision!==snapshot.revision)fail("SHARE_CONFLICT");
+      for(const entry of [...snapshot.entries].reverse())if(entry.stat.isDirectory()){
+        const fd=fs.openSync(entry.relative?path.join(stage,entry.relative):stage,fs.constants.O_RDONLY|fs.constants.O_DIRECTORY);try{fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
+      }
+      transaction(db,()=>{
+        audit(final.user,"copy-content",{sourceVault:fresh.v.id,destinationVault:final.v.id,entries:snapshot.entries.length});
+        fs.renameSync(stage,final.item.filename);published=true;
+        const fd=fs.openSync(parent,fs.constants.O_RDONLY|fs.constants.O_DIRECTORY);try{fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
+      });
+      return {ok:true};
+    }catch(error){if(published)fail("SHARE_COPY_UNCERTAIN");throw error;}
+    finally{if(!published)try{fs.rmSync(stage,{recursive:true,force:true});}catch{/* Reserved staging data stays inaccessible; never delete the destination. */}}
+  }
   // Preview binds confirmation to the exact current subtree, not just its name.
   function removalSnapshot(token,input) {
     canonical(input.path); // A received root is never deletable through its grant.
@@ -436,6 +518,6 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
       return {ok:true,etag:digest(bytes),mtime:stat.mtimeMs,size:stat.size};
     });
   }
-  return {catalog,mounts,destination,create,grant,browseOwner,read,rename,renameOriginal,writeOriginal,previewRemoval,removeConfirmed,mutate,limits};
+  return {catalog,mounts,destination,create,grant,browseOwner,read,rename,renameOriginal,writeOriginal,copy,previewRemoval,removeConfirmed,mutate,limits};
 }
 module.exports={createResourceSharesService};

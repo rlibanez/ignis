@@ -1,3 +1,4 @@
+import {openCopyDialog} from "../copy-dialog.js";
 import { normalize } from "../util/path.js";
 import { resolvePath } from "./transforms.js";
 export const SHARED_ROOT = "Shared with me";
@@ -139,6 +140,18 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
     if(operation.operation==="rename" && operation.input.etag===undefined)operation.input.etag=exchangeSync("read",target(path)).etag;
     exchangeSync(operation.operation,operation.input);renamed(path,operation.next);accept(exchangeSync("mounts",{vault:scope.vault}),true);
   }
+  function copySelector(value) {
+    if(typeof value!=="string" || !value || normalize(value)!==value || value.split("/").some(part=>!part || part===".." || part==="." || part.startsWith(".")))fail("EACCES","Choose a content file or folder");
+    context();const received=selected(value);
+    if(received){const item=target(received);return {id:item.id,vault:null,path:item.path};}
+    if(containsMount(value))fail("ENOTSUP","Copy received resources individually");
+    if(resolvePath(value)!==value)fail("EACCES");
+    return {id:null,vault:scope.vault,path:value};
+  }
+  async function copyContent(from,to) {
+    const input={from:copySelector(from),to:copySelector(to)};
+    await exchange("copy",input);await refresh();
+  }
   function access(path,mode=0){stat(path);if(mode&1 || ((mode&2) && (target(path).role!=="editor")))fail("EACCES");}
   function wrap(original,sync=false){const methods=new Map();return new Proxy(original,{get(object,name){const fn=object[name];if(typeof fn!=="function")return fn;if(methods.has(name))return methods.get(name);const wrapped=(...args)=>{
     const path=selected(args[0]),second=["rename","renameSync","copyFile","copyFileSync"].includes(name)?selected(args[1]):false;
@@ -147,7 +160,11 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
     const method=String(name).replace(/Sync$/,"");
     const run=()=>{
       if(method==="rename"){if(!path)fail("ENOTSUP");return sync?renameSync(path,args[1]):rename(path,args[1]);}
-      if(second || ["copyFile","utimes","lutimes","chmod"].includes(method))fail("ENOTSUP","This operation is not supported on shared resources");
+      if(method==="copyFile"){
+        if(sync){exchangeSync("copy",{from:copySelector(args[0]),to:copySelector(args[1])});accept(exchangeSync("mounts",{vault:scope.vault}),true);return;}
+        return copyContent(args[0],args[1]);
+      }
+      if(second || ["utimes","lutimes","chmod"].includes(method))fail("ENOTSUP","This operation is not supported on shared resources");
       if(method==="exists"){try{stat(path);return true;}catch(error){if(error.code==="ENOENT")return false;throw error;}}
       if(["stat","lstat"].includes(method))return stat(path);
       if(method==="readdir")return readdir(path);
@@ -180,7 +197,7 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
     for(const name of states.keys())if(under(name,path))states.delete(name);
     await refresh();
   }
-  function installAdapter(app){
+  function installAdapter(app,obsidian){
     const adapter=app?.vault?.adapter;
     if(!adapter?.getResourcePath)return;
     // Obsidian's local trash renames into .trash outside the received grant.
@@ -195,6 +212,22 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
         return adapter.queue?adapter.queue(run):run();
       };
     }
+    if(typeof adapter.copy==="function"){
+      const fallback=adapter.copy.bind(adapter);
+      adapter.copy=async(from,to)=>{
+        if(!selected(from)&&!selected(to))return fallback(from,to);
+        const run=async()=>{await copyContent(from,to);if(adapter.reconcileInternalFile)await adapter.reconcileInternalFile(to);};
+        return adapter.queue?adapter.queue(run):run();
+      };
+    }
+    if(obsidian && app.workspace?.on)app.workspace.on("file-menu",(menu,file)=>{
+      if(!file?.path || file.path.split("/").some(part=>part.startsWith(".")))return;
+      menu.addItem(item=>item.setTitle("Copy to…").setIcon("copy").onClick(()=>{
+        openCopyDialog(obsidian,app,file,describe,async(from,to)=>{
+          await copyContent(from,to);if(adapter.reconcileInternalFile)await adapter.reconcileInternalFile(to);
+        });
+      }));
+    });
     const original=adapter.getResourcePath.bind(adapter);
     adapter.getResourcePath=(path,...args)=>resourceUrl(path) || original(path,...args);
     // Repair attachments rendered before the runtime bridge became available.
@@ -211,5 +244,5 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
     const sent=outgoing.find(item=>value===item.path);
     return sent?{direction:"outgoing",root:sent.path}:null;
   }
-  return {configure,refresh,start,stop,owns,wrap,writeEditor,describe,subscribe(fn){subscribers.add(fn);return ()=>subscribers.delete(fn);},resourceUrl,installAdapter,assertOrdinary(path,resolved){if(owns(path)||owns(resolved))fail("ENOTSUP","File descriptors are not supported on shared resources");}};
+  return {configure,refresh,start,stop,owns,wrap,copyContent,writeEditor,describe,subscribe(fn){subscribers.add(fn);return ()=>subscribers.delete(fn);},resourceUrl,installAdapter,assertOrdinary(path,resolved){if(owns(path)||owns(resolved))fail("ENOTSUP","File descriptors are not supported on shared resources");}};
 }
