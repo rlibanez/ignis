@@ -360,8 +360,8 @@
   <Modal title="Create Vault" width="500px" closeOnOverlayClick={false} on:escape={closeDialog} on:close={closeDialog}>
     <svelte:fragment slot="icon"><SquarePlus size="1.25rem" /></svelte:fragment>
     <form class="registration-body" bind:this={createForm} on:submit|preventDefault={onCreateConfirm}>
-      <label for="new-vault-name">Vault name</label>
-      <input id="new-vault-name" type="text" bind:this={createNameInput} bind:value={dialogValue} required maxlength="255" disabled={createBusy} />
+      <label for="new-vault-name">Vault Name:</label>
+      <input id="new-vault-name" type="text" placeholder="My New Vault" bind:this={createNameInput} bind:value={dialogValue} required maxlength="255" disabled={createBusy} />
       {#if createError}<p class="registration-error" role="alert">{createError}</p>{/if}
     </form>
     <svelte:fragment slot="footer">
@@ -467,25 +467,24 @@
 {/if}
 
 <style>
-  .registration-body { padding: 1.25rem 1.5rem; }
-  .registration-body p { margin: 0 0 1rem; color: var(--text-muted); }
-  .registration-body label { display: block; font-weight: 600; margin-bottom: 0.5rem; }
-  .registration-body .owner-label { margin-top: 1rem; }
-  .registration-body input, .registration-body select {
+  .registration-body { padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--background-modifier-border); }
+  .registration-body label { display: block; font-size: 1.125rem; font-weight: 600; color: var(--text-normal); margin-bottom: 0.75rem; }
+  .registration-body input {
     box-sizing: border-box;
     width: 100%;
-    height: var(--input-height, 2.25rem);
-    padding: 0 0.75rem;
+    height: auto;
+    padding: 0.625rem 0.75rem;
     border: 1px solid var(--background-modifier-border);
     border-radius: 0.375rem;
     color: var(--text-normal);
     background: var(--background-primary);
-    font: inherit;
-    line-height: normal;
+    font-size: 1rem;
+    outline: none;
+    box-shadow: none;
   }
-  .registration-body select { appearance: auto; }
+  .registration-body input:focus { border-color: var(--interactive-accent); }
   .registration-body .registration-error { margin: 1rem 0 0; padding: 0.75rem; border: 1px solid var(--text-error, #e36d79); border-radius: 0.375rem; color: var(--text-error, #e36d79); }
-  .registration-actions { display: flex; justify-content: flex-end; gap: 0.625rem; padding: 1rem 1.5rem; }
+  .registration-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
   .section-header {
     display: flex;
     align-items: center;

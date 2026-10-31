@@ -17,6 +17,7 @@ function createVaultView({ administrator, authorize, uuid, membership }) {
     return items.filter(item => authorize(item.id)).map(item => ({
       id: item.id,
       name: item.name,
+      path: item.path,
       uuid: uuid(item.id),
       ...(membership ? { membership: membership(item.id) } : {}),
     }));

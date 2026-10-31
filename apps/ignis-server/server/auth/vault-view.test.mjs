@@ -2,10 +2,10 @@ import {it,expect} from "vitest";
 import {createRequire} from "node:module";
 const {createVaultView}=createRequire(import.meta.url)("./vault-view");
 const vault={id:"Own",name:"Own",uuid:"own-id",path:"/vaults/Own",platform:"linux",version:"1.14.4",trustPlugins:true,secret:"internal"};
-const other={...vault,id:"Other",name:"Other"};
-it("filters catalog and strips physical paths and unknown metadata for normal accounts",()=>{
+const other={...vault,id:"Other",name:"Other",path:"/vaults/Other"};
+it("includes paths only for authorized catalog entries and strips unknown metadata",()=>{
  const view=createVaultView({administrator:false,authorize:id=>id==="Own",uuid:()=>"own-id"});
- expect(view.list([vault,other])).toEqual([{id:"Own",name:"Own",uuid:"own-id"}]);
+ expect(view.list([vault,other])).toEqual([{id:"Own",name:"Own",path:"/vaults/Own",uuid:"own-id"}]);
  expect(view.info(vault)).toEqual({id:"Own",name:"Own",uuid:"own-id",path:"/",platform:"linux",version:"1.14.4",trustPlugins:true});
  expect(()=>view.info(other)).toThrow();
 });
@@ -28,7 +28,7 @@ it("rechecks permission on every projection and checks administrators too",()=>{
  const admin=createVaultView({administrator:true,authorize:id=>id==="Own" && allowed,uuid:()=>"own-id"});
  expect(admin.list([vault,other])).toEqual([]); expect(()=>admin.info(vault)).toThrow();
  allowed=true; const response={vault,vaultList:[vault,other]};
- expect(admin.bootstrap(response).vaultList).toEqual([{id:"Own",name:"Own",uuid:"own-id"}]);
+ expect(admin.bootstrap(response).vaultList).toEqual([{id:"Own",name:"Own",path:"/vaults/Own",uuid:"own-id"}]);
  expect(()=>admin.info(other)).toThrow();
 });
 
