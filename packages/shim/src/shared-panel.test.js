@@ -27,3 +27,24 @@ it('handles deferred leaves restored by a later layout change',async()=>{
 it('cancels queued restoration when the plugin unloads',async()=>{
  const workspace={getLeavesOfType:vi.fn(()=>[])};const restorer=createSharedViewRestorer(workspace);restorer.schedule();restorer.stop();await new Promise(resolve=>setTimeout(resolve,0));expect(workspace.getLeavesOfType).not.toHaveBeenCalled();
 });
+
+import {createSharedUnread} from './shared-panel.js';
+it('counts only received resources and acknowledges only rendered resource IDs',()=>{
+ let stored;const state=createSharedUnread(()=>stored,value=>{stored=value;});
+ state.update([{id:'own',owned:true},{id:'new',owned:false},{id:'below-fold',owned:false}]);
+ expect(state.pending()).toEqual(['new','below-fold']);state.mark('own');state.mark('unknown');
+ expect(state.pending()).toEqual(['new','below-fold']);state.mark('new');
+ expect(state.pending()).toEqual(['below-fold']);
+ const restored=createSharedUnread(()=>stored,()=>{});restored.update([{id:'new',owned:false},{id:'below-fold',owned:false}]);
+ expect(restored.pending()).toEqual(['below-fold']);
+});
+it('does not notify on metadata changes and removes revoked resources from the count',()=>{
+ const state=createSharedUnread(()=>null,()=>{});state.update([{id:'x',owned:false}]);state.mark('x');
+ state.update([{id:'x',owned:false,name:'renamed',revision:3},{id:'y',owned:false}]);expect(state.pending()).toEqual(['y']);
+ state.update([{id:'x',owned:false}]);expect(state.pending()).toEqual([]);
+});
+it('tolerates unavailable storage and merges acknowledgements from other tabs',()=>{
+ let stored='invalid';const state=createSharedUnread(()=>stored,()=>{throw new Error('unavailable');});
+ state.update([{id:'x',owned:false},{id:'y',owned:false}]);state.mark('x');expect(state.pending()).toEqual(['y']);
+ stored='["y"]';state.update([{id:'x',owned:false},{id:'y',owned:false}]);expect(state.pending()).toEqual([]);
+});
