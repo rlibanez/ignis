@@ -1,3 +1,5 @@
+import { openShareDialog } from "./share-dialog.js";
+
 // The panel changes only the recipient's placement preference, never share grants.
 export function createSharedPanelApi(currentContext, request = fetch) {
   const session = currentContext();
@@ -96,6 +98,14 @@ export function installSharedPanel(obsidian, app, sharedFiles, host = window) {
   class SharedPlugin extends obsidian.Plugin {
     onload(){
       this.registerView(type,leaf=>new SharedView(leaf));
+      this.registerEvent(app.workspace.on("file-menu", (menu, file) => {
+        const path = file?.path;
+        if (!path || path.split("/").some(part => !part || part.startsWith(".")) || sharedFiles.owns(path) || host.__ignisAuth?.blocked) return;
+        const current = host.__vaultList?.find(vault => vault.uuid === host.__currentVaultUuid);
+        if (!current || current.membership !== "owner") return;
+        menu.addItem(item => item.setTitle("Share…").setIcon("share-2")
+          .onClick(() => openShareDialog(obsidian, app, file, sharedFiles, host)));
+      }));
       const restorer=createSharedViewRestorer(app.workspace,()=>console.warn("[ignis] Unable to restore Shared view"));
       this.register(()=>restorer.stop());
       this.registerEvent(app.workspace.on("layout-change",()=>restorer.schedule()));
