@@ -8,9 +8,16 @@ export function installSharedIcons(obsidian, sharedFiles, host = window) {
       const shared=sharedFiles.describe(item.getAttribute('data-path'));
       let icon=item.querySelector('.ignis-shared-marker');
       if(!shared){icon?.remove();continue;}
-      if(!icon){icon=host.document.createElement('span');icon.className='ignis-shared-marker';Object.assign(icon.style,{display:'inline-flex',marginLeft:'6px',flexShrink:'0',color:'var(--text-muted)'});item.append(icon);}
+      if(!icon){icon=host.document.createElement('span');icon.className='ignis-shared-marker';Object.assign(icon.style,{display:'inline-flex',width:'1em',height:'1em',lineHeight:'1',alignItems:'center',justifyContent:'center',alignSelf:'center',verticalAlign:'middle',marginLeft:'6px',flexShrink:'0',color:'var(--text-muted)'});item.append(icon);}
       const name=shared.direction==='outgoing'?'share-2':'users';
-      if(icon.__ignisShareIcon!==name){obsidian.setIcon(icon,name);icon.__ignisShareIcon=name;}
+      if(icon.__ignisShareIcon!==name){
+        obsidian.setIcon(icon,name);
+        // Obsidian's default SVG size can exceed the explorer text line height.
+        // Scale the decoration to the row's font without changing the row itself.
+        const svg=icon.querySelector?.('svg');
+        if(svg)Object.assign(svg.style,{width:'100%',height:'100%',display:'block'});
+        icon.__ignisShareIcon=name;
+      }
       const label=shared.direction==='outgoing'?'Shared by you':(shared.owner?'Shared by '+shared.owner:'Shared')+' · '+(shared.role==='editor'?'Read / Write':'Read');
       icon.setAttribute('aria-label',label);icon.title=label;
     }
