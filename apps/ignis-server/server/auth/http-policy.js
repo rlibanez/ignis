@@ -49,7 +49,11 @@ function readAuthConfig(env = process.env) {
   const oidcButtonText = (env.IGNIS_OIDC_BUTTON_TEXT || "").trim() || "OpenID Connect";
   if ([...oidcButtonText].length > 80 || /[\p{Cc}\p{Cf}]/u.test(oidcButtonText))
     throw new Error("Invalid IGNIS_OIDC_BUTTON_TEXT; use at most 80 printable characters");
+  const rememberDays = env.IGNIS_REMEMBER_ME_DAYS ?? "90";
+  if (!/^[1-9][0-9]{0,2}$/.test(rememberDays) || Number(rememberDays) > 365)
+    throw new Error("Invalid IGNIS_REMEMBER_ME_DAYS; expected an integer from 1 to 365");
   return {
+    rememberDays: Number(rememberDays),
     oidcButtonText,
     publicOrigin: origin.origin,
     allowHttpLoopback: env.IGNIS_ALLOW_HTTP_LOOPBACK === "true",

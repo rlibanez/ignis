@@ -36,7 +36,7 @@
         clear: clearBrowserData,
         request: signal => {
           status.textContent = `Connecting to ${providerName}…`;
-          return request(link ? "/api/auth/oidc/link" : "/api/auth/oidc/start", {}, signal);
+          return request(link ? "/api/auth/oidc/link" : "/api/auth/oidc/start", link ? {} : {rememberMe: document.getElementById("remember-me").checked}, signal);
         },
       });
       if (response.status === 429) {
@@ -147,6 +147,7 @@
       const response = await request("/api/auth/login", {
         login: form.elements.login.value,
         password: form.elements.password.value,
+        rememberMe: document.getElementById("remember-me").checked,
       });
       if (!response.ok) {
         showLoginError(response.status === 429 ? rateLimitMessage

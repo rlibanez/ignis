@@ -57,10 +57,11 @@ function createAuthBoundary({
   oidcDependencies,
 }) {
   const cookies = createSessionCookies(config); // Validate before opening/listening.
+  const rememberCookies = createSessionCookies({ ...config, purpose: "remember" });
   const resetCookies = createSessionCookies({ ...config, purpose: "reset" });
   const publicUrl = new URL(config.publicOrigin);
   const db = openDatabase(dataRoot);
-  const sessions = createSessionService(db, { ...sessionOptions, now });
+  const sessions = createSessionService(db, { rememberDays: config.rememberDays, ...sessionOptions, now });
   const sharesService = vaultRoot ? require("./resource-shares").createResourceSharesService(db, vaultRoot, sessions, config.sharedResourceLimits) : null;
   const sharesRouter = sharesService ? require("../routes/resource-shares").createResourceSharesRouter(sharesService) : null;
   const vaultConfig = vaultRoot ? require("./vault-config").createVaultConfigService(db, vaultRoot, sessions) : null;
@@ -141,6 +142,14 @@ function createAuthBoundary({
       req.headers["sec-fetch-site"] !== "cross-site" &&
       (req.headers.origin ? req.headers.origin === publicUrl.origin : !required)
     );
+  }
+  function finishRemember(req, res, authentication, enabled) {
+    sessions.forget(rememberCookies.read(req.headers.cookie));
+    if(enabled){
+      const grant=sessions.remember(authentication.token);
+      if(!grant)throw new Error("Persistent session unavailable");
+      res.append("Set-Cookie",rememberCookies.serialize(grant.token,grant.expiresAt,now()));
+    }else res.append("Set-Cookie",rememberCookies.clear());
   }
   function getSession(req, touch = false) {
     return sessions.resolve(cookies.read(req.headers.cookie), { touch });
@@ -604,7 +613,9 @@ function createAuthBoundary({
         sessions.revoke(result.token);
         return safe(res, 401, "Session changed");
       }
+      const keepSignedIn=sessions.remembered(previous);
       sessions.revoke(previous);
+      finishRemember(req,res,result,keepSignedIn);
       csrf.consume(req);
       res.append("Set-Cookie", cookies.serialize(result.token, result.session.expiresAt, now()));
       sweepSockets();
@@ -650,14 +661,17 @@ function createAuthBoundary({
         return safe(res, 429, "Too many requests");
       try {
         const previous = cookies.read(req.headers.cookie);
+        const wasRemembered=sessions.remembered(previous);
         const result = await oidc.complete(
           config.publicOrigin + req.url,
           previous,
           req.headers.cookie,
         );
+        const keepSignedIn=result.kind==="login" ? result.rememberMe===true : wasRemembered;
         sessions.revoke(previous);
         csrf.consume(req);
         const authentication = result.authentication;
+        finishRemember(req,res,authentication,keepSignedIn);
         db.prepare("INSERT INTO audit_events VALUES (?, ?, ?, ?, ?)").run(
           require("node:crypto").randomUUID(),
           authentication.session.user.id,
@@ -694,6 +708,7 @@ function createAuthBoundary({
       if (!originAllowed(req, true) || !csrf.valid(req, session))
         return safe(res, 403, "Request rejected");
       if (!limits.oidcStart(req.ip)) return safe(res, 429, "Too many requests");
+      if (req.body?.rememberMe !== undefined && typeof req.body.rememberMe !== "boolean") return safe(res,400,"Invalid remember preference");
       const kind = pathname.endsWith("/reauth") ? "reauth" : pathname.endsWith("/link") ? "link" : "login";
       if (kind === "reauth" && (!session || session.user.role !== "admin" ||
           req.headers["x-ignis-context"] !== session.id || !oidc.linked(session.user.id)))
@@ -709,6 +724,7 @@ function createAuthBoundary({
           kind,
           cookies.read(req.headers.cookie),
           req.headers.cookie,
+          {rememberMe: kind==="login" && req.body?.rememberMe===true},
         );
         csrf.consume(req);
         res.append("Set-Cookie", result.cookie);
@@ -743,12 +759,15 @@ function createAuthBoundary({
       return res.status(201).json({ initialized: true });
     }
     if (pathname === "/api/auth/logout") {
+      sessions.forget(rememberCookies.read(req.headers.cookie));
+      res.append("Set-Cookie",rememberCookies.clear());
       sessions.revoke(cookies.read(req.headers.cookie));
       csrf.consume(req);
       res.append("Set-Cookie", cookies.clear());
       sweepSockets();
       return res.status(204).end();
     }
+    if (req.body?.rememberMe !== undefined && typeof req.body.rememberMe !== "boolean") return safe(res,400,"Invalid remember preference");
     let login = null;
     try {
       login = normalizeLogin(req.body?.login);
@@ -767,6 +786,8 @@ function createAuthBoundary({
       sessions.revoke(cookies.read(req.headers.cookie));
       csrf.consume(req);
       res.append("Set-Cookie", cookies.clear());
+      sessions.forget(rememberCookies.read(req.headers.cookie));
+      res.append("Set-Cookie",rememberCookies.clear());
       res.append("Set-Cookie", resetCookies.serialize(reset.token, reset.expiresAt, now()));
       sweepSockets();
       return res.json({ passwordResetRequired: true });
@@ -774,6 +795,7 @@ function createAuthBoundary({
     res.append("Set-Cookie", resetCookies.clear());
     // End the browser's previous identity only after successful authentication.
     sessions.revoke(cookies.read(req.headers.cookie));
+    finishRemember(req,res,result,req.body?.rememberMe===true);
     csrf.consume(req);
     res.append(
       "Set-Cookie",
@@ -807,6 +829,15 @@ function createAuthBoundary({
         return safe(res, 403, "Request rejected");
       const pathname = canonicalRequestPath(req);
       if (!pathname) return safe(res, 400, "Invalid request");
+      if (!setupAssets.has(pathname) || ["/login","/account","/shares","/admin/users"].includes(pathname)) {
+        const restored=sessions.resume(rememberCookies.read(req.headers.cookie),cookies.read(req.headers.cookie));
+        if(restored){
+          res.append("Set-Cookie",cookies.serialize(restored.token,restored.session.expiresAt,now()));
+          res.append("Set-Cookie",rememberCookies.serialize(restored.remember.token,restored.remember.expiresAt,now()));
+          const other=(req.headers.cookie || "").split(";").filter(part=>part.trim().split("=")[0]!==cookies.name);
+          req.headers.cookie=[...other,`${cookies.name}=${restored.token}`].join("; ");
+        }
+      }
       if (["GET", "HEAD"].includes(req.method) && setupAssets.has(pathname)) {
         if (!limits.staticRequest(req.ip)) {
           res.set("Retry-After", "60");

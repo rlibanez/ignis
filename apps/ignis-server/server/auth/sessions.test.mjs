@@ -382,3 +382,80 @@ describe("session backup recovery", () => {
     }
   });
 });
+
+describe('persistent device grants',()=>{
+ it('restores an expired lease, rotates secrets and preserves identity and authentication age',()=>{
+  const first=oidc(),grant=service.remember(first.token),authTime=first.session.authenticatedAt;
+  expect(grant.expiresAt-clock).toBe(90*86400000);
+  expect(db.prepare('SELECT token_hash FROM remembered_sessions').get().token_hash).not.toBe(grant.token);
+  clock+=2000;service.purgeExpired();expect(service.resolve(first.token)).toBeNull();
+  const restored=service.resume(grant.token,first.token);
+  expect(restored.token).not.toBe(first.token);expect(restored.remember.token).not.toBe(grant.token);
+  expect(restored.session.id).toBe(first.session.id);expect(restored.session.authenticatedAt).toBe(authTime);
+  expect(service.resolve(restored.token)?.user.id).toBe('external');
+  expect(restored.remember.expiresAt).toBe(clock+90*86400000);
+ });
+ it('coalesces concurrent renewals, but revokes the family on later replay',()=>{
+  const first=oidc(),grant=service.remember(first.token);clock+=2000;
+  const a=service.resume(grant.token,first.token),b=service.resume(grant.token,first.token);
+  expect(b).toEqual(a);clock+=10001;
+  expect(service.resume(grant.token,first.token)).toBeNull();
+  expect(service.resume(a.remember.token,a.token)).toBeNull();
+ });
+ it('survives a service restart without storing raw tokens',()=>{
+  const first=oidc(),grant=service.remember(first.token);clock+=2000;
+  const restarted=createSessionService(db,{now:()=>clock});
+  expect(restarted.resume(grant.token,null)?.session.user.id).toBe('external');
+ });
+ it('expires at the configured deadline and never revives a normal expired session',()=>{
+  const short=createSessionService(db,{now:()=>clock,rememberDays:1});
+  const first=short.issueForVerifiedOidcIdentity({issuer:'https://issuer.example',subject:'subject',authenticatedAt:clock});
+  const grant=short.remember(first.token);clock+=86400000;
+  expect(short.resume(grant.token,null)).toBeNull();expect(short.resolve(first.token)).toBeNull();
+ });
+ it.each(['logout','all','disable','delete','unlink','password-required'])('revokes persistence on %s',action=>{
+  const first=oidc(),grant=service.remember(first.token);
+  if(action==='logout')service.revoke(first.token);
+  if(action==='all')service.revokeUser('external');
+  if(action==='disable')db.prepare("UPDATE users SET status='disabled' WHERE id='external'").run();
+  if(action==='delete')db.prepare("DELETE FROM users WHERE id='external'").run();
+  if(action==='unlink')db.prepare("DELETE FROM oidc_identities WHERE user_id='external'").run();
+  if(action==='password-required')db.prepare("UPDATE users SET password_change_required=1 WHERE id='external'").run();
+  expect(service.resume(grant.token,null)).toBeNull();
+  expect(db.prepare('SELECT count(*) n FROM remembered_sessions').get().n).toBe(0);
+ });
+ it('does not replace a valid session belonging to a different account',async()=>{
+  const first=oidc(),grant=service.remember(first.token),other=await service.loginLocal('alice',PASSWORD);
+  expect(service.resume(grant.token,other.token)).toBeNull();expect(service.resolve(other.token).user.id).toBe('alice');
+ });
+ it('revokes a device by its persistent cookie after its short lease expires',()=>{
+  const first=oidc(),grant=service.remember(first.token);clock+=2000;service.forget(grant.token);
+  expect(service.resume(grant.token,null)).toBeNull();
+ });
+});
+
+it('revokes local persistence on credential changes and forced password reset',async()=>{
+ for(const action of ['password','reset']){
+  const auth=await service.loginLocal('alice',PASSWORD),grant=service.remember(auth.token);
+  if(action==='password')db.prepare('UPDATE local_credentials SET password_hash=? WHERE user_id=?').run(encoded,'alice');
+  else db.prepare("UPDATE users SET password_change_required=1 WHERE id='alice'").run();
+  expect(service.resume(grant.token,null)).toBeNull();
+ }
+});
+it('never serves a cached renewal after revocation',()=>{
+ const first=oidc(),grant=service.remember(first.token);clock+=2000;
+ const next=service.resume(grant.token,null);service.revoke(next.token);
+ expect(service.resume(grant.token,null)).toBeNull();expect(service.resume(next.remember.token,null)).toBeNull();
+});
+it('fails closed on a retired credential after restart',()=>{
+ const first=oidc(),grant=service.remember(first.token);clock+=2000;
+ const next=service.resume(grant.token,null);
+ const restarted=createSessionService(db,{now:()=>clock});
+ expect(restarted.resume(grant.token,null)).toBeNull();expect(restarted.resume(next.remember.token,null)).toBeNull();
+});
+it('bounds remembered devices through the existing per-user session limit',()=>{
+ const first=oidc(),grant=service.remember(first.token);
+ for(let i=0;i<10;i++){clock++;const auth=oidc();service.remember(auth.token);}
+ expect(service.resume(grant.token,null)).toBeNull();
+ expect(db.prepare('SELECT count(*) n FROM remembered_sessions').get().n).toBe(10);
+});

@@ -1539,3 +1539,42 @@ it("allows external top-level PWA entry navigation without bypassing authenticat
   expect((await request("/", {method:"POST",headers})).status).toBe(403);
   expect((await request("/", {headers:{...headers,host:"wrong.example"}})).status).toBe(403);
 });
+
+it('renews opted-in local login after inactivity and revokes the grant on logout',async()=>{
+ const jar={};const token=await csrf(jar);
+ expect((await request('/api/auth/login',{jar,method:'POST',headers:{'x-ignis-csrf':token},body:{login:'admin',password:PASSWORD,rememberMe:true}})).status).toBe(200);
+ const secret=jar['ignis-dev-remember'];expect(secret).toMatch(/^[a-f0-9]{64}$/);
+ const original=await (await request('/api/auth/session',{jar})).json();
+ clock+=13*3600000;delete jar['ignis-dev-session'];
+ const restored=await request('/api/auth/session',{jar});expect(restored.status).toBe(200);
+ expect((await restored.json()).sessionId).toBe(original.sessionId);
+ expect(jar['ignis-dev-remember']).not.toBe(secret);
+ const context=await (await request('/api/auth/session',{jar})).json();
+ expect((await request('/api/auth/users',{jar,method:'POST',headers:{'x-ignis-csrf':await csrf(jar),'x-ignis-context':context.sessionId},body:{login:'freshness-test',password:PASSWORD}})).status).toBe(403);
+ const replay={...jar};
+ expect((await request('/api/auth/logout',{jar,method:'POST',headers:{'x-ignis-csrf':await csrf(jar)},body:{}})).status).toBe(204);
+ expect((await request('/api/auth/session',{jar:replay})).status).toBe(401);
+});
+it('does not grant persistence without opt-in and rejects non-boolean preferences',async()=>{
+ const ordinary=await login();expect(ordinary['ignis-dev-remember'] || '').toBe('');
+ const jar={};expect((await request('/api/auth/login',{jar,method:'POST',headers:{'x-ignis-csrf':await csrf(jar)},body:{login:'admin',password:PASSWORD,rememberMe:'true'}})).status).toBe(400);
+ expect(db.prepare('SELECT count(*) n FROM remembered_sessions').get().n).toBe(0);
+});
+it('does not renew a persistent grant from a foreign-origin API request',async()=>{
+ const jar={};await request('/api/auth/login',{jar,method:'POST',headers:{'x-ignis-csrf':await csrf(jar)},body:{login:'admin',password:PASSWORD,rememberMe:true}});
+ clock+=13*3600000;const before=jar['ignis-dev-remember'];
+ const result=await request('/api/auth/session',{jar,headers:{origin:'https://evil.example'}});
+ expect(result.status).toBe(403);expect(result.headers.getSetCookie()).toEqual([]);expect(jar['ignis-dev-remember']).toBe(before);
+});
+it('validates the configurable rolling persistence duration',()=>{
+ for(const value of ['0','366','-1','01','1.5','90 days','']) expect(()=>readAuthConfig({IGNIS_PUBLIC_ORIGIN:ORIGIN,IGNIS_REMEMBER_ME_DAYS:value})).toThrow('IGNIS_REMEMBER_ME_DAYS');
+ for(const value of ['1','90','365'])expect(readAuthConfig({IGNIS_PUBLIC_ORIGIN:ORIGIN,IGNIS_REMEMBER_ME_DAYS:value}).rememberDays).toBe(Number(value));
+});
+it('preserves opt-in after actual local reauthentication without reviving the old grant',async()=>{
+ const jar={};await request('/api/auth/login',{jar,method:'POST',headers:{'x-ignis-csrf':await csrf(jar)},body:{login:'admin',password:PASSWORD,rememberMe:true}});
+ const old={...jar},context=await (await request('/api/auth/session',{jar})).json();
+ expect((await request('/api/auth/reauth',{jar,method:'POST',headers:{'x-ignis-csrf':await csrf(jar),'x-ignis-context':context.sessionId},body:{password:PASSWORD}})).status).toBe(200);
+ expect(jar['ignis-dev-remember']).toMatch(/^[a-f0-9]{64}$/);expect(jar['ignis-dev-remember']).not.toBe(old['ignis-dev-remember']);
+ expect((await request('/api/auth/session',{jar:old})).status).toBe(401);
+ clock+=13*3600000;expect((await request('/api/auth/session',{jar})).status).toBe(200);
+});

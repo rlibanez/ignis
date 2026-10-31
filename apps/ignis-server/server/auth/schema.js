@@ -297,4 +297,16 @@ module.exports = [
       DELETE FROM sessions WHERE user_id=NEW.id;
       DELETE FROM password_resets WHERE user_id=NEW.id;
     END;`},
+  {version:19,sql:`CREATE TABLE remembered_sessions (
+    session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at INTEGER NOT NULL
+  ) STRICT;
+  CREATE TABLE remembered_retired_tokens (
+    token_hash TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES remembered_sessions(session_id) ON DELETE CASCADE ON UPDATE CASCADE,
+    expires_at INTEGER NOT NULL
+  ) STRICT;
+  CREATE INDEX remembered_retired_session ON remembered_retired_tokens(session_id);
+  CREATE INDEX remembered_retired_expiry ON remembered_retired_tokens(expires_at);`},
 ];

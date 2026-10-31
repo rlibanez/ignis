@@ -335,7 +335,7 @@ it("manually links an administrator only from its existing recent session", asyn
   const after = (await request("/api/auth/users", jar)).json().users;
   expect(after.find((user) => user.login === "admin").oidcLinked).toBe(true);
   for (const user of after) {
-    expect(Object.keys(user).sort()).toEqual(["canSetLocalPassword", "email", "email_trust", "hasLocalPassword", "id", "login", "oidcLinked", "role", "status"]);
+    expect(Object.keys(user).sort()).toEqual(["canSetLocalPassword", "email", "email_trust", "hasLocalPassword", "id", "login", "oidcLinked", "password_change_required", "role", "status"]);
   }
   expect((await request("/api/auth/session", jar)).json()).toMatchObject({
     user: { role: "admin" },
@@ -545,4 +545,23 @@ it("OIDC reauthentication preserves the administrator and rejects another provid
   expect((await request(completed.headers.location, jar, "GET", undefined, {
     "sec-fetch-site": "cross-site", "sec-fetch-mode": "navigate", "sec-fetch-dest": "document",
   })).status).toBe(200);
+});
+
+it('binds remember-me to the OIDC transaction and resumes without contacting the provider',async()=>{
+ const jar={};const start=await post('/api/auth/oidc/start',jar,{rememberMe:true});expect(start.status).toBe(200);
+ const callback=await request(providerCallback(start.json().authorizationUrl),jar,'GET',undefined,{'sec-fetch-site':'cross-site'});
+ expect(callback.status).toBe(303);expect(jar['ignis-dev-remember']).toMatch(/^[a-f0-9]{64}$/);
+ const original=(await request('/api/auth/session',jar)).json();
+ delete jar['ignis-dev-session'];providerUnavailable=true;
+ const restored=await request('/api/auth/session',jar);expect(restored.status).toBe(200);expect(restored.json().sessionId).toBe(original.sessionId);
+ expect(tokenRequests).toBe(1);
+ const saved={...jar};db.prepare("UPDATE users SET status='disabled' WHERE id=?").run(original.user.id);
+ expect((await request('/api/auth/session',saved)).status).toBe(401);
+});
+it('does not let callback query parameters enable persistence',async()=>{
+ const jar={};const start=await post('/api/auth/oidc/start',jar);
+ const result=await request(providerCallback(start.json().authorizationUrl)+'&rememberMe=true',jar,'GET',undefined,{'sec-fetch-site':'cross-site'});
+ // Protocol may reject the extra parameter; either result must not mint a device grant.
+ expect([302,303]).toContain(result.status);expect(jar['ignis-dev-remember'] || '').toBe('');
+ expect(db.prepare('SELECT count(*) n FROM remembered_sessions').get().n).toBe(0);
 });

@@ -16,6 +16,7 @@ function createSessionService(
     idleMs = 30 * 60 * 1000,
     absoluteMs = 12 * 60 * 60 * 1000,
     maxSessionsPerUser = 10,
+    rememberDays = 90,
   } = {},
 ) {
   if (
@@ -24,7 +25,7 @@ function createSessionService(
     ) ||
     idleMs > absoluteMs ||
     absoluteMs > 30 * 24 * 60 * 60 * 1000 ||
-    maxSessionsPerUser > 100
+    maxSessionsPerUser > 100 || !Number.isInteger(rememberDays) || rememberDays < 1 || rememberDays > 365
   ) {
     throw new Error("Invalid session policy");
   }
@@ -60,11 +61,19 @@ function createSessionService(
       ),
     };
   }
+  const rememberMs = rememberDays * 86400000;
+  // Short grace for concurrent requests. Secrets never enter SQLite. After a
+  // restart, a retired credential fails closed instead of recreating a grant.
+  const renewals = new Map();
   function prune(at) {
+    for (const [hash, entry] of renewals) if (entry.until <= at) renewals.delete(hash);
+    db.prepare("DELETE FROM remembered_retired_tokens WHERE expires_at <= ?").run(at);
+    db.prepare("DELETE FROM sessions WHERE id IN (SELECT session_id FROM remembered_sessions WHERE expires_at <= ?)").run(at);
     return db
       .prepare(
-        `DELETE FROM sessions WHERE expires_at <= ?
-      OR last_activity + idle_timeout_ms <= ?
+        `DELETE FROM sessions WHERE ((expires_at <= ?
+      OR last_activity + idle_timeout_ms <= ?) AND NOT EXISTS
+        (SELECT 1 FROM remembered_sessions r WHERE r.session_id=sessions.id))
       OR NOT EXISTS (SELECT 1 FROM users u WHERE u.id = sessions.user_id
         AND u.status = 'active' AND u.auth_version = sessions.auth_version)`,
       )
@@ -181,7 +190,7 @@ function createSessionService(
       return insert(user, "oidc", issuer, subject, authenticatedAt, at);
     });
   }
-  function find(hash, at) {
+  function find(hash, at, renewal = false) {
     const row = db
       .prepare(
         `SELECT s.*, u.login, u.role, u.status, u.password_change_required, u.auth_version AS current_version
@@ -195,8 +204,8 @@ function createSessionService(
       row.current_version === row.auth_version &&
       row.created_at <= at &&
       row.last_activity <= at &&
-      at < row.expires_at &&
-      at < row.last_activity + row.idle_timeout_ms;
+      (renewal || (at < row.expires_at &&
+      at < row.last_activity + row.idle_timeout_ms));
     if (valid && row.method === "oidc") {
       valid = !!db
         .prepare(
@@ -209,6 +218,10 @@ function createSessionService(
         .get(row.user_id);
     }
     if (!valid) {
+      // Keep expired short leases only while the separate device grant is valid.
+      if (!renewal && db.prepare("SELECT 1 FROM remembered_sessions WHERE session_id=? AND expires_at>?").get(row.id,at)) {
+        if (find(hash, at, true)) return null;
+      }
       db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(hash);
       return null;
     }
@@ -231,6 +244,59 @@ function createSessionService(
     };
     // Internal callers may already hold the same database write transaction.
     return withinTransaction ? read() : transaction(db, read);
+  }
+  function remembered(token) {
+    const hash=tokenHash(token);
+    return !!hash && !!db.prepare("SELECT 1 FROM sessions s JOIN remembered_sessions r ON r.session_id=s.id WHERE s.token_hash=? AND r.expires_at>?").get(hash,time());
+  }
+  function remember(token) {
+    return transaction(db,()=>{
+      const at=time(), row=find(tokenHash(token),at);
+      if(!row)return null;
+      const secret=randomBytes(32).toString("hex"),expiresAt=at+rememberMs;
+      db.prepare("DELETE FROM remembered_sessions WHERE session_id=?").run(row.id);
+      db.prepare("INSERT INTO remembered_sessions VALUES (?,?,?)").run(row.id,tokenHash(secret),expiresAt);
+      return {token:secret,expiresAt};
+    });
+  }
+  function forget(secret) {
+    const hash=tokenHash(secret);if(!hash)return;
+    db.prepare(`DELETE FROM sessions WHERE id IN
+      (SELECT session_id FROM remembered_sessions WHERE token_hash=? UNION SELECT session_id FROM remembered_retired_tokens WHERE token_hash=?)`).run(hash,hash);
+  }
+  function resume(secret, sessionToken) {
+    const hash=tokenHash(secret);if(!hash)return null;
+    return transaction(db,()=>{
+      const at=time();
+      for(const [key,entry] of renewals)if(entry.until<=at)renewals.delete(key);
+      let device=db.prepare("SELECT r.*,s.token_hash AS session_hash FROM remembered_sessions r JOIN sessions s ON s.id=r.session_id WHERE r.token_hash=?").get(hash);
+      if(!device){
+        const retired=db.prepare("SELECT session_id FROM remembered_retired_tokens WHERE token_hash=? AND expires_at>?").get(hash,at);
+        const cached=renewals.get(hash);
+        if(retired && cached && cached.until>at && find(tokenHash(cached.result.token),at)){
+          const active=tokenHash(sessionToken) && find(tokenHash(sessionToken),at);
+          return !active || active.id===cached.result.session.id ? cached.result : null;
+        }
+        if(retired)db.prepare("DELETE FROM sessions WHERE id=?").run(retired.session_id);
+        return null;
+      }
+      if(device.expires_at<=at){db.prepare("DELETE FROM sessions WHERE id=?").run(device.session_id);return null;}
+      const row=find(device.session_hash,at,true);
+      if(!row)return null;
+      // Never restore another account over a valid browser session.
+      const active=tokenHash(sessionToken) && find(tokenHash(sessionToken),at);
+      if(active && active.id!==row.id)return null;
+      if(active && device.expires_at-at>rememberMs-86400000)return null;
+      const token=randomBytes(32).toString("hex"),rememberToken=randomBytes(32).toString("hex");
+      const expiresAt=at+rememberMs;
+      db.prepare("INSERT INTO remembered_retired_tokens VALUES (?,?,?)").run(hash,row.id,device.expires_at);
+      db.prepare("UPDATE remembered_sessions SET token_hash=?,expires_at=? WHERE session_id=?").run(tokenHash(rememberToken),expiresAt,row.id);
+      db.prepare("UPDATE sessions SET token_hash=?,last_activity=?,expires_at=? WHERE id=?").run(tokenHash(token),at,at+absoluteMs,row.id);
+      row.last_activity=at;row.expires_at=at+absoluteMs;
+      const result={token,session:publicSession(row),remember:{token:rememberToken,expiresAt}};
+      renewals.set(hash,{until:at+10000,result});
+      return result;
+    });
   }
   function rotate(token) {
     const hash = tokenHash(token);
@@ -280,6 +346,7 @@ function createSessionService(
     });
   }
   return {
+    remember, remembered, resume, forget,
     loginLocal,
     issueForVerifiedOidcIdentity,
     resolve,
