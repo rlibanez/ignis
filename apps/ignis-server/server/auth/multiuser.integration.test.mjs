@@ -95,15 +95,15 @@ function request(port, route, jar = {}, options = {}) {
     req.end();
   });
 }
-async function stop(child) {
-  if (child.exitCode !== null) return;
+async function stop(child, signal = "SIGTERM") {
+  if (child.exitCode !== null || child.signalCode !== null) return;
   await new Promise((resolve) => {
     const timer = setTimeout(() => child.kill("SIGKILL"), 3000);
     child.once("exit", () => {
       clearTimeout(timer);
       resolve();
     });
-    child.kill("SIGTERM");
+    child.kill(signal);
   });
 }
 
@@ -195,8 +195,8 @@ it('validates three independent real sessions across conflicts, downgrade, revok
     write(bob,beforeMixed.etag,'recipient edit')]);
   expect(mixed.map(r=>r.status).sort()).toEqual([200,409]);
   const latest=await success(bob.share('read',{id,path:'note.md'}));
-  // Persisted bytes and aliases survive a real server restart with the same sessions.
-  await stop(server.child);server=await launch(root);port=await server.ready;
+  // Acknowledged bytes, aliases and sessions survive an abrupt process death.
+  await stop(server.child,"SIGKILL");server=await launch(root);port=await server.ready;
   expect((await success(bob.share('read',{id,path:'note.md'}))).content).toBe(latest.content);
   expect((await alice.call('/api/fs/writeFile?vault='+a,{path:'Project/note.md',content:'stale after restart',expectedHash:beforeMixed.etag})).status).toBe(409);
   expect((await success(bob.share('mounts',{vault:b}))).mounts[0].localPath).toBe('Received');

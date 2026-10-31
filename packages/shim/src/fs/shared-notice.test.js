@@ -50,3 +50,15 @@ it('offers dismissible ordinary recovery without claiming local notes are unaffe
  expect(JSON.parse(await f.host.URL.createObjectURL.mock.calls[0][0].text()).files['note.md'].content).toBe('my draft');
  f.close();expect(f.find('Recover unsaved changes')).toBeDefined();f.events['ignis:auth-lost']();expect(f.body.children).toEqual([]);
 });
+
+it('exports exact Unicode drafts for multiple files and retains recovery after download',async()=>{
+ const f=fixture(),drafts={'Shared/á.md':'# Borrador\nñ 👩🏽‍💻\n','Shared/empty.md':''};
+ for(const [path,content] of Object.entries(drafts))f.notice.failure({path,content,...f.context});
+ f.find('Download shared recovery copy').click();
+ const blob=f.host.URL.createObjectURL.mock.calls[0][0],data=JSON.parse(await blob.text());
+ for(const [path,content] of Object.entries(drafts))expect(data.files[path].content).toBe(content);
+ expect(Object.keys(data.files).sort()).toEqual(Object.keys(drafts).sort());
+ f.close();f.find('Recover shared changes').click();f.find('Download shared recovery copy').click();
+ const second=JSON.parse(await f.host.URL.createObjectURL.mock.calls[1][0].text());
+ expect(second.files).toEqual(data.files);
+});
