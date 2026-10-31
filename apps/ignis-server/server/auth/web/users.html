@@ -184,14 +184,16 @@
         <h2 id="reauth-heading">Confirm your identity</h2>
         <p id="reauth-user"></p>
         <p class="help">Confirm your identity to continue. No changes will be saved automatically.</p>
+        <div class="reauth-actions">
         <form id="reauth-form">
           <label for="reauth-password">Password</label>
           <input id="reauth-password" name="password" type="password" autocomplete="current-password" required maxlength="1024" />
-          <button type="submit">Confirm identity</button>
+          <button type="submit" class="account-button">Confirm identity</button>
         </form>
-        <button id="reauth-oidc" type="button" hidden>Continue with OpenID Connect</button>
+        <button id="reauth-oidc" type="button" class="account-button secondary" hidden>Continue with OpenID Connect</button>
         <p id="reauth-status" role="alert"></p>
-        <button id="cancel-reauth" type="button" class="cancel-button">Cancel</button>
+        <button id="cancel-reauth" type="button" class="account-button secondary">Cancel</button>
+        </div>
       </dialog>
       <noscript>JavaScript is required to manage users.</noscript>
     </main>

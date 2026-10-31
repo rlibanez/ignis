@@ -1,6 +1,6 @@
 (() => {
   const $=id=>document.getElementById(id);
-  let context, catalog, managed, opened, relative="", file, busy=false, locked=false, pickerPath="", editorOriginal="";
+  let context, catalog, managed, placed, busy=false, locked=false, selectedPath="", pickerGeneration=0;
   const node=(tag,text)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=text;return el;};
   function lock(){locked=true;for(const dialog of document.querySelectorAll("dialog"))dialog.close();$("workspace").hidden=true;$("status").textContent="Your session has ended or changed. Return to Account to sign in again.";}
   async function api(operation,input){
@@ -9,66 +9,164 @@
     if(operation){const response=await fetch("/api/auth/csrf",{credentials:"same-origin",cache:"no-store",headers});if(!response.ok)throw new Error("Unable to check your session.");headers["X-Ignis-Csrf"]=(await response.json()).csrfToken;headers["Content-Type"]="application/json";}
     const response=await fetch("/api/shares",{method:operation?"POST":"GET",credentials:"same-origin",cache:"no-store",headers,...(operation?{body:JSON.stringify({operation,input})}:{})});
     if(response.status===401 || response.headers.get("content-type")?.includes("text/html")){lock();throw new Error("Session unavailable");}
-    const data=await response.json();if(!response.ok){if(data.code==="AUTH_CONTEXT_CHANGED")lock();throw new Error(data.error || "Request failed");}return data;
+    const data=await response.json();if(locked)throw new Error("Session unavailable");if(!response.ok){if(data.code==="AUTH_CONTEXT_CHANGED")lock();throw new Error(data.error || "Request failed");}return data;
   }
   async function run(fn,dialog){if(busy||locked)return;busy=true;const status=dialog?dialog.querySelector(".error"):$("status");status.textContent="";try{await fn();}catch(error){(dialog && !dialog.open ? $("status") : status).textContent=error.message;}finally{busy=false;}}
-  const button=(text,action,secondary=true)=>{const el=node("button",text);el.type="button";if(secondary)el.className="secondary";el.onclick=action;return el;};
+  const button=(text,action,secondary=true)=>{const el=node("button",text);el.type="button";if(secondary)el.className="secondary table-action";el.onclick=action;return el;};
+  function iconButton(label,paths,action){
+    const el=button("",action);el.className="icon-button";el.title=label;el.setAttribute("aria-label",label);
+    const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");
+    for(const [key,value] of Object.entries({viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"1.7","stroke-linecap":"round","stroke-linejoin":"round","aria-hidden":"true"}))svg.setAttribute(key,value);
+    for(const d of paths){const path=document.createElementNS(svg.namespaceURI,"path");path.setAttribute("d",d);svg.append(path);}
+    el.append(svg);return el;
+  }
   function table(headers,rows){const wrap=node("div");wrap.className="table-scroll";const el=node("table"),head=node("tr");for(const name of headers)head.append(node("th",name));const thead=node("thead");thead.append(head);el.append(thead);const body=node("tbody");for(const cells of rows){const row=node("tr");for(const value of cells){const cell=node("td");cell.append(typeof value==="string"?document.createTextNode(value):value);row.append(cell);}body.append(row);}el.append(body);wrap.append(el);return wrap;}
   function render(){
     for(const [id,owned] of [["received",false],["owned",true]]){
-      const rows=catalog.resources.filter(r=>r.owned===owned).map(resource=>{
-        const actions=node("div");actions.className="toolbar";
-        const open=button("Open",()=>run(async()=>{opened=resource;relative="";await view();$("viewer-dialog").showModal();}));open.disabled=!resource.available;actions.append(open);
-        if(owned)actions.append(button("Manage",()=>manage(resource)));
-        else {
-          const select=node("select");select.setAttribute("aria-label","Destination vault for "+resource.name);
-          const none=node("option","Not placed — choose a vault");none.value="";select.append(none);
-          for(const vault of catalog.destinationVaults){const option=node("option",vault.name);option.value=vault.id;select.append(option);}
-          select.value=resource.destination || "";
-          const local=node("input");local.value=resource.localPath || resource.name;local.setAttribute("aria-label","Local path for "+resource.name);local.title="Local name and optional existing destination folder";
-          actions.append(select,local,button("Save location",()=>run(async()=>{await api("destination",{id:resource.id,vault:select.value || null,localPath:local.value});await reload();})));
+      const resources=catalog.resources.filter(r=>r.owned===owned);
+      const rows=resources.map(resource=>{
+        const title=node("div",resource.name);
+        if(!owned){
+          const vault=catalog.destinationVaults.find(v=>v.id===resource.destination);
+          const detail=node("span",vault?`${vault.name} / ${resource.localPath || resource.name}`:"Not placed in a vault");
+          detail.className="resource-detail";title.append(detail);
         }
-        return [resource.name,resource.kind,owned?(catalog.ownedVaults.find(v=>v.id===resource.vault)?.name || "Vault")+" / "+resource.path:resource.owner,resource.available?(owned?"Owner":resource.role==="editor"?"Read / Write":"Read"):"Unavailable",actions];
+        if(owned && !resource.available){const state=node("span","Unavailable");state.className="resource-detail";title.append(state);}
+        const actions=node("div");actions.className="toolbar";
+        actions.append(owned?button("Manage",()=>manage(resource)):button("Location",()=>locationDialog(resource)));
+        return [title,resource.kind==="directory"?"Folder":"File",owned?(catalog.ownedVaults.find(v=>v.id===resource.vault)?.name || "Vault")+" / "+resource.path:resource.owner,...(owned?[]:[resource.available?(resource.role==="editor"?"Read / Write":"Read"):"Unavailable"]),actions];
       });
-      $(id).replaceChildren(rows.length?table(["Resource","Type",owned?"Path":"Owner","Access","Actions"],rows):node("p","No shared resources."));
+      $(id).replaceChildren(rows.length?table(["Resource","Type",owned?"Path":"Owner",...(owned?[]:["Access"]),"Actions"],rows):node("p","No shared resources."));
     }
     $("new-share").disabled=!catalog.ownedVaults.length;
   }
-  async function reload(){catalog=await api();document.querySelector('label[for="upload"]').textContent=`Upload a file (${catalog.limits.maxFileMiB} MiB maximum)`;render();}
-  function manage(resource){managed=resource;$("manage-heading").textContent="Sharing · "+resource.name;$("manage-dialog").querySelector(".error").textContent="";$("grant-form").reset();$("grants").replaceChildren(table(["User","Access",""],resource.grants.map(g=>[g.login,g.role==="editor"?"Read / Write":"Read",button("Remove",()=>run(async()=>{await api("grant",{action:"grant",id:resource.id,revision:resource.revision,login:g.login,role:null});$("manage-dialog").close();await reload();},$("manage-dialog")))])));$("manage-dialog").showModal();}
-  const dirty=()=>file?.kind==="file" && !$("editor").hidden && !$("editor").readOnly && $("editor").value!==editorOriginal;
-  for(const el of document.querySelectorAll("[data-close]"))el.onclick=()=>{if(!busy && (el.dataset.close!=="viewer-dialog" || !dirty() || confirm("Discard unsaved edits?")))$(el.dataset.close).close();};
-  for(const dialog of document.querySelectorAll("dialog"))dialog.addEventListener("cancel",event=>{if(busy || (dialog.id==="viewer-dialog" && dirty() && !confirm("Discard unsaved edits?")))event.preventDefault();});
-  $("reload").onclick=()=>run(reload);
-  $("new-share").onclick=()=>{$("create-form").reset();$("picker").replaceChildren();$("browse-up").hidden=true;$("create-dialog").querySelector(".error").textContent="";$("vault").replaceChildren(...catalog.ownedVaults.map(v=>{const option=node("option",v.name);option.value=v.id;return option;}));$("create-dialog").showModal();};
-  async function browse(path){const data=await api("browse",{vault:$("vault").value,path});pickerPath=path;$("resource-path").value=path;$("browse-up").hidden=!path;$("picker").replaceChildren(table(["Name","Type",""],data.entries.map(entry=>{const name=path?path+"/"+entry.name:entry.name;const actions=node("div");actions.className="toolbar";actions.append(button("Select",()=>{$("resource-path").value=name;}));if(entry.kind==="directory")actions.append(button("Open",()=>run(()=>browse(name),$("create-dialog"))));return [entry.name,entry.kind,actions];})));}
-  $("browse-root").onclick=()=>run(()=>browse(""),$("create-dialog"));$("browse-up").onclick=()=>run(()=>browse(pickerPath.split("/").slice(0,-1).join("/")),$("create-dialog"));$("vault").onchange=()=>{$("picker").replaceChildren();$("resource-path").value="";$("browse-up").hidden=true;};
-  $("create-form").onsubmit=event=>{event.preventDefault();run(async()=>{await api("create",{vault:$("vault").value,path:$("resource-path").value,login:$("recipient").value,role:$("permission").value});$("create-dialog").close();await reload();},$("create-dialog"));};
-  $("grant-form").onsubmit=event=>{event.preventDefault();run(async()=>{await api("grant",{action:"grant",id:managed.id,revision:managed.revision,login:$("grant-login").value,role:$("grant-role").value});$("manage-dialog").close();await reload();},$("manage-dialog"));};
-  $("revoke").onclick=()=>run(async()=>{if(!confirm("Stop sharing this resource with all recipients? Other shares and vault memberships are unaffected."))return;await api("revoke",{action:"revoke",id:managed.id,revision:managed.revision});$("manage-dialog").close();await reload();},$("manage-dialog"));
-  const join=name=>relative?relative+"/"+name:name;
-  function bytes(){return Uint8Array.from(atob(file.content),c=>c.charCodeAt(0));}
-  function base64(data){let text="";for(let i=0;i<data.length;i+=8192)text+=String.fromCharCode(...data.subarray(i,i+8192));return btoa(text);}
-  async function view(){
-    const data=await api("read",{id:opened.id,path:relative});file=data;$("saved").textContent="";
-    $("viewer-heading").textContent=opened.name;$("location").textContent=relative || "/";
-    $("up").hidden=!relative;$("entries").replaceChildren();$("editor").value="";$("upload").value="";$("folder-name").value="";
-    $("viewer-dialog").querySelector(".error").textContent="";
-    const directory=data.kind==="directory",write=data.role==="editor";
-    $("file-area").hidden=directory;$("new-folder").hidden=!directory||!write;$("upload-area").hidden=!write;$("remove").hidden=!write||!relative;
-    if(directory){$("entries").append(table(["Name","Type",""],data.entries.map(entry=>[entry.name,entry.kind,button("Open",()=>run(async()=>{const previous=relative;relative=join(entry.name);try{await view();}catch(e){relative=previous;throw e;}},$("viewer-dialog")))])));}
-    else{let text=null;try{const value=new TextDecoder("utf-8",{fatal:true}).decode(bytes());if(!value.includes("\0"))text=value;}catch{/* Binary download only. */}
-      $("editor").hidden=text===null;$("binary").hidden=text!==null;$("editor").value=text || "";editorOriginal=$("editor").value;$("editor").readOnly=!write;$("save").hidden=!write||text===null;}
+  async function reload(){catalog=await api();render();}
+  function locationDialog(resource){
+    placed=resource;$("location-resource").textContent=resource.name;
+    const select=$("destination-vault");const none=node("option","Not placed in a vault");none.value="";
+    select.replaceChildren(none,...catalog.destinationVaults.map(v=>{const option=node("option",v.name);option.value=v.id;return option;}));
+    select.value=resource.destination || "";$("destination-path").value=resource.localPath || resource.name;
+    $("location-dialog").querySelector(".error").textContent="";$("location-dialog").showModal();
   }
-  $("refresh-resource").onclick=()=>run(async()=>{if(dirty()&&!confirm("Reload and discard unsaved edits?"))return;await view();},$("viewer-dialog"));
-  $("up").onclick=()=>run(async()=>{if(dirty()&&!confirm("Leave this file and discard unsaved edits?"))return;relative=relative.split("/").slice(0,-1).join("/");await view();},$("viewer-dialog"));
-  $("save").onclick=()=>run(async()=>{const submittedText=$("editor").value;const encoded=new TextEncoder().encode(submittedText);if(encoded.length>catalog.limits.maxFileBytes)throw new Error(`The file exceeds the ${catalog.limits.maxFileMiB} MiB limit.`);const content=base64(encoded);const result=await api("write",{action:"write",id:opened.id,path:relative,etag:file.etag,content});file.etag=result.etag;file.content=content;editorOriginal=submittedText;$("saved").textContent="Changes saved.";},$("viewer-dialog"));
-  $("editor").oninput=()=>{$("saved").textContent="";};
-  $("download").onclick=()=>{const url=URL.createObjectURL(new Blob([bytes()],{type:"application/octet-stream"}));const link=node("a");link.href=url;link.download=file.name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
-  $("new-folder").onsubmit=event=>{event.preventDefault();run(async()=>{const name=$("folder-name").value;if(name.includes("/"))throw new Error("Enter a single folder name.");await api("mkdir",{action:"mkdir",id:opened.id,path:join(name),etag:null});await view();},$("viewer-dialog"));};
-  $("send-upload").onclick=()=>run(async()=>{const upload=$("upload").files[0];if(!upload)throw new Error("Choose a file first.");if(upload.size>catalog.limits.maxFileBytes)throw new Error(`The file exceeds the ${catalog.limits.maxFileMiB} MiB limit.`);if(file.kind==="file"&&!confirm("Replace this file with the upload?"))return;
-    await api("write",{action:"write",id:opened.id,path:file.kind==="directory"?join(upload.name):relative,etag:file.kind==="directory"?null:file.etag,content:base64(new Uint8Array(await upload.arrayBuffer()))});await view();},$("viewer-dialog"));
-  $("remove").onclick=()=>run(async()=>{const input={id:opened.id,path:relative};const preview=await api("previewRemoval",input);if(!confirm(`Permanently delete this item and its contents (${preview.files} files, ${preview.folders} folders) for everyone? This cannot be undone.`))return;await api("removeConfirmed",{...input,confirm:true,revision:preview.revision});relative=relative.split("/").slice(0,-1).join("/");await view();},$("viewer-dialog"));
+  $("location-form").onsubmit=event=>{event.preventDefault();run(async()=>{
+    await api("destination",{id:placed.id,vault:$("destination-vault").value || null,localPath:$("destination-path").value});
+    $("location-dialog").close();await reload();
+  },$("location-dialog"));};
+  async function updateGrant(login,role){
+    await api("grant",{action:"grant",id:managed.id,revision:managed.revision,login,role});
+    await reload();const updated=catalog.resources.find(r=>r.id===managed.id);
+    if(!updated){$("manage-dialog").close();return;}
+    manage(updated);
+  }
+  function manage(resource){
+    managed=resource;$("manage-resource").textContent=resource.name;
+    $("manage-dialog").querySelector(".error").textContent="";
+    const rows=resource.grants.map(grant=>{
+      const select=node("select");select.setAttribute("aria-label","Permission for "+grant.login);
+      for(const [value,title] of [["reader","Read"],["editor","Read / Write"]]){const option=node("option",title);option.value=value;select.append(option);}
+      select.value=grant.role;
+      const actions=node("div");actions.className="toolbar";
+      const save=iconButton("Save permission for "+grant.login,["M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2Z","M17 21v-8H7v8","M7 3v5h8"],()=>run(()=>updateGrant(grant.login,select.value),$("manage-dialog")));save.disabled=true;
+      select.onchange=()=>{save.disabled=select.value===grant.role;};
+      const remove=iconButton("Remove access for "+grant.login,["M3 6h18","M9 6V4h6v2","M5 6l1 14h12l1-14","M10 10v6","M14 10v6"],()=>run(async()=>{
+        if(confirm(`Remove ${grant.login}'s access to this resource? Other permissions are unaffected.`))await updateGrant(grant.login,null);
+      },$("manage-dialog")));remove.classList.add("danger");actions.append(save,remove);
+      return [grant.login,select,actions];
+    });
+    $("grants").replaceChildren(rows.length?table(["User","Permission","Actions"],rows):node("p","No direct recipients."));
+    if(!$("manage-dialog").open)$("manage-dialog").showModal();
+  }
+  for(const el of document.querySelectorAll("[data-close]"))el.onclick=()=>{if(!busy)$(el.dataset.close).close();};
+  for(const dialog of document.querySelectorAll("dialog"))dialog.addEventListener("cancel",event=>{if(busy)event.preventDefault();});
+  for (const toggle of document.querySelectorAll(".setup-help-toggle")) {
+    const tip = document.getElementById(toggle.getAttribute("aria-controls"));
+    const region = toggle.parentElement;
+    const show = (open) => {
+      tip.hidden = !open;
+      toggle.setAttribute("aria-expanded", String(open));
+      if (open) toggle.setAttribute("aria-describedby", tip.id);
+      else toggle.removeAttribute("aria-describedby");
+    };
+    toggle.addEventListener("click", () => show(true));
+    region.addEventListener("mouseenter", () => show(true));
+    region.addEventListener("mouseleave", () => show(false));
+    region.addEventListener("focusout", (event) => {
+      if (!region.contains(event.relatedTarget)) show(false);
+    });
+    toggle.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") { event.preventDefault(); show(false); }
+    });
+    document.addEventListener("click", (event) => {
+      if (!region.contains(event.target)) show(false);
+    });
+  }
+  $("location-dialog").addEventListener("close",()=>{ $("local-path-help").hidden=true; document.querySelector(".setup-help-toggle").setAttribute("aria-expanded","false"); });
+  $("back-to-account").onclick=()=>window.location.assign("/account");
+  $("reload").onclick=()=>run(reload);
+  $("create-dialog").addEventListener("close",()=>{pickerGeneration++;});
+  function selectResource(path){
+    selectedPath=path;$("selection").textContent="Selected: "+path;$("create-submit").disabled=false;
+    for(const item of $("picker").querySelectorAll(".tree-select"))item.setAttribute("aria-pressed",String(item.dataset.path===path));
+  }
+  function renderEntries(container,entries,parent,vault,generation){
+    container.replaceChildren();
+    if(!entries.length){container.append(node("p","This folder is empty."));return;}
+    for(const entry of [...entries].sort((a,b)=>(a.kind===b.kind?0:a.kind==="directory"?-1:1)||a.name.localeCompare(b.name))){
+      const path=parent?parent+"/"+entry.name:entry.name;
+      const branch=node("div"),row=node("div");row.className="tree-row";branch.append(row);
+      const children=node("div");children.className="tree-children";children.hidden=true;
+      if(entry.kind==="directory"){
+        const expand=button("▸",async()=>{
+          if(expand.disabled)return;
+          if(!children.hidden){children.hidden=true;expand.textContent="▸";expand.setAttribute("aria-expanded","false");return;}
+          expand.disabled=true;
+          try{
+            const data=await api("browse",{vault,path});
+            if(generation!==pickerGeneration || locked)return;
+            renderEntries(children,data.entries,path,vault,generation);children.hidden=false;expand.textContent="▾";expand.setAttribute("aria-expanded","true");
+          }catch(error){if(generation===pickerGeneration)$("create-dialog").querySelector(".error").textContent=error.message;}
+          finally{expand.disabled=false;}
+        },false);expand.className="tree-toggle";expand.setAttribute("aria-label","Expand or collapse "+entry.name);expand.setAttribute("aria-expanded","false");row.append(expand);
+      }else{const spacer=node("span");spacer.className="tree-spacer";row.append(spacer);}
+      const choose=button((entry.kind==="directory"?"📁 ":"📄 ")+entry.name,()=>selectResource(path),false);
+      choose.className="tree-select";choose.dataset.path=path;choose.setAttribute("aria-pressed",String(path===selectedPath));
+      row.append(choose);branch.append(children);container.append(branch);
+    }
+  }
+  async function loadTree(){
+    const generation=++pickerGeneration,vault=$("vault").value;
+    selectedPath="";$("selection").textContent="Select a file or folder.";$("create-submit").disabled=true;
+    $("picker").replaceChildren(node("p","Loading vault…"));
+    $("create-dialog").querySelector(".error").textContent="";
+    try{
+      const data=await api("browse",{vault,path:""});
+      if(generation!==pickerGeneration || locked)return;
+      const root=node("div",catalog.ownedVaults.find(v=>v.id===vault)?.name || "Vault");root.className="tree-root";
+      const children=node("div");renderEntries(children,data.entries,"",vault,generation);$("picker").replaceChildren(root,children);
+    }catch(error){if(generation===pickerGeneration){$("picker").replaceChildren();$("create-dialog").querySelector(".error").textContent=error.message;}}
+  }
+  $("new-share").onclick=()=>{
+    if(busy||locked)return;
+    $("create-form").reset();$("vault").replaceChildren(...catalog.ownedVaults.map(v=>{const option=node("option",v.name);option.value=v.id;return option;}));
+    $("create-dialog").showModal();void loadTree();
+  };
+  $("vault").onchange=()=>{void loadTree();};
+  $("create-form").onsubmit=event=>{event.preventDefault();if(!selectedPath)return;run(async()=>{
+    await api("create",{vault:$("vault").value,path:selectedPath,login:$("recipient").value,role:$("permission").value});
+    $("create-dialog").close();await reload();
+  },$("create-dialog"));};
+  $("add-access").onclick=()=>{
+    if(busy||locked)return;
+    $("grant-form").reset();$("grant-resource").textContent=managed.name;
+    $("grant-dialog").querySelector(".error").textContent="";$("grant-dialog").showModal();$("grant-login").focus();
+  };
+  $("grant-form").onsubmit=event=>{event.preventDefault();run(async()=>{
+    await updateGrant($("grant-login").value,$("grant-role").value);$("grant-dialog").close();
+  },$("grant-dialog"));};
+  $("revoke").onclick=()=>run(async()=>{
+    if(!confirm("Stop sharing this resource with all recipients? Other shares and vault memberships are unaffected."))return;
+    await api("revoke",{action:"revoke",id:managed.id,revision:managed.revision});$("manage-dialog").close();await reload();
+  },$("manage-dialog"));
   if(typeof BroadcastChannel==="function"){const channel=new BroadcastChannel("ignis-auth");channel.onmessage=()=>lock();}
   run(async()=>{const response=await fetch("/api/auth/session",{credentials:"same-origin",cache:"no-store"});if(!response.ok){location.replace("/login");return;}const session=await response.json();context=session.sessionId;if(!context){location.replace("/login");return;}await reload();$("workspace").hidden=false;});
 })();

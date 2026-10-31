@@ -118,3 +118,7 @@ footer { margin-top: 1.5rem; }
 #delete-vaults { max-height:12rem; overflow:auto; overflow-wrap:anywhere; }
 
 .users-page footer .account-button { display: inline-flex; width: auto; margin: 0; }
+
+.reauth-actions { display: grid; gap: .6rem; }
+.reauth-actions > button, .reauth-actions > p { margin: 0; }
+#reauth-status:empty { display: none; }

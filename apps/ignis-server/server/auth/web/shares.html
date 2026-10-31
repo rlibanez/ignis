@@ -1,9 +1,61 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Shared resources · Ignis</title><link rel="icon" href="/favicon.png"><link rel="stylesheet" href="/auth/setup.css"><link rel="stylesheet" href="/auth/account.css"><link rel="stylesheet" href="/auth/shares.css"><script src="/auth/shares.js" defer></script></head>
-<body><main><p class="brand">IGNIS</p><header><h1>Shared resources</h1><a class="account-button secondary" href="/account">Account</a></header><p id="status" role="alert"></p>
-<section id="workspace" hidden><div class="toolbar"><button id="new-share">Share a file or folder</button><button id="reload" class="secondary">Refresh</button></div>
-<h2>Shared with me</h2><div id="received"></div><h2>Shared from my vaults</h2><div id="owned"></div></section>
-<dialog id="create-dialog" aria-labelledby="create-heading"><h2 id="create-heading">Share a resource</h2><form id="create-form"><label for="vault">Vault</label><select id="vault" required></select><label for="resource-path">File or folder</label><input id="resource-path" required maxlength="1024" placeholder="Project or Notes/Welcome.md"><div class="toolbar"><button type="button" id="browse-root" class="secondary">Browse vault</button><button type="button" id="browse-up" class="secondary" hidden>Up</button></div><div id="picker"></div><label for="recipient">Username</label><input id="recipient" required maxlength="64" autocomplete="off"><label for="permission">Permission</label><select id="permission"><option value="reader">Read</option><option value="editor">Read / Write</option></select><p class="help">Folders include current and future content. Configuration and plugins are excluded.</p><p class="error" role="alert"></p><div class="toolbar"><button type="button" data-close="create-dialog" class="secondary">Cancel</button><button type="submit">Share</button></div></form></dialog>
-<dialog id="manage-dialog" aria-labelledby="manage-heading"><h2 id="manage-heading">Manage sharing</h2><div id="grants"></div><form id="grant-form"><label for="grant-login">Username</label><input id="grant-login" required maxlength="64" autocomplete="off"><label for="grant-role">Permission</label><select id="grant-role"><option value="reader">Read</option><option value="editor">Read / Write</option></select><button type="submit">Add or update access</button></form><p class="help">Other shares and whole-vault memberships keep granting their own access.</p><p class="error" role="alert"></p><div class="toolbar"><button type="button" data-close="manage-dialog" class="secondary">Done</button><button id="revoke" class="danger">Stop sharing this resource</button></div></dialog>
-<dialog id="viewer-dialog" aria-labelledby="viewer-heading"><header><h2 id="viewer-heading">Shared resource</h2><button data-close="viewer-dialog" class="secondary">Close</button></header><p id="location"></p><div class="toolbar"><button id="up" class="secondary">Up</button><button id="refresh-resource" class="secondary">Reload</button></div><div id="entries"></div><div id="file-area" hidden><textarea id="editor" aria-label="File content" spellcheck="false"></textarea><p id="binary" class="help" hidden>Binary file. Download it or upload a replacement.</p><div class="toolbar"><button id="save">Save changes</button><button id="download" class="secondary">Download</button><span id="saved" role="status"></span></div></div><form id="new-folder" hidden><label for="folder-name">New folder name</label><input id="folder-name" required maxlength="255"><button type="submit">Create folder</button></form><div id="upload-area" hidden><label for="upload">Upload a file</label><input type="file" id="upload"><button id="send-upload">Upload</button></div><button id="remove" class="danger" hidden>Delete this item</button><p class="error" role="alert"></p></dialog>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Shared resources · Ignis</title><link rel="icon" href="/favicon.png">
+  <link rel="stylesheet" href="/auth/setup.css"><link rel="stylesheet" href="/auth/account.css"><link rel="stylesheet" href="/auth/shares.css">
+  <script src="/auth/shares.js" defer></script>
+</head>
+<body><main>
+  <p class="brand">IGNIS</p><h1>Shared resources</h1><p id="status" role="alert"></p>
+  <section id="workspace" hidden>
+    <div class="toolbar page-actions"><button id="new-share" class="account-button">Share a resource</button><button id="reload" class="account-button secondary">Refresh</button></div>
+    <section class="share-panel" aria-labelledby="received-heading"><header><div><h2 id="received-heading">Shared with me</h2><p class="help">Resources received from other users.</p></div></header><div id="received"></div></section>
+    <section class="share-panel" aria-labelledby="owned-heading"><header><div><h2 id="owned-heading">Shared from my vaults</h2><p class="help">Resources you share and the people who can access them.</p></div></header><div id="owned"></div></section>
+  </section>
+  <footer><button id="back-to-account" class="account-button secondary" type="button">Back to account</button></footer>
+  <dialog id="create-dialog" aria-labelledby="create-heading">
+    <h2 id="create-heading">Share a resource</h2>
+    <form id="create-form">
+      <label for="vault">Vault</label><select id="vault" required></select>
+      <div id="picker" aria-label="Vault files and folders"></div>
+      <p id="selection" class="selection" role="status">Select a file or folder.</p>
+      <p class="help">Folders include current and future content. Configuration and plugins are excluded.</p>
+      <label for="recipient">Username</label><input id="recipient" required maxlength="64" autocomplete="off">
+      <label for="permission">Permission</label><select id="permission"><option value="reader">Read</option><option value="editor">Read / Write</option></select>
+      <p class="error" role="alert"></p>
+      <div class="dialog-actions"><button type="button" data-close="create-dialog" class="account-button secondary">Cancel</button><button id="create-submit" type="submit" class="account-button" disabled>Share</button></div>
+    </form>
+  </dialog>
+  <dialog id="location-dialog" aria-labelledby="location-heading">
+    <h2 id="location-heading">Resource location</h2><p id="location-resource" class="resource-name"></p>
+    <form id="location-form">
+      <label for="destination-vault">Destination vault</label><select id="destination-vault"></select>
+      <div class="setup-field-heading"><label for="destination-path">Local path</label>
+        <span class="setup-field-help"><button type="button" class="setup-help-toggle" aria-label="About local path" aria-controls="local-path-help" aria-expanded="false">?</button>
+          <span id="local-path-help" class="setup-help-tooltip" role="tooltip" hidden>Use a local name, optionally preceded by an existing folder. This does not rename the original resource.</span>
+        </span>
+      </div><input id="destination-path" maxlength="1024" aria-describedby="local-path-help">
+      <p class="error" role="alert"></p>
+      <div class="dialog-actions"><button type="button" data-close="location-dialog" class="account-button secondary">Cancel</button><button type="submit" class="account-button">Save location</button></div>
+    </form>
+  </dialog>
+  <dialog id="manage-dialog" aria-labelledby="manage-heading">
+    <h2 id="manage-heading">Manage sharing</h2><p id="manage-resource" class="resource-name"></p>
+    <section class="share-panel access-section" aria-labelledby="access-heading">
+      <header><h3 id="access-heading">People with access</h3><button id="add-access" type="button" class="account-button">Add access</button></header>
+      <div id="grants"></div>
+    </section>
+    <p class="error" role="alert"></p>
+    <div class="dialog-actions"><button id="revoke" type="button" class="account-button danger">Stop sharing</button><button type="button" data-close="manage-dialog" class="account-button secondary">Done</button></div>
+  </dialog>
+  <dialog id="grant-dialog" aria-labelledby="grant-heading">
+    <h2 id="grant-heading">Add access</h2><p id="grant-resource" class="resource-name"></p>
+    <form id="grant-form">
+      <label for="grant-login">Username</label><input id="grant-login" required maxlength="64" autocomplete="off">
+      <label for="grant-role">Permission</label><select id="grant-role"><option value="reader">Read</option><option value="editor">Read / Write</option></select>
+      <p class="error" role="alert"></p>
+      <div class="dialog-actions"><button type="button" data-close="grant-dialog" class="account-button secondary">Cancel</button><button type="submit" class="account-button">Add access</button></div>
+    </form>
+  </dialog>
 </main></body></html>
