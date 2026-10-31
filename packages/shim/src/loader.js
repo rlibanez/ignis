@@ -1,3 +1,4 @@
+import { installVaultAccountMenu } from "./vault-account-menu.js";
 import { installEditorSaves } from "./editor-saves.js";
 import { installSharedIcons } from "./shared-icons.js";
 import { installSharedPanel } from "./shared-panel.js";
@@ -125,6 +126,7 @@ extractObsidianModule()
     }
 
     if (obsidian) {
+      installVaultAccountMenu(obsidian);
       installPopoutOverrides(obsidian);
       installExternalFilesOverrides(obsidian, window.app);
     }
