@@ -133,7 +133,7 @@ extractObsidianModule()
 
     fsShim._sharedFiles.installAdapter(window.app,obsidian);
     if(obsidian){installSharedPanel(obsidian,window.app,fsShim._sharedFiles);installSharedIcons(obsidian,fsShim._sharedFiles);}
-    installMobileVaultSwitcher(window.app);
+    installMobileVaultSwitcher(window.app, obsidian);
     installOpenFileParam(window.app);
 
     // Dynamic import so the bridge's top-level obsidian import resolves after installRequire + extractObsidianModule.

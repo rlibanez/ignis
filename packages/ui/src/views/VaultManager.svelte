@@ -51,11 +51,12 @@
   ];
 
   let currentVaultId = vaultService.getCurrentVaultId();
-  // Keep account access when the manager is the only UI (or the mobile
-  // switcher has no account actions). A catalog entry alone is not enough.
+  // Keep account access when the manager is the only UI.
+  // A catalog entry alone is not enough.
   const hasAccountSwitcher = !!window.app?.workspace &&
-    !!document.querySelector(".workspace-drawer-vault-switcher") &&
-    !!window.__ignisAccountMenuAvailable;
+    ((!!document.querySelector(".workspace-drawer-vault-switcher") &&
+      !!window.__ignisAccountMenuAvailable) ||
+      !!document.querySelector("[data-ignis-account-switcher]"));
 
   $: deleteMessage = targetVault
     ? 'Are you sure you want to delete "' + targetVault.name + '"?'
