@@ -37,7 +37,8 @@
 
   let pending = null, busy = false;
   const standalone = window.matchMedia('(display-mode: standalone)');
-  const installed = () => standalone.matches || window.navigator.standalone === true;
+  const fullscreen = window.matchMedia('(display-mode: fullscreen)');
+  const installed = () => standalone.matches || fullscreen.matches || window.navigator.standalone === true;
   const update = () => {
     for (const button of document.querySelectorAll('[data-install-ignis]')) {
       button.hidden = !pending || installed(); button.disabled = busy;
@@ -49,6 +50,7 @@
   });
   window.addEventListener('appinstalled', () => { pending = null; update(); });
   standalone.addEventListener('change', update);
+  fullscreen.addEventListener('change', update);
   document.addEventListener('click', async event => {
     if (!event.target.closest('[data-install-ignis]') || !pending || busy) return;
     const prompt = pending; pending = null; busy = true; update();

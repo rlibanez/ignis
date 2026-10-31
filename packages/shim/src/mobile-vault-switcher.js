@@ -1,3 +1,4 @@
+import { addFullscreenMenuItem } from "./fullscreen-menu.js";
 // Use one Obsidian menu instead of the mobile adapter's native select.
 import { vaultService } from "@ignis/services";
 import { showVaultManager } from "./ui-registry.js";
@@ -52,6 +53,7 @@ export function installMobileVaultSwitcher(app, obsidian) {
       if (window.__ignisAuth) {
         const spanish = (obsidian.getLanguage?.() || document.documentElement.lang || "en").toLowerCase().startsWith("es");
         menu.addSeparator();
+        addFullscreenMenuItem(menu, obsidian, spanish);
         menu.addItem(item => item.setTitle(spanish ? "Cuenta" : "Account").setIcon("user-round")
           .onClick(() => window.location.assign("/account")));
         menu.addItem(item => item.setTitle(spanish ? "Cerrar sesión" : "Sign out").setIcon("log-out")

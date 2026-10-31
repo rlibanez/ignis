@@ -85,3 +85,18 @@ body:not(.account-page) .login-actions > * { margin: 0; }
 .login-actions:not(:has(> :not([hidden]))) { display: none; }
 
 #status.auth-error { padding:.75rem; border:1px solid light-dark(#c75169,#a45c6d); border-radius:.5rem; background:light-dark(#fff0f2,#3c252d); color:light-dark(#932238,#ffbdc9); }
+
+/* Installation has its own accent while retaining the account button geometry. */
+.account-button.install-button {
+  background: light-dark(#0f766e, #5eead4);
+  color: light-dark(#ffffff, #103b36);
+  border-color: light-dark(#0f766e, #5eead4);
+}
+.account-button.install-button:hover:not(:disabled) {
+  background: light-dark(#115e59, #99f6e4);
+  border-color: light-dark(#115e59, #99f6e4);
+  filter: none;
+}
+.account-button.install-button:focus-visible {
+  outline-color: light-dark(#0f766e, #5eead4);
+}

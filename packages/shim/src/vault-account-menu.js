@@ -1,3 +1,4 @@
+import { addFullscreenMenuItem } from "./fullscreen-menu.js";
 // Extend only the desktop vault switcher's menu, using Obsidian's own items.
 export function installVaultAccountMenu(obsidian) {
   const prototype = obsidian?.Menu?.prototype;
@@ -10,6 +11,7 @@ export function installVaultAccountMenu(obsidian) {
       decorated.add(this);
       const spanish = (obsidian.getLanguage?.() || document.documentElement.lang || "en").toLowerCase().startsWith("es");
       this.addSeparator();
+      addFullscreenMenuItem(this, obsidian, spanish);
       this.addItem(item => item
         .setTitle(spanish ? "Cuenta" : "Account")
         .setIcon("user-round")
