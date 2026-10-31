@@ -67,7 +67,7 @@
 .identity-label { font-size: .75rem; color: light-dark(#626978, #a7aebd); }
 .account-page #account-status { margin: .15rem 0 0; color: inherit; font-size: 1.15rem; font-weight: 650; overflow-wrap: anywhere; }
 .account-actions { gap: .6rem; }
-#sign-out { margin-top: 1.5rem; padding: .75rem; font-size: .9rem; background: transparent; border-color: light-dark(#dec4ca, #65434b); color: light-dark(#9c293c, #e7a4b1); border-radius: .6rem; }
+#sign-out { margin-top: 1.5rem; background: transparent; border-color: light-dark(#dec4ca, #65434b); color: light-dark(#9c293c, #e7a4b1); }
 @media (max-width: 480px) {
   .account-page main { margin: 1rem auto; padding: 1.25rem; }
 }

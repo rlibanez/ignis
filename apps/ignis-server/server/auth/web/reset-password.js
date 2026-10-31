@@ -6,13 +6,35 @@
   for (const input of form.querySelectorAll("input")) input.addEventListener("input", () => {
     for (const field of form.querySelectorAll("input")) field.setCustomValidity("");
   });
+  for (const toggle of document.querySelectorAll(".setup-help-toggle")) {
+    const tip = document.getElementById(toggle.getAttribute("aria-controls"));
+    const region = toggle.parentElement;
+    const show = (open) => {
+      tip.hidden = !open;
+      toggle.setAttribute("aria-expanded", String(open));
+      if (open) toggle.setAttribute("aria-describedby", tip.id);
+      else toggle.removeAttribute("aria-describedby");
+    };
+    toggle.addEventListener("click", () => show(true));
+    region.addEventListener("mouseenter", () => show(true));
+    region.addEventListener("mouseleave", () => show(false));
+    region.addEventListener("focusout", (event) => {
+      if (!region.contains(event.relatedTarget)) show(false);
+    });
+    toggle.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") { event.preventDefault(); show(false); }
+    });
+    document.addEventListener("click", (event) => {
+      if (!region.contains(event.target)) show(false);
+    });
+  }
   const request = (url, options = {}) => fetch(url, { credentials: "same-origin", cache: "no-store", ...options });
   let context;
   request("/api/auth/reset-password").then(async response => {
     if (!response.ok) { location.replace("/login"); return; }
     const data = await response.json();
     context = data.context;
-    document.getElementById("reset-account").textContent = `Set a new password for ${data.login}.`;
+    status.textContent = "";
     document.getElementById("policy").textContent = `Password: at least ${data.passwordPolicy.minLength} characters and ${data.passwordPolicy.minSpecialChars} punctuation/symbol characters.`;
     form.hidden = false;
     form.elements.password.focus();
@@ -34,13 +56,13 @@
       const result = await response.json();
       if (!response.ok) {
         error(form.elements.password,
-          response.status === 429 ? "Too many attempts. Wait before trying again." : result.code === "PASSWORD_POLICY"
-            ? "The new password does not meet the password policy." : "Password reset authorization has expired or changed. Ask your administrator for a new temporary password.");
+          response.status === 429 ? "Too many attempts. Wait before trying again." : result.code === "PASSWORD_UNCHANGED" ? "Choose a password different from your current password." : result.code === "PASSWORD_POLICY"
+            ? "The new password does not meet the password policy." : "Password reset authorization has expired or changed. Sign in again with your current password, or ask your administrator for a new temporary password.");
         return;
       }
       form.reset(); form.hidden = true;
-      status.textContent = "Password reset. Sign in with your new password.";
       if (typeof BroadcastChannel === "function") { const channel = new BroadcastChannel("ignis-auth"); channel.postMessage("lock"); channel.close(); }
+      location.replace("/login");
     } catch { error(form.elements.password, "The result could not be confirmed. Try signing in before requesting a new secret."); }
     finally { form.elements.password.value = form.elements.confirmation.value = ""; submit.disabled = false; }
   });

@@ -25,7 +25,7 @@ it("creates only a normal local user, hashes the password and audits without gra
   expect(db.prepare("SELECT actor_id,action,resource_id FROM audit_events").get()).toEqual({
     actor_id: "admin", action: "create-local-user", resource_id: user.id,
   });
-  expect(Object.keys(listUsers(db, "admin")[0]).sort()).toEqual(["email", "email_trust", "id", "login", "role", "status"]);
+  expect(Object.keys(listUsers(db, "admin")[0]).sort()).toEqual(["email", "email_trust", "id", "login", "password_change_required", "role", "status"]);
 });
 
 it.each([undefined, "", "missing", "normal"])("rejects unauthorized actor %s", async (actor) => {

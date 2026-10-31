@@ -71,7 +71,7 @@ function createSessionService(
       .run(at, at).changes;
   }
   function insert(user, method, issuer, subject, authenticatedAt, at) {
-    if (db.prepare("SELECT 1 FROM password_resets WHERE user_id=?").get(user.id)) return null;
+    if (user.password_change_required || db.prepare("SELECT 1 FROM password_resets WHERE user_id=?").get(user.id)) return null;
     prune(at);
     // Bound per-user sessions; evict oldest before insertion so the new session survives ties.
     db.prepare(
@@ -146,6 +146,7 @@ function createSessionService(
       )
         return null;
       const at = time();
+      if (current.password_change_required) return { passwordChange: require("./password-reset").beginRequiredPasswordChange(db, current, at) };
       return insert(current, "local", null, null, at, at);
     });
   }
@@ -183,13 +184,13 @@ function createSessionService(
   function find(hash, at) {
     const row = db
       .prepare(
-        `SELECT s.*, u.login, u.role, u.status, u.auth_version AS current_version
+        `SELECT s.*, u.login, u.role, u.status, u.password_change_required, u.auth_version AS current_version
       FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`,
       )
       .get(hash);
     if (!row) return null;
     let valid =
-      row.status === "active" &&
+      row.status === "active" && !row.password_change_required &&
       !db.prepare("SELECT 1 FROM password_resets WHERE user_id=?").get(row.user_id) &&
       row.current_version === row.auth_version &&
       row.created_at <= at &&

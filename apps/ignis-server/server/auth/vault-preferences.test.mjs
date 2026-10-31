@@ -83,11 +83,11 @@ it("enforces per-user quotas and cascades on user deletion", () => {
   expect(db.prepare("SELECT count(*) n FROM vault_preferences").get().n).toBe(1);
 });
 it("migrates a version-9 database and persists preferences after reopening", () => {
-  db.exec("DROP TRIGGER prevent_reactivating_deleting_user; DROP TABLE user_deletions; DROP TABLE csrf_tokens; DROP TABLE resource_destinations; DROP TABLE resource_grants; DROP TABLE shared_resources; DROP TABLE vault_preferences; DELETE FROM schema_migrations WHERE version>=10");
+  db.exec("DROP TRIGGER revoke_on_password_requirement; ALTER TABLE users DROP COLUMN password_change_required; DROP TRIGGER prevent_reactivating_deleting_user; DROP TABLE user_deletions; DROP TABLE csrf_tokens; DROP TABLE resource_destinations; DROP TABLE resource_grants; DROP TABLE shared_resources; DROP TABLE vault_preferences; DELETE FROM schema_migrations WHERE version>=10");
   db.close(); db = openDatabase(path.join(root,"data"));
   sessions = createSessionService(db);
   preferences = createVaultPreferencesService(db,vaultRoot,sessions);
-  expect(db.prepare("SELECT max(version) v FROM schema_migrations").get().v).toBe(17);
+  expect(db.prepare("SELECT max(version) v FROM schema_migrations").get().v).toBe(18);
   save(alice,'{"value":42}');
   db.close(); db = openDatabase(path.join(root,"data"));
   preferences = createVaultPreferencesService(db,vaultRoot,createSessionService(db));

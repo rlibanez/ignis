@@ -13,6 +13,7 @@
   const button = form.querySelector('button[type="submit"]');
   const dialog = document.getElementById("create-dialog");
   const addButton = document.getElementById("add-user");
+  document.getElementById("back-to-account").addEventListener("click", () => window.location.assign("/account"));
   const cancelButton = document.getElementById("cancel-create");
   const createStatus = document.getElementById("create-status");
   const editDialog = document.getElementById("edit-dialog");
@@ -32,7 +33,7 @@
     toggle.addEventListener("keydown", event => {
       if (event.key === "Escape" && !tip.hidden) { event.preventDefault(); event.stopPropagation(); show(false); }
     });
-    editDialog.addEventListener("close", () => show(false));
+    toggle.closest("dialog")?.addEventListener("close", () => show(false));
   }
   const editForm = document.getElementById("edit-user");
   for (const emailForm of [form, editForm])
@@ -568,6 +569,8 @@
           unlinkConfirmation.hidden = true;
           revokeConfirmation.hidden = true;
           document.getElementById("edit-user-name").textContent = user.login;
+          editForm.elements.requirePasswordChange.checked = !!user.password_change_required;
+          editForm.elements.requirePasswordChange.disabled = !user.hasLocalPassword;
           editForm.elements.status.value = user.status;
           editForm.elements.role.value = user.role;
           editForm.elements.confirmAdmin.checked = editForm.elements.confirmAdmin.required = false;
@@ -617,7 +620,7 @@
       const response = await request("/api/auth/users", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Ignis-Csrf": (await csrf.json()).csrfToken },
-        body: JSON.stringify({ login: form.elements.login.value, password: form.elements.password.value, email: form.elements.email.value, emailVerified: form.elements.emailVerified.checked }),
+        body: JSON.stringify({ login: form.elements.login.value, password: form.elements.password.value, email: form.elements.email.value, emailVerified: form.elements.emailVerified.checked, requirePasswordChange: form.elements.requirePasswordChange.checked }),
       });
       if (locked) return;
       if (!response.ok) {
@@ -654,7 +657,7 @@
       const response = await request("/api/auth/users/status", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Ignis-Csrf": (await csrf.json()).csrfToken },
-        body: JSON.stringify({ userId: target.id, status: nextStatus, expectedStatus: target.status, role: editForm.elements.role.value, expectedRole: target.role, confirmAdmin: editForm.elements.confirmAdmin.checked, email: editForm.elements.email.value, emailVerified: editForm.elements.emailVerified.checked, expectedEmail: target.email, expectedEmailTrust: target.email_trust }),
+        body: JSON.stringify({ userId: target.id, status: nextStatus, expectedStatus: target.status, role: editForm.elements.role.value, expectedRole: target.role, confirmAdmin: editForm.elements.confirmAdmin.checked, email: editForm.elements.email.value, emailVerified: editForm.elements.emailVerified.checked, expectedEmail: target.email, expectedEmailTrust: target.email_trust, requirePasswordChange: editForm.elements.requirePasswordChange.checked, expectedPasswordChangeRequired: !!target.password_change_required }),
       });
       if (locked || !editDialog.open) return;
       if (!response.ok) {

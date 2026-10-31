@@ -34,7 +34,7 @@ footer { margin-top: 1.5rem; }
 }
 .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
 .panel-heading h2 { margin: 0; }
-#add-user { width: auto; margin: 0; padding: .65rem 1rem; white-space: nowrap; }
+#add-user { width: auto; margin: 0; white-space: nowrap; }
 #create-dialog {
   box-sizing: border-box;
   width: min(36rem, calc(100% - 2rem));
@@ -116,3 +116,5 @@ footer { margin-top: 1.5rem; }
 .danger-button { background:light-dark(#a5233b,#652936); color:#fff; border:1px solid #c66074; }
 .danger-button:hover:not(:disabled) { background:light-dark(#86172b,#7b3343); }
 #delete-vaults { max-height:12rem; overflow:auto; overflow-wrap:anywhere; }
+
+.users-page footer .account-button { display: inline-flex; width: auto; margin: 0; }

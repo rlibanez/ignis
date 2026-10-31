@@ -156,3 +156,49 @@ it("rolls back exchange on audit failure and rejects simultaneous grant redempti
   const results = await Promise.allSettled([1,2].map(() => completePasswordResetGrant(db, grant.token, state.context, newPassword, policy, options)));
   expect(results.filter(x => x.status === "fulfilled")).toHaveLength(1);
 });
+
+it("requires the existing password, revokes sessions and prevents OIDC bypass until a different password is chosen", async () => {
+  const { changeUserStatus } = require("./users");
+  const session = await sessions.loginLocal("target", oldPassword);
+  changeUserStatus(db, "admin", "target", "active", "active", { ...options,
+    passwordUpdate: { requirePasswordChange: true, expectedPasswordChangeRequired: false } });
+  expect(sessions.resolve(session.token)).toBeNull();
+  expect(await sessions.loginLocal("target", "incorrect-password")).toBeNull();
+  expect(sessions.issueForVerifiedOidcIdentity({ issuer: "https://provider.example", subject: "subject", authenticatedAt: time })).toBeNull();
+  const result = await sessions.loginLocal("target", oldPassword);
+  expect(result.session).toBeUndefined();
+  expect(db.prepare("SELECT count(*) n FROM sessions").get().n).toBe(0);
+  const { readPasswordResetGrant, completePasswordResetGrant } = require("./password-reset");
+  const grant = readPasswordResetGrant(db, result.passwordChange.token, options);
+  await expect(completePasswordResetGrant(db, result.passwordChange.token, grant.context, oldPassword, policy, options)).rejects.toMatchObject({ code: "PASSWORD_UNCHANGED" });
+  await completePasswordResetGrant(db, result.passwordChange.token, grant.context, newPassword, policy, options);
+  expect(readPasswordResetGrant(db, result.passwordChange.token, options)).toBeNull();
+  expect(db.prepare("SELECT password_change_required FROM users WHERE id='target'").get().password_change_required).toBe(0);
+  expect(await sessions.loginLocal("target", oldPassword)).toBeNull();
+  expect((await sessions.loginLocal("target", newPassword)).session.user.id).toBe("target");
+});
+it("keeps the requirement after grant expiry and invalidates grants on cancellation or a newer login", async () => {
+  const { changeUserStatus } = require("./users");
+  const update = value => changeUserStatus(db, "admin", "target", "active", "active", { ...options, passwordUpdate: { requirePasswordChange: value, expectedPasswordChangeRequired: !value } });
+  update(true);
+  const first = (await sessions.loginLocal("target", oldPassword)).passwordChange;
+  time += 3600001;
+  const { readPasswordResetGrant } = require("./password-reset");
+  expect(readPasswordResetGrant(db, first.token, options)).toBeNull();
+  const next = (await sessions.loginLocal("target", oldPassword)).passwordChange;
+  expect(readPasswordResetGrant(db, next.token, options)).not.toBeNull();
+  const newer = (await sessions.loginLocal("target", oldPassword)).passwordChange;
+  expect(readPasswordResetGrant(db, next.token, options)).toBeNull();
+  update(false);
+  expect(readPasswordResetGrant(db, newer.token, options)).toBeNull();
+  expect((await sessions.loginLocal("target", oldPassword)).session).toBeTruthy();
+});
+it("restricts changes to administrators and local-password accounts and rejects stale updates", async () => {
+  const { changeUserStatus, createLocalUser } = require("./users");
+  const passwordUpdate = { requirePasswordChange: true, expectedPasswordChangeRequired: false };
+  expect(() => changeUserStatus(db, "target", "target", "active", "active", { ...options, passwordUpdate })).toThrow();
+  expect(() => changeUserStatus(db, "admin", "admin", "active", "active", { ...options, passwordUpdate })).toThrow();
+  const created = await createLocalUser(db, "admin", "new-user", oldPassword, policy, { ...options, requirePasswordChange: true });
+  expect((await sessions.loginLocal("new-user", oldPassword)).passwordChange).toBeTruthy();
+  expect(() => changeUserStatus(db, "admin", created.id, "active", "active", { ...options, passwordUpdate })).toThrow();
+});

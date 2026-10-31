@@ -14,7 +14,8 @@ function authorize(db, actorId) {
   ) throw new Error("Administrator required");
 }
 
-async function createLocalUser(db, actorId, login, password, policy = readPasswordPolicy(), { isCurrent = () => true, email = null, emailVerified = false } = {}) {
+async function createLocalUser(db, actorId, login, password, policy = readPasswordPolicy(), { isCurrent = () => true, email = null, emailVerified = false, requirePasswordChange = false } = {}) {
+  if (typeof requirePasswordChange !== "boolean") throw new Error("Invalid password change requirement");
   email = email === null || email === "" ? null : normalizeEmail(email);
   if (typeof emailVerified !== "boolean" || (emailVerified && !email)) throw new Error("Invalid email confirmation");
   authorize(db, actorId);
@@ -34,6 +35,7 @@ async function createLocalUser(db, actorId, login, password, policy = readPasswo
     db.prepare("INSERT INTO users(id, login, role, created_at) VALUES (?, ?, 'user', ?)").run(id, login, now);
     db.prepare("UPDATE users SET email=?, email_trust=? WHERE id=?").run(email, emailVerified ? "admin_confirmed" : "unverified", id);
     db.prepare("INSERT INTO local_credentials VALUES (?, ?, ?)").run(id, hash, now);
+    if (requirePasswordChange) db.prepare("UPDATE users SET password_change_required=1 WHERE id=?").run(id);
     db.prepare("INSERT INTO audit_events VALUES (?, ?, ?, ?, ?)").run(randomUUID(), actorId, "create-local-user", id, now);
     return { id, login, role: "user", status: "active" };
   });
@@ -41,10 +43,10 @@ async function createLocalUser(db, actorId, login, password, policy = readPasswo
 
 function listUsers(db, actorId) {
   authorize(db, actorId);
-  return db.prepare("SELECT id, login, role, status, email, email_trust FROM users ORDER BY login").all();
+  return db.prepare("SELECT id, login, role, status, email, email_trust, password_change_required FROM users ORDER BY login").all();
 }
 
-function changeUserStatus(db, actorId, userId, status, expectedStatus, { isCurrent = () => true, emailUpdate, roleUpdate } = {}) {
+function changeUserStatus(db, actorId, userId, status, expectedStatus, { isCurrent = () => true, emailUpdate, roleUpdate, passwordUpdate } = {}) {
   if (typeof userId !== "string" ||
       !["active", "disabled"].includes(status) ||
       !["active", "disabled"].includes(expectedStatus))
@@ -67,6 +69,16 @@ function changeUserStatus(db, actorId, userId, status, expectedStatus, { isCurre
       if (!["admin", "user"].includes(role) || !["admin", "user"].includes(roleUpdate.expectedRole) || typeof roleUpdate.confirmAdmin !== "boolean") fail("INVALID_ROLE");
       if (user.role !== roleUpdate.expectedRole) fail("USER_STATE_CHANGED");
       if (role !== user.role && role === "admin" && !roleUpdate.confirmAdmin) fail("ADMIN_CONFIRMATION_REQUIRED");
+    }
+    if (passwordUpdate) {
+      if (typeof passwordUpdate.requirePasswordChange !== "boolean" || typeof passwordUpdate.expectedPasswordChangeRequired !== "boolean") fail("INVALID_PASSWORD_REQUIREMENT");
+      const previous = !!db.prepare("SELECT password_change_required FROM users WHERE id=?").get(userId).password_change_required;
+      if (previous !== passwordUpdate.expectedPasswordChangeRequired) fail("USER_STATE_CHANGED");
+      if (passwordUpdate.requirePasswordChange && !db.prepare("SELECT 1 FROM local_credentials WHERE user_id=?").get(userId)) fail("LOCAL_PASSWORD_REQUIRED");
+      if (previous !== passwordUpdate.requirePasswordChange) {
+        db.prepare("UPDATE users SET password_change_required=? WHERE id=?").run(Number(passwordUpdate.requirePasswordChange), userId);
+        db.prepare("INSERT INTO audit_events VALUES (?, ?, ?, ?, ?)").run(randomUUID(), actorId, passwordUpdate.requirePasswordChange ? "require-password-change" : "cancel-password-change", userId, Date.now());
+      }
     }
     if (status === user.status && role === user.role && !emailUpdate) return user;
     if (user.status === "active" && user.role === "admin" && (role !== "admin" || status !== "active") &&

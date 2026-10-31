@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Users – Ignis</title>
     <link rel="stylesheet" href="/auth/setup.css" />
+    <link rel="stylesheet" href="/auth/account.css" />
     <link rel="stylesheet" href="/auth/users.css" />
     <script src="/auth/users.js" defer></script>
     <script src="/auth/password-visibility.js" defer></script>
@@ -17,7 +18,7 @@
       <p id="status" role="status" aria-live="polite">Checking access…</p>
       <section id="administration" hidden>
         <section class="panel" aria-labelledby="accounts-heading">
-          <div class="panel-heading"><h2 id="accounts-heading">Accounts</h2><button id="add-user" type="button">Add user</button></div>
+          <div class="panel-heading"><h2 id="accounts-heading">Accounts</h2><button id="add-user" type="button" class="account-button">Add user</button></div>
           <div class="table-scroll" role="region" aria-label="User accounts" tabindex="0">
             <table>
               <thead><tr><th scope="col">Username</th><th scope="col">Email</th><th scope="col">Email verification</th><th scope="col">Role</th><th scope="col">Status</th><th id="oidc-column" scope="col" hidden data-provider-template="OpenID Connect">OpenID Connect</th><th scope="col" class="actions-heading">Actions</th></tr></thead>
@@ -28,27 +29,41 @@
         </section>
         <dialog id="create-dialog" aria-labelledby="create-heading">
         <h2 id="create-heading">Create user</h2>
-        <p class="help">New accounts are normal users. Vault access is not available for them yet.</p>
-        <p id="policy" class="help"></p>
         <p id="create-status" role="status" aria-live="polite"></p>
         <form id="create-user">
-          <label for="new-login">Username</label>
+          <div class="field-heading"><label for="new-login">Username</label>
+            <span class="field-help"><button type="button" class="help-toggle" aria-label="About username" aria-expanded="false" aria-controls="new-login-help">?</button>
+              <span id="new-login-help" class="help-tooltip" role="tooltip" hidden>3–64 ASCII letters, digits, dots, underscores or hyphens. Start with a letter or digit.</span>
+            </span>
+          </div>
           <input id="new-login" name="login" required minlength="3" maxlength="64"
             pattern="[a-zA-Z0-9][a-zA-Z0-9._\-]{2,63}" autocomplete="off" />
-          <p class="help">3–64 ASCII letters, digits, dots, underscores or hyphens. Start with a letter or digit.</p>
-          <label for="new-email">Email (optional)</label>
+          <div class="field-heading"><label for="new-email">Email (optional)</label>
+            <span class="field-help"><button type="button" class="help-toggle" aria-label="About email (optional)" aria-expanded="false" aria-controls="new-email-help">?</button>
+              <span id="new-email-help" class="help-tooltip" role="tooltip" hidden>Changing the address clears confirmation. Confirm it explicitly to allow verified-email account linking. Email changes close the user's sessions.</span>
+            </span>
+          </div>
           <input id="new-email" name="email" type="email" maxlength="254" autocomplete="off" />
           <label class="email-confirmation"><input name="emailVerified" type="checkbox" /> I confirm that this email belongs to this user</label>
-          <p class="help">Changing the address clears confirmation. Confirm it explicitly to allow verified-email account linking. Email changes close the user's sessions.</p>
-          <label for="new-password">Password</label>
+          <div class="field-heading"><label for="new-password">Password</label>
+            <span class="field-help"><button type="button" class="help-toggle" aria-label="About password" aria-expanded="false" aria-controls="policy">?</button>
+              <span id="policy" class="help-tooltip" role="tooltip" hidden>Password requirements are loaded from the server.</span>
+            </span>
+          </div>
           <input id="new-password" name="password" type="password" required maxlength="1024" autocomplete="new-password" />
           <label for="confirm-password">Confirm password</label>
           <input id="confirm-password" name="confirmation" type="password" required maxlength="1024" autocomplete="new-password" />
+          <div class="field-heading">
+            <label class="email-confirmation"><input name="requirePasswordChange" type="checkbox" /> Require password change at next sign-in</label>
+            <span class="field-help"><button type="button" class="help-toggle" aria-label="About required password changes" aria-expanded="false" aria-controls="create-password-change-help">?</button>
+              <span id="create-password-change-help" class="help-tooltip" role="tooltip" hidden>Requires a local password. Existing sessions are closed. The user must sign in with their current local password and choose a different password before accessing Ignis, including through OpenID Connect.</span>
+            </span>
+          </div>
           <div class="dialog-actions"><button id="cancel-create" type="button" class="cancel-button">Cancel</button><button type="submit">Create user</button></div>
         </form>
         </dialog>
       </section>
-      <footer><a class="secondary-button" href="/account">Back to account</a></footer>
+      <footer><button id="back-to-account" type="button" class="account-button secondary">Back to account</button></footer>
       <dialog id="edit-dialog" aria-labelledby="edit-heading">
         <h2 id="edit-heading">Edit user <span id="edit-user-name"></span></h2>
         <form id="edit-user">
@@ -61,7 +76,7 @@
           <label class="email-confirmation"><input name="emailVerified" type="checkbox" /> I confirm that this email belongs to this user</label>
           <div class="field-heading"><label for="user-role">Account role</label>
             <span class="field-help"><button type="button" class="help-toggle" aria-label="About account roles" aria-expanded="false" aria-controls="role-help">?</button>
-              <span id="role-help" class="help-tooltip" role="tooltip" hidden>Administrators can manage users and access all vaults currently available to administrators. Changing a role closes all the user's sessions. You cannot change your own role.</span>
+              <span id="role-help" class="help-tooltip" role="tooltip" hidden>Administrators can manage users. Vault access still requires explicit membership. Changing a role closes all the user's sessions. You cannot change your own role.</span>
             </span>
           </div>
           <select id="user-role" name="role"><option value="user">User</option><option value="admin">Administrator</option></select>
@@ -76,6 +91,12 @@
             <option value="disabled">Disabled</option>
           </select>
 
+          <div class="field-heading">
+            <label class="email-confirmation"><input name="requirePasswordChange" type="checkbox" /> Require password change at next sign-in</label>
+            <span class="field-help"><button type="button" class="help-toggle" aria-label="About required password changes" aria-expanded="false" aria-controls="edit-password-change-help">?</button>
+              <span id="edit-password-change-help" class="help-tooltip" role="tooltip" hidden>Requires a local password. Existing sessions are closed. The user must sign in with their current local password and choose a different password before accessing Ignis, including through OpenID Connect.</span>
+            </span>
+          </div>
           <p id="edit-status" role="status" aria-live="polite"></p>
           <div class="edit-account-actions">
           <button id="reset-password" type="button" class="warning-button" hidden>Reset password</button>

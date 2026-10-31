@@ -289,4 +289,12 @@ module.exports = [
   CREATE TRIGGER prevent_reactivating_deleting_user BEFORE UPDATE OF status ON users
   WHEN NEW.status!='disabled' AND EXISTS (SELECT 1 FROM user_deletions WHERE user_id=OLD.id)
   BEGIN SELECT RAISE(ABORT, 'Account deletion in progress'); END;`},
+  {version:18,sql:`ALTER TABLE users ADD COLUMN password_change_required INTEGER NOT NULL DEFAULT 0 CHECK(password_change_required IN (0,1));
+    CREATE TRIGGER revoke_on_password_requirement AFTER UPDATE OF password_change_required ON users
+    WHEN OLD.password_change_required != NEW.password_change_required
+    BEGIN
+      UPDATE users SET auth_version=auth_version+1 WHERE id=NEW.id;
+      DELETE FROM sessions WHERE user_id=NEW.id;
+      DELETE FROM password_resets WHERE user_id=NEW.id;
+    END;`},
 ];

@@ -628,7 +628,7 @@ describe("user administration HTTP", () => {
     const listed = await request("/api/auth/users", { jar });
     expect(listed.status).toBe(200);
     for (const row of (await listed.json()).users)
-      expect(Object.keys(row).sort()).toEqual(["canSetLocalPassword", "email", "email_trust", "hasLocalPassword", "id", "login", "oidcLinked", "role", "status"]);
+      expect(Object.keys(row).sort()).toEqual(["canSetLocalPassword", "email", "email_trust", "hasLocalPassword", "id", "login", "oidcLinked", "password_change_required", "role", "status"]);
     expect((await listed.json()).oidcAvailable).toBe(false);
     expect((await listed.json()).users.every((row) => row.oidcLinked === null)).toBe(true);
     const normalJar = await login("new-user");
@@ -1500,4 +1500,27 @@ it('lets a normal owner trash and restore private files and revoke shares when t
  expect((await post('/api/fs/rename',{oldPath:'Shared',newPath:'.trash/Shared'})).status).toBe(200);
  expect(db.prepare('SELECT id FROM shared_resources WHERE id=?').get(id)).toBeUndefined();
  expect(fs.readFileSync(path.join(root,'vault','.trash','Shared','file.md'),'utf8')).toBe('content');
+});
+
+it("forces a local-password change through the admin API and issues no vault session until completion", async () => {
+  const jar = await login(); const user = await login("normal");
+  const context = (await (await request("/api/auth/session", { jar })).json()).sessionId;
+  const body = { userId: "normal", status: "active", expectedStatus: "active", requirePasswordChange: true, expectedPasswordChangeRequired: false };
+  const endpoint = "/api/auth/users/status";
+  expect((await request(endpoint, { jar: user, method: "POST", body, headers: { "x-ignis-csrf": await csrf(user) } })).status).toBe(403);
+  expect((await request(endpoint, { jar, method: "POST", body, headers: { "x-ignis-csrf": await csrf(jar), "x-ignis-context": "wrong" } })).status).toBe(409);
+  expect((await request(endpoint, { jar, method: "POST", body, headers: { "x-ignis-csrf": await csrf(jar), "x-ignis-context": context } })).status).toBe(200);
+  expect((await request("/api/auth/session", { jar: user })).status).toBe(401);
+  const response = await request("/api/auth/login", { jar: user, method: "POST", body: { login: "normal", password: PASSWORD }, headers: { "x-ignis-csrf": await csrf(user) } });
+  expect(response.status).toBe(200); expect(await response.json()).toEqual({ passwordResetRequired: true });
+  for (const url of ["/api/auth/session", "/api/vault/list", "/api/auth/users", "/api/fs/readFile?vault=vault&path=note.md"])
+    expect((await request(url, { jar: user })).status).toBe(401);
+  const grant = await (await request("/api/auth/reset-password", { jar: user })).json();
+  const resetHeaders = { "x-ignis-csrf": await csrf(user), "x-ignis-reset-context": grant.context };
+  const same = await request("/api/auth/reset-password", { jar: user, method: "POST", body: { password: PASSWORD }, headers: resetHeaders });
+  expect(same.status).toBe(400); expect((await same.json()).code).toBe("PASSWORD_UNCHANGED");
+  const done = await request("/api/auth/reset-password", { jar: user, method: "POST", body: { password: "new-required-password!" }, headers: resetHeaders });
+  expect(done.status).toBe(200);
+  const final = await request("/api/auth/login", { jar: user, method: "POST", body: { login: "normal", password: "new-required-password!" }, headers: { "x-ignis-csrf": await csrf(user) } });
+  expect(final.status).toBe(200); expect((await final.json()).user.login).toBe("normal");
 });
