@@ -119,11 +119,19 @@
     if (!vaultCatalog) vaultCatalog = list;
   }
   async function context() {
-    const response = await nativeFetch("/api/auth/session", {
-      credentials: "same-origin",
-      cache: "no-store",
-    });
-    if (!response.ok) throw new Error("Session unavailable");
+    let response;
+    try {
+      response = await nativeFetch("/api/auth/session", {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+    } catch {
+      throw Object.assign(new Error("Session check unavailable"), { transient: true });
+    }
+    if (!response.ok)
+      throw Object.assign(new Error("Session unavailable"), {
+        transient: response.status === 429 || response.status >= 500,
+      });
     const state = await response.json();
     if (
       !["admin", "user"].includes(state.user.role) ||
@@ -255,7 +263,10 @@
     if (blocked) return;
     try {
       await context();
-    } catch {
+    } catch (error) {
+      // Keep an already verified editor during an outage. Server requests still
+      // carry the pinned session context and enforce authorization independently.
+      if (error.transient && sessionId) return;
       lock("Your session could not be verified. Sign in again to continue.");
     }
     if (!blocked) await checkVault().catch(() => {});

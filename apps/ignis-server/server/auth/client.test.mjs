@@ -5,8 +5,8 @@ const source = fs.readFileSync(
   new URL("./web/client.js", import.meta.url),
   "utf8",
 );
-async function fixture({ storageFails = false } = {}) {
-  let userId = "admin-id";
+async function fixture({ storageFails = false, initialSessionStatus = 200, initialOffline = false } = {}) {
+  let userId = "admin-id", sessionStatus = initialSessionStatus, offline = initialOffline;
   let catalog = [{ id: "Notes", uuid: "original" }];
   const elements = [];
   let download;
@@ -59,8 +59,10 @@ async function fixture({ storageFails = false } = {}) {
       calls.push({ input, init });
       const url = input instanceof Request ? input.url : String(input);
       if (url.endsWith("/api/vault/list")) return Response.json(catalog, { status });
-      if (url.endsWith("/session"))
-        return Response.json({ user: { id: userId, role: "admin" }, sessionId: current });
+      if (url.endsWith("/session")) {
+        if (offline) throw new TypeError("Network unavailable");
+        return Response.json({ user: { id: userId, role: "admin" }, sessionId: current }, { status: sessionStatus });
+      }
       if (url.endsWith("/csrf"))
         return Response.json({ csrfToken: "csrf-value" });
       return Response.json({}, { status });
@@ -93,6 +95,8 @@ async function fixture({ storageFails = false } = {}) {
   calls.length = 0;
   return {
     window,
+    offline: value => { offline = value; },
+    sessionStatus: value => { sessionStatus = value; },
     user: value => { userId = value; },
     elements,
     catalog: value => { catalog = value; },
@@ -273,4 +277,29 @@ it("preserves legacy administrator vaults and does not treat server failures as 
     expect(target).toBe(status === 200 ? "/?vault=Legacy" : undefined);
     expect(locked).toBe(true);
   }
+});
+
+it.each([429, 500, 502, 503])("retains a verified editor during session check HTTP %s and locks after revocation", async status => {
+  const f = await fixture(); f.sessionStatus(status);
+  await f.window.__ignisAuth.check(); expect(f.window.__ignisAuth.blocked).toBe(false);
+  f.sessionStatus(401); await f.window.__ignisAuth.check();
+  expect(f.window.__ignisAuth.blocked).toBe(true);
+});
+it("recovers from a session-check network outage without changing pinned identity", async () => {
+  const f = await fixture(); f.offline(true);
+  await f.window.__ignisAuth.check(); expect(f.window.__ignisAuth.blocked).toBe(false);
+  f.offline(false); await f.window.__ignisAuth.check();
+  await f.window.fetch('/api/fs/writeFile', {method:'POST'});
+  expect(f.calls.at(-1).init.headers.get('X-Ignis-Context')).toBe('session-one');
+  f.identity('other-session'); await f.window.__ignisAuth.check();
+  expect(f.window.__ignisAuth.blocked).toBe(true);
+});
+
+it.each([401,403,400])('locks a verified editor when the session endpoint rejects access with %s',async status=>{
+ const f=await fixture(); f.sessionStatus(status); await f.window.__ignisAuth.check();
+ expect(f.window.__ignisAuth.blocked).toBe(true);
+});
+it('does not initialize an editor without an initially verified session',async()=>{
+ await expect(fixture({initialSessionStatus:503})).rejects.toThrow('Session unavailable');
+ await expect(fixture({initialOffline:true})).rejects.toThrow('Session check unavailable');
 });
