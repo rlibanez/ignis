@@ -3,6 +3,28 @@
   const status = document.getElementById("status");
   const button = form.querySelector('button[type="submit"]');
   const field = (name) => form.elements.namedItem(name);
+  for (const toggle of document.querySelectorAll(".setup-help-toggle")) {
+    const tip = document.getElementById(toggle.getAttribute("aria-controls"));
+    const region = toggle.parentElement;
+    const show = (open) => {
+      tip.hidden = !open;
+      toggle.setAttribute("aria-expanded", String(open));
+      if (open) toggle.setAttribute("aria-describedby", tip.id);
+      else toggle.removeAttribute("aria-describedby");
+    };
+    toggle.addEventListener("click", () => show(true));
+    region.addEventListener("mouseenter", () => show(true));
+    region.addEventListener("mouseleave", () => show(false));
+    region.addEventListener("focusout", (event) => {
+      if (!region.contains(event.relatedTarget)) show(false);
+    });
+    toggle.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") { event.preventDefault(); show(false); }
+    });
+    document.addEventListener("click", (event) => {
+      if (!region.contains(event.target)) show(false);
+    });
+  }
   const clearSecrets = () => {
     for (const name of ["initialAdminKey", "password", "passwordConfirmation"])
       field(name).value = "";
@@ -17,8 +39,8 @@
       if (!response.ok) throw new Error();
       const state = await response.json();
       if (state.initialized) {
-        document.getElementById("sign-in").hidden = false;
-        status.textContent = "Initial setup is complete. Sign in to continue.";
+        location.replace("/login");
+        return;
       } else if (!state.setupAvailable) {
         status.textContent =
           "Web setup is disabled. Ask the server operator to configure an installation key or create the first administrator using the local CLI.";
@@ -74,7 +96,8 @@
       });
       if (response.status === 201 || response.status === 409) {
         clearSecrets();
-        await refresh();
+        if (response.status === 201) location.replace("/login");
+        else await refresh();
       } else {
         status.textContent =
           response.status === 429

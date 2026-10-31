@@ -1,6 +1,8 @@
 (() => {
   const hideAll = [];
-  for (const input of document.querySelectorAll('input[type="password"]')) {
+  for (const input of document.querySelectorAll('input[type="password"], input[data-masked-text]')) {
+    const maskedText = input.hasAttribute("data-masked-text");
+    let revealed = false;
     let wrapper = input.parentElement;
     if (!wrapper.classList.contains("password-control")) {
       wrapper = document.createElement("div");
@@ -27,14 +29,16 @@
     button.append(svg);
     wrapper.append(button);
     function setVisible(visible) {
-      input.type = visible ? "text" : "password";
+      revealed = visible;
+      if (maskedText) input.classList.toggle("masked-text", !visible);
+      else input.type = visible ? "text" : "password";
       button.setAttribute("aria-pressed", String(visible));
       button.setAttribute("aria-label", `${visible ? "Hide" : "Show"} ${label}`);
       button.title = `${visible ? "Hide" : "Show"} ${label}`;
       slash.style.display = visible ? "" : "none";
     }
     setVisible(false);
-    button.addEventListener("click", () => setVisible(input.type === "password"));
+    button.addEventListener("click", () => setVisible(!revealed));
     const hide = () => setVisible(false);
     hideAll.push(hide);
     input.form?.addEventListener("reset", hide);

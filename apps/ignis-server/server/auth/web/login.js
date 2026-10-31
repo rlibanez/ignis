@@ -258,7 +258,7 @@
         }
         status.textContent = new URL(location.href).searchParams.get("password") === "changed"
           ? "Password changed. All Ignis sessions have been closed. Sign in with your new password."
-          : "Enter your Ignis account credentials.";
+          : "";
       }
       else {
         status.textContent = current.status === 429

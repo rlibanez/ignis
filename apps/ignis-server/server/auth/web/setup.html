@@ -18,17 +18,18 @@
         >JavaScript is required for this assistant. The operator can also use
         the local CLI.</noscript
       >
-      <p id="sign-in" hidden><a href="/login">Sign in</a></p>
       <form id="setup-form" hidden>
-        <p>
-          Use the installation key supplied by your server operator. This is a
-          one-time setup, not public registration.
-        </p>
         <label for="initial-key">Installation key</label>
         <input
           id="initial-key"
           name="initialAdminKey"
-          type="password"
+          type="text"
+          data-masked-text
+          class="masked-text"
+          data-bwignore="true"
+          data-1p-ignore
+          data-lpignore="true"
+          autocapitalize="off"
           required
           minlength="32"
           maxlength="32"
@@ -36,7 +37,14 @@
           autocomplete="off"
           spellcheck="false"
         />
-        <label for="login">Administrator username</label>
+        <div class="setup-field-heading">
+          <label for="login">Administrator username</label>
+          <span class="setup-field-help">
+            <button type="button" class="setup-help-toggle" aria-label="About administrator username" aria-expanded="false" aria-controls="login-help">?</button>
+            <span id="login-help" class="setup-help-tooltip" role="tooltip" hidden>3–64 letters (A–Z), digits, dots, underscores or hyphens. Start with a
+          letter or digit.</span>
+          </span>
+        </div>
         <input
           id="login"
           name="login"
@@ -48,11 +56,14 @@
           spellcheck="false"
           aria-describedby="login-help"
         />
-        <p id="login-help" class="help">
-          3–64 letters (A–Z), digits, dots, underscores or hyphens. Start with a
-          letter or digit.
-        </p>
-        <label for="password">Password</label>
+
+        <div class="setup-field-heading">
+          <label for="password">Password</label>
+          <span class="setup-field-help">
+            <button type="button" class="setup-help-toggle" aria-label="About password" aria-expanded="false" aria-controls="password-help">?</button>
+            <span id="password-help" class="setup-help-tooltip" role="tooltip" hidden>Password requirements are loaded from the server.</span>
+          </span>
+        </div>
         <input
           id="password"
           name="password"
@@ -63,9 +74,7 @@
           autocomplete="new-password"
           aria-describedby="password-help"
         />
-        <p id="password-help" class="help">
-          Password requirements are loaded from the server.
-        </p>
+
         <label for="confirmation">Confirm password</label>
         <input
           id="confirmation"
