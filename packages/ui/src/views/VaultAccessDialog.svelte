@@ -1,4 +1,6 @@
 <script>
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
+
   import { onMount, onDestroy, createEventDispatcher } from "svelte";
   import { Users, Trash2 } from "lucide-svelte";
   import Modal from "../components/layout/Modal.svelte";
@@ -18,7 +20,7 @@
     if (busy) return;
     busy = true; error = "";
     try { const result = await vaultService.vaultMembers(vault.uuid); if (alive) apply(result); }
-    catch (failure) { if (alive) { data = null; error = failure.message; } }
+    catch (failure) { if (alive) { data = null; error = translateIgnis(failure.message); } }
     finally { if (alive) busy = false; }
   }
   async function save(username, permission, previous) {
@@ -27,7 +29,7 @@
     try {
       const result = await vaultService.updateVaultMember(vault.uuid, username, permission, previous, data.revision);
       if (alive) { apply(result); login = ""; removal = null; }
-    } catch (failure) { if (alive) { error = failure.message; removal = null; } }
+    } catch (failure) { if (alive) { error = translateIgnis(failure.message); removal = null; } }
     finally { if (alive) busy = false; }
   }
   async function transfer() {
@@ -38,34 +40,34 @@
       // The former owner no longer has permission to load the members endpoint.
       dispatch("transferred");
       if (alive) dispatch("close");
-    } catch (failure) { if (alive) { error = failure.message; transferOpen = false; transferConfirmed = false; } }
+    } catch (failure) { if (alive) { error = translateIgnis(failure.message); transferOpen = false; transferConfirmed = false; } }
     finally { if (alive) busy = false; }
   }
   onMount(reload);
 </script>
 
-<Modal title={"Manage access · " + vault.name} width="620px" closeOnOverlayClick={false} on:escape={close} on:close={close}>
+<Modal title={translateIgnis("Manage access · ") + vault.name} width="620px" closeOnOverlayClick={false} on:escape={close} on:close={close}>
   <svelte:fragment slot="icon"><Users size="1.25rem" /></svelte:fragment>
   <div class="access-body" aria-busy={busy}>
     {#if error}<p class="access-error" role="alert">{error}</p>{/if}
     {#if data}
       <div class="table-scroll">
         <table>
-          <thead><tr><th>User</th><th>Permission</th><th><span class="sr-only">Actions</span></th></tr></thead>
+          <thead><tr><th>{translateIgnis("User")}</th><th>{translateIgnis("Permission")}</th><th><span class="sr-only">{translateIgnis("Actions")}</span></th></tr></thead>
           <tbody>
             {#each data.members as member (member.id)}
               <tr>
-                <td><strong>{member.login}</strong>{#if member.status !== "active"}<small>Disabled</small>{/if}</td>
+                <td><strong>{member.login}</strong>{#if member.status !== "active"}<small>{translateIgnis("Disabled")}</small>{/if}</td>
                 <td>
-                  {#if member.role === "owner"}<span class="owner">Owner</span>
-                  {:else}<select aria-label={"Permission for " + member.login} bind:value={member.selected} disabled={busy || member.status !== "active"}>
-                    <option value="reader">Read</option><option value="editor">Read / Write</option>
+                  {#if member.role === "owner"}<span class="owner">{translateIgnis("Owner")}</span>
+                  {:else}<select aria-label={translateIgnis("Permission for ") + member.login} bind:value={member.selected} disabled={busy || member.status !== "active"}>
+                    <option value="reader">{translateIgnis("Read")}</option><option value="editor">{translateIgnis("Read / Write")}</option>
                   </select>{/if}
                 </td>
                 <td><div class="row-actions">
                   {#if member.role !== "owner"}
-                    <Button variant="secondary" disabled={busy || member.selected === member.role || member.status !== "active"} on:click={() => save(member.login,member.selected,member.role)}>Save</Button>
-                    <button class="remove" title={"Remove access for " + member.login} aria-label={"Remove access for " + member.login} disabled={busy} on:click={() => {removal = member;}}><Trash2 size="1rem" /></button>
+                    <Button variant="secondary" disabled={busy || member.selected === member.role || member.status !== "active"} on:click={() => save(member.login,member.selected,member.role)}>{translateIgnis("Save")}</Button>
+                    <button class="remove" title={translateIgnis("Remove access for ") + member.login} aria-label={translateIgnis("Remove access for ") + member.login} disabled={busy} on:click={() => {removal = member;}}><Trash2 size="1rem" /></button>
                   {/if}
                 </div></td>
               </tr>
@@ -74,46 +76,46 @@
         </table>
       </div>
       <form on:submit|preventDefault={() => save(login.trim(),role,null)}>
-        <h3>Add member</h3>
+        <h3>{translateIgnis("Add member")}</h3>
         <div class="add-fields">
-          <label>Username<input bind:value={login} required minlength="3" maxlength="64" pattern="[a-zA-Z0-9][a-zA-Z0-9._-]{2,63}" autocomplete="off" disabled={busy} placeholder="Exact username" /></label>
-          <label>Permission<select bind:value={role} disabled={busy}><option value="reader">Read</option><option value="editor">Read / Write</option></select></label>
-          <Button type="submit" disabled={busy || !login.trim()}>Add</Button>
+          <label>{translateIgnis("Username")}<input bind:value={login} required minlength="3" maxlength="64" pattern="[a-zA-Z0-9][a-zA-Z0-9._-]{2,63}" autocomplete="off" disabled={busy} placeholder="{translateIgnis("Exact username")}" /></label>
+          <label>{translateIgnis("Permission")}<select bind:value={role} disabled={busy}><option value="reader">{translateIgnis("Read")}</option><option value="editor">{translateIgnis("Read / Write")}</option></select></label>
+          <Button type="submit" disabled={busy || !login.trim()}>{translateIgnis("Add")}</Button>
         </div>
-        <p class="hint">Write access includes shared plugins and their settings. Only add people you trust.</p>
+        <p class="hint">{translateIgnis("Write access includes shared plugins and their settings. Only add people you trust.")}</p>
       </form>
-    {:else if busy}<p>Loading members…</p>{/if}
+    {:else if busy}<p>{translateIgnis("Loading members…")}</p>{/if}
   </div>
   <svelte:fragment slot="footer"><div class="footer">
-    <Button variant="secondary" disabled={busy} on:click={reload}>Reload members</Button>
-    <Button variant="secondary" disabled={busy || !data || !candidates.length} title="Transfer ownership to an active member" on:click={() => {transferOpen=true; transferTarget=""; transferConfirmed=false;}}>Transfer ownership</Button>
-    <Button variant="primary" disabled={busy} on:click={close}>Done</Button>
+    <Button variant="secondary" disabled={busy} on:click={reload}>{translateIgnis("Reload members")}</Button>
+    <Button variant="secondary" disabled={busy || !data || !candidates.length} title="{translateIgnis("Transfer ownership to an active member")}" on:click={() => {transferOpen=true; transferTarget=""; transferConfirmed=false;}}>{translateIgnis("Transfer ownership")}</Button>
+    <Button variant="primary" disabled={busy} on:click={close}>{translateIgnis("Done")}</Button>
   </div></svelte:fragment>
 </Modal>
 {#if removal}
-  <Modal title="Remove access" width="500px" closeOnOverlayClick={false} on:escape={() => {removal=null;}} on:close={() => {removal=null;}}>
-    <div class="access-body"><p>Remove <strong>{removal.login}</strong> from <strong>{vault.name}</strong>?</p><p class="hint">Their access will be revoked. Their existing notes will remain in the vault.</p></div>
+  <Modal title="{translateIgnis("Remove access")}" width="500px" closeOnOverlayClick={false} on:escape={() => {removal=null;}} on:close={() => {removal=null;}}>
+    <div class="access-body"><p>{translateIgnis("Remove ")}<strong>{removal.login}</strong> from <strong>{vault.name}</strong>?</p><p class="hint">{translateIgnis("Their access will be revoked. Their existing notes will remain in the vault.")}</p></div>
     <svelte:fragment slot="footer"><div class="footer">
-      <Button variant="secondary" disabled={busy} on:click={() => {removal=null;}}>Cancel</Button>
-      <Button variant="danger" disabled={busy} on:click={() => save(removal.login,null,removal.role)}>Remove access</Button>
+      <Button variant="secondary" disabled={busy} on:click={() => {removal=null;}}>{translateIgnis("Cancel")}</Button>
+      <Button variant="danger" disabled={busy} on:click={() => save(removal.login,null,removal.role)}>{translateIgnis("Remove access")}</Button>
     </div></svelte:fragment>
   </Modal>
 {/if}
 {#if transferOpen}
-  <Modal title={"Transfer ownership · " + vault.name} width="500px" closeOnOverlayClick={false} on:escape={() => {transferOpen=false;}} on:close={() => {transferOpen=false;}}>
+  <Modal title={translateIgnis("Transfer ownership · ") + vault.name} width="500px" closeOnOverlayClick={false} on:escape={() => {transferOpen=false;}} on:close={() => {transferOpen=false;}}>
     <div class="access-body">
-      <label>New owner<select bind:value={transferTarget} disabled={busy} on:change={() => {transferConfirmed=false;}}>
-        <option value="" disabled>Select a member</option>
+      <label>{translateIgnis("New owner")}<select bind:value={transferTarget} disabled={busy} on:change={() => {transferConfirmed=false;}}>
+        <option value="" disabled>{translateIgnis("Select a member")}</option>
         {#each candidates as member (member.id)}<option value={member.id}>{member.login}</option>{/each}
       </select></label>
-      <p class="hint">The new owner will control access to this vault. You will keep Read / Write access and will no longer manage its members.</p>
+      <p class="hint">{translateIgnis("The new owner will control access to this vault. You will keep Read / Write access and will no longer manage its members.")}</p>
       <label class="confirmation"><input type="checkbox" bind:checked={transferConfirmed} disabled={busy || !recipient} />
-        <span>I confirm the transfer{recipient ? " to " + recipient.login : ""}. Only the new owner can transfer it back.</span>
+        <span>{translateIgnis("I confirm the transfer")}{recipient ? " to " + recipient.login : ""}. Only the new owner can transfer it back.</span>
       </label>
     </div>
     <svelte:fragment slot="footer"><div class="footer">
-      <Button variant="secondary" disabled={busy} on:click={() => {transferOpen=false;}}>Cancel</Button>
-      <Button variant="primary" disabled={busy || !recipient || !transferConfirmed} on:click={transfer}>Transfer ownership</Button>
+      <Button variant="secondary" disabled={busy} on:click={() => {transferOpen=false;}}>{translateIgnis("Cancel")}</Button>
+      <Button variant="primary" disabled={busy || !recipient || !transferConfirmed} on:click={transfer}>{translateIgnis("Transfer ownership")}</Button>
     </div></svelte:fragment>
   </Modal>
 {/if}

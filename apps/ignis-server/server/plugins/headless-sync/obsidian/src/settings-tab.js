@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 const { PluginSettingTab, Notice } = require("obsidian");
 const api = require("./api");
 const { isCoreSyncEnabled } = require("./core-sync-guard");
@@ -52,22 +54,22 @@ function readSyncConfig(vaultState) {
 
 function describeExcludedFolders(count) {
   if (count === 0) {
-    return "No folders excluded";
+    return translateIgnis("No folders excluded");
   }
 
-  return count === 1 ? "1 folder excluded" : `${count} folders excluded`;
+  return count === 1 ? translateIgnis("1 folder excluded") : translateIgnis("{p0} folders excluded", {p0: (count)});
 }
 
 function describeSyncStatus(vaultState) {
   if (vaultState.status === "running") {
-    return "Sync is running";
+    return translateIgnis("Sync is running");
   }
 
   if (vaultState.status === "error") {
-    return `Error: ${vaultState.error}`;
+    return translateIgnis("Error: {p0}", {p0: (vaultState.error)});
   }
 
-  return "Sync is stopped";
+  return translateIgnis("Sync is stopped");
 }
 
 class HeadlessSyncSettingTab extends PluginSettingTab {
@@ -120,15 +122,15 @@ class HeadlessSyncSettingTab extends PluginSettingTab {
 
   coreSyncWarningDefinition() {
     return {
-      name: "Obsidian Sync is active",
+      name: translateIgnis("Obsidian Sync is active"),
       render: (setting) => {
         setting.descEl.createEl("span", {
-          text: "Headless Sync cannot run alongside Obsidian's built-in sync to avoid conflicts. Disable Obsidian Sync in Core Plugins to use Headless Sync instead.",
+          text: translateIgnis("Headless Sync cannot run alongside Obsidian's built-in sync to avoid conflicts. Disable Obsidian Sync in Core Plugins to use Headless Sync instead."),
           cls: "mod-warning",
         });
 
         setting.addButton((btn) => {
-          btn.setButtonText("Open Core Plugins").onClick(() => {
+          btn.setButtonText(translateIgnis("Open Core Plugins")).onClick(() => {
             this.app.setting.openTabById("plugins");
           });
         });
@@ -153,17 +155,17 @@ class HeadlessSyncSettingTab extends PluginSettingTab {
 
     if (serverStatusFailed) {
       return warningDefinition(
-        "Failed to connect to Headless Sync server plugin.",
+        translateIgnis("Failed to connect to Headless Sync server plugin."),
       );
     }
 
     if (!serverStatus) {
-      return { name: "Obsidian Sync account", render: () => {} };
+      return { name: translateIgnis("Obsidian Sync account"), render: () => {} };
     }
 
     if (!serverStatus.installed) {
       return warningDefinition(
-        "obsidian-headless (ob CLI) is not installed on the server. Install it to enable sync.",
+        translateIgnis("obsidian-headless (ob CLI) is not installed on the server. Install it to enable sync."),
       );
     }
 
@@ -175,7 +177,7 @@ class HeadlessSyncSettingTab extends PluginSettingTab {
       this.plugin;
 
     if (!serverStatus) {
-      return serverStatusFailed ? [] : [syncGroup("Vault sync", [])];
+      return serverStatusFailed ? [] : [syncGroup(translateIgnis("Vault sync"), [])];
     }
 
     if (!serverStatus.installed) {
@@ -184,13 +186,13 @@ class HeadlessSyncSettingTab extends PluginSettingTab {
 
     if (!serverStatus.authenticated) {
       return [
-        syncGroup("Vault sync", [
+        syncGroup(translateIgnis("Vault sync"), [
           {
-            name: "Sync not configured",
-            desc: "Sign in to your Obsidian Sync account to set up sync.",
+            name: translateIgnis("Sync not configured"),
+            desc: translateIgnis("Sign in to your Obsidian Sync account to set up sync."),
             render: (setting) => {
               setting.addButton((btn) => {
-                btn.setButtonText("Set up sync");
+                btn.setButtonText(translateIgnis("Set up sync"));
                 btn.buttonEl.disabled = true;
               });
             },
@@ -202,30 +204,30 @@ class HeadlessSyncSettingTab extends PluginSettingTab {
     if (vaultsError) {
       return [
         syncGroup(undefined, [
-          warningDefinition(`Failed to load sync state: ${vaultsError}`),
+          warningDefinition(translateIgnis("Failed to load sync state: {p0}", {p0: (vaultsError)})),
         ]),
       ];
     }
 
     if (!vaults) {
-      return [syncGroup("Vault sync", [])];
+      return [syncGroup(translateIgnis("Vault sync"), [])];
     }
 
     const vaultId = this.app.vault.getName();
     const vaultState = vaults.find((v) => v.vaultId === vaultId);
 
     if (!vaultState) {
-      return [syncGroup("Vault sync", [this.syncSetupDefinition(vaultId)])];
+      return [syncGroup(translateIgnis("Vault sync"), [this.syncSetupDefinition(vaultId)])];
     }
 
     const syncConfig = readSyncConfig(vaultState);
 
     return [
       syncGroup(
-        "Vault sync",
+        translateIgnis("Vault sync"),
         this.vaultSyncDefinitions(vaultId, vaultState, syncConfig),
       ),
-      syncGroup("Selective sync", [
+      syncGroup(translateIgnis("Selective sync"), [
         this.excludedFoldersDefinition(vaultId, syncConfig),
         ...this.optionToggleDefinitions(
           vaultId,
@@ -235,7 +237,7 @@ class HeadlessSyncSettingTab extends PluginSettingTab {
         ),
       ]),
       syncGroup(
-        "Vault configuration sync",
+        translateIgnis("Vault configuration sync"),
         this.optionToggleDefinitions(
           vaultId,
           syncConfig,
@@ -252,24 +254,24 @@ class HeadlessSyncSettingTab extends PluginSettingTab {
 
       new Notice(
         restarted
-          ? "Sync settings saved, sync restarted"
-          : "Sync settings saved",
+          ? translateIgnis("Sync settings saved, sync restarted")
+          : translateIgnis("Sync settings saved"),
       );
       this.plugin.setVaultState(state);
     } catch (e) {
-      new Notice(`Failed to save sync settings: ${e.message}`);
+      new Notice(translateIgnis("Failed to save sync settings: {p0}", {p0: (e.message)}));
       this.update();
     }
   }
 
   syncSetupDefinition(vaultId) {
     return {
-      name: "Sync not configured",
-      desc: "This vault has not been linked to a remote vault yet.",
+      name: translateIgnis("Sync not configured"),
+      desc: translateIgnis("This vault has not been linked to a remote vault yet."),
       render: (setting) => {
         setting.addButton((btn) => {
           btn
-            .setButtonText("Set up sync")
+            .setButtonText(translateIgnis("Set up sync"))
             .setCta()
             .onClick(() => {
               const scope = this.app.setting.scope;
@@ -305,52 +307,52 @@ class HeadlessSyncSettingTab extends PluginSettingTab {
   vaultSyncDefinitions(vaultId, vaultState, syncConfig) {
     return [
       {
-        name: "Remote vault",
+        name: translateIgnis("Remote vault"),
         desc: vaultState.remoteVaultName || vaultState.remoteVault || "unknown",
         render: (setting) => {
           setting.addButton((btn) => {
-            btn.setButtonText("Unlink");
+            btn.setButtonText(translateIgnis("Unlink"));
             btn.buttonEl.addClass("mod-destructive");
             btn.onClick(async () => {
               try {
                 await api.unlinkVault(vaultId);
-                new Notice("Vault unlinked");
+                new Notice(translateIgnis("Vault unlinked"));
                 await this.plugin.loadVaults();
               } catch (e) {
-                new Notice(`Failed to unlink: ${e.message}`);
+                new Notice(translateIgnis("Failed to unlink: {p0}", {p0: (e.message)}));
               }
             });
           });
         },
       },
       {
-        name: "Sync status",
+        name: translateIgnis("Sync status"),
         desc: describeSyncStatus(vaultState),
         render: (setting) => {
           setting.addButton((btn) => {
             if (vaultState.status === "running") {
-              btn.setButtonText("Stop sync");
+              btn.setButtonText(translateIgnis("Stop sync"));
               btn.buttonEl.addClass("mod-destructive");
               btn.onClick(async () => {
                 try {
                   const { state } = await api.stopSync(vaultId);
-                  new Notice("Sync stopped");
+                  new Notice(translateIgnis("Sync stopped"));
                   this.plugin.setVaultState(state);
                 } catch (e) {
-                  new Notice(`Failed to stop: ${e.message}`);
+                  new Notice(translateIgnis("Failed to stop: {p0}", {p0: (e.message)}));
                 }
               });
             } else {
               btn
-                .setButtonText("Start sync")
+                .setButtonText(translateIgnis("Start sync"))
                 .setCta()
                 .onClick(async () => {
                   try {
                     const { state } = await api.startSync(vaultId);
-                    new Notice("Sync started");
+                    new Notice(translateIgnis("Sync started"));
                     this.plugin.setVaultState(state);
                   } catch (e) {
-                    new Notice(`Failed to start: ${e.message}`);
+                    new Notice(translateIgnis("Failed to start: {p0}", {p0: (e.message)}));
                   }
                 });
             }
@@ -358,7 +360,7 @@ class HeadlessSyncSettingTab extends PluginSettingTab {
         },
       },
       {
-        name: "Sync mode",
+        name: translateIgnis("Sync mode"),
         render: (setting) => {
           setting.addDropdown((dropdown) => {
             for (const syncMode of SYNC_MODES) {
@@ -373,11 +375,11 @@ class HeadlessSyncSettingTab extends PluginSettingTab {
         },
       },
       {
-        name: "Sync log",
-        desc: "View recent sync activity.",
+        name: translateIgnis("Sync log"),
+        desc: translateIgnis("View recent sync activity."),
         render: (setting) => {
           setting.addButton((btn) => {
-            btn.setButtonText("View").onClick(() => {
+            btn.setButtonText(translateIgnis("View")).onClick(() => {
               new SyncLogModal(this.app, vaultId).open();
             });
           });
@@ -388,11 +390,11 @@ class HeadlessSyncSettingTab extends PluginSettingTab {
 
   excludedFoldersDefinition(vaultId, syncConfig) {
     return {
-      name: "Excluded folders",
+      name: translateIgnis("Excluded folders"),
       desc: describeExcludedFolders(syncConfig.excludedFolders.length),
       render: (setting) => {
         setting.addButton((btn) => {
-          btn.setButtonText("Manage").onClick(() => {
+          btn.setButtonText(translateIgnis("Manage")).onClick(() => {
             this.openExcludedFoldersEditor(vaultId, syncConfig);
           });
         });

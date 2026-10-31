@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 // Request fullscreen only from a deliberate menu click (browser user activation).
 export function addFullscreenMenuItem(menu, obsidian, spanish, doc = document) {
   if (!doc.fullscreenEnabled || !doc.documentElement.requestFullscreen || !doc.exitFullscreen) return;
@@ -5,7 +7,7 @@ export function addFullscreenMenuItem(menu, obsidian, spanish, doc = document) {
   menu.addItem(item => item
     .setTitle(spanish
       ? (active ? "Salir de pantalla completa" : "Pantalla completa")
-      : (active ? "Exit fullscreen" : "Enter fullscreen"))
+      : (active ? translateIgnis("Exit fullscreen") : translateIgnis("Enter fullscreen")))
     .setIcon(active ? "minimize" : "maximize")
     .onClick(async () => {
       try {
@@ -14,7 +16,7 @@ export function addFullscreenMenuItem(menu, obsidian, spanish, doc = document) {
       } catch {
         new obsidian.Notice(spanish
           ? "El navegador no ha permitido cambiar el modo de pantalla completa."
-          : "The browser could not change fullscreen mode.");
+          : translateIgnis("The browser could not change fullscreen mode."));
       }
     }));
 }

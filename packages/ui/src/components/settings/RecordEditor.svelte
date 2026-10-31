@@ -1,4 +1,6 @@
 <script>
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
+
   import { createEventDispatcher, onMount, onDestroy } from "svelte";
   import { Plus, Trash2, X } from "lucide-svelte";
 
@@ -20,13 +22,13 @@
 
   function buildSummary(total, excludes, reincludes) {
     if (total === 0) {
-      return "No patterns yet";
+      return translateIgnis("No patterns yet");
     }
 
-    let text = `${excludes} rule${excludes === 1 ? "" : "s"}`;
+    let text = translateIgnis("{p0} rule{p1}", {p0: (excludes), p1: (excludes === 1 ? "" : "s")});
 
     if (reincludes > 0) {
-      text += ` · ${reincludes} re-include${reincludes === 1 ? "" : "s"}`;
+      text += translateIgnis(" · {p0} re-include{p1}", {p0: (reincludes), p1: (reincludes === 1 ? "" : "s")});
     }
 
     return text;
@@ -94,23 +96,23 @@
 <div class="backdrop" bind:this={backdropEl} on:click={onBackdrop}>
   <div class="panel">
     <div class="header">
-      <span class="title">{record ? "Edit rule set" : "New rule set"}</span>
-      <button class="close" type="button" title="Close" on:click={cancel}>
+      <span class="title">{record ? translateIgnis("Edit rule set") : translateIgnis("New rule set")}</span>
+      <button class="close" type="button" title="{translateIgnis("Close")}" on:click={cancel}>
         <X size={16} />
       </button>
     </div>
 
     <div class="body">
       <div class="field">
-        <span class="label">Name <span class="optional">optional</span></span>
+        <span class="label">{translateIgnis("Name ")}<span class="optional">optional</span></span>
         <input class="text-input" type="text" bind:value={name} />
       </div>
 
       <div class="patterns-head">
-        <span class="label">Patterns</span>
+        <span class="label">{translateIgnis("Patterns")}</span>
         <span class="legend">
           <span class="swatch"></span>
-          <span class="legend-label">! re-includes an excluded path</span>
+          <span class="legend-label">{translateIgnis("! re-includes an excluded path")}</span>
         </span>
       </div>
 
@@ -128,7 +130,7 @@
             <button
               class="trash"
               type="button"
-              title="Remove pattern"
+              title="{translateIgnis("Remove pattern")}"
               disabled={patterns.length === 1}
               on:click={() => removeRule(index)}
             >
@@ -138,8 +140,7 @@
         {/each}
 
         <button class="add-rule" type="button" on:click={addRule}>
-          <span class="plus">+</span> Add pattern
-        </button>
+          <span class="plus">+</span>{translateIgnis(" Add pattern\n        ")}</button>
       </div>
     </div>
 
@@ -147,17 +148,13 @@
       <span class="summary">{summary}</span>
 
       <div class="footer-actions">
-        <button class="cancel-btn" type="button" on:click={cancel}>
-          Cancel
-        </button>
+        <button class="cancel-btn" type="button" on:click={cancel}>{translateIgnis("\n          Cancel\n        ")}</button>
         <button
           class="save-btn"
           type="button"
           disabled={!canSave}
           on:click={save}
-        >
-          Save
-        </button>
+        >{translateIgnis("\n          Save\n        ")}</button>
       </div>
     </div>
   </div>

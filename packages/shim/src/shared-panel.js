@@ -1,10 +1,12 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import {addFieldHelp, errorBlock} from "./shared-ui.js";
 import { openShareDialog } from "./share-dialog.js";
 
 // The panel changes only the recipient's placement preference, never share grants.
 export function createSharedPanelApi(currentContext, request = fetch) {
   const session = currentContext();
-  const check = () => { if (!session || currentContext() !== session) throw new Error("Your session changed. Reload before continuing."); };
+  const check = () => { if (!session || currentContext() !== session) throw new Error(translateIgnis("Your session changed. Reload before continuing.")); };
   return async (input) => {
     check();
     const response = await request("/api/shares", {
@@ -15,7 +17,7 @@ export function createSharedPanelApi(currentContext, request = fetch) {
     check();
     const data = await response.json();
     check();
-    if (!response.ok) throw new Error(data.error || "Shared resources unavailable");
+    if (!response.ok) throw new Error(translateIgnis(data.error) || translateIgnis("Shared resources unavailable"));
     return data;
   };
 }
@@ -70,11 +72,11 @@ export function installSharedPanel(obsidian, app, sharedFiles, host = window) {
     if (!badge) return;
     const count = unread.pending().length;
     badge.textContent = String(count); badge.hidden = !count;
-    ribbon.setAttribute("aria-label", count ? `Shared (${count} new)` : "Shared");
+    ribbon.setAttribute("aria-label", count ? translateIgnis("Shared ({p0} new)", {p0: (count)}) : translateIgnis("Shared"));
   };
   class SharedView extends obsidian.ItemView {
     getViewType(){return type;}
-    getDisplayText(){return "Shared";}
+    getDisplayText(){return translateIgnis("Shared");}
     getIcon(){return "users";}
     async onOpen(){this.closed=false;await this.reload();}
     async onClose(){this.closed=true;this.observer?.disconnect();}
@@ -97,7 +99,7 @@ export function installSharedPanel(obsidian, app, sharedFiles, host = window) {
       this.observer?.disconnect();
       this.contentEl.replaceChildren();
       this.contentEl.style.padding="16px";
-      const heading=element("h3","Shared"),status=element("p","Loading shared resources…");status.setAttribute("role","status");
+      const heading=element("h3",translateIgnis("Shared")),status=element("p",translateIgnis("Loading shared resources…"));status.setAttribute("role","status");
       this.contentEl.append(heading,status);
       try {
         const data=await api();
@@ -107,52 +109,52 @@ export function installSharedPanel(obsidian, app, sharedFiles, host = window) {
         this.renderedIds = data.resources.filter(r=>!r.owned).map(r=>r.id);
         status.textContent="";
         const toolbar=element("div");toolbar.style.display="flex";toolbar.style.gap="8px";
-        const refresh=element("button","Refresh");refresh.onclick=()=>this.reload();
-        const manage=element("button","Manage sharing");manage.onclick=()=>{if(host.matchMedia("(display-mode: standalone)").matches || host.navigator.standalone===true)host.location.assign("/shares");else host.open("/shares","_blank","noopener");};
+        const refresh=element("button",translateIgnis("Refresh"));refresh.onclick=()=>this.reload();
+        const manage=element("button",translateIgnis("Manage sharing"));manage.onclick=()=>{if(host.matchMedia("(display-mode: standalone)").matches || host.navigator.standalone===true)host.location.assign("/shares");else host.open("/shares","_blank","noopener");};
         toolbar.append(refresh,manage);this.contentEl.append(toolbar);
         for(const owned of [false,true]) {
-          this.contentEl.append(element("h4",owned?"Shared from my vaults":"Shared with me"));
+          this.contentEl.append(element("h4",owned?translateIgnis("Shared from my vaults"):translateIgnis("Shared with me")));
           const resources=data.resources.filter(resource=>resource.owned===owned);
-          if(!resources.length)this.contentEl.append(element("p","No shared resources."));
+          if(!resources.length)this.contentEl.append(element("p",translateIgnis("No shared resources.")));
           for(const resource of resources){
             const card=element("section");Object.assign(card.style,{border:"1px solid var(--background-modifier-border)",borderRadius:"8px",padding:"12px",marginBottom:"12px"});
             const title=element("strong",resource.name);card.append(title);
             if (!owned && pending.has(resource.id)) {
               title.dataset.sharedId=resource.id;
               card.style.borderColor="var(--interactive-accent)";
-              const label=element("span","New");Object.assign(label.style,{color:"var(--text-accent)",marginLeft:"8px",fontSize:"var(--font-smallest)"});card.append(label);
+              const label=element("span",translateIgnis("New"));Object.assign(label.style,{color:"var(--text-accent)",marginLeft:"8px",fontSize:"var(--font-smallest)"});card.append(label);
             }
             if (!owned && !resource.destination) {
               // Placement is independent of unread state: keep the purple border for new items.
               card.style.backgroundColor="var(--background-secondary)";
-              const placement=element("span","Not placed");
-              placement.title="Choose a vault and save the location to place this resource.";
+              const placement=element("span",translateIgnis("Not placed"));
+              placement.title=translateIgnis("Choose a vault and save the location to place this resource.");
               Object.assign(placement.style,{display:"inline-block",marginLeft:"8px",padding:"2px 6px",borderRadius:"4px",fontSize:"var(--font-smallest)",fontWeight:"500",color:"var(--text-muted)",backgroundColor:"var(--background-modifier-hover)",verticalAlign:"middle"});
               card.append(placement);
             }
             if(owned){
-              card.append(element("p",(data.ownedVaults.find(v=>v.id===resource.vault)?.name || "Vault")+" / "+resource.path));
-              card.append(element("p",resource.available?"Available":"Unavailable"));
-              for(const grant of resource.grants)card.append(element("p",grant.login+" · "+(grant.role==="editor"?"Read / Write":"Read")));
+              card.append(element("p",(data.ownedVaults.find(v=>v.id===resource.vault)?.name || translateIgnis("Vault"))+" / "+resource.path));
+              card.append(element("p",resource.available?translateIgnis("Available"):translateIgnis("Unavailable")));
+              for(const grant of resource.grants)card.append(element("p",grant.login+" · "+(grant.role==="editor"?translateIgnis("Read / Write"):translateIgnis("Read"))));
             }else{
-              card.append(element("p",resource.owner+" · "+(resource.role==="editor"?"Read / Write":"Read")));
-              const label=element("label","Show in vault"),select=element("select");select.style.width="100%";select.style.marginTop="8px";
-              const none=element("option","Not placed — choose a vault");none.value="";select.append(none);
+              card.append(element("p",resource.owner+" · "+(resource.role==="editor"?translateIgnis("Read / Write"):translateIgnis("Read"))));
+              const label=element("label",translateIgnis("Show in vault")),select=element("select");select.style.width="100%";select.style.marginTop="8px";
+              const none=element("option",translateIgnis("Not placed — choose a vault"));none.value="";select.append(none);
               for(const vault of data.destinationVaults){const option=element("option",vault.name);option.value=vault.id;select.append(option);}
               select.value=resource.destination || "";label.append(select);card.append(label);
-              const folderLabel=element("label","Local path"),folder=element("input");folder.type="text";folder.value=resource.localPath || resource.name;folder.placeholder="Folder/local name";addFieldHelp(host,folderLabel,"Choose a local name, optionally inside an existing folder. This does not rename the original.");
+              const folderLabel=element("label",translateIgnis("Local path")),folder=element("input");folder.type="text";folder.value=resource.localPath || resource.name;folder.placeholder=translateIgnis("Folder/local name");addFieldHelp(host,folderLabel,translateIgnis("Choose a local name, optionally inside an existing folder. This does not rename the original."));
               Object.assign(folderLabel.style,{display:"block",marginTop:"12px"});Object.assign(folder.style,{width:"100%",marginTop:"6px"});folderLabel.append(folder);card.append(folderLabel);
-              const save=element("button","Save location");save.style.marginTop="12px";card.append(save);
+              const save=element("button",translateIgnis("Save location"));save.style.marginTop="12px";card.append(save);
               const error=errorBlock(element("p"));card.append(error);
               save.onclick=async()=>{save.disabled=true;error.textContent="";try{
                 await api({id:resource.id,vault:select.value || null,localPath:folder.value});await sharedFiles.refresh();await this.reload();
-              }catch(e){error.textContent=e.message;}finally{save.disabled=false;}};
+              }catch(e){error.textContent=translateIgnis(e.message);}finally{save.disabled=false;}};
             }
             this.contentEl.append(card);
           }
         }
         this.observeUnread();
-      }catch(error){errorBlock(status);status.textContent=error.message;}finally{this.loading=false;}
+      }catch(error){errorBlock(status);status.textContent=translateIgnis(error.message);}finally{this.loading=false;}
     }
   }
   class SharedPlugin extends obsidian.Plugin {
@@ -163,14 +165,14 @@ export function installSharedPanel(obsidian, app, sharedFiles, host = window) {
         if (!path || path.split("/").some(part => !part || part.startsWith(".")) || sharedFiles.owns(path) || host.__ignisAuth?.blocked) return;
         const current = host.__vaultList?.find(vault => vault.uuid === host.__currentVaultUuid);
         if (!current || current.membership !== "owner") return;
-        menu.addItem(item => item.setTitle("Share…").setIcon("share-2")
+        menu.addItem(item => item.setTitle(translateIgnis("Share…")).setIcon("share-2")
           .onClick(() => openShareDialog(obsidian, app, file, sharedFiles, host)));
       }));
       const restorer=createSharedViewRestorer(app.workspace,()=>console.warn("[ignis] Unable to restore Shared view"));
       this.register(()=>restorer.stop());
       this.registerEvent(app.workspace.on("layout-change",()=>restorer.schedule()));
       restorer.schedule();
-      ribbon=this.addRibbonIcon("users","Shared",async()=>{
+      ribbon=this.addRibbonIcon("users",translateIgnis("Shared"),async()=>{
         let leaf=app.workspace.getLeavesOfType(type)[0];
         if(!leaf){leaf=app.workspace.getLeftLeaf(false);if(!leaf)return;await leaf.setViewState({type,active:true});}
         await leaf.loadIfDeferred();
@@ -203,7 +205,7 @@ export function installSharedPanel(obsidian, app, sharedFiles, host = window) {
       void check();
     }
   }
-  const plugin=new SharedPlugin(app,{id:"ignis-shared-panel",name:"Shared",version:"1.0.0",minAppVersion:"1.0.0",author:"Ignis",description:"Shared resource placement"});
+  const plugin=new SharedPlugin(app,{id:"ignis-shared-panel",name:translateIgnis("Shared"),version:"1.0.0",minAppVersion:"1.0.0",author:"Ignis",description:translateIgnis("Shared resource placement")});
   plugin.load();
   host.addEventListener("ignis:auth-lost",()=>{for(const leaf of app.workspace.getLeavesOfType(type))leaf.detach();plugin.unload();},{once:true});
   return plugin;

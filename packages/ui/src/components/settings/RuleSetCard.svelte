@@ -1,4 +1,6 @@
 <script>
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
+
   import { createEventDispatcher, onMount, onDestroy, tick } from "svelte";
   import { Pencil, Trash2 } from "lucide-svelte";
 
@@ -109,7 +111,7 @@
 
 <div class="rule-set-card">
   <div class="head">
-    <span class="name">{record.name || "Unnamed rule set"}</span>
+    <span class="name">{record.name || translateIgnis("Unnamed rule set")}</span>
     <span class="meta">
       {patterns.length} pattern{patterns.length === 1 ? "" : "s"}
     </span>
@@ -118,7 +120,7 @@
       <button
         class="icon-btn edit"
         type="button"
-        title="Edit rule set"
+        title="{translateIgnis("Edit rule set")}"
         on:click={() => dispatch("edit")}
       >
         <Pencil size={14} />
@@ -127,7 +129,7 @@
       <button
         class="icon-btn del"
         type="button"
-        title="Remove rule set"
+        title="{translateIgnis("Remove rule set")}"
         on:click={() => dispatch("remove")}
       >
         <Trash2 size={14} />
@@ -145,9 +147,7 @@
             >
           {/each}
 
-          <button class="chip more" type="button" on:click={collapse}>
-            Show less
-          </button>
+          <button class="chip more" type="button" on:click={collapse}>{translateIgnis("\n            Show less\n          ")}</button>
         </div>
       {:else}
         <div class="chips nowrap">

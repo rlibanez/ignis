@@ -1,9 +1,11 @@
 <script>
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
+
   import { createEventDispatcher } from "svelte";
   import { Search } from "lucide-svelte";
 
   export let value = "";
-  export let placeholder = "Search";
+  export let placeholder = translateIgnis("Search");
 
   const dispatch = createEventDispatcher();
 

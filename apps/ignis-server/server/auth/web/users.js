@@ -1,9 +1,11 @@
 (() => {
+var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
+
   let providerName = "OpenID Connect";
   function setProviderName(name) {
     providerName = name || "OpenID Connect";
     for (const element of document.querySelectorAll("[data-provider-template]"))
-      element.textContent = element.dataset.providerTemplate.replaceAll("OpenID Connect", () => providerName);
+      element.textContent = translateIgnis(element.dataset.providerTemplate).replaceAll("OpenID Connect", () => providerName);
   }
 
   const status = document.getElementById("status");
@@ -48,8 +50,8 @@
   revokeButton.addEventListener("click", () => {
     if (locked || editBusy || !editing) return;
     document.getElementById("revoke-warning").textContent = editing.id === currentUserId
-      ? "Close all your Ignis sessions, including this one? You will need to sign in again. Your account and provider session are kept."
-      : "Close all Ignis sessions for this user? Their account status and provider session are kept. They can sign in again if the account is active.";
+      ? translateIgnis("Close all your Ignis sessions, including this one? You will need to sign in again. Your account and provider session are kept.")
+      : translateIgnis("Close all Ignis sessions for this user? Their account status and provider session are kept. They can sign in again if the account is active.");
     unlinkConfirmation.hidden = true;
     revokeConfirmation.hidden = false;
     confirmRevoke.focus();
@@ -69,7 +71,7 @@
     unlinkControl.tabIndex = needsPassword ? 0 : -1;
     if (needsPassword) {
       unlinkControl.setAttribute("role", "group");
-      unlinkControl.setAttribute("aria-label", `Unlink ${providerName}`);
+      unlinkControl.setAttribute("aria-label", translateIgnis("Unlink {p0}", {p0: (providerName)}));
       unlinkControl.setAttribute("aria-describedby", "unlink-help");
       unlinkButton.setAttribute("aria-describedby", "unlink-help");
     } else {
@@ -128,9 +130,9 @@
   const copyResetPassword = document.getElementById("copy-reset-password");
   function showCopyFeedback(copied) {
     copyResetPassword.classList.toggle("copied", copied);
-    copyResetPassword.title = copied ? "Copied!" : "Copy password";
+    copyResetPassword.title = copied ? translateIgnis("Copied!") : translateIgnis("Copy password");
     copyResetPassword.setAttribute("aria-label", copyResetPassword.title);
-    document.getElementById("copy-feedback").textContent = copied ? "Copied!" : "";
+    document.getElementById("copy-feedback").textContent = copied ? translateIgnis("Copied!") : "";
   }
   copyResetPassword.addEventListener("click", async () => {
     if (!resetDialog.open || !resetSecret.value || copyResetPassword.disabled) return;
@@ -148,7 +150,7 @@
       helper.value = resetSecret.value;
       helper.className = "clipboard-helper";
       helper.readOnly = true;
-      helper.setAttribute("aria-label", "Copy temporary password");
+      helper.setAttribute("aria-label", translateIgnis("Copy temporary password"));
       resetDialog.append(helper);
       try { helper.select(); copied = document.execCommand("copy"); }
       catch { /* Keep manual copying available if the browser rejects both APIs. */ }
@@ -156,7 +158,7 @@
     }
     if (resetDialog.open && resetTarget === target) {
       showCopyFeedback(copied);
-      resetStatus.textContent = copied ? "" : "Unable to copy automatically. Show the password and copy it manually.";
+      resetStatus.textContent = copied ? "" : translateIgnis("Unable to copy automatically. Show the password and copy it manually.");
     }
     copyResetPassword.disabled = false;
   });
@@ -170,7 +172,7 @@
     document.getElementById("reset-result").hidden = true;
     resetStatus.textContent = resetSecret.value = "";
     showCopyFeedback(false);
-    closeReset.textContent = "Cancel";
+    closeReset.textContent = translateIgnis("Cancel");
     resetDialog.showModal();
   });
   closeReset.addEventListener("click", () => { if (!resetBusy) resetDialog.close(); });
@@ -192,18 +194,18 @@
         body: JSON.stringify({ userId: resetTarget }),
       });
       if (locked || !resetDialog.open) return;
-      if (!response.ok) { resetStatus.textContent = "Unable to generate a temporary password. Check the account status or try again later."; return; }
+      if (!response.ok) { resetStatus.textContent = translateIgnis("Unable to generate a temporary password. Check the account status or try again later."); return; }
       const result = await response.json();
       resetSelf = result.signedOut;
       if (resetSelf) channel?.postMessage("lock");
       resetSecret.value = result.secret;
-      document.getElementById("reset-expiry").textContent = `Expires: ${new Date(result.expiresAt).toLocaleString()}. Single use.`;
+      document.getElementById("reset-expiry").textContent = translateIgnis("Expires: {p0}. Single use.", {p0: (new Date(result.expiresAt).toLocaleString())});
       document.getElementById("reset-prompt").hidden = true;
       document.getElementById("reset-result").hidden = false;
-      closeReset.textContent = "Done";
+      closeReset.textContent = translateIgnis("Done");
       resetSecret.focus(); resetSecret.select();
       if (!resetSelf) await refresh();
-    } catch { if (!locked && resetDialog.open) resetStatus.textContent = "The result could not be confirmed. Generate another temporary password to replace any previous one."; }
+    } catch { if (!locked && resetDialog.open) resetStatus.textContent = translateIgnis("The result could not be confirmed. Generate another temporary password to replace any previous one."); }
     finally { resetBusy = false; generateReset.disabled = closeReset.disabled = false; }
   });
   const passwordDialog = document.getElementById("password-dialog");
@@ -241,7 +243,7 @@
     event.preventDefault();
     if (locked || passwordBusy || !passwordTarget) return;
     if (passwordForm.elements.password.value !== passwordForm.elements.confirmation.value) {
-      passwordError("Passwords do not match.", passwordForm.elements.confirmation);
+      passwordError(translateIgnis("Passwords do not match."), passwordForm.elements.confirmation);
       return;
     }
     const target = passwordTarget;
@@ -259,13 +261,13 @@
       const result = await response.json();
       if (!response.ok) {
         const messages = {
-          PASSWORD_POLICY: "The password does not meet the password policy.",
-          LOCAL_PASSWORD_EXISTS: "This account already has a local password. Close this dialog and reload the list.",
-          USER_STATE_CHANGED: "Account changed. Close this dialog and reload the list.",
-          OIDC_NOT_LINKED: "This account no longer has a provider link. Reload the list.",
-          USER_NOT_FOUND: "Account no longer exists. Reload the list.",
+          PASSWORD_POLICY: translateIgnis("The password does not meet the password policy."),
+          LOCAL_PASSWORD_EXISTS: translateIgnis("This account already has a local password. Close this dialog and reload the list."),
+          USER_STATE_CHANGED: translateIgnis("Account changed. Close this dialog and reload the list."),
+          OIDC_NOT_LINKED: translateIgnis("This account no longer has a provider link. Reload the list."),
+          USER_NOT_FOUND: translateIgnis("Account no longer exists. Reload the list."),
         };
-        passwordError(messages[result.code] || (response.status === 429 ? "Too many attempts. Wait before trying again." : "Unable to set the password. Reload before trying again."));
+        passwordError(messages[result.code] || (response.status === 429 ? translateIgnis("Too many attempts. Wait before trying again.") : translateIgnis("Unable to set the password. Reload before trying again.")));
         return;
       }
       saved = true;
@@ -274,12 +276,12 @@
         channel?.postMessage("lock"); lock(); location.replace("/login"); return;
       }
       editDialog.close();
-      status.textContent = "Local password set. All user sessions closed; provider link kept.";
+      status.textContent = translateIgnis("Local password set. All user sessions closed; provider link kept.");
       await refresh();
     } catch {
       if (!locked) {
-        if (saved) status.textContent = "Password set, but the list could not be refreshed. Reload this page.";
-        else if (passwordDialog.open) passwordError("The result could not be confirmed. Reload before trying again.");
+        if (saved) status.textContent = translateIgnis("Password set, but the list could not be refreshed. Reload this page.");
+        else if (passwordDialog.open) passwordError(translateIgnis("The result could not be confirmed. Reload before trying again."));
       }
     } finally {
       passwordForm.elements.password.value = passwordForm.elements.confirmation.value = "";
@@ -311,7 +313,7 @@
     if (locked || deleteBusy || user.id === currentUserId) return;
     pendingUser = user.id; pendingDelete = true;
     if (!await checkRecentSession()) return;
-    deletionPlan = null; deleteForm.reset(); deleteStatus.textContent = "Loading deletion preview…";
+    deletionPlan = null; deleteForm.reset(); deleteStatus.textContent = translateIgnis("Loading deletion preview…");
     document.getElementById("delete-user-name").textContent = user.login;
     document.getElementById("delete-vaults").replaceChildren();
     deletionEnabled();
@@ -321,16 +323,16 @@
       const response = await deletionRequest({operation:"preview",userId:user.id});
       if (locked || !deleteDialog.open) return;
       const result = await response.json();
-      if (!response.ok) { deleteStatus.textContent = result.error || "Unable to load deletion preview."; return; }
+      if (!response.ok) { deleteStatus.textContent = translateIgnis(result.error) || translateIgnis("Unable to load deletion preview."); return; }
       deletionPlan = result;
-      const entries = result.progress.length ? result.progress : [{name:"No owned vaults",state:""}];
+      const entries = result.progress.length ? result.progress : [{name:translateIgnis("No owned vaults"),state:""}];
       for (const entry of entries) {
         const li = document.createElement("li");
         li.textContent = entry.name + (entry.state && entry.state !== "not-started" ? ` — ${entry.state}` : "");
         document.getElementById("delete-vaults").append(li);
       }
-      deleteStatus.textContent = result.started ? "Deletion was started. The account remains disabled. Review the progress before retrying. Completed vault deletions cannot be undone." : "";
-    } catch { if (!locked) deleteStatus.textContent = "Unable to load deletion preview. Close and try again."; }
+      deleteStatus.textContent = result.started ? translateIgnis("Deletion was started. The account remains disabled. Review the progress before retrying. Completed vault deletions cannot be undone.") : "";
+    } catch { if (!locked) deleteStatus.textContent = translateIgnis("Unable to load deletion preview. Close and try again."); }
     finally { deleteBusy = false; deletionEnabled(); }
   }
   deleteForm.addEventListener("submit", async event => {
@@ -339,22 +341,22 @@
     const snapshot = deletionPlan;
     deleteBusy = true; deletionEnabled(); deleteCancel.disabled = true;
     deleteForm.elements.deleteVaults.disabled = deleteForm.elements.confirmLogin.disabled = true;
-    deleteStatus.textContent = "Deleting… Do not close this page until the result is confirmed.";
+    deleteStatus.textContent = translateIgnis("Deleting… Do not close this page until the result is confirmed.");
     try {
       const response = await deletionRequest({operation:"delete",userId:snapshot.userId,revision:snapshot.revision,
         confirmLogin:deleteForm.elements.confirmLogin.value,deleteVaults:deleteForm.elements.deleteVaults.checked});
       if (locked || !deleteDialog.open) return;
       const result = await response.json();
-      if (response.ok) { deleteDialog.close(); status.textContent = "User deleted."; await refresh(); }
+      if (response.ok) { deleteDialog.close(); status.textContent = translateIgnis("User deleted."); await refresh(); }
       else {
         deletionPlan = null;
         deleteStatus.textContent = result.code === "DELETE_INCOMPLETE"
-          ? "Deletion is incomplete. The account remains disabled; some vaults may already be deleted. Close and reopen this dialog to review progress. " + (result.reason === "VAULT_BUSY" ? "Disable the vault’s server plugins before retrying." : result.reason === "VAULT_ALIAS" ? "Remove legacy vault aliases before retrying." : "Quarantined vaults require operator investigation before retrying.")
-          : result.error || "Deletion could not be confirmed. Close and reopen the preview before retrying.";
+          ? "Deletion is incomplete. The account remains disabled; some vaults may already be deleted. Close and reopen this dialog to review progress. " + (result.reason === "VAULT_BUSY" ? translateIgnis("Disable the vault’s server plugins before retrying.") : result.reason === "VAULT_ALIAS" ? translateIgnis("Remove legacy vault aliases before retrying.") : translateIgnis("Quarantined vaults require operator investigation before retrying."))
+          : translateIgnis(result.error) || translateIgnis("Deletion could not be confirmed. Close and reopen the preview before retrying.");
       }
     } catch {
       deletionPlan = null;
-      if (!locked) deleteStatus.textContent = "The result could not be confirmed. Close and reopen the preview before retrying; some deletions may have completed.";
+      if (!locked) deleteStatus.textContent = translateIgnis("The result could not be confirmed. Close and reopen the preview before retrying; some deletions may have completed.");
     } finally {
       deleteBusy = false; deleteCancel.disabled = false;
       deleteForm.elements.deleteVaults.disabled = deleteForm.elements.confirmLogin.disabled = false;
@@ -381,10 +383,10 @@
     if (editDialog.open) editDialog.close();
     reauthForm.reset();
     reauthStatus.textContent = "";
-    document.getElementById("reauth-user").textContent = `Signed in as ${activeSession.user.login}`;
+    document.getElementById("reauth-user").textContent = translateIgnis("Signed in as {p0}", {p0: (activeSession.user.login)});
     reauthForm.hidden = !activeSession.hasLocalPassword;
     reauthOidc.hidden = !activeSession.oidcLinked;
-    reauthOidc.textContent = `Continue with ${providerName}`;
+    reauthOidc.textContent = translateIgnis("Continue with {p0}", {p0: (providerName)});
     if (!reauthDialog.open) reauthDialog.showModal();
   }
   document.getElementById("cancel-reauth").addEventListener("click", () => {
@@ -414,7 +416,7 @@
         body: JSON.stringify(oidc ? {} : { password: reauthForm.elements.password.value }),
       });
       if (!response.ok || locked) {
-        reauthStatus.textContent = response.status === 429 ? "Too many attempts. Wait before trying again." : "Unable to confirm your identity. Check your password or try again.";
+        reauthStatus.textContent = response.status === 429 ? translateIgnis("Too many attempts. Wait before trying again.") : translateIgnis("Unable to confirm your identity. Check your password or try again.");
         return;
       }
       const result = await response.json();
@@ -429,7 +431,7 @@
         reauthDialog.close();
         await resumeEdit();
       }
-    } catch { if (!locked) reauthStatus.textContent = "Unable to confirm your identity. Try again."; }
+    } catch { if (!locked) reauthStatus.textContent = translateIgnis("Unable to confirm your identity. Try again."); }
     finally { reauthForm.reset(); reauthBusy = false; submit.disabled = reauthOidc.disabled = false; }
   }
   reauthForm.addEventListener("submit", event => { event.preventDefault(); confirmIdentity(false); });
@@ -441,12 +443,13 @@
       if (locked) return;
       if (!response.ok) throw new Error();
       const session = await response.json();
+      window.IgnisI18n?.useAccount(session.user.id);
       if (locked) return;
       if (session.sessionId !== context) { lock(); return; }
       activeSession = session;
       if (!session.recentAuthentication) { requireReauthentication(); return; }
     } catch {
-      if (!locked) status.textContent = "Unable to check your session. Please try again.";
+      if (!locked) status.textContent = translateIgnis("Unable to check your session. Please try again.");
       return;
     }
     return !locked;
@@ -485,7 +488,7 @@
     area.hidden = true;
     list.replaceChildren();
     clearPasswords();
-    status.textContent = "Session changed or expired. Return to Account and sign in again.";
+    status.textContent = translateIgnis("Session changed or expired. Return to Account and sign in again.");
   }
   const channel = typeof BroadcastChannel === "function"
     ? new BroadcastChannel("ignis-auth") : null;
@@ -523,18 +526,18 @@
     editActions.clear();
     deleteActions.clear();
     setProviderName(data.oidcButtonText);
-    unlinkSection.setAttribute("aria-label", `${providerName} linking`);
+    unlinkSection.setAttribute("aria-label", translateIgnis("{p0} linking", {p0: (providerName)}));
     const showOidc = data.oidcAvailable === true;
     document.getElementById("oidc-column").hidden = !showOidc;
     for (const user of data.users) {
       const row = document.createElement("tr");
-      const trustLabels = { unverified: "Unverified", admin_confirmed: "Verified by admin", oidc_verified: `Verified by ${providerName}` };
-      const values = [user.login, user.email || "—", user.email ? trustLabels[user.email_trust] : "—", user.role, user.status];
-      if (showOidc) values.push(user.oidcLinked === true ? "Linked" : "Not linked");
+      const trustLabels = { unverified: translateIgnis("Unverified"), admin_confirmed: translateIgnis("Verified by admin"), oidc_verified: translateIgnis("Verified by {p0}", {p0: (providerName)}) };
+      const values = [user.login, user.email || "—", user.email ? trustLabels[user.email_trust] : "—", translateIgnis(user.role === "admin" ? "Administrator" : "User"), translateIgnis(user.status === "active" ? "Active" : "Disabled")];
+      if (showOidc) values.push(user.oidcLinked === true ? translateIgnis("Linked") : translateIgnis("Not linked"));
       for (const [index, value] of values.entries()) {
         const cell = document.createElement(index === 0 ? "th" : "td");
         if (index === 0) cell.scope = "row";
-        cell.dataset.label = ["Username", "Email", "Email verification", "Role", "Status", providerName][index];
+        cell.dataset.label = [translateIgnis("Username"), translateIgnis("Email"), translateIgnis("Email verification"), translateIgnis("Role"), translateIgnis("Status"), providerName][index];
         const label = document.createElement("span");
         label.textContent = value;
         if (index > 1) label.className = "badge";
@@ -543,7 +546,7 @@
       }
       const actions = document.createElement("td");
       actions.className = "actions";
-      actions.dataset.label = "Actions";
+      actions.dataset.label = translateIgnis("Actions");
       for (const [name, paths] of [
         ["Edit", ["M12 20h9", "M16.5 3.5a2.1 2.1 0 0 1 3 3L9 17l-4 1 1-4Z"]],
         ["Delete", ["M3 6h18", "M9 6V4h6v2", "M5 6l1 14h12l1-14", "M10 10v6", "M14 10v6"]],
@@ -552,8 +555,8 @@
         action.type = "button";
         action.className = "icon-button";
         action.disabled = name === "Delete" && user.id === currentUserId;
-        action.title = name === "Edit" ? "Edit account" : "Delete account";
-        action.setAttribute("aria-label", `${name} ${user.login}`);
+        action.title = name === "Edit" ? translateIgnis("Edit account") : translateIgnis("Delete account");
+        action.setAttribute("aria-label", `${translateIgnis(name)} ${user.login}`);
         if (name === "Delete") {
           deleteActions.set(user.id, action);
           action.addEventListener("click", () => openDelete(user));
@@ -583,7 +586,7 @@
           editForm.elements.status.disabled = ownAccount;
           editForm.elements.role.disabled = ownAccount;
           editButton.disabled = false;
-          editStatus.textContent = ownAccount ? "You cannot disable your own account or change your own role." : "";
+          editStatus.textContent = ownAccount ? translateIgnis("You cannot disable your own account or change your own role.") : "";
           editDialog.showModal();
         });
         const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -604,13 +607,13 @@
       list.append(row);
     }
     document.getElementById("password-policy").textContent = document.getElementById("policy").textContent =
-      `Password: at least ${data.passwordPolicy.minLength} characters and ${data.passwordPolicy.minSpecialChars} punctuation/symbol characters.`;
+      translateIgnis("Password: at least {p0} characters and {p1} punctuation/symbol characters.", {p0: (data.passwordPolicy.minLength), p1: (data.passwordPolicy.minSpecialChars)});
   }
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (locked || button.disabled) return;
     if (form.elements.password.value !== form.elements.confirmation.value) {
-      createStatus.textContent = "Passwords do not match.";
+      createStatus.textContent = translateIgnis("Passwords do not match.");
       clearPasswords();
       return;
     }
@@ -627,18 +630,18 @@
       if (locked) return;
       if (!response.ok) {
         createStatus.textContent = response.status === 429
-          ? "Too many attempts. Wait before trying again."
-          : "Unable to create user. Check username/email availability, email confirmation and password policy.";
+          ? translateIgnis("Too many attempts. Wait before trying again.")
+          : translateIgnis("Unable to create user. Check username/email availability, email confirmation and password policy.");
         return;
       }
       created = true;
       dialog.close();
-      status.textContent = "User created.";
+      status.textContent = translateIgnis("User created.");
       await refresh();
     } catch {
       if (!locked) {
-        if (created) status.textContent = "User created, but the list could not be refreshed. Reload this page.";
-        else createStatus.textContent = "Request could not be confirmed. Close this dialog and reload the list before trying again.";
+        if (created) status.textContent = translateIgnis("User created, but the list could not be refreshed. Reload this page.");
+        else createStatus.textContent = translateIgnis("Request could not be confirmed. Close this dialog and reload the list before trying again.");
       }
     } finally {
       clearPasswords();
@@ -665,19 +668,19 @@
       if (!response.ok) {
         const data = await response.json();
         const messages = {
-          INVALID_EMAIL: "Enter a valid email; confirmation requires an address.",
-          EMAIL_IN_USE: "This email is already assigned to another account.",
-          LAST_ADMIN: "The last active administrator cannot be disabled or demoted.",
-          SELF_ROLE_CHANGE: "You cannot change your own role.",
-          INVALID_ROLE: "Choose a valid account role.",
-          ADMIN_CONFIRMATION_REQUIRED: "Confirm granting administrator access.",
-          SELF_DISABLE: "You cannot disable your own account or change your own role.",
-          USER_STATE_CHANGED: "Account changed. Close this dialog and reload the page.",
-          USER_DELETION_IN_PROGRESS: "Deletion is in progress. Close this editor and open Delete account to review its progress.",
-          USER_NOT_FOUND: "Account no longer exists. Reload the page.",
+          INVALID_EMAIL: translateIgnis("Enter a valid email; confirmation requires an address."),
+          EMAIL_IN_USE: translateIgnis("This email is already assigned to another account."),
+          LAST_ADMIN: translateIgnis("The last active administrator cannot be disabled or demoted."),
+          SELF_ROLE_CHANGE: translateIgnis("You cannot change your own role."),
+          INVALID_ROLE: translateIgnis("Choose a valid account role."),
+          ADMIN_CONFIRMATION_REQUIRED: translateIgnis("Confirm granting administrator access."),
+          SELF_DISABLE: translateIgnis("You cannot disable your own account or change your own role."),
+          USER_STATE_CHANGED: translateIgnis("Account changed. Close this dialog and reload the page."),
+          USER_DELETION_IN_PROGRESS: translateIgnis("Deletion is in progress. Close this editor and open Delete account to review its progress."),
+          USER_NOT_FOUND: translateIgnis("Account no longer exists. Reload the page."),
         };
         editStatus.textContent = messages[data.code] || (response.status === 429
-          ? "Too many attempts. Wait before trying again." : "Unable to update the account.");
+          ? translateIgnis("Too many attempts. Wait before trying again.") : translateIgnis("Unable to update the account."));
         return;
       }
       const result = await response.json();
@@ -689,12 +692,12 @@
       }
       saved = true;
       editDialog.close();
-      status.textContent = "Account updated.";
+      status.textContent = translateIgnis("Account updated.");
       await refresh();
     } catch {
       if (!locked) {
-        if (saved) status.textContent = "Account updated, but the list could not be refreshed. Reload this page.";
-        else editStatus.textContent = "Update could not be confirmed. Reload the page before trying again.";
+        if (saved) status.textContent = translateIgnis("Account updated, but the list could not be refreshed. Reload this page.");
+        else editStatus.textContent = translateIgnis("Update could not be confirmed. Reload the page before trying again.");
       }
     } finally {
       editBusy = false;
@@ -720,11 +723,11 @@
       if (!response.ok) {
         const failure = await response.json();
         editStatus.textContent = failure.code === "LOCAL_PASSWORD_REQUIRED"
-          ? "Cannot unlink: this account needs a local password first."
+          ? translateIgnis("Cannot unlink: this account needs a local password first.")
           : failure.code === "OIDC_NOT_LINKED"
-            ? "The link has already changed. Close this dialog and reload the page."
-            : response.status === 429 ? "Too many attempts. Wait before trying again."
-              : "Unable to complete the operation.";
+            ? translateIgnis("The link has already changed. Close this dialog and reload the page.")
+            : response.status === 429 ? translateIgnis("Too many attempts. Wait before trying again.")
+              : translateIgnis("Unable to complete the operation.");
         return;
       }
       const result = await response.json();
@@ -737,11 +740,11 @@
       revokeConfirmation.hidden = unlinkConfirmation.hidden = true;
       if (unlink) {
         editDialog.close();
-        status.textContent = `${providerName} unlinked. All Ignis sessions closed.`;
+        status.textContent = translateIgnis("{p0} unlinked. All Ignis sessions closed.", {p0: (providerName)});
         await refresh();
-      } else editStatus.textContent = "All Ignis sessions closed. Account status unchanged.";
+      } else editStatus.textContent = translateIgnis("All Ignis sessions closed. Account status unchanged.");
     } catch {
-      if (!locked) editStatus.textContent = "The result could not be confirmed. Reload before trying again.";
+      if (!locked) editStatus.textContent = translateIgnis("The result could not be confirmed. Reload before trying again.");
     } finally {
       editBusy = false;
       editButton.disabled = false;
@@ -761,8 +764,9 @@
       const response = await fetch("/api/auth/session", { cache: "no-store", credentials: "same-origin" });
       if (!response.ok) { lock(); return; }
       const session = await response.json();
+      window.IgnisI18n?.useAccount(session.user.id);
       if (session.user.role !== "admin") {
-        status.textContent = "Administrator access required.";
+        status.textContent = translateIgnis("Administrator access required.");
         return;
       }
       context = session.sessionId;
@@ -786,7 +790,7 @@
         }
       }
     } catch {
-      if (!locked) status.textContent = "Unable to load users. Reload to try again.";
+      if (!locked) status.textContent = translateIgnis("Unable to load users. Reload to try again.");
     }
   }
   start();

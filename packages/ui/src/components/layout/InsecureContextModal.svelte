@@ -1,4 +1,6 @@
 <script>
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
+
   import { createEventDispatcher } from "svelte";
   import { TriangleAlert } from "lucide-svelte";
   import Modal from "./Modal.svelte";
@@ -14,7 +16,7 @@
 </script>
 
 <Modal
-  title="Insecure connection"
+  title="{translateIgnis("Insecure connection")}"
   width="700px"
   closeOnOverlayClick={false}
   bind:this={modalRef}
@@ -25,54 +27,45 @@
     <div class="callout">
       <span class="callout-icon"><TriangleAlert size="1.25rem" /></span>
       <div class="callout-text">
-        <p class="callout-title">
-          Obsidian is partially broken on this connection.
-        </p>
-        <p>
-          The browser blocks some APIs from insecure pages, so some of
-          Obsidian's features are broken as a result. Please use one of these
-          fixes in order to get a properly functioning app:
-        </p>
+        <p class="callout-title">{translateIgnis("\n          Obsidian is partially broken on this connection.\n        ")}</p>
+        <p>{translateIgnis("\n          The browser blocks some APIs from insecure pages, so some of\n          Obsidian's features are broken as a result. Please use one of these\n          fixes in order to get a properly functioning app:\n        ")}</p>
       </div>
     </div>
 
     <section class="fix">
       <div class="fix-head">
-        <span class="fix-title">Serve over HTTPS</span>
-        <span class="badge badge-accent">Recommended</span>
+        <span class="fix-title">{translateIgnis("Serve over HTTPS")}</span>
+        <span class="badge badge-accent">{translateIgnis("Recommended")}</span>
       </div>
-      <p>
-        Serve Ignis over HTTPS with <code>tailscale serve</code> or a TLS
-        reverse proxy. Setup is covered in the
-        <a
+      <p>{translateIgnis("\n        Serve Ignis over HTTPS with ")}<code>tailscale serve</code>{translateIgnis(" or a TLS\n        reverse proxy. Setup is covered in the\n        ")}<a
           href="https://ignis.thiefling.com/docs/security/remote-access/#running-without-tls"
           target="_blank"
-          rel="noopener">remote access guide</a
+          rel="noopener">{translateIgnis("remote access guide")}</a
         >.
       </p>
     </section>
 
     <section class="fix">
       <div class="fix-head">
-        <span class="fix-title">Treat this origin as secure</span>
-        <span class="badge">This browser only</span>
+        <span class="fix-title">{translateIgnis("Treat this origin as secure")}</span>
+        <span class="badge">{translateIgnis("This browser only")}</span>
       </div>
       <ol class="steps">
         <li>
           <span class="num">1</span>
-          <span class="step-label">Open the Chrome flag</span>
+          <span class="step-label">{translateIgnis("Open the Chrome flag")}</span>
           <span class="field"
             >chrome://flags/#unsafely-treat-insecure-origin-as-secure</span
           >
         </li>
         <li>
           <span class="num">2</span>
-          <span class="step-label">Add this origin to the list</span>
+          <span class="step-label">{translateIgnis("Add this origin to the list")}</span>
           <span class="field">{origin}</span>
         </li>
         <li>
           <span class="num">3</span>
-          <span class="step-label">Relaunch Chrome</span>
+          <span class="step-label">{translateIgnis("Relaunch Chrome")}</span>
         </li>
       </ol>
     </section>
@@ -80,9 +73,7 @@
 
   <svelte:fragment slot="footer">
     <div class="footer">
-      <Button variant="primary" on:click={() => modalRef.dismiss()}>
-        Continue
-      </Button>
+      <Button variant="primary" on:click={() => modalRef.dismiss()}>{translateIgnis("\n        Continue\n      ")}</Button>
     </div>
   </svelte:fragment>
 </Modal>

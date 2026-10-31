@@ -1,9 +1,11 @@
 (() => {
+var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
+
   let providerName = "OpenID Connect";
   function setProviderName(name) {
     providerName = name || "OpenID Connect";
     for (const element of document.querySelectorAll("[data-provider-template]"))
-      element.textContent = element.dataset.providerTemplate.replaceAll("OpenID Connect", () => providerName);
+      element.textContent = translateIgnis(element.dataset.providerTemplate).replaceAll("OpenID Connect", () => providerName);
   }
 
   const form = document.getElementById("login-form");
@@ -21,34 +23,36 @@
   document.getElementById("cancel-reauth").addEventListener("click", () => reauthDialog.close());
   if (accountPage) {
     document.body.classList.add("account-page");
-    document.title = "Account – Ignis";
-    document.querySelector("h1").textContent = "Account";
+    document.title = translateIgnis("Account – Ignis");
+    document.querySelector("title").setAttribute("data-i18n", translateIgnis("Account – Ignis"));
+    document.querySelector("h1").textContent = translateIgnis("Account");
+    document.querySelector("h1").setAttribute("data-i18n", translateIgnis("Account"));
   }
   const rateLimitMessage = "Too many requests or sign-in attempts. Access is temporarily limited. Wait before trying again and avoid repeatedly reloading the page.";
   async function beginOidc(link) {
     if (oidcButton.disabled || linkButton.disabled) return;
     oidcButton.disabled = linkButton.disabled = true;
     status.classList.remove("auth-error");
-    status.textContent = "Preparing secure sign-in…";
+    status.textContent = translateIgnis("Preparing secure sign-in…");
     try {
       channel?.postMessage("lock");
       const response = await window.ignisOidcStart({
         clear: clearBrowserData,
         request: signal => {
-          status.textContent = `Connecting to ${providerName}…`;
+          status.textContent = translateIgnis("Connecting to {p0}…", {p0: (providerName)});
           return request(link ? "/api/auth/oidc/link" : "/api/auth/oidc/start", link ? {} : {rememberMe: document.getElementById("remember-me").checked}, signal);
         },
       });
       if (response.status === 429) {
         status.classList.add("auth-error");
-        status.textContent = rateLimitMessage;
+        status.textContent = translateIgnis(rateLimitMessage);
         oidcButton.disabled = linkButton.disabled = false;
         return;
       }
       if (response.status === 403 &&
           response.body.code === "REAUTH_REQUIRED") {
         oidcButton.disabled = linkButton.disabled = false;
-        status.textContent = "Confirm your identity before linking your account.";
+        status.textContent = translateIgnis("Confirm your identity before linking your account.");
         reauthDialog.showModal();
         return;
       }
@@ -61,10 +65,10 @@
     } catch (error) {
       status.classList.add("auth-error");
       status.textContent = error.stage === "storage"
-        ? "Browser data cleanup did not complete. Close other Ignis tabs, reload this page and try again. No sign-in request was sent."
+        ? translateIgnis("Browser data cleanup did not complete. Close other Ignis tabs, reload this page and try again. No sign-in request was sent.")
         : error.code === "OIDC_START_TIMEOUT"
-          ? `The sign-in request timed out. Ignis or ${providerName} did not respond in time. Please try again later.`
-          : `Unable to start ${providerName} sign-in. Please try again later.`;
+          ? translateIgnis("The sign-in request timed out. Ignis or {p0} did not respond in time. Please try again later.", {p0: (providerName)})
+          : translateIgnis("Unable to start {p0} sign-in. Please try again later.", {p0: (providerName)});
     } finally {
       oidcButton.disabled = linkButton.disabled = false;
     }
@@ -151,8 +155,8 @@
       });
       if (!response.ok) {
         showLoginError(response.status === 429 ? rateLimitMessage
-          : response.status === 401 ? "Incorrect username or password."
-            : "Unable to sign in. Please try again later.", response.status === 401);
+          : response.status === 401 ? translateIgnis("Incorrect username or password.")
+            : translateIgnis("Unable to sign in. Please try again later."), response.status === 401);
         return;
       }
       const session = await response.json();
@@ -161,7 +165,7 @@
       else if (accountPage) location.replace("/account");
       else location.replace("/");
     } catch {
-      showLoginError("Unable to sign in. Close other Ignis tabs and try again.");
+      showLoginError(translateIgnis("Unable to sign in. Close other Ignis tabs and try again."));
     } finally {
       form.elements.password.value = "";
       button.disabled = false;
@@ -185,9 +189,9 @@
     } catch {
       status.classList.add("auth-error");
       status.textContent = logoutConfirmed
-        ? "You are signed out. Close other Ignis tabs, then retry cleanup to remove this account's local browser data."
-        : "Unable to confirm sign-out. Please try again.";
-      logout.textContent = logoutConfirmed ? "Retry cleanup" : "Sign out";
+        ? translateIgnis("You are signed out. Close other Ignis tabs, then retry cleanup to remove this account's local browser data.")
+        : translateIgnis("Unable to confirm sign-out. Please try again.");
+      logout.textContent = logoutConfirmed ? translateIgnis("Retry cleanup") : translateIgnis("Sign out");
       logout.disabled = false;
     }
   });
@@ -196,7 +200,7 @@
     try {
       const response = await fetch("/api/auth/status", { cache: "no-store" });
       if (response.status === 429) {
-        status.textContent = "Too many requests. Wait one minute before reloading this page. Your account has not been disabled.";
+        status.textContent = translateIgnis("Too many requests. Wait one minute before reloading this page. Your account has not been disabled.");
         return;
       }
       if (!response.ok) throw new Error();
@@ -224,9 +228,11 @@
       });
       if (current.ok) {
         const session = await current.json();
+        window.IgnisI18n?.useAccount(session.user.id);
+        setProviderName(installation.oidcButtonText);
         document.getElementById("change-password").hidden = !accountPage || !session.hasLocalPassword;
         document.getElementById("password-policy").textContent =
-          `At least ${session.passwordPolicy.minLength} characters, including ${session.passwordPolicy.minSpecialChars} punctuation or symbol characters.`;
+          translateIgnis("At least {p0} characters, including {p1} punctuation or symbol characters.", {p0: (session.passwordPolicy.minLength), p1: (session.passwordPolicy.minSpecialChars)});
         if (intent) form.elements.login.value = session.user.login;
         if (outcome === "success" && ["users", "link"].includes(returnIntent)) {
           location.replace(destination(returnIntent));
@@ -248,41 +254,41 @@
         linkButton.disabled = false;
         if (accountPage) {
           form.elements.login.value = session.user.login;
-          button.textContent = "Sign in again";
+          button.textContent = translateIgnis("Sign in again");
         }
         status.textContent =
-          accountPage ? "" : "You are signed in.";
+          accountPage ? "" : translateIgnis("You are signed in.");
       } else if (current.status === 401) {
         if (accountPage) {
           location.replace("/login");
           return;
         }
         status.textContent = new URL(location.href).searchParams.get("password") === "changed"
-          ? "Password changed. All Ignis sessions have been closed. Sign in with your new password."
+          ? translateIgnis("Password changed. All Ignis sessions have been closed. Sign in with your new password.")
           : "";
       }
       else {
         status.textContent = current.status === 429
-          ? "Too many requests. Wait one minute before trying again. Avoid repeatedly reloading the page."
-          : "Unable to check your session. Reload or sign in again.";
+          ? translateIgnis("Too many requests. Wait one minute before trying again. Avoid repeatedly reloading the page.")
+          : translateIgnis("Unable to check your session. Reload or sign in again.");
         return;
       }
       if (outcome === "failed")
         status.textContent =
-          `${providerName} sign-in failed. Please start again or contact your administrator.`;
+          translateIgnis("{p0} sign-in failed. Please start again or contact your administrator.", {p0: (providerName)});
       if (intent && outcome !== "failed") {
         status.textContent = intent === "users"
-          ? "Confirm your identity to manage users. You will return to Users after signing in."
-          : `Sign in again before linking your ${providerName} account.`;
-        document.querySelector("h1").textContent = "Sign in again";
-        button.textContent = "Sign in again";
+          ? translateIgnis("Confirm your identity to manage users. You will return to Users after signing in.")
+          : translateIgnis("Sign in again before linking your {p0} account.", {p0: (providerName)});
+        document.querySelector("h1").textContent = translateIgnis("Sign in again");
+        button.textContent = translateIgnis("Sign in again");
       }
       form.hidden = accountPage;
       if (accountPage) oidcButton.hidden = true;
     } catch {
       status.textContent = installationChecked
-        ? "Unable to check your session. Reload or sign in again."
-        : "Unable to check installation. Reload to try again.";
+        ? translateIgnis("Unable to check your session. Reload or sign in again.")
+        : translateIgnis("Unable to check installation. Reload to try again.");
     }
   }
   for (const toggle of document.querySelectorAll(".setup-help-toggle")) {
@@ -352,7 +358,7 @@
     if (submit.disabled) return;
     clearPasswordErrors();
     if (passwordForm.elements.newPassword.value !== passwordForm.elements.confirmation.value) {
-      showPasswordError("New passwords do not match.", "confirmation");
+      showPasswordError(translateIgnis("New passwords do not match."), "confirmation");
       return;
     }
     submit.disabled = passwordCancel.disabled = true;
@@ -367,11 +373,11 @@
         if (response.status === 400 && failure.code === "INVALID_PASSWORD") {
           preserveNewPassword = true;
           passwordForm.elements.currentPassword.value = "";
-          showPasswordError("The current password is incorrect.", "currentPassword");
+          showPasswordError(translateIgnis("The current password is incorrect."), "currentPassword");
         } else {
           showPasswordError(response.status === 429 ? rateLimitMessage
             : response.status === 400 ? failure.error
-              : "Unable to change your password. Sign in again before retrying.",
+              : translateIgnis("Unable to change your password. Sign in again before retrying."),
             ["PASSWORD_POLICY", "PASSWORD_UNCHANGED"].includes(failure.code) ? "newPassword" : null);
         }
         return;
@@ -380,7 +386,7 @@
       try { await clearBrowserData(); } catch { /* Server sessions are already revoked. */ }
       location.replace("/login?password=changed");
     } catch {
-      showPasswordError("The change could not be confirmed. Sign in again before retrying.");
+      showPasswordError(translateIgnis("The change could not be confirmed. Sign in again before retrying."));
     } finally {
       if (!preserveNewPassword) clearPasswordFields();
       submit.disabled = passwordCancel.disabled = false;

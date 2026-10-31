@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import {
   registerReadTransform,
   registerWriteTransform,
@@ -125,7 +127,7 @@ function notify(Notice) {
   }
 
   noticeShown = true;
-  new Notice(NOTICE_TEXT);
+  new Notice(translateIgnis(NOTICE_TEXT));
 }
 
 export function installPopoutOverrides(obsidian) {

@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import { Plugin, TFile, TFolder } from "obsidian";
 import {
   showFilePicker,
@@ -54,7 +56,7 @@ class IgnisBridgePlugin extends Plugin {
       installReadingLock(this);
     }
 
-    this.addRibbonIcon("upload", "Upload file", () => {
+    this.addRibbonIcon("upload", translateIgnis("Upload file"), () => {
       showFilePicker(this.app);
     });
 

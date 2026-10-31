@@ -1,4 +1,6 @@
 (() => {
+var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
+
   const nativeFetch = window.fetch.bind(window);
   const XHR = window.XMLHttpRequest;
   const nativeOpen = XHR.prototype.open;
@@ -31,12 +33,12 @@
     );
   }
   function lock(
-    message = "Your session has ended or changed. Sign in again to continue.",
+    message = translateIgnis("Your session has ended or changed. Sign in again to continue."),
     vaultLost = false,
   ) {
     if (blocked) return;
     blocked = true;
-    document.title = vaultLost ? "Vault unavailable" : "Sign in to Ignis";
+    document.title = vaultLost ? translateIgnis("Vault unavailable") : translateIgnis("Sign in to Ignis");
     csrf = null;
     const snapshot = [...(window.__ignis?.writes?.snapshotPending?.() || [])];
     // Include editor text that has not reached the write queue yet.
@@ -59,12 +61,12 @@
     panel.style.cssText =
       "max-width:32rem;margin:3rem auto;padding:2rem;font:16px system-ui";
     const heading = document.createElement("h1");
-    heading.textContent = vaultLost ? "Vault unavailable" : "Session locked";
+    heading.textContent = vaultLost ? translateIgnis("Vault unavailable") : translateIgnis("Session locked");
     const text = document.createElement("p");
     text.textContent = message;
     const link = document.createElement("a");
     link.href = vaultLost ? "/?manager=1" : "/login";
-    link.textContent = vaultLost ? "Open Vault Manager" : "Sign in";
+    link.textContent = vaultLost ? translateIgnis("Open Vault Manager") : translateIgnis("Sign in");
     const actionStyle =
       "box-sizing:border-box;display:flex;align-items:center;justify-content:center;width:100%;height:auto;min-height:2.75rem;padding:0.625rem 1rem;border:1px solid var(--background-modifier-border,#555);border-radius:6px;background:var(--interactive-normal,#333);color:var(--text-normal,#eee);font:inherit;font-weight:600;text-align:center;text-decoration:none;white-space:normal;cursor:pointer;box-shadow:none";
     link.style.cssText = actionStyle;
@@ -74,9 +76,9 @@
     if (snapshot.length) {
       const warning = document.createElement("p");
       warning.textContent =
-        "Some writes were not confirmed. Download them before leaving this page; they will not be sent under a different session.";
+        translateIgnis("Some writes were not confirmed. Download them before leaving this page; they will not be sent under a different session.");
       const save = document.createElement("button");
-      save.textContent = "Download unconfirmed writes";
+      save.textContent = translateIgnis("Download unconfirmed writes");
       save.style.cssText = actionStyle;
       save.onclick = () => {
         const url = URL.createObjectURL(
@@ -98,7 +100,7 @@
     document.body.append(panel);
   }
   function vaultUnavailable() {
-    lock("This vault was removed, renamed or made unavailable. Saving has stopped. Download any unconfirmed changes before returning to the Vault Manager.", true);
+    lock(translateIgnis("This vault was removed, renamed or made unavailable. Saving has stopped. Download any unconfirmed changes before returning to the Vault Manager."), true);
   }
   async function checkVault() {
     const response = await nativeFetch("/api/vault/list", {
@@ -126,27 +128,28 @@
         cache: "no-store",
       });
     } catch {
-      throw Object.assign(new Error("Session check unavailable"), { transient: true });
+      throw Object.assign(new Error(translateIgnis("Session check unavailable")), { transient: true });
     }
     if (!response.ok)
-      throw Object.assign(new Error("Session unavailable"), {
+      throw Object.assign(new Error(translateIgnis("Session unavailable")), {
         transient: response.status === 429 || response.status >= 500,
       });
     const state = await response.json();
+    if (state.user) window.IgnisI18n?.useAccount(state.user.id);
     if (
       !["admin", "user"].includes(state.user.role) ||
       (sessionId && state.sessionId !== sessionId) ||
       (userId && state.user.id !== userId) ||
       typeof state.user.id !== "string" || !state.user.id
     )
-      throw new Error("Session changed");
+      throw new Error(translateIgnis("Session changed"));
     sessionId = state.sessionId;
     userId = state.user.id;
     role = state.user.role;
     return state;
   }
   async function token() {
-    if (blocked) throw new Error("Session locked");
+    if (blocked) throw new Error(translateIgnis("Session locked"));
     if (csrf && Date.now() - csrfAt < 5 * 60000) return csrf;
     if (!refresh)
       refresh = (async () => {
@@ -157,7 +160,7 @@
         });
         if (!response.ok) throw new Error("CSRF unavailable");
         const value = (await response.json()).csrfToken;
-        if (blocked) throw new Error("Session locked");
+        if (blocked) throw new Error(translateIgnis("Session locked"));
         csrf = value;
         csrfAt = Date.now();
         return csrf;
@@ -173,7 +176,7 @@
     nativeOpen.call(xhr, "GET", "/api/auth/csrf", false);
     nativeSend.call(xhr);
     if (xhr.status !== 200)
-      throw new Error("Unable to refresh request protection");
+      throw new Error(translateIgnis("Unable to refresh request protection"));
     csrf = JSON.parse(xhr.responseText).csrfToken;
     csrfAt = Date.now();
     return csrf;
@@ -184,7 +187,7 @@
   window.fetch = async (input, init) => {
     if (!target(input)) return nativeFetch(input, init);
     await ready;
-    if (blocked) throw new Error("Session locked");
+    if (blocked) throw new Error(translateIgnis("Session locked"));
     const method = (
       init?.method || (input instanceof Request ? input.method : "GET")
     ).toUpperCase();
@@ -193,7 +196,7 @@
     );
     if (!["GET", "HEAD"].includes(method))
       headers.set("X-Ignis-Csrf", await token());
-    if (blocked) throw new Error("Session locked");
+    if (blocked) throw new Error(translateIgnis("Session locked"));
     headers.set("X-Ignis-Context", sessionId);
     const controller = new AbortController();
     pending.add(controller);
@@ -218,7 +221,7 @@
             .catch(() => ({}))
         ).code === "AUTH_CONTEXT_CHANGED";
       checkResponse(response.status, changed);
-      if (blocked) throw new Error("Session locked");
+      if (blocked) throw new Error(translateIgnis("Session locked"));
       return response;
     } finally {
       pending.delete(controller);
@@ -235,7 +238,7 @@
   XHR.prototype.send = function (body) {
     const request = requests.get(this);
     if (request?.protected) {
-      if (blocked || !sessionId) throw new Error("Session locked");
+      if (blocked || !sessionId) throw new Error(translateIgnis("Session locked"));
       if (!["GET", "HEAD"].includes(request.method))
         nativeHeader.call(this, "X-Ignis-Csrf", syncToken());
       nativeHeader.call(this, "X-Ignis-Context", sessionId);
@@ -267,7 +270,7 @@
       // Keep an already verified editor during an outage. Server requests still
       // carry the pinned session context and enforce authorization independently.
       if (error.transient && sessionId) return;
-      lock("Your session could not be verified. Sign in again to continue.");
+      lock(translateIgnis("Your session could not be verified. Sign in again to continue."));
     }
     if (!blocked) await checkVault().catch(() => {});
   }
@@ -275,7 +278,7 @@
     const unsaved = window.__ignis?.writes?.snapshotPending?.() || [];
     if (unsaved.length) {
       window.alert(
-        "Some writes are not confirmed. Wait for saving to finish or resolve failed writes before signing out.",
+        translateIgnis("Some writes are not confirmed. Wait for saving to finish or resolve failed writes before signing out."),
       );
       return;
     }
@@ -294,10 +297,10 @@
       // Storage failure must not prevent leaving an already revoked session.
       try { localStorage.clear(); sessionStorage.clear(); } catch { /* Optional browser storage. */ }
       channel?.postMessage("lock");
-      lock("You have signed out.");
+      lock(translateIgnis("You have signed out."));
       location.replace("/login");
     } catch {
-      window.alert("Unable to sign out. Please try again.");
+      window.alert(translateIgnis("Unable to sign out. Please try again."));
     }
   }
   const ready = (async () => {

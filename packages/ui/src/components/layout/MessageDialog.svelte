@@ -1,10 +1,12 @@
 <script>
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
+
   import { createEventDispatcher } from "svelte";
   import Modal from "./Modal.svelte";
   import Button from "../input/Button.svelte";
   import { CircleAlert } from "lucide-svelte";
 
-  export let title = "Message";
+  export let title = translateIgnis("Message");
   export let message = "";
   export let width = "500px";
 

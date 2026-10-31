@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 const BASE = "/api/ext/headless-sync";
 
 async function fetchJson(path, opts = {}) {
@@ -5,7 +7,7 @@ async function fetchJson(path, opts = {}) {
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || `Request failed: ${res.status}`);
+    throw new Error(data.error || translateIgnis("Request failed: {p0}", {p0: (res.status)}));
   }
 
   return res.json();

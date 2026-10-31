@@ -6,7 +6,7 @@ const handler=source.slice(source.indexOf('  let logoutConfirmed = false;'),sour
 function fixture(request,clearBrowserData){
  let click;const logout={addEventListener:(name,fn)=>click=fn};
  const nodes={account:{hidden:false},'manage-account':{hidden:false}};
- const context={logout,request,clearBrowserData,form:{hidden:false},oidcButton:{hidden:false},linkButton:{hidden:false},document:{getElementById:id=>nodes[id]},status:{classList:{add:vi.fn()}},channel:{postMessage:vi.fn()},location:{replace:vi.fn()}};
+ const context={translateIgnis: message => message,logout,request,clearBrowserData,form:{hidden:false},oidcButton:{hidden:false},linkButton:{hidden:false},document:{getElementById:id=>nodes[id]},status:{classList:{add:vi.fn()}},channel:{postMessage:vi.fn()},location:{replace:vi.fn()}};
  vm.runInNewContext(handler,context);return {...context,nodes,click:()=>click()};
 }
 it('reports confirmed logout separately from blocked storage and retries only cleanup',async()=>{

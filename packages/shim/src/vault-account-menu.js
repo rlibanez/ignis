@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import { addFullscreenMenuItem } from "./fullscreen-menu.js";
 // Extend only the desktop vault switcher's menu, using Obsidian's own items.
 export function installVaultAccountMenu(obsidian) {
@@ -13,11 +15,11 @@ export function installVaultAccountMenu(obsidian) {
       this.addSeparator();
       addFullscreenMenuItem(this, obsidian, spanish);
       this.addItem(item => item
-        .setTitle(spanish ? "Cuenta" : "Account")
+        .setTitle(spanish ? "Cuenta" : translateIgnis("Account"))
         .setIcon("user-round")
         .onClick(() => window.location.assign("/account")));
       this.addItem(item => item
-        .setTitle(spanish ? "Cerrar sesión" : "Sign out")
+        .setTitle(spanish ? "Cerrar sesión" : translateIgnis("Sign out"))
         .setIcon("log-out")
         .onClick(() => window.__ignisAuth?.logout()));
     }

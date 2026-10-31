@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 // Decorations only: never change file names, contents or permissions.
 export function installSharedIcons(obsidian, sharedFiles, host = window) {
   let stopped=false,queued=false;
@@ -18,7 +20,7 @@ export function installSharedIcons(obsidian, sharedFiles, host = window) {
         if(svg)Object.assign(svg.style,{width:'100%',height:'100%',display:'block'});
         icon.__ignisShareIcon=name;
       }
-      const label=shared.direction==='outgoing'?'Shared by you':(shared.owner?'Shared by '+shared.owner:'Shared')+' · '+(shared.role==='editor'?'Read / Write':'Read');
+      const label=shared.direction==='outgoing'?translateIgnis("Shared by you"):(shared.owner?translateIgnis("Shared by ")+shared.owner:translateIgnis("Shared"))+' · '+(shared.role==='editor'?translateIgnis("Read / Write"):translateIgnis("Read"));
       icon.setAttribute('aria-label',label);icon.title=label;
     }
   }

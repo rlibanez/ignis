@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import { Notice } from "obsidian";
 
 // Paired with the shim's insecure-api reporter, which dispatches this event.
@@ -5,11 +7,11 @@ const INSECURE_API_EVENT = "ignis:insecure-api";
 
 const MESSAGES = {
   crypto:
-    "Cryptography is disabled on insecure connections. Serve Ignis over HTTPS to enable it.",
+    translateIgnis("Cryptography is disabled on insecure connections. Serve Ignis over HTTPS to enable it."),
   clipboard:
-    "Clipboard access is limited on insecure connections. Keyboard shortcuts still work. Serve Ignis over HTTPS for full clipboard support.",
+    translateIgnis("Clipboard access is limited on insecure connections. Keyboard shortcuts still work. Serve Ignis over HTTPS for full clipboard support."),
   other:
-    "This feature is disabled on insecure connections. Serve Ignis over HTTPS to enable it.",
+    translateIgnis("This feature is disabled on insecure connections. Serve Ignis over HTTPS to enable it."),
 };
 
 function categorize(api) {

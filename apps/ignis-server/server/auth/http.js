@@ -7,6 +7,7 @@ const setupAssets = new Map(
     ["/manifest.webmanifest", ["application/manifest+json", "manifest.webmanifest"]],
     ["/pwa/icon-192.svg", ["image/svg+xml", "icon-192.svg"]],
     ["/pwa/icon-maskable.svg", ["image/svg+xml", "icon-maskable.svg"]],
+    ["/auth/i18n.js", ["text/javascript", "i18n.js"]],
     ["/auth/pwa.js", ["text/javascript", "pwa.js"]],
     ["/setup", ["text/html", "setup.html"]],
     ["/reset-password", ["text/html", "reset-password.html"]],

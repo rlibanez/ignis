@@ -1,9 +1,11 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import { Notice } from "obsidian";
 
 const STATUS_LABELS = {
-  open: "Connected",
-  connecting: "Connecting...",
-  closed: "Disconnected",
+  open: translateIgnis("Connected"),
+  connecting: translateIgnis("Connecting..."),
+  closed: translateIgnis("Disconnected"),
 };
 
 const STATUS_DOT_CLASSES = {
@@ -36,13 +38,13 @@ function initStatusBar(plugin) {
 
     dot.className = `ignis-statusbar-dot ${connClass}${pending ? " ignis-statusbar-writes-pending" : ""}`;
 
-    let label = `Server: ${STATUS_LABELS[connState] || STATUS_LABELS.closed}`;
+    let label = translateIgnis("Server: {p0}", {p0: (STATUS_LABELS[connState] || STATUS_LABELS.closed)});
 
     if (pending && writes) {
       const { retrying } = writes.getDetail();
 
       label +=
-        retrying > 0 ? ` · Writes: ${retrying} retrying` : " · Writes: pending";
+        retrying > 0 ? translateIgnis(" · Writes: {p0} retrying", {p0: (retrying)}) : translateIgnis(" · Writes: pending");
     }
 
     item.setAttribute("aria-label", label);
@@ -66,14 +68,14 @@ function initStatusBar(plugin) {
     const frag = document.createDocumentFragment();
 
     const text = document.createElement("div");
-    text.textContent = `Ignis: ${count} change${count === 1 ? "" : "s"} could not be saved after repeated retries.`;
+    text.textContent = translateIgnis("Ignis: {p0} change{p1} could not be saved after repeated retries.", {p0: (count), p1: (count === 1 ? "" : "s")});
     frag.appendChild(text);
 
     const actions = document.createElement("div");
     actions.className = "ignis-write-failure-actions";
 
     const retry = document.createElement("button");
-    retry.textContent = "Retry";
+    retry.textContent = translateIgnis("Retry");
     retry.addEventListener("click", () => {
       writes.retryAll();
 
@@ -83,7 +85,7 @@ function initStatusBar(plugin) {
     });
 
     const reload = document.createElement("button");
-    reload.textContent = "Reload";
+    reload.textContent = translateIgnis("Reload");
     reload.addEventListener("click", () => window.location.reload());
 
     actions.appendChild(retry);

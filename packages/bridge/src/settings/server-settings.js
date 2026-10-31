@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import { Notice } from "obsidian";
 
 let settings = null;
@@ -51,13 +53,13 @@ async function save(partial) {
     const data = await res.json().catch(() => ({}));
 
     if (!res.ok) {
-      throw new Error(data.error || "Save failed");
+      throw new Error(data.error || translateIgnis("Save failed"));
     }
 
     set(data);
     return data;
   } catch (e) {
-    new Notice(`Failed to save setting: ${e.message}`);
+    new Notice(translateIgnis("Failed to save setting: {p0}", {p0: (e.message)}));
     return false;
   }
 }

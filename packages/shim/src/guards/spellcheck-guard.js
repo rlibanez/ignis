@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 // Disable spellchecker dropdown since browser spellchecker cannot be set programmatically.
 // Direct users to system settings instead.
 
@@ -26,7 +28,7 @@ function copyLink(url) {
   const a = document.createElement("a");
   a.textContent = url;
   a.href = "#";
-  a.setAttribute("aria-label", "Copy " + url);
+  a.setAttribute("aria-label", translateIgnis("Copy ") + url);
   a.style.color = "inherit";
   a.style.textDecoration = "underline";
   a.style.cursor = "pointer";
@@ -35,8 +37,8 @@ function copyLink(url) {
     e.preventDefault();
 
     copyText(url).then(
-      () => flash(a, url, "Copied"),
-      () => flash(a, url, "Copy failed"),
+      () => flash(a, url, translateIgnis("Copied")),
+      () => flash(a, url, translateIgnis("Copy failed")),
     );
   });
 
@@ -49,17 +51,17 @@ function renderNotice(desc) {
   desc.textContent = "";
   desc.style.color = "var(--text-error)";
   desc.appendChild(
-    document.createTextNode("Ignis can't set browser spellchecker languages. "),
+    document.createTextNode(translateIgnis("Ignis can't set browser spellchecker languages. ")),
   );
 
   if (url) {
-    desc.appendChild(document.createTextNode("Please use "));
+    desc.appendChild(document.createTextNode(translateIgnis("Please use ")));
     desc.appendChild(copyLink(url));
-    desc.appendChild(document.createTextNode(" (click to copy)."));
+    desc.appendChild(document.createTextNode(translateIgnis(" (click to copy).")));
   } else {
     desc.appendChild(
       document.createTextNode(
-        "Please enable spellcheck in your system settings.",
+        translateIgnis("Please enable spellcheck in your system settings."),
       ),
     );
   }

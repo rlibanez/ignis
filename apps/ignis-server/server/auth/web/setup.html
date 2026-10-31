@@ -4,8 +4,9 @@
     <meta charset="utf-8" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Set up Ignis</title>
+    <title data-i18n="Set up Ignis">Set up Ignis</title>
     <link rel="stylesheet" href="/auth/setup.css" />
+    <script src="/auth/i18n.js" defer></script>
     <script src="/auth/setup.js" defer></script>
     <script src="/auth/password-visibility.js" defer></script>
     <link rel="stylesheet" href="/auth/components.css">
@@ -18,14 +19,15 @@
   <body>
     <main>
       <p class="brand">IGNIS</p>
-      <h1>Create the first administrator</h1>
-      <p id="status" role="status" aria-live="polite">Checking installation…</p>
+      <h1 data-i18n="Create the first administrator">Create the first administrator</h1>
+      <p id="status" role="status" aria-live="polite" data-i18n="Checking installation…">Checking installation…</p>
       <noscript
-        >JavaScript is required for this assistant. The operator can also use
+         data-i18n="JavaScript is required for this assistant. The operator can also use
+        the local CLI.">JavaScript is required for this assistant. The operator can also use
         the local CLI.</noscript
       >
       <form id="setup-form" hidden>
-        <label for="initial-key">Installation key</label>
+        <label for="initial-key" data-i18n="Installation key">Installation key</label>
         <input
           id="initial-key"
           name="initialAdminKey"
@@ -44,10 +46,11 @@
           spellcheck="false"
         />
         <div class="setup-field-heading">
-          <label for="login">Administrator username</label>
+          <label for="login" data-i18n="Administrator username">Administrator username</label>
           <span class="setup-field-help">
-            <button type="button" class="setup-help-toggle" aria-label="About administrator username" aria-expanded="false" aria-controls="login-help">?</button>
-            <span id="login-help" class="setup-help-tooltip" role="tooltip" hidden>3–64 letters (A–Z), digits, dots, underscores or hyphens. Start with a
+            <button type="button" class="setup-help-toggle" aria-label="About administrator username" aria-expanded="false" aria-controls="login-help" data-i18n-aria-label="About administrator username">?</button>
+            <span id="login-help" class="setup-help-tooltip" role="tooltip" hidden data-i18n="3–64 letters (A–Z), digits, dots, underscores or hyphens. Start with a
+          letter or digit.">3–64 letters (A–Z), digits, dots, underscores or hyphens. Start with a
           letter or digit.</span>
           </span>
         </div>
@@ -64,10 +67,10 @@
         />
 
         <div class="setup-field-heading">
-          <label for="password">Password</label>
+          <label for="password" data-i18n="Password">Password</label>
           <span class="setup-field-help">
-            <button type="button" class="setup-help-toggle" aria-label="About password" aria-expanded="false" aria-controls="password-help">?</button>
-            <span id="password-help" class="setup-help-tooltip" role="tooltip" hidden>Password requirements are loaded from the server.</span>
+            <button type="button" class="setup-help-toggle" aria-label="About password" aria-expanded="false" aria-controls="password-help" data-i18n-aria-label="About password">?</button>
+            <span id="password-help" class="setup-help-tooltip" role="tooltip" hidden data-i18n="Password requirements are loaded from the server.">Password requirements are loaded from the server.</span>
           </span>
         </div>
         <input
@@ -81,7 +84,7 @@
           aria-describedby="password-help"
         />
 
-        <label for="confirmation">Confirm password</label>
+        <label for="confirmation" data-i18n="Confirm password">Confirm password</label>
         <input
           id="confirmation"
           name="passwordConfirmation"
@@ -91,7 +94,7 @@
           maxlength="1024"
           autocomplete="new-password"
         />
-        <button type="submit">Create administrator</button>
+        <button type="submit" data-i18n="Create administrator">Create administrator</button>
       </form>
     </main>
   </body>

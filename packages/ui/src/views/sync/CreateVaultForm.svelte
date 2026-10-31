@@ -1,4 +1,6 @@
 <script>
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
+
   import { createEventDispatcher } from "svelte";
   import Button from "../../components/input/Button.svelte";
 
@@ -15,12 +17,12 @@
     error = "";
 
     if (!name.trim()) {
-      error = "Vault name is required";
+      error = translateIgnis("Vault name is required");
       return;
     }
 
     if (encryption === "e2ee" && !password) {
-      error = "Encryption password is required for end-to-end encryption";
+      error = translateIgnis("Encryption password is required for end-to-end encryption");
       return;
     }
 
@@ -40,7 +42,7 @@
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Request failed: ${res.status}`);
+        throw new Error(data.error || translateIgnis("Request failed: {p0}", {p0: (res.status)}));
       }
 
       dispatch("created");
@@ -58,50 +60,46 @@
 <div class="create-form">
   <div class="form-row">
     <div class="form-label">
-      <div class="form-name">Vault name</div>
-      <div class="form-desc">Helps you remember what this vault is for</div>
+      <div class="form-name">{translateIgnis("Vault name")}</div>
+      <div class="form-desc">{translateIgnis("Helps you remember what this vault is for")}</div>
     </div>
-    <input type="text" placeholder="My awesome vault" bind:value={name} />
+    <input type="text" placeholder="{translateIgnis("My awesome vault")}" bind:value={name} />
   </div>
 
   <div class="form-row">
     <div class="form-label">
-      <div class="form-name">Region</div>
-      <div class="form-desc">Select the server region closest to you</div>
+      <div class="form-name">{translateIgnis("Region")}</div>
+      <div class="form-desc">{translateIgnis("Select the server region closest to you")}</div>
     </div>
     <select bind:value={region}>
-      <option value="">Automatic</option>
-      <option value="europe">Europe</option>
-      <option value="north-america">North America</option>
-      <option value="asia">Asia</option>
-      <option value="oceania">Oceania</option>
+      <option value="">{translateIgnis("Automatic")}</option>
+      <option value="europe">{translateIgnis("Europe")}</option>
+      <option value="north-america">{translateIgnis("North America")}</option>
+      <option value="asia">{translateIgnis("Asia")}</option>
+      <option value="oceania">{translateIgnis("Oceania")}</option>
     </select>
   </div>
 
   <div class="form-row">
     <div class="form-label">
-      <div class="form-name">Encryption</div>
-      <div class="form-desc">
-        End-to-end encryption requires a password you must remember.
-        <span class="form-warning">This cannot be changed later.</span>
+      <div class="form-name">{translateIgnis("Encryption")}</div>
+      <div class="form-desc">{translateIgnis("\n        End-to-end encryption requires a password you must remember.\n        ")}<span class="form-warning">{translateIgnis("This cannot be changed later.")}</span>
       </div>
     </div>
     <select bind:value={encryption}>
-      <option value="e2ee">End-to-end encryption</option>
-      <option value="standard">Standard encryption</option>
+      <option value="e2ee">{translateIgnis("End-to-end encryption")}</option>
+      <option value="standard">{translateIgnis("Standard encryption")}</option>
     </select>
   </div>
 
   {#if encryption === "e2ee"}
     <div class="form-row">
       <div class="form-label">
-        <div class="form-name">Encryption password</div>
+        <div class="form-name">{translateIgnis("Encryption password")}</div>
         <div class="form-desc">
-          <span class="form-warning">If you forget this password, any remote data will remain unusable forever.</span>
-          This does not affect your local data.
-        </div>
+          <span class="form-warning">{translateIgnis("If you forget this password, any remote data will remain unusable forever.")}</span>{translateIgnis("\n          This does not affect your local data.\n        ")}</div>
       </div>
-      <input type="password" placeholder="Your password" bind:value={password} />
+      <input type="password" placeholder="{translateIgnis("Your password")}" bind:value={password} />
     </div>
   {/if}
 
@@ -110,9 +108,9 @@
   {/if}
 
   <div class="form-footer">
-    <Button variant="secondary" on:click={onBack}>Back</Button>
+    <Button variant="secondary" on:click={onBack}>{translateIgnis("Back")}</Button>
     <Button variant="primary" disabled={creating} on:click={onSubmit}>
-      {creating ? "Creating..." : "Create"}
+      {creating ? translateIgnis("Creating...") : translateIgnis("Create")}
     </Button>
   </div>
 </div>

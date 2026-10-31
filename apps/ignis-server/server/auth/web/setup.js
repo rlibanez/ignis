@@ -1,4 +1,6 @@
 (() => {
+var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
+
   const form = document.getElementById("setup-form");
   const status = document.getElementById("status");
   const button = form.querySelector('button[type="submit"]');
@@ -43,35 +45,35 @@
         return;
       } else if (!state.setupAvailable) {
         status.textContent =
-          "Web setup is disabled. Ask the server operator to configure an installation key or create the first administrator using the local CLI.";
+          translateIgnis("Web setup is disabled. Ask the server operator to configure an installation key or create the first administrator using the local CLI.");
       } else {
         status.textContent =
-          "Your vaults remain locked until setup and authentication are complete.";
+          translateIgnis("Your vaults remain locked until setup and authentication are complete.");
         const policy = state.passwordPolicy;
         field("password").minLength = policy.minLength;
         field("passwordConfirmation").minLength = policy.minLength;
         document.getElementById("password-help").textContent =
-          `Use at least ${policy.minLength} characters.` +
+          translateIgnis("Use at least {p0} characters.", {p0: (policy.minLength)}) +
           (policy.minSpecialChars
-            ? ` Include at least ${policy.minSpecialChars} punctuation or symbol characters (for example ! or *). Spaces do not count as symbols.`
-            : " No special characters are required.");
+            ? translateIgnis(" Include at least {p0} punctuation or symbol characters (for example ! or *). Spaces do not count as symbols.", {p0: (policy.minSpecialChars)})
+            : translateIgnis(" No special characters are required."));
         form.hidden = false;
       }
     } catch {
       status.textContent =
-        "Unable to check installation status. Reload this page to try again.";
+        translateIgnis("Unable to check installation status. Reload this page to try again.");
     }
   }
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (button.disabled) return;
     if (field("password").value !== field("passwordConfirmation").value) {
-      status.textContent = "The passwords do not match.";
+      status.textContent = translateIgnis("The passwords do not match.");
       field("passwordConfirmation").focus();
       return;
     }
     button.disabled = true;
-    status.textContent = "Creating administrator…";
+    status.textContent = translateIgnis("Creating administrator…");
     try {
       const challenge = await fetch("/api/auth/csrf", {
         credentials: "same-origin",
@@ -101,14 +103,14 @@
       } else {
         status.textContent =
           response.status === 429
-            ? "Too many attempts or server busy. Wait before trying again."
+            ? translateIgnis("Too many attempts or server busy. Wait before trying again.")
             : response.status === 400
-              ? "Check the username and password requirements and try again."
-              : "Setup was rejected. Check the installation key and reload the page before trying again.";
+              ? translateIgnis("Check the username and password requirements and try again.")
+              : translateIgnis("Setup was rejected. Check the installation key and reload the page before trying again.");
       }
     } catch {
       status.textContent =
-        "Setup could not be confirmed. Reload to check whether it completed before trying again.";
+        translateIgnis("Setup could not be confirmed. Reload to check whether it completed before trying again.");
     } finally {
       clearSecrets();
       button.disabled = false;

@@ -41,6 +41,12 @@ export function scopedStorage(storage, account, currentAccount) {
 export function installAccountStorage(host = window) {
   const account = host.__ignisAuth?.userId;
   if (!account || host.__ignisAuth.blocked) throw new Error("Authenticated browser identity required");
+  host.IgnisI18n?.useAccount(account);
+  // Seed only a missing language preference; Obsidian remains authoritative.
+  const languageKey = "ignis-account-v1:" + encodeURIComponent(account) + ":language";
+  if (host.IgnisI18n) {
+    try { if (!host.localStorage.getItem(languageKey)) host.localStorage.setItem(languageKey, host.IgnisI18n.language); } catch { /* Optional browser preference. */ }
+  }
   const current = () => host.__ignisAuth?.blocked ? null : host.__ignisAuth?.userId;
   for (const name of ["localStorage", "sessionStorage"]) {
     const storage = scopedStorage(host[name], account, current);

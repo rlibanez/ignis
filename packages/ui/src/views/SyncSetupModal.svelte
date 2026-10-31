@@ -1,4 +1,6 @@
 <script>
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
+
   import { createEventDispatcher, onMount } from "svelte";
   import Modal from "../components/layout/Modal.svelte";
   import VaultList from "./sync/VaultList.svelte";
@@ -28,7 +30,7 @@
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Request failed: ${res.status}`);
+        throw new Error(data.error || translateIgnis("Request failed: {p0}", {p0: (res.status)}));
       }
 
       const data = await res.json();
@@ -60,7 +62,7 @@
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Request failed: ${res.status}`);
+        throw new Error(data.error || translateIgnis("Request failed: {p0}", {p0: (res.status)}));
       }
 
       if (onSuccess) {
@@ -84,7 +86,7 @@
 </script>
 
 <Modal
-  title={view === "list" ? "Set up Headless Sync" : "Create new remote vault"}
+  title={view === "list" ? translateIgnis("Set up Headless Sync") : translateIgnis("Create new remote vault")}
   width="550px"
   bind:this={modalRef}
   on:close={onClose}
@@ -92,22 +94,18 @@
 >
   <div class="sync-setup-body">
     {#if view === "list"}
-      <p class="sync-setup-desc">
-        Link this vault to an Obsidian Sync remote vault for server-side synchronization.
-      </p>
+      <p class="sync-setup-desc">{translateIgnis("\n        Link this vault to an Obsidian Sync remote vault for server-side synchronization.\n      ")}</p>
 
       {#if error}
         <div class="sync-setup-error">
-          <p>Failed to load remote vaults: {error}</p>
-          <button class="retry-btn" on:click={fetchVaults}>Retry</button>
+          <p>{translateIgnis("Failed to load remote vaults: ")}{error}</p>
+          <button class="retry-btn" on:click={fetchVaults}>{translateIgnis("Retry")}</button>
         </div>
       {:else}
         <VaultList {vaults} {loading} on:link={onLink} on:create={() => (view = "create")} />
       {/if}
     {:else}
-      <p class="sync-setup-desc">
-        Create a new remote vault on Obsidian Sync.
-      </p>
+      <p class="sync-setup-desc">{translateIgnis("\n        Create a new remote vault on Obsidian Sync.\n      ")}</p>
 
       <CreateVaultForm on:created={onCreated} on:back={() => (view = "list")} />
     {/if}

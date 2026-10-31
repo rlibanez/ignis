@@ -1,4 +1,6 @@
 <script>
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
+
   import { createEventDispatcher } from "svelte";
 
   export let row;
@@ -23,9 +25,7 @@
     <span class="name">{row.name}</span>
     <span class="meta">{row.desc}</span>
 
-    <button class="add" type="button" on:click={() => dispatch("add")}>
-      + Add
-    </button>
+    <button class="add" type="button" on:click={() => dispatch("add")}>{translateIgnis("\n      + Add\n    ")}</button>
   </div>
 
   <div class="block">
@@ -36,7 +36,7 @@
         </div>
       {/each}
 
-      <button class="toggle" type="button" on:click={toggle}>Show less</button>
+      <button class="toggle" type="button" on:click={toggle}>{translateIgnis("Show less")}</button>
     {:else}
       <div
         class="line"

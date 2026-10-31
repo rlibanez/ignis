@@ -1,4 +1,6 @@
 <script>
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
+
   import { createEventDispatcher } from "svelte";
   import Modal from "./Modal.svelte";
   import Button from "../input/Button.svelte";
@@ -6,7 +8,7 @@
   export let title = "";
   export let message = "";
   export let description = "";
-  export let confirmText = "Confirm";
+  export let confirmText = translateIgnis("Confirm");
   export let confirmVariant = "primary";
   export let width = "500px";
 
@@ -46,7 +48,7 @@
 
   <svelte:fragment slot="footer">
     <div class="confirm-footer">
-      <Button variant="secondary" on:click={onCancel}>Cancel</Button>
+      <Button variant="secondary" on:click={onCancel}>{translateIgnis("Cancel")}</Button>
       <Button variant={confirmVariant} on:click={onConfirm}>
         <svelte:fragment slot="icon">
           <slot name="confirmIcon" />

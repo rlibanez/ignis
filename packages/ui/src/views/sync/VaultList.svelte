@@ -1,4 +1,6 @@
 <script>
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
+
   import { createEventDispatcher } from "svelte";
   import VaultRow from "./VaultRow.svelte";
   import Button from "../../components/input/Button.svelte";
@@ -18,7 +20,7 @@
 </script>
 
 <div class="vault-list">
-  <h3 class="vault-list-heading">Your remote vaults</h3>
+  <h3 class="vault-list-heading">{translateIgnis("Your remote vaults")}</h3>
 
   <div class="vault-list-items">
     {#if loading}
@@ -26,7 +28,7 @@
         <div class="vault-list-spinner"></div>
       </div>
     {:else if vaults.length === 0}
-      <p class="vault-list-empty">No remote vaults found. Create one to get started.</p>
+      <p class="vault-list-empty">{translateIgnis("No remote vaults found. Create one to get started.")}</p>
     {:else}
       {#each vaults as vault (vault.id)}
         <VaultRow {vault} on:link={onLink} />
@@ -35,9 +37,7 @@
   </div>
 
   <div class="vault-list-footer">
-    <Button variant="primary" disabled={loading} on:click={onCreate}>
-      Create new vault
-    </Button>
+    <Button variant="primary" disabled={loading} on:click={onCreate}>{translateIgnis("\n      Create new vault\n    ")}</Button>
   </div>
 </div>
 

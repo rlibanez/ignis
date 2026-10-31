@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import {confirmSharedAction, errorBlock} from "./shared-ui.js";
 // The catalog controls UI availability; the server authorizes every operation.
 export function openShareDialog(obsidian, app, file, sharedFiles, host = window) {
@@ -6,14 +8,14 @@ export function openShareDialog(obsidian, app, file, sharedFiles, host = window)
   const path = file.path;
   const check = () => {
     if (!session || !vault || host.__ignisAuth?.blocked || host.__ignisAuth?.sessionId !== session || host.__currentVaultUuid !== vault)
-      throw new Error("Your session or vault changed. Reopen the sharing dialog.");
+      throw new Error(translateIgnis("Your session or vault changed. Reopen the sharing dialog."));
   };
   async function request(operation, input) {
     check();
     const headers = { "X-Ignis-Context": session };
     if (operation) {
       const csrf = await host.fetch("/api/auth/csrf", { credentials: "same-origin", cache: "no-store", headers });
-      if (!csrf.ok) throw new Error("Unable to verify your session. Sign in again.");
+      if (!csrf.ok) throw new Error(translateIgnis("Unable to verify your session. Sign in again."));
       headers["X-Ignis-Csrf"] = (await csrf.json()).csrfToken;
       headers["Content-Type"] = "application/json";
       check();
@@ -25,7 +27,7 @@ export function openShareDialog(obsidian, app, file, sharedFiles, host = window)
     check();
     const data = await response.json();
     check();
-    if (!response.ok) throw new Error(data.error || "Unable to share this resource.");
+    if (!response.ok) throw new Error(translateIgnis(data.error) || translateIgnis("Unable to share this resource."));
     return data;
   }
   const create = (tag, text) => {
@@ -43,9 +45,9 @@ export function openShareDialog(obsidian, app, file, sharedFiles, host = window)
     }
     return el;
   }
-  function permission(value = "reader", label = "Permission") {
+  function permission(value = "reader", label = translateIgnis("Permission")) {
     const select = create("select"); select.setAttribute("aria-label", label);
-    for (const [id, text] of [["reader", "Read"], ["editor", "Read / Write"]]) {
+    for (const [id, text] of [["reader", translateIgnis("Read")], ["editor", translateIgnis("Read / Write")]]) {
       const option = create("option", text); option.value = id; select.append(option);
     }
     select.value = value; return select;
@@ -54,64 +56,64 @@ export function openShareDialog(obsidian, app, file, sharedFiles, host = window)
     onOpen() {
       this.modalEl.classList.add("ignis-management-modal");
       this.active = true; this.busy = false; this.ready = false;
-      this.setTitle("Manage sharing");
+      this.setTitle(translateIgnis("Manage sharing"));
       style(this.modalEl, { width: "min(44rem, 95vw)" });
       const description = create("p", path);
       style(description, { overflowWrap: "anywhere", color: "var(--text-accent)", fontWeight: "600" });
-      this.status = create("p", "Checking sharing permissions…"); this.status.setAttribute("role", "status");
+      this.status = create("p", translateIgnis("Checking sharing permissions…")); this.status.setAttribute("role", "status");
       this.panel = create("section"); this.panel.hidden = true;
       style(this.panel, { border: "1px solid var(--background-modifier-border)", borderRadius: ".65rem", padding: "1rem" });
       const header = create("div");header.className="ignis-management-heading"; style(header, { display: "flex", alignItems: "center", justifyContent: "space-between", gap: ".75rem", marginBottom: "1rem" });
-      const title = create("h3", "People with access"); title.style.margin = "0";
-      const add = button("Add access", () => { if (!this.busy && this.ready) { this.child = new AddAccessDialog(app, this); this.child.open(); } }); add.className = "mod-cta";
+      const title = create("h3", translateIgnis("People with access")); title.style.margin = "0";
+      const add = button(translateIgnis("Add access"), () => { if (!this.busy && this.ready) { this.child = new AddAccessDialog(app, this); this.child.open(); } }); add.className = "mod-cta";
       header.append(title, add);
       this.grants = create("div"); this.grants.style.overflowX = "auto"; this.panel.append(header, this.grants);
       const actions = create("div"); actions.className="ignis-ui-actions";
-      this.revoke = button("Stop sharing", async () => {
+      this.revoke = button(translateIgnis("Stop sharing"), async () => {
         if (!this.ready || this.busy || !this.resource) return;
-        if (!await confirmSharedAction(obsidian,app,host,"Stop sharing",`Stop sharing “${path}” with all recipients? Other shares and vault memberships are unaffected.`,"Stop sharing")) return;
+        if (!await confirmSharedAction(obsidian,app,host,translateIgnis("Stop sharing"),translateIgnis("Stop sharing “{p0}” with all recipients? Other shares and vault memberships are unaffected.", {p0: (path)}),translateIgnis("Stop sharing"))) return;
         void this.change(() => request("revoke", { action: "revoke", id: this.resource.id, revision: this.resource.revision }));
       });
       this.revoke.className = "mod-warning"; this.revoke.hidden = true;
-      actions.append(this.revoke, button("Done", () => this.close()));
+      actions.append(this.revoke, button(translateIgnis("Done"), () => this.close()));
       this.contentEl.append(description, this.status, this.panel, actions);
       this.onAuthLost = () => this.close(); host.addEventListener("ignis:auth-lost", this.onAuthLost);
       void this.load().catch(error => this.error(error));
     }
     error(error) {
       if (!this.active) return;
-      errorBlock(this.status); this.status.textContent = error.message; this.status.style.color = "var(--text-error)";
+      errorBlock(this.status); this.status.textContent = translateIgnis(error.message); this.status.style.color = "var(--text-error)";
     }
     async load() {
       this.ready = false;
       const data = await request();
       if (!this.active) return;
-      if (!data.ownedVaults.some(item => item.id === vault)) throw new Error("Only the vault owner can share its resources.");
+      if (!data.ownedVaults.some(item => item.id === vault)) throw new Error(translateIgnis("Only the vault owner can share its resources."));
       this.resource = data.resources.find(item => item.owned && item.vault === vault && item.path === path);
-      if (this.resource && !this.resource.available) throw new Error("This shared resource is unavailable. Review it in Shared resources.");
+      if (this.resource && !this.resource.available) throw new Error(translateIgnis("This shared resource is unavailable. Review it in Shared resources."));
       this.status.textContent = ""; this.panel.hidden = false; this.revoke.hidden = !this.resource;
       this.renderGrants(); this.ready = true;
     }
     renderGrants() {
       this.grants.replaceChildren();
       const grants = this.resource?.grants || [];
-      if (!grants.length) { this.grants.append(create("p", "No direct recipients.")); return; }
+      if (!grants.length) { this.grants.append(create("p", translateIgnis("No direct recipients."))); return; }
       const table = create("table"); table.className="ignis-responsive-table";table.setAttribute("role","table"); style(table, { width: "100%", borderCollapse: "collapse" });
       const head = create("thead"), heading = create("tr");
-      for (const text of ["User", "Permission", "Actions"]) heading.append(create("th", text));
+      for (const text of [translateIgnis("User"), translateIgnis("Permission"), translateIgnis("Actions")]) heading.append(create("th", text));
       head.append(heading); table.append(head);
       const body = create("tbody");
       for (const grant of grants) {
         const row = create("tr"), user = create("td", grant.login), access = create("td"), actions = create("td");
-        user.dataset.label="User";access.dataset.label="Permission";actions.dataset.label="Actions";
-        const select = permission(grant.role, "Permission for " + grant.login);
-        const save = button("Save permission for " + grant.login, () => {
+        user.dataset.label=translateIgnis("User");access.dataset.label=translateIgnis("Permission");actions.dataset.label=translateIgnis("Actions");
+        const select = permission(grant.role, translateIgnis("Permission for ") + grant.login);
+        const save = button(translateIgnis("Save permission for ") + grant.login, () => {
           if (this.ready) void this.change(() => this.grant(grant.login, select.value));
         }, "save"); save.disabled = true;
         select.onchange = () => { save.disabled = select.value === grant.role; };
-        const remove = button("Remove access for " + grant.login, async () => {
+        const remove = button(translateIgnis("Remove access for ") + grant.login, async () => {
           if (!this.ready || this.busy) return;
-          if (await confirmSharedAction(obsidian,app,host,"Remove access",`Remove ${grant.login}'s access to “${path}”? Other permissions are unaffected.`,"Remove access")) void this.change(() => this.grant(grant.login, null));
+          if (await confirmSharedAction(obsidian,app,host,translateIgnis("Remove access"),translateIgnis("Remove {p0}'s access to “{p1}”? Other permissions are unaffected.", {p0: (grant.login), p1: (path)}),translateIgnis("Remove access"))) void this.change(() => this.grant(grant.login, null));
         }, "trash-2");
         const controls = create("div"); style(controls, { display: "flex", gap: ".5rem", justifyContent: "flex-end" });
         controls.append(save, remove); access.append(select); actions.append(controls); row.append(user, access, actions); body.append(row);
@@ -137,10 +139,10 @@ export function openShareDialog(obsidian, app, file, sharedFiles, host = window)
         try {
           await sharedFiles.refresh();
           for (const leaf of app.workspace.getLeavesOfType("ignis-shared-resources")) await leaf.view.reload?.();
-        } catch { new obsidian.Notice("Sharing updated. Refresh Shared to update its display."); }
+        } catch { new obsidian.Notice(translateIgnis("Sharing updated. Refresh Shared to update its display.")); }
         return true;
       } catch (error) {
-        if (this.active) { errorBlock(errorTarget); errorTarget.textContent = error.message; errorTarget.style.color = "var(--text-error)"; }
+        if (this.active) { errorBlock(errorTarget); errorTarget.textContent = translateIgnis(error.message); errorTarget.style.color = "var(--text-error)"; }
         return false;
       } finally { this.busy = false; controls.forEach((el, i) => { el.disabled = disabled[i]; }); }
     }
@@ -153,15 +155,15 @@ export function openShareDialog(obsidian, app, file, sharedFiles, host = window)
     constructor(application, parent) { super(application); this.parent = parent; }
     onOpen() {
       this.modalEl.classList.add("ignis-management-modal");
-      this.active = true; this.setTitle("Add access");
-      const form = create("form"), loginLabel = create("label", "Username"), login = create("input");
+      this.active = true; this.setTitle(translateIgnis("Add access"));
+      const form = create("form"), loginLabel = create("label", translateIgnis("Username")), login = create("input");
       login.type = "text"; login.required = true; login.maxLength = 64; login.autocomplete = "off"; loginLabel.append(login);
-      const roleLabel = create("label", "Permission"), role = permission(); roleLabel.append(role);
+      const roleLabel = create("label", translateIgnis("Permission")), role = permission(); roleLabel.append(role);
       for (const label of [loginLabel, roleLabel]) style(label, { display: "block", marginTop: "1rem" });
       for (const field of [login, role]) style(field, { display: "block", width: "100%", marginTop: ".5rem" });
       const status = create("p"); status.setAttribute("role", "alert");
       const actions = create("div"); actions.className="ignis-ui-actions";
-      const cancel = button("Cancel", () => this.close()), submit = create("button", "Add access"); submit.type = "submit"; submit.className = "mod-cta";
+      const cancel = button(translateIgnis("Cancel"), () => this.close()), submit = create("button", translateIgnis("Add access")); submit.type = "submit"; submit.className = "mod-cta";
       actions.append(cancel, submit); form.append(loginLabel, roleLabel, status, actions); this.contentEl.append(form);
       form.onsubmit = async event => {
         event.preventDefault(); if (submit.disabled || !this.active || this.parent.busy) return;

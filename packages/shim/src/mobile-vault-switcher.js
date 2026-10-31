@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import { addFullscreenMenuItem } from "./fullscreen-menu.js";
 // Use one Obsidian menu instead of the mobile adapter's native select.
 import { vaultService } from "@ignis/services";
@@ -9,7 +11,7 @@ export function installMobileVaultSwitcher(app, obsidian) {
     if (!select || !obsidian?.Menu) return;
     const label = select.closest("label");
     if (!label) return;
-    const manageTitle = select.querySelector('option[value="manage-vaults"]')?.textContent || "Manage vaults…";
+    const manageTitle = select.querySelector('option[value="manage-vaults"]')?.textContent || translateIgnis("Manage vaults…");
     // Replacing the label and select removes their native activation and change
     // handlers: touch and keyboard now activate just this button's click handler.
     const button = document.createElement("button");
@@ -54,9 +56,9 @@ export function installMobileVaultSwitcher(app, obsidian) {
         const spanish = (obsidian.getLanguage?.() || document.documentElement.lang || "en").toLowerCase().startsWith("es");
         menu.addSeparator();
         addFullscreenMenuItem(menu, obsidian, spanish);
-        menu.addItem(item => item.setTitle(spanish ? "Cuenta" : "Account").setIcon("user-round")
+        menu.addItem(item => item.setTitle(spanish ? "Cuenta" : translateIgnis("Account")).setIcon("user-round")
           .onClick(() => window.location.assign("/account")));
-        menu.addItem(item => item.setTitle(spanish ? "Cerrar sesión" : "Sign out").setIcon("log-out")
+        menu.addItem(item => item.setTitle(spanish ? "Cerrar sesión" : translateIgnis("Sign out")).setIcon("log-out")
           .onClick(() => window.__ignisAuth?.logout()));
       }
       const rect = button.getBoundingClientRect();

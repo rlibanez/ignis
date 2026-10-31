@@ -16,7 +16,7 @@ const syncHandlers = {
   "is-quitting": () => false,
   "is-closing": () => false,
   cli: () => false,
-  "set-language": () => null,
+  "set-language": (language) => { window.IgnisI18n?.fromObsidian({ getLanguage: () => language }); return null; },
 
   // UI availability only: server membership, write and network checks remain authoritative.
   policy: () => Object.fromEntries(

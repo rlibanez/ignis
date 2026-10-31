@@ -1,4 +1,6 @@
 (() => {
+var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
+
   const hideAll = [];
   for (const input of document.querySelectorAll('input[type="password"], input[data-masked-text]')) {
     const maskedText = input.hasAttribute("data-masked-text");
@@ -14,7 +16,6 @@
     button.type = "button";
     button.className = "password-toggle";
     button.setAttribute("aria-controls", input.id);
-    const label = input.labels?.[0]?.textContent.trim() || "password";
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     for (const [name, value] of Object.entries({ viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "1.7", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true" }))
       svg.setAttribute(name, value);
@@ -29,15 +30,17 @@
     button.append(svg);
     wrapper.append(button);
     function setVisible(visible) {
+      const label = input.labels?.[0]?.textContent.trim() || translateIgnis("Password");
       revealed = visible;
       if (maskedText) input.classList.toggle("masked-text", !visible);
       else input.type = visible ? "text" : "password";
       button.setAttribute("aria-pressed", String(visible));
-      button.setAttribute("aria-label", `${visible ? "Hide" : "Show"} ${label}`);
-      button.title = `${visible ? "Hide" : "Show"} ${label}`;
+      button.setAttribute("aria-label", `${visible ? translateIgnis("Hide") : translateIgnis("Show")} ${label}`);
+      button.title = `${visible ? translateIgnis("Hide") : translateIgnis("Show")} ${label}`;
       slash.style.display = visible ? "" : "none";
     }
     setVisible(false);
+    document.addEventListener("ignis:languagechange", () => setVisible(revealed));
     button.addEventListener("click", () => setVisible(!revealed));
     const hide = () => setVisible(false);
     hideAll.push(hide);

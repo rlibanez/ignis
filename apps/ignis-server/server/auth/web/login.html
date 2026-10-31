@@ -4,9 +4,10 @@
     <meta charset="utf-8" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Sign in to Ignis</title>
+    <title data-i18n="Sign in to Ignis">Sign in to Ignis</title>
     <link rel="stylesheet" href="/auth/setup.css" />
     <link rel="stylesheet" href="/auth/account.css" />
+    <script src="/auth/i18n.js" defer></script>
     <script src="/auth/oidc-start.js" defer></script>
     <script src="/auth/login.js" defer></script>
     <script src="/auth/password-visibility.js" defer></script>
@@ -20,52 +21,52 @@
   <body>
     <main>
       <p class="brand">IGNIS</p>
-      <h1>Sign in</h1>
-      <p id="status" role="status" aria-live="polite">Checking installation…</p>
+      <h1 data-i18n="Sign in">Sign in</h1>
+      <p id="status" role="status" aria-live="polite" data-i18n="Checking installation…">Checking installation…</p>
       <section id="account" hidden>
-        <div class="account-identity"><span class="identity-label">Username</span><p id="account-status"></p></div>
-        <nav class="account-actions" aria-label="Account navigation">
-          <button type="button" class="account-button install-button" data-install-ignis hidden>Install Ignis</button>
-          <a id="open-ignis" class="account-button" href="/" hidden>Open Ignis</a>
-          <a class="account-button secondary" href="/shares">Shared resources</a>
-          <a id="manage-users" class="account-button secondary" href="/admin/users" hidden>Manage users</a>
+        <div class="account-identity"><span class="identity-label" data-i18n="Username">Username</span><p id="account-status"></p></div>
+        <nav class="account-actions" aria-label="Account navigation" data-i18n-aria-label="Account navigation">
+          <button type="button" class="account-button install-button" data-install-ignis hidden data-i18n="Install Ignis">Install Ignis</button>
+          <a id="open-ignis" class="account-button" href="/" hidden data-i18n="Open Ignis">Open Ignis</a>
+          <a class="account-button secondary" href="/shares" data-i18n="Shared resources">Shared resources</a>
+          <a id="manage-users" class="account-button secondary" href="/admin/users" hidden data-i18n="Manage users">Manage users</a>
         </nav>
 
         <button id="link-oidc" class="account-button secondary" hidden data-provider-template="Link OpenID Connect account">Link OpenID Connect account</button>
 
-        <button id="change-password" class="account-button secondary" type="button" hidden>Change password</button>
+        <button id="change-password" class="account-button secondary" type="button" hidden data-i18n="Change password">Change password</button>
       </section>
       <dialog id="password-dialog" aria-labelledby="password-heading">
-        <h2 id="password-heading">Change password</h2>
-        <p>Enter your current local password. Changing it closes all your Ignis sessions, including this one.</p>
+        <h2 id="password-heading" data-i18n="Change password">Change password</h2>
+        <p data-i18n="Enter your current local password. Changing it closes all your Ignis sessions, including this one.">Enter your current local password. Changing it closes all your Ignis sessions, including this one.</p>
         <form id="password-form">
-          <label for="current-password">Current password</label>
+          <label for="current-password" data-i18n="Current password">Current password</label>
           <div class="password-field">
             <input id="current-password" name="currentPassword" type="password" autocomplete="current-password" required maxlength="1024" />
           </div>
           <div class="setup-field-heading">
-            <label for="new-password">New password</label>
+            <label for="new-password" data-i18n="New password">New password</label>
             <span class="setup-field-help">
-              <button type="button" class="setup-help-toggle" aria-label="About password requirements" aria-expanded="false" aria-controls="password-policy">?</button>
+              <button type="button" class="setup-help-toggle" aria-label="About password requirements" aria-expanded="false" aria-controls="password-policy" data-i18n-aria-label="About password requirements">?</button>
               <span id="password-policy" class="setup-help-tooltip" role="tooltip" hidden></span>
             </span>
           </div>
           <div class="password-field">
             <input id="new-password" aria-describedby="password-policy" name="newPassword" type="password" autocomplete="new-password" required maxlength="1024" />
           </div>
-          <label for="confirm-password">Confirm new password</label>
+          <label for="confirm-password" data-i18n="Confirm new password">Confirm new password</label>
           <div class="password-field">
             <input id="confirm-password" name="confirmation" type="password" autocomplete="new-password" required maxlength="1024" />
           </div>
           <div class="password-actions">
             <p id="password-status" role="alert" hidden></p>
-            <button class="account-button" type="submit">Change password</button>
-            <button id="cancel-password" class="account-button secondary" type="button">Cancel</button>
+            <button class="account-button" type="submit" data-i18n="Change password">Change password</button>
+            <button id="cancel-password" class="account-button secondary" type="button" data-i18n="Cancel">Cancel</button>
           </div>
         </form>
       </dialog>
       <form id="login-form" hidden>
-        <label for="login">Username</label>
+        <label for="login" data-i18n="Username">Username</label>
         <input
           id="login"
           name="login"
@@ -73,7 +74,7 @@
           required
           maxlength="64"
         />
-        <label for="password">Password</label>
+        <label for="password" data-i18n="Password">Password</label>
         <input
           id="password"
           name="password"
@@ -82,24 +83,24 @@
           required
           maxlength="1024"
         />
-        <label class="remember-choice"><input id="remember-me" type="checkbox" /> Keep me signed in</label>
+        <label class="remember-choice"><input id="remember-me" type="checkbox" /><span data-i18n="Keep me signed in"> Keep me signed in</span></label>
         <div class="login-submit">
-          <button type="submit">Sign in</button>
+          <button type="submit" data-i18n="Sign in">Sign in</button>
           <p id="login-error" role="alert" hidden></p>
         </div>
       </form>
       <div class="login-actions">
       <button id="oidc-sign-in" hidden data-provider-template="Sign in with OpenID Connect">Sign in with OpenID Connect</button>
-      <a id="manage-account" class="account-button secondary" href="/account" hidden>Manage account</a>
-      <button id="sign-out" class="account-button" hidden>Sign out</button>
+      <a id="manage-account" class="account-button secondary" href="/account" hidden data-i18n="Manage account">Manage account</a>
+      <button id="sign-out" class="account-button" hidden data-i18n="Sign out">Sign out</button>
       </div>
       <dialog id="reauth-dialog" aria-labelledby="reauth-title">
-        <h2 id="reauth-title">Sign in again to continue</h2>
+        <h2 id="reauth-title" data-i18n="Sign in again to continue">Sign in again to continue</h2>
         <p data-provider-template="Linking an OpenID Connect account requires a recent sign-in. Sign in again, then return to Account and retry linking.">Linking an OpenID Connect account requires a recent sign-in. Sign in again, then return to Account and retry linking.</p>
-        <a class="account-button" href="/login?reauth=link">Sign in again</a>
-        <button id="cancel-reauth" type="button">Cancel</button>
+        <a class="account-button" href="/login?reauth=link" data-i18n="Sign in again">Sign in again</a>
+        <button id="cancel-reauth" type="button" data-i18n="Cancel">Cancel</button>
       </dialog>
-      <noscript>JavaScript is required to sign in.</noscript>
+      <noscript data-i18n="JavaScript is required to sign in.">JavaScript is required to sign in.</noscript>
     </main>
   </body>
 </html>

@@ -1,12 +1,14 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 const { setIcon } = require("obsidian");
 
 const CHANNEL = "plugin:headless-sync";
 
 const TOOLTIP_MAP = {
-  running: "Syncing...",
-  synced: "Synced",
-  stopped: "Sync stopped",
-  error: "Sync error",
+  running: translateIgnis("Syncing..."),
+  synced: translateIgnis("Synced"),
+  stopped: translateIgnis("Sync stopped"),
+  error: translateIgnis("Sync error"),
 };
 
 function initSyncStatusBar(plugin) {
@@ -127,31 +129,31 @@ function initSyncStatusBar(plugin) {
     let match = line.match(/^(?:Downloading|Downloaded)\s+(.+)$/);
 
     if (match) {
-      return { prefix: "Syncing", path: match[1].trim() };
+      return { prefix: translateIgnis("Syncing"), path: match[1].trim() };
     }
 
     match = line.match(/^(?:Uploading file|Upload complete|New file)\s+(.+)$/);
 
     if (match) {
-      return { prefix: "Syncing", path: match[1].trim() };
+      return { prefix: translateIgnis("Syncing"), path: match[1].trim() };
     }
 
     match = line.match(/^Deleting\s+(.+)$/);
 
     if (match) {
-      return { prefix: "Deleting", path: match[1].trim() };
+      return { prefix: translateIgnis("Deleting"), path: match[1].trim() };
     }
 
     match = line.match(/^Push:\s+(.+?)\s+\(updated\)$/);
 
     if (match) {
-      return { prefix: "Syncing", path: match[1].trim() };
+      return { prefix: translateIgnis("Syncing"), path: match[1].trim() };
     }
 
     match = line.match(/^Push:\s+(.+?)\s+\(deleted\)$/);
 
     if (match) {
-      return { prefix: "Deleting", path: match[1].trim() };
+      return { prefix: translateIgnis("Deleting"), path: match[1].trim() };
     }
 
     return null;
@@ -201,7 +203,7 @@ function initSyncStatusBar(plugin) {
     syncedTimer = setTimeout(() => {
       syncedTimer = null;
       updateState("synced");
-      updatePopoverText("Synced");
+      updatePopoverText(translateIgnis("Synced"));
     }, 2000);
   }
 
@@ -250,7 +252,7 @@ function initSyncStatusBar(plugin) {
 
     if (!open && (currentStatus === "running" || currentStatus === "synced")) {
       cancelDeferredSynced();
-      updateState("error", "Server connection lost");
+      updateState("error", translateIgnis("Server connection lost"));
       wasDisconnected = true;
     } else if (open && wasDisconnected) {
       wasDisconnected = false;

@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 // Shared presentation helpers; callers retain authorization and request handling.
 export function errorBlock(el) {
   el.classList.add('ignis-ui-error');
@@ -8,7 +10,7 @@ export function errorBlock(el) {
 export function addFieldHelp(host, label, text) {
   const region=host.document.createElement('span');region.className='ignis-ui-help';
   const toggle=host.document.createElement('button');toggle.type='button';toggle.textContent='?';
-  toggle.setAttribute('aria-label','About '+label.firstChild.textContent);
+  toggle.setAttribute('aria-label',translateIgnis("About {p0}", {p0: label.firstChild.textContent}));
   const tip=host.document.createElement('span');tip.className='ignis-ui-tooltip';tip.textContent=text;tip.hidden=true;tip.setAttribute('role','tooltip');
   tip.id='ignis-help-'+host.crypto.randomUUID();toggle.setAttribute('aria-controls',tip.id);
   const show=open=>{tip.hidden=!open;toggle.setAttribute('aria-expanded',String(open));};show(false);
@@ -27,7 +29,7 @@ export function confirmSharedAction(obsidian, app, host, title, message, action)
         this.setTitle(title);
         const text=host.document.createElement('p');text.textContent=message;
         const actions=host.document.createElement('div');actions.className='ignis-ui-actions';
-        const cancel=host.document.createElement('button');cancel.textContent='Cancel';cancel.onclick=()=>this.close();
+        const cancel=host.document.createElement('button');cancel.textContent=translateIgnis("Cancel");cancel.onclick=()=>this.close();
         const accept=host.document.createElement('button');accept.textContent=action;accept.className='mod-warning';
         accept.onclick=()=>{this.accepted=true;this.close();};
         actions.append(cancel,accept);this.contentEl.append(text,actions);cancel.focus();

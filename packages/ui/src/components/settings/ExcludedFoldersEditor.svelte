@@ -1,4 +1,6 @@
 <script>
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
+
   import { createEventDispatcher, onMount, onDestroy } from "svelte";
   import { ChevronDown, ChevronRight, Trash2, X } from "lucide-svelte";
   import {
@@ -30,10 +32,10 @@
 
   function describeCount(count) {
     if (count === 0) {
-      return "No folders excluded";
+      return translateIgnis("No folders excluded");
     }
 
-    return `${count} folder${count === 1 ? "" : "s"} excluded`;
+    return translateIgnis("{p0} folder{p1} excluded", {p0: (count), p1: (count === 1 ? "" : "s")});
   }
 
   function flattenTree(nodes, visiblePathSet, expandedPaths, forceOpen) {
@@ -143,14 +145,14 @@
   <div class="editor">
     <div class="header">
       <div class="head-left">
-        <span class="title">Excluded folders</span>
+        <span class="title">{translateIgnis("Excluded folders")}</span>
         <span class="count">{summary}</span>
       </div>
 
       <button
         class="close"
         type="button"
-        title="Close"
+        title="{translateIgnis("Close")}"
         on:click={() => dispatch("close")}
       >
         <X size={16} />
@@ -161,14 +163,14 @@
       <input
         class="text-input filter"
         type="text"
-        placeholder="Filter folders"
+        placeholder="{translateIgnis("Filter folders")}"
         bind:value={filter}
       />
 
       <div class="scroll tree-scroll">
         {#if rows.length === 0}
           <div class="empty">
-            {isFiltering ? "No folders match." : "This vault has no folders."}
+            {isFiltering ? translateIgnis("No folders match.") : translateIgnis("This vault has no folders.")}
           </div>
         {:else}
           {#each rows as row (row.path)}
@@ -180,7 +182,7 @@
                   <button
                     class="chevron"
                     type="button"
-                    title={row.open ? "Collapse" : "Expand"}
+                    title={row.open ? translateIgnis("Collapse") : translateIgnis("Expand")}
                     on:click={() => toggleOpen(row.path)}
                   >
                     {#if row.open}
@@ -208,12 +210,12 @@
       </div>
 
       <div class="section-head">
-        <span class="heading">Not in vault</span>
+        <span class="heading">{translateIgnis("Not in vault")}</span>
       </div>
 
       <div class="extras">
         {#if extras.length === 0}
-          <div class="empty">None</div>
+          <div class="empty">{translateIgnis("None")}</div>
         {:else}
           <div class="extras-list">
             {#each extras as path (path)}
@@ -223,7 +225,7 @@
                 <button
                   class="trash"
                   type="button"
-                  title="Remove"
+                  title="{translateIgnis("Remove")}"
                   on:click={() => commit(withoutExcluded(current, path))}
                 >
                   <Trash2 size={14} />
@@ -247,9 +249,7 @@
             type="button"
             disabled={normalize(draft) === ""}
             on:click={addDraft}
-          >
-            Add
-          </button>
+          >{translateIgnis("\n            Add\n          ")}</button>
         </div>
       </div>
     </div>
