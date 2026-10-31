@@ -284,6 +284,29 @@
         : "Unable to check installation. Reload to try again.";
     }
   }
+  for (const toggle of document.querySelectorAll(".setup-help-toggle")) {
+    const tip = document.getElementById(toggle.getAttribute("aria-controls"));
+    const region = toggle.parentElement;
+    const show = (open) => {
+      tip.hidden = !open;
+      toggle.setAttribute("aria-expanded", String(open));
+      if (open) toggle.setAttribute("aria-describedby", tip.id);
+      else toggle.removeAttribute("aria-describedby");
+    };
+    toggle.closest("dialog")?.addEventListener("close", () => show(false));
+    toggle.addEventListener("click", () => show(true));
+    region.addEventListener("mouseenter", () => show(true));
+    region.addEventListener("mouseleave", () => show(false));
+    region.addEventListener("focusout", (event) => {
+      if (!region.contains(event.relatedTarget)) show(false);
+    });
+    toggle.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") { event.preventDefault(); show(false); }
+    });
+    document.addEventListener("click", (event) => {
+      if (!region.contains(event.target)) show(false);
+    });
+  }
   const passwordForm = document.getElementById("password-form");
   const passwordStatus = document.getElementById("password-status");
   function clearPasswordErrors() {

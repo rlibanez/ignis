@@ -31,15 +31,20 @@
       <dialog id="password-dialog" aria-labelledby="password-heading">
         <h2 id="password-heading">Change password</h2>
         <p>Enter your current local password. Changing it closes all your Ignis sessions, including this one.</p>
-        <p id="password-policy" class="help"></p>
         <form id="password-form">
           <label for="current-password">Current password</label>
           <div class="password-field">
             <input id="current-password" name="currentPassword" type="password" autocomplete="current-password" required maxlength="1024" />
           </div>
-          <label for="new-password">New password</label>
+          <div class="setup-field-heading">
+            <label for="new-password">New password</label>
+            <span class="setup-field-help">
+              <button type="button" class="setup-help-toggle" aria-label="About password requirements" aria-expanded="false" aria-controls="password-policy">?</button>
+              <span id="password-policy" class="setup-help-tooltip" role="tooltip" hidden></span>
+            </span>
+          </div>
           <div class="password-field">
-            <input id="new-password" name="newPassword" type="password" autocomplete="new-password" required maxlength="1024" />
+            <input id="new-password" aria-describedby="password-policy" name="newPassword" type="password" autocomplete="new-password" required maxlength="1024" />
           </div>
           <label for="confirm-password">Confirm new password</label>
           <div class="password-field">
@@ -47,8 +52,8 @@
           </div>
           <div class="password-actions">
             <p id="password-status" role="alert" hidden></p>
+            <button class="account-button" type="submit">Change password</button>
             <button id="cancel-password" class="account-button secondary" type="button">Cancel</button>
-            <button type="submit">Change password</button>
           </div>
         </form>
       </dialog>

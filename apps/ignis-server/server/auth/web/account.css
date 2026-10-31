@@ -77,9 +77,8 @@
 #password-dialog::backdrop { background: #080b1480; backdrop-filter: blur(3px); }
 #password-dialog h2 { margin-top: 0; }
 #password-dialog > p { font-size: .9rem; }
-.password-actions { display: flex; gap: .75rem; margin-top: 1.5rem; }
-.password-actions button { margin: 0; width: auto; flex: 1; }
-@media (max-width: 480px) { .password-actions { flex-direction: column-reverse; } }
+.password-actions { display: grid; grid-template-columns: 1fr; gap: .6rem; margin-top: 1.5rem; }
+.password-actions button { margin: 0; width: 100%; }
 
 body:not(.account-page) .login-actions { display: grid; gap: .6rem; margin-top: .6rem; }
 body:not(.account-page) .login-actions > * { margin: 0; }
