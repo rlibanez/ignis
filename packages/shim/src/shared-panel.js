@@ -121,6 +121,14 @@ export function installSharedPanel(obsidian, app, sharedFiles, host = window) {
               card.style.borderColor="var(--interactive-accent)";
               const label=element("span","New");Object.assign(label.style,{color:"var(--text-accent)",marginLeft:"8px",fontSize:"var(--font-smallest)"});card.append(label);
             }
+            if (!owned && !resource.destination) {
+              // Placement is independent of unread state: keep the purple border for new items.
+              card.style.backgroundColor="var(--background-secondary)";
+              const placement=element("span","Not placed");
+              placement.title="Choose a vault and save the location to place this resource.";
+              Object.assign(placement.style,{display:"inline-block",marginLeft:"8px",padding:"2px 6px",borderRadius:"4px",fontSize:"var(--font-smallest)",fontWeight:"500",color:"var(--text-muted)",backgroundColor:"var(--background-modifier-hover)",verticalAlign:"middle"});
+              card.append(placement);
+            }
             if(owned){
               card.append(element("p",(data.ownedVaults.find(v=>v.id===resource.vault)?.name || "Vault")+" / "+resource.path));
               card.append(element("p",resource.available?"Available":"Unavailable"));
