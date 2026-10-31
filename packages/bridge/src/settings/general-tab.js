@@ -91,7 +91,7 @@ function addHeader(containerEl) {
   });
 
   const info = header.createDiv("ignis-header-info");
-  info.createEl("div", { text: "Ignis", cls: "ignis-header-title" });
+  info.createEl("div", { text: translateIgnis("Ignis"), cls: "ignis-header-title" });
   info.createEl("div", {
     text: translateIgnis("Obsidian server bridge"),
     cls: "ignis-header-subtitle",

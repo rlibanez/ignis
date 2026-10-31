@@ -57,6 +57,7 @@ function createAuthBoundary({
   oidcEnv = process.env,
   oidcDependencies,
 }) {
+  const presentationAssets = require("./app-name").brandedAssets(setupAssets, config.appName);
   const cookies = createSessionCookies(config); // Validate before opening/listening.
   const rememberCookies = createSessionCookies({ ...config, purpose: "remember" });
   const resetCookies = createSessionCookies({ ...config, purpose: "reset" });
@@ -875,7 +876,7 @@ function createAuthBoundary({
           res.set("Retry-After", "60");
           return safe(res, 429, "Too many requests");
         }
-        const asset = setupAssets.get(pathname);
+        const asset = presentationAssets.get(pathname);
         res.set(
           "Content-Security-Policy",
           "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; manifest-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",

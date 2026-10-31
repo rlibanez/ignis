@@ -53,6 +53,7 @@ function readAuthConfig(env = process.env) {
   if (!/^[1-9][0-9]{0,2}$/.test(rememberDays) || Number(rememberDays) > 365)
     throw new Error("Invalid IGNIS_REMEMBER_ME_DAYS; expected an integer from 1 to 365");
   return {
+    appName: require("./app-name").readAppName(env),
     rememberDays: Number(rememberDays),
     oidcButtonText,
     publicOrigin: origin.origin,

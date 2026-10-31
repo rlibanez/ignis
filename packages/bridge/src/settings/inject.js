@@ -148,7 +148,7 @@ function injectIgnisSettings(setting, plugin) {
   patchOpenTab(setting);
   patchVersionRow(setting, plugin.manifest.version);
 
-  const ignis = createGroup("Ignis", "ignis");
+  const ignis = createGroup(translateIgnis("Ignis"), "ignis");
 
   for (const tab of ignisTabs) {
     tab.navEl = createNavEl(tab, setting);

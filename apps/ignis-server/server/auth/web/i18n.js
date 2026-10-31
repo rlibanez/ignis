@@ -773,6 +773,8 @@
   "Are you sure you want to delete \"{p0}\"?": "¿Seguro que quieres eliminar «{p0}»?"
 };
   function createI18n(host) {
+    const appName = host.__ignisAppName || "Ignis";
+    const attributionKeys = new Set(["Running in Ignis v{p0}", "Additional Ignis specific functionality and ignis plugin management."]);
     const normalize = value => typeof value === 'string' && /^es(?:[-_]|$)/i.test(value) ? 'es' : 'en';
     let storage;
     try { storage = host.localStorage; } catch { /* Browser privacy settings may deny access. */ }
@@ -788,12 +790,16 @@
       const translated = locale === 'es' && Object.hasOwn(catalog, key) ?
         message.match(/^\s*/)[0] + catalog[key] + message.match(/\s*$/)[0] : message;
       // Values are text, never markup or replacement patterns; replace only once.
-      return translated.replace(/\{(p\d+)\}/g, (match, name) => Object.hasOwn(values, name) ? String(values[name]) : match);
+      return translated.replace(/\{(p\d+)\}|\bIgnis\b/g, (match, name) => {
+        if (name) return Object.hasOwn(values, name) ? String(values[name]) : match;
+        return (Object.hasOwn(catalog, key) || key === "Ignis") && !attributionKeys.has(key) ? appName : match;
+      });
     }
     function applyStatic() {
       const doc = host.document;
       if (!doc) return;
       doc.documentElement.lang = locale;
+      for (const el of doc.querySelectorAll("[data-ignis-app-name]")) el.textContent = appName === "Ignis" ? "IGNIS" : appName;
       for (const el of doc.querySelectorAll('[data-i18n]')) el.textContent = t(el.getAttribute('data-i18n'));
       for (const attr of ['title', 'placeholder', 'aria-label'])
         for (const el of doc.querySelectorAll(`[data-i18n-${attr}]`)) el.setAttribute(attr, t(el.getAttribute(`data-i18n-${attr}`)));
@@ -835,7 +841,7 @@
       for(const [value,text] of [['es','Español'],['en','English']]){const option=doc.createElement('option');option.value=value;option.textContent=text;select.append(option);}
       select.value=locale;select.addEventListener('change',()=>{setLanguage(select.value);host.location.reload();});label.append(caption,select);main.append(label);
     }
-    return {t, get language(){return locale;}, normalize, setLanguage, useAccount, fromObsidian, applyStatic, installSelector};
+    return {t, appName, get language(){return locale;}, normalize, setLanguage, useAccount, fromObsidian, applyStatic, installSelector};
   }
   if (typeof module !== 'undefined' && module.exports) module.exports = { createI18n, catalog };
   if (typeof window !== 'undefined' && !window.IgnisI18n) {
