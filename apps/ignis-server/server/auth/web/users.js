@@ -534,6 +534,7 @@
       for (const [index, value] of values.entries()) {
         const cell = document.createElement(index === 0 ? "th" : "td");
         if (index === 0) cell.scope = "row";
+        cell.dataset.label = ["Username", "Email", "Email verification", "Role", "Status", providerName][index];
         const label = document.createElement("span");
         label.textContent = value;
         if (index > 1) label.className = "badge";
@@ -542,6 +543,7 @@
       }
       const actions = document.createElement("td");
       actions.className = "actions";
+      actions.dataset.label = "Actions";
       for (const [name, paths] of [
         ["Edit", ["M12 20h9", "M16.5 3.5a2.1 2.1 0 0 1 3 3L9 17l-4 1 1-4Z"]],
         ["Delete", ["M3 6h18", "M9 6V4h6v2", "M5 6l1 14h12l1-14", "M10 10v6", "M14 10v6"]],

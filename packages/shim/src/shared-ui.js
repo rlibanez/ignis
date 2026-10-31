@@ -23,6 +23,7 @@ export function confirmSharedAction(obsidian, app, host, title, message, action)
   return new Promise(resolve=>{
     class Confirmation extends obsidian.Modal {
       onOpen(){
+        this.modalEl.classList.add("ignis-management-modal");
         this.setTitle(title);
         const text=host.document.createElement('p');text.textContent=message;
         const actions=host.document.createElement('div');actions.className='ignis-ui-actions';

@@ -32,7 +32,7 @@
     for(const d of paths){const path=document.createElementNS(svg.namespaceURI,"path");path.setAttribute("d",d);svg.append(path);}
     el.append(svg);return el;
   }
-  function table(headers,rows){const wrap=node("div");wrap.className="table-scroll";const el=node("table"),head=node("tr");for(const name of headers)head.append(node("th",name));const thead=node("thead");thead.append(head);el.append(thead);const body=node("tbody");for(const cells of rows){const row=node("tr");for(const value of cells){const cell=node("td");cell.append(typeof value==="string"?document.createTextNode(value):value);row.append(cell);}body.append(row);}el.append(body);wrap.append(el);return wrap;}
+  function table(headers,rows){const wrap=node("div");wrap.className="table-scroll";const el=node("table"),head=node("tr");el.className="responsive-table";el.setAttribute("role","table");for(const name of headers)head.append(node("th",name));const thead=node("thead");thead.append(head);el.append(thead);const body=node("tbody");for(const cells of rows){const row=node("tr");for(const [index,value] of cells.entries()){const cell=node("td");cell.dataset.label=headers[index];cell.append(typeof value==="string"?document.createTextNode(value):value);row.append(cell);}body.append(row);}el.append(body);wrap.append(el);return wrap;}
   function render(){
     for(const [id,owned] of [["received",false],["owned",true]]){
       const resources=catalog.resources.filter(r=>r.owned===owned);
@@ -125,7 +125,7 @@
     if(!entries.length){container.append(node("p","This folder is empty."));return;}
     for(const entry of [...entries].sort((a,b)=>(a.kind===b.kind?0:a.kind==="directory"?-1:1)||a.name.localeCompare(b.name))){
       const path=parent?parent+"/"+entry.name:entry.name;
-      const branch=node("div"),row=node("div");row.className="tree-row";branch.append(row);
+      const branch=node("div"),row=node("div");row.className="tree-row";row.style.setProperty("--tree-depth",String(parent?parent.split("/").length:0));branch.append(row);
       const children=node("div");children.className="tree-children";children.hidden=true;
       if(entry.kind==="directory"){
         const expand=button("▸",async()=>{

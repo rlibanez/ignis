@@ -16,3 +16,30 @@
 
 /* Edit status also carries successful operation feedback. */
 #edit-status:not(:empty) { padding:.75rem; border:1px solid light-dark(#b9bdc9,#696d7b); border-radius:.5rem; background:light-dark(#f6f5fb,#272933); overflow-wrap:anywhere; }
+
+/* Keep the same table and controls in the DOM on desktop and mobile. */
+@media (max-width: 720px) {
+  .responsive-table, .responsive-table tbody { display:block; width:100%; }
+  .responsive-table thead { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); }
+  .responsive-table tbody tr { display:block; border:1px solid light-dark(#d9dbe3,#414653); border-radius:.65rem; padding:.5rem .75rem; margin-bottom:.75rem; }
+  .responsive-table tbody tr > :is(td,th) { display:flex; flex-wrap:wrap; align-items:center; gap:.35rem .75rem; width:auto; min-width:0; padding:.6rem 0; text-align:left; white-space:normal; overflow-wrap:anywhere; border:0; }
+  .responsive-table tbody tr > :is(td,th)::before { content:attr(data-label); flex:0 0 100%; color:light-dark(#515766,#b1b7c6); font-size:.75rem; font-weight:500; }
+  .responsive-table .badge { white-space:normal; overflow-wrap:anywhere; }
+  .responsive-table td > :is(div,span,select) { max-width:100%; min-width:0; }
+  .responsive-table td .toolbar { flex-wrap:wrap; }
+  .panel-heading, .access-section header { flex-wrap:wrap; }
+}
+@media (max-width: 600px) {
+  body main { padding:1rem; }
+  body dialog[id], body dialog.ignis-confirm { width:calc(100% - 1rem); max-width:none; max-height:calc(100dvh - 1rem); padding:1rem; overflow-y:auto; overscroll-behavior:contain; scroll-padding-block:1rem; }
+  dialog h2 { overflow-wrap:anywhere; }
+  .dialog-actions { display:grid; grid-template-columns:1fr; }
+  .dialog-actions > button { width:100%; min-width:0; white-space:normal; }
+  dialog :is(input,select,textarea) { min-width:0; max-width:100%; font-size:1rem; scroll-margin-block:1.5rem; }
+  #picker { max-height: min(20rem,40dvh); overscroll-behavior:contain; }
+  #picker .tree-children { margin-left:0; }
+  #picker .tree-row { padding-left: min(calc(var(--tree-depth,0) * .65rem),2rem); }
+  #picker .tree-select { min-width:0; min-height:2.75rem; height:auto; white-space:normal; }
+  #picker .tree-toggle, #picker .tree-spacer { flex-basis:2.75rem; width:2.75rem; min-height:2.75rem; }
+  .share-panel, .panel { min-width:0; }
+}

@@ -2,9 +2,9 @@ import {it,expect} from 'vitest';
 import {confirmSharedAction} from './shared-ui.js';
 function fixture(){
  let modal;
- const element=()=>({children:[],append(...items){this.children.push(...items);},empty(){this.children=[];},focus(){}});
+ const element=()=>({classList:{add(){}},children:[],append(...items){this.children.push(...items);},empty(){this.children=[];},focus(){}});
  const host=new EventTarget();host.document={createElement:element};host.__ignisAuth={blocked:false};
- class Modal {constructor(){modal=this;this.contentEl=element();}setTitle(){}open(){this.onOpen();}close(){this.onClose();}}
+ class Modal {constructor(){modal=this;this.contentEl=element();this.modalEl=element();}setTitle(){}open(){this.onOpen();}close(){this.onClose();}}
  const result=confirmSharedAction({Modal},{},host,'Remove access','Resource','Remove');
  return {host,result,get modal(){return modal;}};
 }

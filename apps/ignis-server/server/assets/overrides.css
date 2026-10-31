@@ -40,3 +40,27 @@ body {
 .ignis-ui-tooltip { position:absolute; z-index:10; top:100%; left:0; width:min(16rem,50vw); padding:.75rem; border:1px solid var(--background-modifier-border); border-radius:.5rem; background:var(--background-primary); color:var(--text-normal); box-shadow:var(--shadow-s); font-size:var(--font-small); font-weight:normal; }
 .ignis-ui-tooltip[hidden] { display:none; }
 @media (pointer:coarse) { .ignis-ui-help > button { width:2.75rem;height:2.75rem; } }
+
+@media (max-width: 720px) {
+  .ignis-responsive-table, .ignis-responsive-table tbody { display:block; width:100%; }
+  .ignis-responsive-table thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+  .ignis-responsive-table tr { display:block; border:1px solid var(--background-modifier-border); border-radius:.6rem; padding:.5rem; margin-bottom:.75rem; }
+  .ignis-responsive-table tbody td { display:flex; flex-direction:column; align-items:stretch; gap:.4rem; border:0 !important; overflow-wrap:anywhere; min-width:0; }
+  .ignis-responsive-table tbody td::before { content:attr(data-label); color:var(--text-muted); font-size:var(--font-smallest); }
+  .ignis-responsive-table select { width:100%; max-width:100%; }
+}
+@media (max-width: 600px) {
+  .modal.ignis-management-modal { width:calc(100% - 1rem) !important; max-width:none; max-height:calc(100dvh - 1rem); }
+  .ignis-management-modal .modal-content { overflow-y:auto; overscroll-behavior:contain; scroll-padding-block:1rem; }
+  .ignis-management-modal .modal-title { overflow-wrap:anywhere; }
+  .ignis-management-modal .ignis-ui-actions { display:grid; grid-template-columns:1fr; }
+  .ignis-management-modal .ignis-ui-actions > button { width:100%; height:auto; min-height:44px; white-space:normal; }
+  .ignis-management-modal :is(input,select) { font-size:16px; max-width:100%; min-width:0; scroll-margin-block:1rem; }
+  .ignis-folder-picker { max-height:min(240px,40dvh) !important; overscroll-behavior:contain; }
+  .ignis-folder-row { padding-left:min(calc(var(--tree-depth,0) * 10px),32px) !important; }
+  .ignis-folder-toggle { width:44px !important; min-width:44px; height:44px; flex-shrink:0; }
+  .ignis-folder-select { min-height:44px; height:auto; }
+  .ignis-folder-select span:last-child { white-space:normal !important; overflow-wrap:anywhere; }
+}
+
+@media (max-width:600px) { .ignis-management-heading { flex-wrap:wrap; } .ignis-management-modal .ignis-ui-icon { min-width:44px; min-height:44px; } }

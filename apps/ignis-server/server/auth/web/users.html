@@ -21,7 +21,7 @@
         <section class="panel" aria-labelledby="accounts-heading">
           <div class="panel-heading"><h2 id="accounts-heading">Accounts</h2><button id="add-user" type="button" class="account-button">Add user</button></div>
           <div class="table-scroll" role="region" aria-label="User accounts" tabindex="0">
-            <table>
+            <table class="responsive-table" role="table">
               <thead><tr><th scope="col">Username</th><th scope="col">Email</th><th scope="col">Email verification</th><th scope="col">Role</th><th scope="col">Status</th><th id="oidc-column" scope="col" hidden data-provider-template="OpenID Connect">OpenID Connect</th><th scope="col" class="actions-heading">Actions</th></tr></thead>
               <tbody id="users"></tbody>
             </table>

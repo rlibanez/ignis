@@ -52,6 +52,7 @@ export function openShareDialog(obsidian, app, file, sharedFiles, host = window)
   }
   class ShareDialog extends obsidian.Modal {
     onOpen() {
+      this.modalEl.classList.add("ignis-management-modal");
       this.active = true; this.busy = false; this.ready = false;
       this.setTitle("Manage sharing");
       style(this.modalEl, { width: "min(44rem, 95vw)" });
@@ -60,7 +61,7 @@ export function openShareDialog(obsidian, app, file, sharedFiles, host = window)
       this.status = create("p", "Checking sharing permissions…"); this.status.setAttribute("role", "status");
       this.panel = create("section"); this.panel.hidden = true;
       style(this.panel, { border: "1px solid var(--background-modifier-border)", borderRadius: ".65rem", padding: "1rem" });
-      const header = create("div"); style(header, { display: "flex", alignItems: "center", justifyContent: "space-between", gap: ".75rem", marginBottom: "1rem" });
+      const header = create("div");header.className="ignis-management-heading"; style(header, { display: "flex", alignItems: "center", justifyContent: "space-between", gap: ".75rem", marginBottom: "1rem" });
       const title = create("h3", "People with access"); title.style.margin = "0";
       const add = button("Add access", () => { if (!this.busy && this.ready) { this.child = new AddAccessDialog(app, this); this.child.open(); } }); add.className = "mod-cta";
       header.append(title, add);
@@ -95,13 +96,14 @@ export function openShareDialog(obsidian, app, file, sharedFiles, host = window)
       this.grants.replaceChildren();
       const grants = this.resource?.grants || [];
       if (!grants.length) { this.grants.append(create("p", "No direct recipients.")); return; }
-      const table = create("table"); style(table, { width: "100%", borderCollapse: "collapse" });
+      const table = create("table"); table.className="ignis-responsive-table";table.setAttribute("role","table"); style(table, { width: "100%", borderCollapse: "collapse" });
       const head = create("thead"), heading = create("tr");
       for (const text of ["User", "Permission", "Actions"]) heading.append(create("th", text));
       head.append(heading); table.append(head);
       const body = create("tbody");
       for (const grant of grants) {
         const row = create("tr"), user = create("td", grant.login), access = create("td"), actions = create("td");
+        user.dataset.label="User";access.dataset.label="Permission";actions.dataset.label="Actions";
         const select = permission(grant.role, "Permission for " + grant.login);
         const save = button("Save permission for " + grant.login, () => {
           if (this.ready) void this.change(() => this.grant(grant.login, select.value));
@@ -150,6 +152,7 @@ export function openShareDialog(obsidian, app, file, sharedFiles, host = window)
   class AddAccessDialog extends obsidian.Modal {
     constructor(application, parent) { super(application); this.parent = parent; }
     onOpen() {
+      this.modalEl.classList.add("ignis-management-modal");
       this.active = true; this.setTitle("Add access");
       const form = create("form"), loginLabel = create("label", "Username"), login = create("input");
       login.type = "text"; login.required = true; login.maxLength = 64; login.autocomplete = "off"; loginLabel.append(login);

@@ -34,6 +34,7 @@ export function copyDestinationPath(folder,name) {
 export function openCopyDialog(obsidian,app,file,describe,copy) {
   class CopyDialog extends obsidian.Modal {
     onOpen() {
+      this.modalEl.classList.add('ignis-management-modal');
       this.setTitle('Copy '+file.name);
       let folder='',busy=false;const expanded=new Set(['']);
       const create=(tag,text)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=text;return el;};
@@ -41,7 +42,7 @@ export function openCopyDialog(obsidian,app,file,describe,copy) {
       const label=create('div','Destination folder');label.style.fontWeight='600';
       const search=create('input');search.type='search';search.placeholder='Search folders…';search.setAttribute('aria-label','Search destination folders');search.style.cssText='width:100%;margin:10px 0';
       const location=create('div');location.style.cssText='margin:8px 0;color:var(--text-muted);overflow-wrap:anywhere';location.setAttribute('aria-live','polite');
-      const list=create('div');list.style.cssText='max-height:240px;overflow:auto;min-height:90px;border:1px solid var(--background-modifier-border);border-radius:6px;padding:6px';
+      const list=create('div');list.className='ignis-folder-picker';list.style.cssText='max-height:240px;overflow:auto;min-height:90px;border:1px solid var(--background-modifier-border);border-radius:6px;padding:6px';
       const hint=create('p');hint.style.cssText='color:var(--text-muted);font-size:var(--font-smallest)';
       const nameLabel=create('label','Name of the copy'),name=create('input');name.type='text';name.value=file.name;name.style.cssText='width:100%;margin:8px 0 12px';nameLabel.append(name);
       const error=errorBlock(create('div'));
@@ -52,13 +53,13 @@ export function openCopyDialog(obsidian,app,file,describe,copy) {
         const folders=copyDestinationFolders(app.vault.getAllLoadedFiles(),file.path,describe);
         const rows=copyFolderTree(folders,expanded,search.value);
         const draw=(entry)=>{
-          const row=create('div');row.style.cssText=`display:flex;align-items:center;gap:4px;padding-left:${entry.depth*16}px;margin:2px 0`;
-          const toggle=create('button');toggle.style.cssText='width:26px;padding:2px;box-shadow:none;background:transparent';toggle.disabled=busy;
+          const row=create('div');row.className='ignis-folder-row';row.style.setProperty('--tree-depth',String(entry.depth));row.style.cssText+=`display:flex;align-items:center;gap:4px;padding-left:${entry.depth*16}px;margin:2px 0`;
+          const toggle=create('button');toggle.className='ignis-folder-toggle';toggle.style.cssText='width:26px;padding:2px;box-shadow:none;background:transparent';toggle.disabled=busy;
           if(entry.children){obsidian.setIcon?.(toggle,entry.open?'chevron-down':'chevron-right');toggle.setAttribute('aria-label',(entry.open?'Collapse ':'Expand ')+entry.name);toggle.setAttribute('aria-expanded',String(entry.open));
             toggle.disabled=busy||!!search.value.trim();toggle.onclick=()=>{if(expanded.has(entry.path))expanded.delete(entry.path);else expanded.add(entry.path);render();list.querySelector(`[data-toggle="${entry.index}"]`)?.focus();};
           }else{toggle.style.visibility='hidden';toggle.tabIndex=-1;}
           toggle.dataset.toggle=String(entry.index);
-          const button=create('button');button.style.cssText='display:flex;align-items:center;gap:8px;flex:1;min-width:0;justify-content:flex-start;box-shadow:none';button.style.background=entry.path===folder?'var(--background-modifier-hover)':'transparent';
+          const button=create('button');button.className='ignis-folder-select';button.style.cssText='display:flex;align-items:center;gap:8px;flex:1;min-width:0;justify-content:flex-start;box-shadow:none';button.style.background=entry.path===folder?'var(--background-modifier-hover)':'transparent';
           const icon=create('span'),text=create('span',entry.name);text.style.cssText='overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
           obsidian.setIcon?.(icon,describe(entry.path)?'folder-input':'folder');button.append(icon,text);button.title=entry.path||'Vault root';button.setAttribute('aria-pressed',String(entry.path===folder));button.dataset.folder=String(entry.index);
           button.disabled=busy;button.onclick=()=>{folder=entry.path;error.textContent='';render();list.querySelector(`[data-folder="${entry.index}"]`)?.focus();};row.append(toggle,button);list.append(row);
