@@ -2,7 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { createSessionCookies } = require("../session-cookies");
 
-// Internal contract only: not wired into the HTTP server until the complete adapter is accepted.
+// Confidential-client policy shared by HTTP login, linking and reauthentication.
 function readOidcConfig(env = process.env, transport) {
   const enabled = env.IGNIS_OIDC_ENABLED ?? "false";
   if (!["true", "false"].includes(enabled))
