@@ -138,25 +138,32 @@ export const vaultService = {
   },
 
   async renameVault(id, newName) {
-    await fetchJson(API_BASE + "/rename", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ vault: this.referenceFor(id), name: newName }),
-    });
+    const current = id === this.getCurrentVaultId() && !!window.__currentVaultUuid;
+    if(current) await window.__ignisAuth?.beginVaultRename?.(window.__currentVaultUuid);
+    let success=false;
+    try {
+      await fetchJson(API_BASE + "/rename", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vault: this.referenceFor(id), name: newName }),
+      });
 
-    this._migrateLocalStorage(id, newName);
+      this._migrateLocalStorage(id, newName);
 
-    if (id === this.getCurrentVaultId()) {
-      window.__currentVaultId = newName;
+      if (id === this.getCurrentVaultId()) {
+        window.__currentVaultId = newName;
 
-      if (window.__vaultConfig) {
-        window.__vaultConfig.id = this.browserVaultId(this.getCurrentVaultReference());
+        if (window.__vaultConfig) {
+          window.__vaultConfig.id = this.browserVaultId(this.getCurrentVaultReference());
+        }
+
+        history.replaceState(null, "", "/?vault=" + encodeURIComponent(this.getCurrentVaultReference()));
       }
 
-      history.replaceState(null, "", "/?vault=" + encodeURIComponent(this.getCurrentVaultReference()));
-    }
-
-    return this.listVaults();
+      const list = await this.listVaults();
+      success=true;
+      return list;
+    } finally { if(current) await window.__ignisAuth?.finishVaultRename?.(success); }
   },
 
   async deleteVault(id, uuid) {

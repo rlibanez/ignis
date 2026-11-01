@@ -8,7 +8,7 @@ const source = fs.readFileSync(
 async function fixture({ storageFails = false, initialSessionStatus = 200, initialOffline = false } = {}) {
   let userId = "admin-id", sessionStatus = initialSessionStatus, offline = initialOffline;
   let catalog = [{ id: "Notes", uuid: "original" }];
-  const elements = [];
+  const elements = [], redirects = [];
   let download;
   class TestURL extends URL {
     static createObjectURL(blob) { download = blob; return "blob:test"; }
@@ -75,7 +75,7 @@ async function fixture({ storageFails = false, initialSessionStatus = 200, initi
     location: {
       origin: "https://ignis.test",
       href: "https://ignis.test/",
-      replace() { events.push("redirect"); },
+      replace(url) { events.push("redirect"); redirects.push(url); },
     },
     URL: TestURL,
     Request,
@@ -99,6 +99,7 @@ async function fixture({ storageFails = false, initialSessionStatus = 200, initi
     sessionStatus: value => { sessionStatus = value; },
     user: value => { userId = value; },
     elements,
+    redirects,
     catalog: value => { catalog = value; },
     download: () => download,
     calls,
@@ -302,4 +303,42 @@ it.each([401,403,400])('locks a verified editor when the session endpoint reject
 it('does not initialize an editor without an initially verified session',async()=>{
  await expect(fixture({initialSessionStatus:503})).rejects.toThrow('Session unavailable');
  await expect(fixture({initialOffline:true})).rejects.toThrow('Session check unavailable');
+});
+
+it("returns to the vault manager after safely renaming the active vault", async () => {
+  const f = await fixture();
+  f.window.__currentVaultUuid = "original";
+  let saved = false;
+  f.window.app = { workspace: { iterateAllLeaves: cb => cb({ view: {
+    file: {}, save: async () => { saved = true; }, getViewData: () => "note", lastSavedData: "note",
+  } }) } };
+  await f.window.__ignisAuth.beginVaultRename("original");
+  expect(saved).toBe(true);
+  f.window.__ignisAuth.vaultUnavailable();
+  expect(f.window.__ignisAuth.blocked).toBe(false);
+  f.catalog([{ id: "Renamed", uuid: "original" }]);
+  await f.window.__ignisAuth.finishVaultRename(true);
+  expect(f.redirects).toEqual(["/?manager=1"]);
+  expect(f.events).toContain("redirect");
+  expect(f.window.__ignisAuth.blocked).toBe(false);
+});
+it("refuses rename preparation while writes remain unconfirmed", async () => {
+  const f = await fixture();
+  f.window.__currentVaultUuid = "original";
+  f.window.__ignis = { writes: { snapshotPending: () => [{ path: "note.md", data: "draft" }] } };
+  await expect(f.window.__ignisAuth.beginVaultRename("original")).rejects.toThrow("not confirmed");
+});
+it.each(["removed", "dirty", "session", "failed"])("does not redirect after an unsafe rename: %s", async reason => {
+  const f = await fixture();
+  f.window.__currentVaultUuid = "original";
+  await f.window.__ignisAuth.beginVaultRename("original");
+  f.window.__ignisAuth.vaultUnavailable();
+  if (reason === "removed") f.catalog([{ id: "Notes", uuid: "replacement" }]);
+  if (reason === "session") f.identity("another-session");
+  if (reason === "dirty") f.window.app = { workspace: { iterateAllLeaves: cb => cb({ view: {
+    file: { path: "note.md" }, getViewData: () => "draft", lastSavedData: "saved",
+  } }) } };
+  await f.window.__ignisAuth.finishVaultRename(reason !== "failed");
+  expect(f.events).not.toContain("redirect");
+  expect(f.window.__ignisAuth.blocked).toBe(true);
 });

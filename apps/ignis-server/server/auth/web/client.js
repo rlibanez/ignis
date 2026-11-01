@@ -17,7 +17,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     csrf = null,
     csrfAt = 0,
     refresh = null;
-  let vaultCatalog = null;
+  let vaultCatalog = null, renaming = null;
   const pending = new Set();
   const xhrs = new Set();
   const requests = new WeakMap();
@@ -100,16 +100,56 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     document.body.append(panel);
   }
   function vaultUnavailable() {
+    if(renaming){renaming.unavailable=true;return;}
     lock(translateIgnis("This vault was removed, renamed or made unavailable. Saving has stopped. Download any unconfirmed changes before returning to the Vault Manager."), true);
   }
+  function hasPendingVaultChanges() {
+    let dirty=(window.__ignis?.writes?.snapshotPending?.() || []).length>0;
+    window.app?.workspace?.iterateAllLeaves?.(leaf=>{
+      const view=leaf.view;
+      if(view?.file && (view.saving || view.dirty || (typeof view.getViewData==="function" && view.lastSavedData!==view.getViewData()))) dirty=true;
+    });
+    return dirty;
+  }
+  async function beginVaultRename(uuid) {
+    await ready;
+    if(blocked || renaming || !uuid || uuid !== window.__currentVaultUuid) throw new Error(translateIgnis("Session locked"));
+    const startingSession=sessionId;
+    const saves=[];
+    window.app?.workspace?.iterateAllLeaves?.(leaf=>{
+      if(leaf.view?.file && typeof leaf.view.save === "function") saves.push(leaf.view.save());
+    });
+    await Promise.all(saves);
+    if(blocked || renaming || sessionId!==startingSession || uuid!==window.__currentVaultUuid || hasPendingVaultChanges())
+      throw new Error(translateIgnis("Some writes are not confirmed. Wait for saving to finish or resolve failed writes before renaming the vault."));
+    renaming={uuid,sessionId,unavailable:false};
+  }
+  async function finishVaultRename(success) {
+    const operation=renaming;
+    if(!operation)return;
+    try {
+      if(!success) { if(operation.unavailable) throw new Error("Vault unavailable"); return; }
+      await context();
+      if(blocked || sessionId!==operation.sessionId) return;
+      const response=await nativeFetch("/api/vault/list",{credentials:"same-origin",cache:"no-store",headers:{"X-Ignis-Context":sessionId}});
+      const list=response.ok ? await response.json() : [];
+      if(!Array.isArray(list) || !list.some(v=>v.uuid===operation.uuid)) throw new Error("Vault unavailable");
+      if(hasPendingVaultChanges()) throw new Error("Pending changes");
+      location.replace("/?manager=1");
+      return;
+    } catch { operation.unavailable=true; }
+    finally { renaming=null; }
+    if(operation.unavailable) vaultUnavailable();
+  }
   async function checkVault() {
+    if(renaming)return;
     const response = await nativeFetch("/api/vault/list", {
       credentials: "same-origin", cache: "no-store",
       headers: { "X-Ignis-Context": sessionId },
     });
     if (!response.ok) return; // An outage is not proof of deletion.
     const list = await response.json();
-    if (!Array.isArray(list)) return;
+    if (renaming || !Array.isArray(list)) return;
     const id = window.__currentVaultId;
     if (vaultCatalog && id) {
       const before = window.__currentVaultUuid
@@ -319,6 +359,8 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     lock,
     logout,
     vaultUnavailable,
+    beginVaultRename,
+    finishVaultRename,
     get blocked() {
       return blocked;
     },
