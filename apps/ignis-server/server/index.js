@@ -198,7 +198,7 @@ async function start() {
     ...bundledPluginDirs.map((d) => d.bundledPluginId),
   ], auth.vaultDirectoryAvailable);
   server.listen(config.port, () =>
-    logging.emit("info", "server.started", { port: server.address().port }),
+    logging.emit("info", "server.started", { version: require("./version").getSemver(), obsidianVersion: config.obsidianVersion, port: server.address().port }),
   );
   bootstrapCache
     .warmUp()

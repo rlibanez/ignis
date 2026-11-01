@@ -18,9 +18,10 @@ it('validates exact configuration and bounded retention',()=>{
  expect(logging.readLogConfig({IGNIS_LOG_FILE_ENABLED:'false',IGNIS_LOG_MAX_SIZE_MIB:'1',IGNIS_LOG_MAX_FILES:'100'}).fileEnabled).toBe(false);
 });
 it('persists structured events across restart with private permissions',()=>{
- const {root,logger}=fixture();logger.emit('info','server.started',{port:8080});logger.close();
+ const {root,logger}=fixture();logger.emit('info','server.started',{version:'0.8.18',obsidianVersion:'1.14.4',port:8080});logger.close();
  const next=logging.createLogger({dataRoot:root,stdout:stream(),stderr:stream()});loggers.push(next);next.emit('warn','oidc.initialize_failed');next.close();
  expect(records(root).map(r=>r.event)).toEqual(['server.started','oidc.initialize_failed']);
+ expect(records(root)[0]).toMatchObject({version:'0.8.18',obsidianVersion:'1.14.4'});
  expect(fs.statSync(path.join(root,'logs')).mode&0o777).toBe(0o700);expect(fs.statSync(path.join(root,'logs/ignis.jsonl')).mode&0o777).toBe(0o600);
 });
 it('never serializes passwords, tokens, paths, errors, URLs or arbitrary fields at debug level',()=>{
