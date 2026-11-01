@@ -65,7 +65,8 @@
     for (const [path] of visible) { let p = path; while (p) { included.add(p); p = parent(p); } }
     function button(path, note) {
       const el = document.createElement('button'); el.type = 'button'; el.className = 'destination-choice';
-      el.textContent = (note ? '📄 ' : '📁 ') + (path ? path.split('/').pop() : t('Vault root'));
+      const label = path ? path.split('/').pop() : t('Vault root');
+      el.textContent = (note ? '📄 ' : '📁 ') + (note ? label.replace(/\.md$/i, '') : label);
       el.dataset.path = path; el.setAttribute('aria-pressed', String(path === ($('note').value || $('folder').value)));
       el.onclick = () => selectDestination(path, note); return el;
     }
@@ -88,14 +89,31 @@
     tree = await (await api('/api/fs/tree?vault=' + encodeURIComponent(vault()))).json();
     selectDestination(selected); renderTree();
   }
+  function renderContentHeading() {
+    let heading = 'Shared text';
+    if (item.files.length) {
+      const images = item.files.every(file => file.type?.startsWith('image/') || /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(file.name));
+      heading = images ? (item.files.length === 1 ? 'Shared image' : 'Shared images') : (item.files.length === 1 ? 'Shared file' : 'Shared files');
+    } else {
+      const text = item.text.trim();
+      try { const url = new URL(text); if (!/\s/.test(text) && ['http:', 'https:'].includes(url.protocol)) heading = 'Shared link'; } catch { /* Ordinary text. */ }
+    }
+    $('preview-heading').setAttribute('data-i18n', heading);
+    $('preview-heading').textContent = t(heading);
+  }
   function renderFiles() {
     $('files').replaceChildren(...item.files.map((file, index) => {
-      const label = document.createElement('label');
-      label.textContent = `${file.name} (${Math.ceil(file.size / 1024)} KiB)` + (item.completed.includes(index) ? ' — ' + t('Saved') : '');
-      const input = document.createElement('input'); input.value = item.names[index]; input.maxLength = 240;
+      const row = document.createElement('div'); row.className = 'incoming-file';
+      const original = document.createElement('p'); original.className = 'incoming-file-original';
+      original.textContent = `${file.name} (${Math.ceil(file.size / 1024)} KiB)` + (item.completed.includes(index) ? ' — ' + t('Saved') : '');
+      const label = document.createElement('label'); label.htmlFor = 'incoming-name-' + index;
+      label.textContent = t('Filename when saving');
+      const input = document.createElement('input'); input.id = label.htmlFor;
+      input.value = item.names[index]; input.maxLength = 240;
       input.dataset.index = String(index); input.autocomplete = 'off';
-      input.setAttribute('aria-label', t('Destination filename') + ': ' + file.name);
-      input.disabled = item.completed.includes(index); label.append(input); return label;
+      input.setAttribute('aria-label', t('Filename when saving') + ': ' + file.name);
+      input.disabled = item.completed.includes(index);
+      row.append(original, label, input); return row;
     }));
   }
   async function start() {
@@ -118,6 +136,7 @@
     });
     $('signin').hidden = true;
     if (item.state !== 'pending') { status('The save could not be confirmed. Check the destination in Ignis before sharing again.'); return; }
+    renderContentHeading();
     $('preview').textContent = item.text; $('preview').hidden = !item.text;
     // eslint-disable-next-line no-control-regex
     const title = (item.title || '').replace(/[\\/\u0000-\u001f\u007f]/g, ' ').replace(/^\.+|[. ]+$/g, '').slice(0, 220).trim();
@@ -136,7 +155,7 @@
     if (busy || locked) return;
     creating = {kind, vault: vault(), folder: $('folder').value};
     $('resource-title').textContent = t(kind === 'folder' ? 'New folder' : 'New note');
-    $('resource-name').value = kind === 'note' ? $('note-name').value : '';
+    $('resource-name').value = kind === 'note' ? $('note-name').value.replace(/\.(md|markdown|txt)$/i, '') : '';
     $('resource-error').textContent = '';
     $('resource-dialog').showModal(); $('resource-name').focus(); $('resource-name').select();
   }
@@ -193,8 +212,17 @@
       if (!IgnisIncoming.safeName(name)) throw new Error(t('Enter a valid name without slashes or hidden path segments.'));
       notePath = join($('folder').value, name);
     }
-    if (item.text && names.some(name => join($('folder').value, name) === notePath))
+    if (notePath && names.some(name => join($('folder').value, name) === notePath))
       throw new Error(t('Use a different valid name for each file.'));
+    const attachments = $('note').value ? names.map(name => {
+      // Relative Markdown URLs preserve special filename characters without
+      // interpreting brackets, hashes, parentheses or schemes as markup.
+      const url = './' + encodeURIComponent(name).replace(/[!'()*]/g, char => '%' + char.charCodeAt(0).toString(16).toUpperCase());
+      const image = /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(name);
+      const label = name.replace(/[\\[\]]/g, '\\$&');
+      return image ? '![](' + url + ')' : '[' + label + '](' + url + ')';
+    }) : [];
+    const addition = [item.text, ...attachments].filter(Boolean).join('\n\n');
     await update(existing => {
       if (existing.state !== 'pending') throw new Error(t('This content is already being saved.'));
       if (existing.completed.length && (existing.destination?.vault !== vault() ||
@@ -213,13 +241,13 @@
         await update(existing => ({...existing, completed: [...existing.completed, index]}));
         unrecordedWrite = false;
       }
-      if (item.text && !item.completed.includes('text')) {
-        let content = item.text + '\n', expected = null;
+      if (addition && !item.completed.includes('text')) {
+        let content = addition + '\n', expected = null;
         if ($('note').value) {
           // A selected note keeps its own filename, so preserve the incoming title
           // in the appended text instead. Avoid repeating titles already supplied.
           const title = (item.title || '').trim();
-          if (title && !item.text.split(/\r?\n/).some(line => line.trim() === title))
+          if (item.text && title && !item.text.split(/\r?\n/).some(line => line.trim() === title))
             content = title + '\n\n' + content;
           const bytes = await (await api('/api/fs/readFile?vault=' + encodeURIComponent(vault()) + '&path=' + encodeURIComponent(notePath))).arrayBuffer();
           expected = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(value => value.toString(16).padStart(2, '0')).join('');
@@ -232,7 +260,7 @@
         unrecordedWrite = false;
       }
       const destination = new URLSearchParams({vault: vault()});
-      const savedPath = item.text ? notePath : item.files.length ? join($('folder').value, names[0]) : '';
+      const savedPath = addition ? notePath : item.files.length ? join($('folder').value, names[0]) : '';
       if (savedPath) destination.set('file', savedPath);
       await IgnisIncoming.change(id, () => null);
       const savedUrl = '/?' + destination;
