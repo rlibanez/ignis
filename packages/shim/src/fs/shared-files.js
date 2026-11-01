@@ -28,7 +28,7 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
     return {id:mount.id,path:relative,role:mount.role};
   }
   function result(status,data){context();if(status<200||status>=300)fail((status===404?"ENOENT":status===403?"EACCES":data?.code || "SHARE_UNAVAILABLE"),data?.error || "Shared resource unavailable");return data;}
-  async function exchange(operation,input){context();const response=await request("/api/shares",{method:"POST",cache:"no-store",headers:{"Content-Type":"application/json","X-Ignis-Context":scope.sessionId},body:JSON.stringify({operation,input:wire(input)})});return result(response.status,await response.json());}
+  async function exchange(operation,input){context();let response;try{response=await request("/api/shares",{method:"POST",cache:"no-store",headers:{"Content-Type":"application/json","X-Ignis-Context":scope.sessionId},body:JSON.stringify({operation,input:wire(input)})});}catch{fail("SHARE_NETWORK_UNAVAILABLE","Shared resources connection temporarily unavailable");}return result(response.status,await response.json());}
   function exchangeSync(operation,input){context();const xhr=createXHR();xhr.open("POST","/api/shares",false);xhr.setRequestHeader("Content-Type","application/json");xhr.send(JSON.stringify({operation,input:wire(input)}));return result(xhr.status,JSON.parse(xhr.responseText));}
   function mountName(mount){
     const value=mount.localPath;
@@ -72,7 +72,9 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
     const safe={...ordinary};for(const [root,mount] of mounted)if(mount.blocked)for(const path of Object.keys(safe))if(under(path,root))delete safe[path];
     return {...safe,...tree};
   }
-  async function refresh(){if(!enabled || refreshing)return;refreshing=true;try{accept(await exchange("mounts",{vault:scope.vault}),true);}catch(error){onNotice(error.message);}finally{refreshing=false;}}
+  // A failed catalog poll is not a failed save. Keep the last snapshot until the next poll.
+  // Actual writes still pass through writeError and retain their recovery copy.
+  async function refresh(){if(!enabled || refreshing)return;refreshing=true;try{accept(await exchange("mounts",{vault:scope.vault}),true);}catch(error){if(error.code!=="SHARE_NETWORK_UNAVAILABLE")onNotice(error.message);}finally{refreshing=false;}}
   function start(){if(enabled&&!timer)timer=setInterval(refresh,60000);}
   function stop(){if(timer)clearInterval(timer);timer=null;for(const path of Object.keys(tree))metadataCache.delete(path);tree=Object.create(null);mounted.clear();outgoing=[];states.clear();reserved.clear();enabled=false;scope=null;}
   function stat(path){context();const value=metadataCache.toStat(path);if(!value)fail("ENOENT");return value;}

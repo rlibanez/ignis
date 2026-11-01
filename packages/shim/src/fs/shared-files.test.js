@@ -4,11 +4,11 @@ import {MetadataCache} from './metadata-cache.js';
 import {createSharedFiles,SHARED_ROOT} from './shared-files.js';
 function fixture(role='editor',initial={},mountPath='Project') {
  const id='12345678-1234-1234-1234-123456789abc',folder=mountPath,file=folder+'/note.md';
- const ctx={sessionId:'session',vault:'vault'},cache=new MetadataCache(),failure=vi.fn(),removed=vi.fn(),watch={_dispatch:vi.fn()},ordinary={readFile:vi.fn(),writeFile:vi.fn(),rename:vi.fn(),readdir:vi.fn(),stat:vi.fn(),mkdir:vi.fn(),unlink:vi.fn(),appendFile:vi.fn()};
- let offline=false,loseResponse=false,outgoing=[],content='original',etag=contentHash('original'),revoked=false,sharedId=id,localPath=folder,notePath='note.md';
+ const ctx={sessionId:'session',vault:'vault'},cache=new MetadataCache(),failure=vi.fn(),notice=vi.fn(),removed=vi.fn(),watch={_dispatch:vi.fn()},ordinary={readFile:vi.fn(),writeFile:vi.fn(),rename:vi.fn(),readdir:vi.fn(),stat:vi.fn(),mkdir:vi.fn(),unlink:vi.fn(),appendFile:vi.fn()};
+ let mountStatus=200,offline=false,loseResponse=false,outgoing=[],content='original',etag=contentHash('original'),revoked=false,sharedId=id,localPath=folder,notePath='note.md';
  const calls=[];
  const serve=body=>{const {operation,input}=JSON.parse(body);calls.push({operation,input});
-  if(operation==='mounts')return {status:200,data:{limits:{maxFileBytes:1000},outgoing,mounts:revoked?[]:[{id:sharedId,localPath,name:'Project',kind:'directory',role,tree:{'':{type:'directory'},[notePath]:{type:'file',size:content.length,mtime:1}}}]}};
+  if(operation==='mounts')return {status:mountStatus,data:{limits:{maxFileBytes:1000},outgoing,mounts:revoked?[]:[{id:sharedId,localPath,name:'Project',kind:'directory',role,tree:{'':{type:'directory'},[notePath]:{type:'file',size:content.length,mtime:1}}}]}};
   if(revoked)return {status:404,data:{}};
   if(operation==='destination'){localPath=input.localPath;return {status:200,data:{ok:true}};}
   if(operation==='rename'){if(input.path==='')localPath=input.to;else notePath=input.to;return {status:200,data:{ok:true}};}
@@ -18,9 +18,9 @@ function fixture(role='editor',initial={},mountPath='Project') {
   if(operation==='read')return {status:200,data:{kind:'file',content:btoa(content),etag}};
   if(operation==='write'){if(input.etag!==etag)return {status:409,data:{code:'SHARE_CONFLICT'}};content=atob(input.content);etag=contentHash(content);return {status:200,data:{etag}};}
  };
- const shared=createSharedFiles({metadataCache:cache,watch,currentContext:()=>ctx,onFailure:failure,onRemoved:removed,request:async(url,options)=>{if(offline)throw new Error("Network unavailable");const r=serve(options.body);if(loseResponse && JSON.parse(options.body).operation==='write')throw new Error("Response lost");return {status:r.status,json:async()=>r.data};},createXHR:()=>({open(){},setRequestHeader(){},send(body){const r=serve(body);this.status=r.status;this.responseText=JSON.stringify(r.data);}})});
+ const shared=createSharedFiles({metadataCache:cache,watch,currentContext:()=>ctx,onFailure:failure,onNotice:notice,onRemoved:removed,request:async(url,options)=>{if(offline)throw new Error("Network unavailable");const r=serve(options.body);if(loseResponse && JSON.parse(options.body).operation==='write')throw new Error("Response lost");return {status:r.status,json:async()=>r.data};},createXHR:()=>({open(){},setRequestHeader(){},send(body){const r=serve(body);this.status=r.status;this.responseText=JSON.stringify(r.data);}})});
  cache.populate(shared.configure(initial));
- return {removed,setRole:value=>role=value,setOffline:value=>offline=value,loseResponse:()=>loseResponse=true,setOutgoing:value=>outgoing=value,shared,fs:shared.wrap(ordinary),ordinary,cache,ctx,calls,file,folder,failure,watch,revoke:()=>revoked=true,replace:()=>{sharedId='87654321-1234-1234-1234-123456789abc';},change:()=>{content='remote';etag=contentHash('remote');}};
+ return {notice,removed,setMountStatus:value=>mountStatus=value,setRole:value=>role=value,setOffline:value=>offline=value,loseResponse:()=>loseResponse=true,setOutgoing:value=>outgoing=value,shared,fs:shared.wrap(ordinary),ordinary,cache,ctx,calls,file,folder,failure,watch,revoke:()=>revoked=true,replace:()=>{sharedId='87654321-1234-1234-1234-123456789abc';},change:()=>{content='remote';etag=contentHash('remote');}};
 }
 it('mounts metadata without ordinary filesystem reads or copies',async()=>{const f=fixture();expect(await f.fs.readdir(f.folder)).toEqual(['note.md']);expect(await f.fs.readFile(f.file,'utf8')).toBe('original');expect(f.ordinary.readFile).not.toHaveBeenCalled();expect(f.calls.at(-1).input).toEqual({id:'12345678-1234-1234-1234-123456789abc',path:'note.md'});});
 it('writes the original with an etag and does not forward into the active vault',async()=>{const f=fixture();await f.fs.readFile(f.file);await f.fs.writeFile(f.file,'edited');expect(await f.fs.readFile(f.file,'utf8')).toBe('edited');expect(f.ordinary.writeFile).not.toHaveBeenCalled();});
@@ -77,12 +77,12 @@ it('preserves open editors on downgrade and blocks stale saves even after write 
  f.setRole('editor');await f.shared.refresh();await expect(f.fs.writeFile(f.file,'old draft')).rejects.toMatchObject({code:'SHARE_CONFLICT'});
 });
 it('retains disconnected writes and never retries stale content automatically on reconnection',async()=>{
- const f=fixture();await f.fs.readFile(f.file);f.setOffline(true);await expect(f.fs.writeFile(f.file,'offline draft')).rejects.toThrow('Network');
+ const f=fixture();await f.fs.readFile(f.file);f.setOffline(true);await expect(f.fs.writeFile(f.file,'offline draft')).rejects.toMatchObject({code:'SHARE_NETWORK_UNAVAILABLE'});
  expect(f.failure).toHaveBeenCalledWith(expect.objectContaining({content:'offline draft'}));f.setOffline(false);f.change();await f.shared.refresh();
  await expect(f.fs.writeFile(f.file,'offline draft')).rejects.toMatchObject({code:'SHARE_CONFLICT'});expect(f.calls.filter(c=>c.operation==='write')).toHaveLength(0);
 });
 it('treats a lost successful write response as uncertain and retains a recovery copy without replay',async()=>{
- const f=fixture();await f.fs.readFile(f.file);f.loseResponse();await expect(f.fs.writeFile(f.file,'published')).rejects.toThrow('Response lost');
+ const f=fixture();await f.fs.readFile(f.file);f.loseResponse();await expect(f.fs.writeFile(f.file,'published')).rejects.toMatchObject({code:'SHARE_NETWORK_UNAVAILABLE'});
  expect(f.failure).toHaveBeenCalledWith(expect.objectContaining({content:'published'}));expect(await f.fs.readFile(f.file,'utf8')).toBe('published');
  await expect(f.fs.writeFile(f.file,'published')).rejects.toMatchObject({code:'SHARE_CONFLICT'});expect(f.calls.filter(c=>c.operation==='write')).toHaveLength(1);
 });
@@ -168,4 +168,25 @@ it('adds a folder-capable Copy to menu without making a request before selection
  const item={setTitle:vi.fn(()=>item),setIcon:()=>item,onClick:fn=>{click=fn;}};listener({addItem:fn=>fn(item)},{path:f.folder});
  expect(item.setTitle).toHaveBeenCalledWith('Copy to…');expect(typeof click).toBe('function');expect(f.calls.some(c=>c.operation==='copy')).toBe(false);
  }finally{vi.unstubAllGlobals();}
+});
+
+it('silently retries catalog network failures without clearing mounts or losing revocation checks',async()=>{
+ const f=fixture();f.setOffline(true);await f.shared.refresh();
+ expect(f.notice).not.toHaveBeenCalled();expect(f.failure).not.toHaveBeenCalled();
+ expect(f.cache.has(f.file)).toBe(true);expect(f.removed).not.toHaveBeenCalled();
+ f.setOffline(false);f.revoke();await f.shared.refresh();
+ expect(f.cache.has(f.file)).toBe(false);
+ await expect(f.fs.readFile(f.file)).rejects.toMatchObject({code:'ENOENT'});
+ expect(f.ordinary.readFile).not.toHaveBeenCalled();
+});
+it('still preserves failed shared writes during network outages',async()=>{
+ const f=fixture();await f.fs.readFile(f.file);f.setOffline(true);
+ await expect(f.fs.writeFile(f.file,'unsaved draft')).rejects.toMatchObject({code:'SHARE_NETWORK_UNAVAILABLE'});
+ expect(f.failure).toHaveBeenCalledWith(expect.objectContaining({content:'unsaved draft'}));
+});
+
+it('keeps server rejection notices visible during catalog refresh',async()=>{
+ const f=fixture();f.setMountStatus(403);await f.shared.refresh();
+ expect(f.notice).toHaveBeenCalledWith('Shared resource unavailable');
+ expect(f.failure).not.toHaveBeenCalled();
 });
