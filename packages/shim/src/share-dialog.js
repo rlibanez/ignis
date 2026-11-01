@@ -1,3 +1,4 @@
+import {nativeTooltip} from './native-tooltip.js';
 
 const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import {confirmSharedAction, errorBlock} from "./shared-ui.js";
@@ -40,7 +41,7 @@ export function openShareDialog(obsidian, app, file, sharedFiles, host = window)
     const el = create("button", text); el.type = "button"; el.onclick = action;
     if (icon) {
       el.textContent = ""; obsidian.setIcon(el, icon);
-      el.title = text; el.setAttribute("aria-label", text);
+      nativeTooltip(host, el, text);
       el.classList.add("ignis-ui-icon");
     }
     return el;

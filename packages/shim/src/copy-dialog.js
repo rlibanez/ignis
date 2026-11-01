@@ -1,3 +1,4 @@
+import {nativeTooltip} from './native-tooltip.js';
 
 const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import {errorBlock} from "./shared-ui.js";
@@ -72,7 +73,7 @@ export function openCopyDialog(obsidian,app,file,describe,copy,options={}) {
           toggle.dataset.toggle=String(entry.index);
           const button=create('button');button.className='ignis-folder-select';button.style.cssText='display:flex;align-items:center;gap:8px;flex:1;min-width:0;justify-content:flex-start;box-shadow:none';button.style.background=entry.path===folder?'var(--background-modifier-hover)':'transparent';
           const icon=create('span'),text=create('span',entry.name);text.style.cssText='overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-          obsidian.setIcon?.(icon,describe(entry.path)?'folder-input':'folder');button.append(icon,text);button.title=entry.path||translateIgnis("Vault root");button.setAttribute('aria-pressed',String(entry.path===folder));button.dataset.folder=String(entry.index);
+          obsidian.setIcon?.(icon,describe(entry.path)?'folder-input':'folder');button.append(icon,text);nativeTooltip(window,button,destinationVault.displayPath?.(entry.path) || entry.path || translateIgnis("Vault root"));button.setAttribute('aria-pressed',String(entry.path===folder));button.dataset.folder=String(entry.index);
           button.disabled=busy;button.onclick=()=>{folder=entry.path;error.textContent='';render();list.querySelector(`[data-folder="${entry.index}"]`)?.focus();};row.append(toggle,button);list.append(row);
         };
         if(!options.multipleVaults)draw({path:'',name:translateIgnis("Vault root"),depth:0,children:folders.length>0,open:!!search.value.trim()||expanded.has(''),index:0});

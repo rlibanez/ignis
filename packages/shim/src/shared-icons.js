@@ -1,3 +1,4 @@
+import {nativeTooltip} from './native-tooltip.js';
 
 const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 // Decorations only: never change file names, contents or permissions.
@@ -22,7 +23,7 @@ export function installSharedIcons(obsidian, sharedFiles, host = window) {
       }
       const label=shared.direction==='outgoing'?translateIgnis("Shared by you"):(shared.owner?translateIgnis("Shared by ")+shared.owner:translateIgnis("Shared"))+' · '+(shared.role==='editor'?translateIgnis("Read / Write"):translateIgnis("Read"));
       // Obsidian renders aria-label as a tooltip; title would add a second, native one.
-      icon.setAttribute('aria-label',label);
+      nativeTooltip(host,icon,label,{help:true});
     }
   }
   function schedule(){if(!stopped&&!queued){queued=true;queueMicrotask(paint);}}

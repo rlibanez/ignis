@@ -1,3 +1,4 @@
+import {nativeTooltip} from '../native-tooltip.js';
 
 const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 export function createSharedNotice(currentContext, host=window, ordinary=false) {
@@ -34,7 +35,7 @@ export function createSharedNotice(currentContext, host=window, ordinary=false) 
     dismissedMessage=lastMessage;panel?.remove();panel=null;
     if(pending.size && !recovery){
       recovery=host.document.createElement("button");recovery.textContent=translateIgnis("Manage changes");
-      recovery.setAttribute("aria-label",translateIgnis("Manage unsaved changes"));
+      nativeTooltip(host,recovery,translateIgnis("Manage unsaved changes"));
       Object.assign(recovery.style,{position:"static",order:"-1",margin:"0",padding:"0 6px",height:"auto",minHeight:"0",font:"inherit",color:"var(--text-muted)",background:"transparent",border:"0",boxShadow:"none",cursor:"pointer"});
       recovery.onclick=()=>{if(!valid()){clear();return;}show(lastMessage,true);};setVisible(recovery,!scoped() || pending.has(activePath()));(host.document.querySelector?.(".status-bar") || host.document.body).prepend(recovery);
     }
@@ -49,7 +50,7 @@ export function createSharedNotice(currentContext, host=window, ordinary=false) 
     recovery?.remove();recovery=null;
     if(!panel){panel=host.document.createElement("aside");panel.setAttribute("role","alert");Object.assign(panel.style,{...placement,maxWidth:"420px",padding:"16px",background:"var(--background-primary,#222)",color:"var(--text-normal,#eee)",border:"1px solid var(--color-orange,#b98b45)",borderRadius:"8px"});host.document.body.append(panel);}
     setVisible(panel,true);panel.replaceChildren();
-    const close=host.document.createElement("button");close.textContent="×";close.setAttribute("aria-label",translateIgnis("Close"));close.style.float="right";close.onclick=dismiss;panel.append(close);
+    const close=host.document.createElement("button");close.textContent="×";nativeTooltip(host,close,translateIgnis("Close"));close.style.float="right";close.onclick=dismiss;panel.append(close);
     const text=host.document.createElement("p");text.textContent=message;panel.append(text);
     if(pending.size){
       const files=host.document.createElement("ul");files.style.maxHeight="120px";files.style.overflow="auto";

@@ -1,3 +1,4 @@
+import {nativeTooltip} from './native-tooltip.js';
 
 const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import {addFieldHelp, errorBlock} from "./shared-ui.js";
@@ -79,7 +80,7 @@ export function installSharedPanel(obsidian, app, sharedFiles, host = window) {
     if (!badge) return;
     const count = unread.pending().length;
     badge.textContent = String(count); badge.hidden = !count;
-    ribbon.setAttribute("aria-label", count ? translateIgnis("Shared ({p0} new)", {p0: (count)}) : translateIgnis("Shared"));
+    nativeTooltip(host,ribbon,count ? translateIgnis("Shared ({p0} new)", {p0: (count)}) : translateIgnis("Shared"));
   };
   class SharedView extends obsidian.ItemView {
     getViewType(){return type;}
@@ -135,7 +136,7 @@ export function installSharedPanel(obsidian, app, sharedFiles, host = window) {
               // Placement is independent of unread state: keep the purple border for new items.
               card.style.backgroundColor="var(--background-secondary)";
               const placement=element("span",translateIgnis("Not placed"));
-              placement.title=translateIgnis("Choose a vault and save the location to place this resource.");
+              nativeTooltip(host,placement,translateIgnis("Choose a vault and save the location to place this resource."),{help:true});
               Object.assign(placement.style,{display:"inline-block",marginLeft:"8px",padding:"2px 6px",borderRadius:"4px",fontSize:"var(--font-smallest)",fontWeight:"500",color:"var(--text-muted)",backgroundColor:"var(--background-modifier-hover)",verticalAlign:"middle"});
               card.append(placement);
             }
