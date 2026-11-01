@@ -34,11 +34,13 @@
 
         <button id="link-oidc" class="account-button secondary" hidden data-provider-template="Link OpenID Connect account">Link OpenID Connect account</button>
 
+        <button id="set-own-password" class="account-button secondary" type="button" hidden data-i18n="Set local password">Set local password</button>
         <button id="change-password" class="account-button secondary" type="button" hidden data-i18n="Change password">Change password</button>
       </section>
       <dialog id="password-dialog" aria-labelledby="password-heading">
         <h2 id="password-heading" data-i18n="Change password">Change password</h2>
-        <p data-i18n="Enter your current local password. Changing it closes all your Ignis sessions, including this one.">Enter your current local password. Changing it closes all your Ignis sessions, including this one.</p>
+        <p id="set-password-help" hidden data-i18n="Setting a local password closes all your Ignis sessions. Your linked provider account is kept.">Setting a local password closes all your Ignis sessions. Your linked provider account is kept.</p>
+        <p id="change-password-help" data-i18n="Enter your current local password. Changing it closes all your Ignis sessions, including this one.">Enter your current local password. Changing it closes all your Ignis sessions, including this one.</p>
         <form id="password-form">
           <label for="current-password" data-i18n="Current password">Current password</label>
           <div class="password-field">

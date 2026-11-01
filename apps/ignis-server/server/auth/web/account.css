@@ -72,7 +72,7 @@
   .account-page main { margin: 1rem auto; padding: 1.25rem; }
 }
 
-.account-page #link-oidc, .account-page #change-password { margin-top: .6rem; }
+.account-page #link-oidc, .account-page #change-password, .account-page #set-own-password { margin-top: .6rem; }
 #password-dialog { box-sizing: border-box; width: min(34rem, calc(100% - 2rem)); max-height: calc(100dvh - 2rem); overflow-y: auto; padding: 1.5rem; border: 1px solid light-dark(#d4d7e1, #414653); border-radius: .75rem; background: light-dark(#fff, #20232b); color: inherit; }
 #password-dialog::backdrop { background: #080b1480; backdrop-filter: blur(3px); }
 #password-dialog h2 { margin-top: 0; }

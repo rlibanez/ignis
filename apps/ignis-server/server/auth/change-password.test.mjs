@@ -58,3 +58,35 @@ it("does not create credentials for an OIDC-only account", async () => {
   await expect(changePassword(db, "u", old, next, policy, { isCurrent: () => true })).rejects.toMatchObject({ code: "INVALID_PASSWORD" });
   expect(db.prepare("SELECT count(*) n FROM local_credentials").get().n).toBe(0);
 });
+
+const { setOwnLocalPassword } = require('./change-password');
+async function externalAccount() {
+  db.exec("DELETE FROM local_credentials WHERE user_id='u'; INSERT INTO oidc_identities VALUES ('https://idp.example','sub','u',0)");
+  return {user:{id:'u'},method:'oidc',issuer:'https://idp.example',subject:'sub',authenticatedAt:1000000};
+}
+it('sets the first own password and retains the exact provider identity',async()=>{
+ const session=await externalAccount();
+ await setOwnLocalPassword(db,'u',next,policy,{resolveSession:()=>session,now:()=>1000001});
+ expect(await verifyPassword(next,credential())).toBe(true);
+ expect(db.prepare("SELECT subject FROM oidc_identities WHERE user_id='u'").get().subject).toBe('sub');
+ await expect(setOwnLocalPassword(db,'u',old,policy,{resolveSession:()=>session,now:()=>1000001})).rejects.toMatchObject({code:'LOCAL_PASSWORD_EXISTS'});
+});
+it('rejects stale, future, local, mismatched and revoked authentication',async()=>{
+ const session=await externalAccount();
+ for(const bad of [null,{...session,method:'local'},{...session,subject:'another'},{...session,user:{id:'other'}},{...session,authenticatedAt:700000},{...session,authenticatedAt:1000001}])
+  await expect(setOwnLocalPassword(db,'u',next,policy,{resolveSession:()=>bad,now:()=>1000000})).rejects.toMatchObject({code:'REAUTH_REQUIRED'});
+ expect(db.prepare('SELECT count(*) n FROM local_credentials').get().n).toBe(0);
+});
+it('rechecks revocation and credential creation after hashing',async()=>{
+ const session=await externalAccount();
+ await expect(setOwnLocalPassword(db,'u',next,policy,{resolveSession:inside=>inside?null:session,now:()=>1000000})).rejects.toMatchObject({code:'REAUTH_REQUIRED'});
+ const results=await Promise.allSettled([next,old].map(password=>setOwnLocalPassword(db,'u',password,policy,{resolveSession:()=>session,now:()=>1000000})));
+ expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1);
+});
+it('rejects invalid policy and rolls back failed audit for own password setup',async()=>{
+ const session=await externalAccount(),options={resolveSession:()=>session,now:()=>1000000};
+ await expect(setOwnLocalPassword(db,'u','short',policy,options)).rejects.toMatchObject({code:'PASSWORD_POLICY'});
+ db.exec("CREATE TRIGGER fail_own_audit BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT,'failed'); END");
+ await expect(setOwnLocalPassword(db,'u',next,policy,options)).rejects.toThrow();
+ expect(db.prepare('SELECT count(*) n FROM local_credentials').get().n).toBe(0);
+});

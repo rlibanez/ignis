@@ -565,3 +565,40 @@ it('does not let callback query parameters enable persistence',async()=>{
  expect([302,303]).toContain(result.status);expect(jar['ignis-dev-remember'] || '').toBe('');
  expect(db.prepare('SELECT count(*) n FROM remembered_sessions').get().n).toBe(0);
 });
+
+it('lets a normal OIDC user reauthenticate and set only their own first password',async()=>{
+ const jar={};
+ const login=await post('/api/auth/oidc/start',jar);
+ await request(providerCallback(login.json().authorizationUrl),jar);
+ const initial=(await request('/api/auth/session',jar)).json();expect(initial.user.role).toBe('user');
+ const send=async(route,body,extra={})=>{
+  const current=(await request('/api/auth/session',jar)).json();
+  const csrf=(await request('/api/auth/csrf',jar)).json().csrfToken;
+  return request(route,jar,'POST',body,{origin:ORIGIN,'x-ignis-csrf':csrf,'x-ignis-context':current.sessionId,...extra});
+ };
+ expect((await send('/api/auth/password',{newPassword:'new-local-password!'})).json().code).toBe('REAUTH_REQUIRED');
+ expect((await send('/api/auth/oidc/reauth',{})).status).toBe(403);
+ const start=await send('/api/auth/oidc/reauth',{purpose:'password'});
+ expect(start.status).toBe(200);expect(new URL(start.json().authorizationUrl).searchParams.get('max_age')).toBe('30');
+ callbackClaims={sub:'different'};
+ expect((await request(providerCallback(start.json().authorizationUrl),jar)).headers.location).toBe('/login?oidc=failed');
+ callbackClaims={};
+ const retry=await send('/api/auth/oidc/reauth',{purpose:'password'});
+ expect((await request(providerCallback(retry.json().authorizationUrl),jar)).headers.location).toBe('/account?password=setup');
+ expect((await request('/account?password=setup',jar,'GET',undefined,{'sec-fetch-site':'cross-site','sec-fetch-mode':'navigate','sec-fetch-dest':'document'})).status).toBe(200);
+ const body={newPassword:'new-local-password!'};
+ expect((await send('/api/auth/password',body,{'x-ignis-csrf':'invalid'})).status).toBe(403);
+ expect((await send('/api/auth/password',body,{'x-ignis-context':'wrong'})).status).toBe(409);
+ expect((await send('/api/auth/password',{...body,userId:'admin'})).status).toBe(400);
+ db.exec('UPDATE sessions SET authenticated_at=authenticated_at-300001');
+ expect((await send('/api/auth/password',body)).json().code).toBe('REAUTH_REQUIRED');
+ const again=await send('/api/auth/oidc/reauth',{purpose:'password'});
+ await request(providerCallback(again.json().authorizationUrl),jar);
+ const other={...jar};
+ expect((await send('/api/auth/password',body)).status).toBe(200);
+ expect((await request('/api/auth/session',jar)).status).toBe(401);
+ expect((await request('/api/auth/session',other)).status).toBe(401);
+ expect(db.prepare('SELECT user_id FROM oidc_identities WHERE user_id=?').get(initial.user.id)).toBeTruthy();
+ expect((await post('/api/auth/login',jar,{login:initial.user.login,password:body.newPassword})).status).toBe(200);
+ expect((await send('/api/auth/password',{newPassword:'another-password!'})).status).not.toBe(200);
+});

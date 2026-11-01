@@ -94,13 +94,19 @@ async function createOidcRuntime(
     ...cookiePolicy,
     purpose: "oidc",
   });
-  const pending = new Map();
+  const pending = new Map(), passwordAuthorizations = new Map();
   const key = (state) => createHash("sha256").update(state).digest("hex");
   const purge = () => {
     for (const [id, entry] of pending)
       if (entry.until <= Date.now()) pending.delete(id);
+    for (const [id, entry] of passwordAuthorizations)
+      if (entry.until <= Date.now()) passwordAuthorizations.delete(id);
   };
   return {
+    passwordAuthorized(sessionId, userId) {
+      purge();
+      return !closed && passwordAuthorizations.get(sessionId)?.userId === userId;
+    },
     unlink(actorId, userId, options) {
       return require("../users").unlinkUserOidc(db, actorId, userId, config.issuer, options);
     },
@@ -111,18 +117,19 @@ async function createOidcRuntime(
     },
     async begin(kind, sessionToken, cookie, {rememberMe = false} = {}) {
       purge();
-      if (pending.size >= 1000 || !["login", "link", "reauth"].includes(kind))
+      if (pending.size >= 1000 || !["login", "link", "reauth", "password"].includes(kind))
         throw new Error("OIDC unavailable");
       const original = sessions.resolve(sessionToken);
       const sessionId = original?.id ?? null;
       if (kind === "reauth" && original?.user.role !== "admin") throw new Error("OIDC unavailable");
+      if (kind === "password" && (!original || !this.linked(original.user.id))) throw new Error("OIDC unavailable");
       await ready();
       if ((sessions.resolve(sessionToken)?.id ?? null) !== sessionId)
         throw new Error("OIDC unavailable");
       const result =
         kind === "link"
           ? await manual.begin(sessionToken, cookie)
-          : kind === "reauth" ? await reauth.begin(cookie) : await login.begin(cookie);
+          : ["reauth", "password"].includes(kind) ? await reauth.begin(cookie) : await login.begin(cookie);
       if (
         closed ||
         pending.size >= 1000 ||
@@ -156,16 +163,20 @@ async function createOidcRuntime(
       )
         throw new Error("OIDC authentication failed");
       pending.delete(id);
-      if (entry.kind === "reauth") {
+      if (["reauth", "password"].includes(entry.kind)) {
         const identity = await reauth.complete(callback, cookie);
         const current = sessions.resolve(sessionToken);
         const linked = db.prepare("SELECT user_id FROM oidc_identities WHERE issuer=? AND subject=?").get(identity.issuer, identity.subject);
         if (closed || entry.until <= Date.now() || !current || current.id !== entry.sessionId ||
-            current.user.role !== "admin" || linked?.user_id !== current.user.id)
+            (entry.kind === "reauth" && current.user.role !== "admin") || linked?.user_id !== current.user.id)
           throw new Error("OIDC authentication failed");
         const authentication = sessions.issueForVerifiedOidcIdentity({ issuer: identity.issuer, subject: identity.subject, authenticatedAt: Date.now() });
         if (!authentication) throw new Error("OIDC authentication failed");
-        return { authentication, kind: "reauth" };
+        if (entry.kind === "password") {
+          if (passwordAuthorizations.size >= 1000) throw new Error("OIDC authentication failed");
+          passwordAuthorizations.set(authentication.session.id, {userId:current.user.id, until:Date.now()+300000});
+        }
+        return { authentication, kind: entry.kind };
       }
       const result =
         entry.kind === "link"
@@ -182,6 +193,7 @@ async function createOidcRuntime(
     clear() {
       closed = true;
       pending.clear();
+      passwordAuthorizations.clear();
       login?.clear();
       manual?.clear();
       reauth?.clear();

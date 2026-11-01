@@ -656,17 +656,27 @@ function createAuthBoundary({
       const body = req.body;
       if (!body || Array.isArray(body) ||
           Object.keys(body).some((key) => !["currentPassword", "newPassword"].includes(key)) ||
-          typeof body.currentPassword !== "string" || typeof body.newPassword !== "string" ||
-          Buffer.byteLength(body.currentPassword) > 1024 || Buffer.byteLength(body.newPassword) > 1024)
+          (body.currentPassword !== undefined && typeof body.currentPassword !== "string") || typeof body.newPassword !== "string" ||
+          Buffer.byteLength(body.currentPassword ?? "") > 1024 || Buffer.byteLength(body.newPassword) > 1024)
         return safe(res, 400, "Invalid password change request");
       const token = cookies.read(req.headers.cookie);
       try {
-        await require("./change-password").changePassword(
+        if (body.currentPassword === undefined) {
+          if (req.headers["x-ignis-context"] !== session.id) return safe(res, 409, "Session changed");
+          await require("./change-password").setOwnLocalPassword(db, session.user.id, body.newPassword, config.passwordPolicy, {
+            resolveSession: withinTransaction => {
+              const current = sessions.resolve(token, { withinTransaction });
+              return current?.id === session.id && oidc?.linked(current.user.id) && oidc.passwordAuthorized(current.id, current.user.id) ? current : null;
+            }, now,
+          });
+        } else await require("./change-password").changePassword(
           db, session.user.id, body.currentPassword, body.newPassword, config.passwordPolicy,
           { isCurrent: (withinTransaction = false) => sessions.resolve(token, { withinTransaction })?.id === session.id },
         );
       } catch (error) {
         const messages = {
+          REAUTH_REQUIRED: "Confirm your identity with your linked provider before setting a local password.",
+          LOCAL_PASSWORD_EXISTS: "A local password already exists. Use Change password.",
           INVALID_PASSWORD: "The current password is incorrect or no local password is configured.",
           PASSWORD_POLICY: "The new password does not meet the password policy.",
           PASSWORD_UNCHANGED: "Choose a different password.",
@@ -717,7 +727,7 @@ function createAuthBoundary({
         req.ignisLogUsername = authentication.session.user.login;
         return res.redirect(
           303,
-          result.kind === "reauth" ? "/admin/users?reauth=success" : result.kind === "link"
+          result.kind === "password" ? "/account?password=setup" : result.kind === "reauth" ? "/admin/users?reauth=success" : result.kind === "link"
             ? "/account?oidc=linked"
             : "/login?oidc=success",
         );
@@ -737,7 +747,9 @@ function createAuthBoundary({
         return safe(res, 403, "Request rejected");
       if (!limits.oidcStart(req.ip)) return safe(res, 429, "Too many requests");
       if (req.body?.rememberMe !== undefined && typeof req.body.rememberMe !== "boolean") return safe(res,400,"Invalid remember preference");
-      const kind = pathname.endsWith("/reauth") ? "reauth" : pathname.endsWith("/link") ? "link" : "login";
+      const kind = pathname.endsWith("/reauth") ? (req.body?.purpose === "password" ? "password" : "reauth") : pathname.endsWith("/link") ? "link" : "login";
+      if (kind === "password" && (!session || req.headers["x-ignis-context"] !== session.id || !oidc.linked(session.user.id)))
+        return safe(res, 403, "Reauthentication unavailable");
       if (kind === "reauth" && (!session || session.user.role !== "admin" ||
           req.headers["x-ignis-context"] !== session.id || !oidc.linked(session.user.id)))
         return safe(res, 403, "Reauthentication unavailable");

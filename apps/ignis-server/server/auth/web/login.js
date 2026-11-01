@@ -15,7 +15,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   const oidcButton = document.getElementById("oidc-sign-in");
   const linkButton = document.getElementById("link-oidc");
   const accountPage = location.pathname === "/account";
-  let oidcAvailable = false;
+  let oidcAvailable = false, activeSessionId = null, settingLocalPassword = false;
   const requested = new URL(location.href).searchParams.get("reauth");
   const intent = ["users", "link"].includes(requested) ? requested : null;
   const destination = (value) => value === "users" ? "/admin/users" : "/account";
@@ -96,6 +96,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       headers: {
         "Content-Type": "application/json",
         "X-Ignis-Csrf": csrfToken,
+        ...(activeSessionId ? {"X-Ignis-Context": activeSessionId} : {}),
       },
       body: JSON.stringify(body),
     });
@@ -230,7 +231,14 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
         const session = await current.json();
         window.IgnisI18n?.useAccount(session.user.id);
         setProviderName(installation.oidcButtonText);
+        activeSessionId = session.sessionId;
+        settingLocalPassword = !session.hasLocalPassword;
         document.getElementById("change-password").hidden = !accountPage || !session.hasLocalPassword;
+        document.getElementById("set-own-password").hidden = !accountPage || session.hasLocalPassword || !session.oidcLinked || !oidcAvailable;
+        if(accountPage && settingLocalPassword && session.oidcLinked && new URL(location.href).searchParams.get("password") === "setup") {
+          history.replaceState(null, "", "/account");
+          openPasswordDialog();
+        }
         document.getElementById("password-policy").textContent =
           translateIgnis("At least {p0} characters, including {p1} punctuation or symbol characters.", {p0: (session.passwordPolicy.minLength), p1: (session.passwordPolicy.minSpecialChars)});
         if (intent) form.elements.login.value = session.user.login;
@@ -341,12 +349,40 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   passwordForm.addEventListener("input", clearPasswordErrors);
   const passwordDialog = document.getElementById("password-dialog");
   const passwordCancel = document.getElementById("cancel-password");
-  document.getElementById("change-password").addEventListener("click", () => {
+  document.getElementById("set-own-password").addEventListener("click", async event => {
+    const control = event.currentTarget;
+    control.disabled = true;
+    status.textContent = translateIgnis("Confirm your identity with your linked provider before setting a local password.");
+    try {
+      channel?.postMessage("lock");
+      const response = await window.ignisOidcStart({clear: clearBrowserData,
+        request: signal => request("/api/auth/oidc/reauth", {purpose:"password"}, signal)});
+      if(!response.ok) throw new Error();
+      const url = new URL(response.body.authorizationUrl);
+      if(url.protocol !== "https:" || url.username || url.password) throw new Error();
+      location.assign(url.href);
+    } catch {
+      status.classList.add("auth-error");
+      status.textContent = translateIgnis("Unable to start {p0} sign-in. Please try again later.", {p0:providerName});
+    } finally { control.disabled = false; }
+  });
+  function openPasswordDialog() {
     clearPasswordFields();
     clearPasswordErrors();
+    const caption = settingLocalPassword ? "Set local password" : "Change password";
+    for(const element of [document.getElementById("password-heading"), passwordForm.querySelector('button[type="submit"]')]) {
+      element.setAttribute("data-i18n", caption);element.textContent = translateIgnis(caption);
+    }
+    document.getElementById("change-password-help").hidden = settingLocalPassword;
+    document.getElementById("set-password-help").hidden = !settingLocalPassword;
+    passwordForm.elements.currentPassword.required = !settingLocalPassword;
+    passwordForm.elements.currentPassword.disabled = settingLocalPassword;
+    passwordForm.elements.currentPassword.parentElement.hidden = settingLocalPassword;
+    passwordForm.querySelector('label[for="current-password"]').hidden = settingLocalPassword;
     passwordDialog.showModal();
-    passwordForm.elements.currentPassword.focus();
-  });
+    passwordForm.elements[settingLocalPassword ? "newPassword" : "currentPassword"].focus();
+  }
+  document.getElementById("change-password").addEventListener("click", openPasswordDialog);
   passwordCancel.addEventListener("click", () => passwordDialog.close());
   passwordDialog.addEventListener("close", clearPasswordFields);
   passwordDialog.addEventListener("cancel", (event) => {
@@ -365,7 +401,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     let preserveNewPassword = false;
     try {
       const response = await request("/api/auth/password", {
-        currentPassword: passwordForm.elements.currentPassword.value,
+        ...(settingLocalPassword ? {} : {currentPassword: passwordForm.elements.currentPassword.value}),
         newPassword: passwordForm.elements.newPassword.value,
       });
       if (!response.ok) {
