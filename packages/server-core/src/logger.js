@@ -1,3 +1,11 @@
+// Local wall time follows the standard TZ environment variable; keep an explicit offset.
+function formatLogTime(date = new Date()) {
+  const pad = (value, width = 2) => String(value).padStart(width, "0");
+  const offset = -date.getTimezoneOffset();
+  const suffix = `${offset >= 0 ? "+" : "-"}${pad(Math.floor(Math.abs(offset) / 60))}:${pad(Math.abs(offset) % 60)}`;
+  return `${pad(date.getFullYear(), 4)}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(date.getMilliseconds(), 3)}${suffix}`;
+}
+
 const fs = require("node:fs");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
@@ -87,7 +95,7 @@ function createLogger({ dataRoot, level = "info", format = "json", fileEnabled =
     } catch { /* A broken collector must not take down the application. */ }
   }
   function lineFor(severity, event, fields = {}) {
-    const record = { time: new Date().toISOString(), level: severity, event, message: events[event], ...metadata(fields), ...metadata(requestContext.getStore()) };
+    const record = { time: formatLogTime(), level: severity, event, message: events[event], ...metadata(fields), ...metadata(requestContext.getStore()) };
     if (format === "json") return JSON.stringify(record) + "\n";
     const { time, level, message, ...details } = record;
     delete details.event;
@@ -201,4 +209,4 @@ function httpMiddleware(req, res, next) {
   };
   res.once("finish", complete); res.once("close", complete); requestContext.run({ requestId }, next);
 }
-module.exports = { createLogger, readLogConfig, configure, emit, close, httpMiddleware };
+module.exports = { formatLogTime, createLogger, readLogConfig, configure, emit, close, httpMiddleware };

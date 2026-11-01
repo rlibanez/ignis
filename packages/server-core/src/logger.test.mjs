@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { it, expect, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -190,4 +191,17 @@ it('keeps a confirmed OIDC callback visible at info despite its GET redirect',()
  const res=new EventEmitter();res.setHeader=()=>{};res.writableFinished=true;res.statusCode=303;
  logging.httpMiddleware(req,res,()=>{req.ignisLogUsername='mario';});res.emit('finish');next.flush();
  expect(records(root)[0]).toMatchObject({level:'info',operation:'oidc.callback',username:'mario'});expect(JSON.stringify(records(root))).not.toContain('SECRET');
+});
+
+it.each([
+ ['Europe/Madrid','2026-11-01T08:21:23.121Z','2026-11-01T09:21:23.121+01:00'],
+ ['Europe/Madrid','2026-07-01T08:21:23.121Z','2026-07-01T10:21:23.121+02:00'],
+ ['UTC','2026-11-01T08:21:23.121Z','2026-11-01T08:21:23.121+00:00'],
+ ['Asia/Kolkata','2026-11-01T23:21:23.121Z','2026-11-02T04:51:23.121+05:30'],
+ ['America/New_York','2026-07-01T02:21:23.121Z','2026-06-30T22:21:23.121-04:00'],
+])('formats log dates using TZ=%s', (zone, input, expected) => {
+ const script = `const {formatLogTime}=require(${JSON.stringify(require.resolve('./logger'))});process.stdout.write(formatLogTime(new Date(${JSON.stringify(input)})));`;
+ const output=execFileSync(process.execPath,['-e',script],{env:{...process.env,TZ:zone},encoding:'utf8'});
+ expect(output).toBe(expected);
+ expect(Date.parse(output)).toBe(Date.parse(input));
 });
