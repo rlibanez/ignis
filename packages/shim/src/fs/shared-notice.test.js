@@ -62,3 +62,21 @@ it('exports exact Unicode drafts for multiple files and retains recovery after d
  const second=JSON.parse(await f.host.URL.createObjectURL.mock.calls[1][0].text());
  expect(second.files).toEqual(data.files);
 });
+
+it.each([true,false])('explains denied writes and reopens a dismissed notice for new edits (ordinary=%s)',async ordinary=>{
+ const f=fixture(ordinary),fail=content=>f.notice.failure({path:'read.md',content,code:'EACCES',...f.context});
+ fail('first');expect(f.find(ordinary?'Manage account':'Manage shared resources').parent).toBeUndefined();expect(f.nodes.some(n=>n.textContent.includes('To keep your changes, download a recovery copy'))).toBe(true);
+ f.close();fail('first');expect(f.body.children.map(n=>n.tag)).toEqual(['button']);
+ fail('latest');expect(f.body.children.map(n=>n.tag)).toEqual(['aside']);
+ f.find(ordinary?'Download recovery copy':'Download shared recovery copy').click();
+ expect(JSON.parse(await f.host.URL.createObjectURL.mock.calls[0][0].text()).files['read.md'].content).toBe('latest');
+});
+
+it('dismisses after restoring original content while retaining the downloadable draft',async()=>{
+ const f=fixture(true),restoreOriginal=vi.fn();
+ f.notice.failure({path:'note.md',content:'draft',code:'EACCES',restoreOriginal,...f.context});
+ f.find('Show original content').click();expect(restoreOriginal).toHaveBeenCalledOnce();
+ expect(f.body.children.map(n=>n.tag)).toEqual(['button']);
+ f.find('Recover unsaved changes').click();f.find('Download recovery copy').click();
+ expect(JSON.parse(await f.host.URL.createObjectURL.mock.calls[0][0].text()).files['note.md'].content).toBe('draft');
+});

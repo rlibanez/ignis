@@ -7,7 +7,7 @@ function fixture() {
  const adapter={queue:fn=>Promise.resolve().then(fn),write:vi.fn(async(path,data)=>{stored=data;}),reconcileInternalFile:vi.fn(async()=>{})};
  const pluginWrite=adapter.write;
  const app={vault:{adapter,modify:async(file,data,options)=>adapter.write(file.path,data,options)},workspace:{iterateAllLeaves:fn=>fn({view}),on:vi.fn()}};
- class TextFileView {constructor(){this.app=app;this.file={path:'note.md'};this.lastSavedData='base';this.text='draft';this.dirty=true;this.saving=false;this.saveAgain=false;}getViewData(){return this.text;}clear(){this.text='';}register(){}onload(){}save(){}}
+ class TextFileView {constructor(){this.app=app;this.file={path:'note.md'};this.lastSavedData='base';this.text='draft';this.dirty=true;this.saving=false;this.saveAgain=false;}getViewData(){return this.text;}setViewData(text){this.text=text;}clear(){this.text='';}register(){}onload(){}save(){}}
  const view=new TextFileView();
  const write=vi.fn(async(path,data,etag,check)=>{check();if(etag!==contentHash(stored))throw Object.assign(new Error('Conflict'),{code:'CONTENT_CONFLICT'});stored=data;});
  const controller=installEditorSaves({TextFileView},app,write,()=>scope,recover);
@@ -71,4 +71,13 @@ it('does not block a different note in the same view or discard the earlier reco
  f.view.file={path:'other.md'};f.view.lastSavedData='base';f.view.text='other note';
  await f.view.save();expect(f.stored()).toBe('other note');
  expect(f.controller.snapshotPending()).toEqual([{path:'note.md',data:'draft',encoding:'utf8'}]);
+});
+
+it('restores the read-only baseline without writing and rejects stale restoration',async()=>{
+ const f=fixture();f.write.mockRejectedValue(Object.assign(new Error('Read only'),{code:'EACCES'}));
+ await expect(f.view.save()).rejects.toThrow();const event=f.recover.mock.calls.at(-1)[0];
+ f.view.text='new draft';expect(()=>event.restoreOriginal()).toThrow();
+ f.view.text='draft';event.restoreOriginal();expect(f.view.text).toBe('base');expect(f.view.dirty).toBe(false);
+ expect(f.write).toHaveBeenCalledTimes(1);expect(event.content).toBe('draft');
+ f.scope.sessionId='other';expect(()=>event.restoreOriginal()).toThrow();
 });

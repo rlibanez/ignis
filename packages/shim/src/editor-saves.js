@@ -56,7 +56,7 @@ export function installEditorSaves(obsidian, app, write, context, recover) {
     const data=this.getViewData(),previous=this.lastSavedData;
     if(previous===data || previous===null)return;
     const path=file.path;
-    const check=()=>{sameScope(state);if(record.blocked)throw fail("CONTENT_CONFLICT");if(this.file!==file || file.deleted || file.path!==path)throw fail("CONTENT_CONFLICT");};
+    const check=()=>{sameScope(state);if(record.blocked)throw fail(record.failureCode || "CONTENT_CONFLICT");if(this.file!==file || file.deleted || file.path!==path)throw fail("CONTENT_CONFLICT");};
     this.saving=true;
     try {
       check();
@@ -69,10 +69,17 @@ export function installEditorSaves(obsidian, app, write, context, recover) {
       pending.delete(record);
       if(clear){this.data=null;this.lastSavedData=null;this.clear();}
     } catch(error) {
-      this.lastSavedData=previous;this.dirty=true;record.blocked=true;
+      this.lastSavedData=previous;this.dirty=true;record.blocked=true;record.failureCode=error.code;
       // A lost response may already have published the bytes. No blind retry and
       // no automatic rebase, even if a background read subsequently returns data.
-      try {sameScope(state);recover({path,content:data,binary:false,...state.scope,code:error.code});}catch{}
+      try {sameScope(state);recover({path,content:data,binary:false,...state.scope,code:error.code,
+        restoreOriginal:error.code==="EACCES" && typeof this.setViewData==="function" ? ()=>{
+          sameScope(state);
+          if(this.saving || this.file!==file || file.deleted || file.path!==path || this.getViewData()!==data)throw fail("CONTENT_CONFLICT");
+          clearTimeout(state.timer);
+          this.setViewData(previous,false);this.data=previous;this.lastSavedData=previous;this.dirty=false;this.saveAgain=false;
+          pending.delete(record);
+        }:undefined});}catch{}
       throw error;
     } finally {
       this.saving=false;
