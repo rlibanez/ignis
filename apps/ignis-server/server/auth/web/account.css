@@ -61,7 +61,7 @@
 
 /* Account layout: identity, navigation, security, then sign-out. */
 .account-page main { max-width: 30rem; margin: 3rem auto; padding: 2rem; }
-.account-page .brand { font-size: .75rem; margin: 0 0 1.25rem; }
+.account-page .brand { margin: 0 0 1.25rem; }
 .account-page h1 { font-size: 1.75rem; margin: 0 0 1.5rem; letter-spacing: -.025em; }
 .account-identity { padding: 1rem 1.25rem; margin-bottom: 1.25rem; border-radius: .75rem; background: light-dark(#fff, #20232b); border: 1px solid light-dark(#e0e2e9, #333742); }
 .identity-label { font-size: .75rem; color: light-dark(#626978, #a7aebd); }
