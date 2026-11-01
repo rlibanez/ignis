@@ -845,11 +845,11 @@
     function installSelector() {
       const doc=host.document, main=doc?.querySelector('main');
       if (!main || !['/login', '/account', '/setup', '/admin/users', '/shares', '/reset-password'].includes(host.location?.pathname) || doc.querySelector('[data-ignis-language]')) return;
-      const label=doc.createElement('label'),caption=doc.createElement('span'),select=doc.createElement('select');
-      label.className='ignis-language';caption.setAttribute('data-i18n','Language');caption.textContent=t('Language');
+      const label=doc.createElement('label'),select=doc.createElement('select');
+      label.className='ignis-language';
       select.setAttribute('data-ignis-language','');select.setAttribute('aria-label',t('Language'));select.setAttribute('data-i18n-aria-label','Language');
       for(const [value,text] of [['es','Español'],['en','English']]){const option=doc.createElement('option');option.value=value;option.textContent=text;select.append(option);}
-      select.value=locale;select.addEventListener('change',()=>{setLanguage(select.value);host.location.reload();});label.append(caption,select);main.append(label);
+      select.value=locale;select.addEventListener('change',()=>{setLanguage(select.value);host.location.reload();});label.append(select);main.append(label);
     }
     return {t, appName, get language(){return locale;}, normalize, setLanguage, useAccount, fromObsidian, applyStatic, installSelector};
   }
