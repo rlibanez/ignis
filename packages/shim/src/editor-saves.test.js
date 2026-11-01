@@ -81,3 +81,52 @@ it('restores the read-only baseline without writing and rejects stale restoratio
  expect(f.write).toHaveBeenCalledTimes(1);expect(event.content).toBe('draft');
  f.scope.sessionId='other';expect(()=>event.restoreOriginal()).toThrow();
 });
+
+it('reads the latest editor text for recovery actions before the next debounced save',async()=>{
+ const f=fixture();f.write.mockRejectedValue(Object.assign(new Error('Read only'),{code:'EACCES'}));
+ f.view.text='SIgo ten1\n2\n3';await expect(f.view.save()).rejects.toThrow();
+ const event=f.recover.mock.calls.at(-1)[0];f.view.text='1\n2\n3';
+ expect(event.currentContent()).toBe('1\n2\n3');expect(f.stored()).toBe('base');
+ f.view.file={path:'another.md'};expect(()=>event.currentContent()).toThrow();
+ f.view.file={path:'note.md'};f.scope.sessionId='changed';expect(()=>event.currentContent()).toThrow();
+});
+
+
+it('allows native unload after a denied write while retaining an independent scoped draft',async()=>{
+ const f=fixture();f.write.mockRejectedValueOnce(Object.assign(new Error('Read only'),{code:'EACCES'}));
+ await expect(f.view.save()).rejects.toMatchObject({code:'EACCES'});
+ f.view.text='latest\ndraft';await expect(f.view.save(true)).resolves.toBeUndefined();
+ const event=f.recover.mock.calls.at(-1)[0];
+ expect(event.restoreOriginal).toBeTypeOf("function");expect(event.currentContent()).toBe('latest\ndraft');
+ expect(f.controller.snapshotPending()[0].data).toBe('latest\ndraft');
+ expect(f.view.text).toBe('');expect(f.stored()).toBe('base');expect(f.write).toHaveBeenCalledTimes(1);
+ f.view.file={path:'owned.md'};f.view.lastSavedData='base';f.view.text='owned edit';
+ await f.view.save();expect(f.stored()).toBe('owned edit');expect(event.currentContent()).toBe('latest\ndraft');
+ f.scope.sessionId='new';expect(()=>event.currentContent()).toThrow();
+});
+it('does not detach a denied draft if recovery cannot retain it',async()=>{
+ const f=fixture();f.write.mockRejectedValue(Object.assign(new Error('Read only'),{code:'EACCES'}));
+ f.recover.mockImplementation(()=>{throw new Error('recovery unavailable');});
+ await expect(f.view.save(true)).rejects.toMatchObject({code:'EACCES'});expect(f.view.text).toBe('draft');
+});
+
+
+it('keeps a restored draft available without reading the original back into recovery',async()=>{
+ const f=fixture();f.write.mockRejectedValue(Object.assign(new Error('Read only'),{code:'EACCES'}));
+ await expect(f.view.save()).rejects.toThrow();const first=f.recover.mock.calls.at(-1)[0];
+ first.restoreOriginal();expect(first.currentContent()).toBe('draft');
+ expect(f.controller.snapshotPending()[0].data).toBe('draft');
+ first.restoreOriginal();expect(f.view.text).toBe('base');
+ f.view.text='second draft';await expect(f.view.save()).rejects.toThrow();
+ const second=f.recover.mock.calls.at(-1)[0];second.restoreOriginal();
+ expect(second.currentContent()).toBe('second draft');expect(second.saveCopy).toBeTypeOf('function');
+});
+it('retains all recovery actions after unload without restoring stale content into a reopened note',async()=>{
+ const f=fixture();f.write.mockRejectedValue(Object.assign(new Error('Read only'),{code:'EACCES'}));
+ await f.view.save(true);const event=f.recover.mock.calls.at(-1)[0];
+ f.app.workspace.getActiveViewOfType=()=>f.view;
+ f.view.lastSavedData='new remote original';f.view.text='new remote original';
+ event.restoreOriginal();expect(f.view.text).toBe('new remote original');expect(event.currentContent()).toBe('draft');
+ f.view.text='new edits';expect(()=>event.restoreOriginal()).toThrow();
+ expect(event.saveCopy).toBeTypeOf('function');
+});

@@ -33,11 +33,19 @@ export function copyDestinationPath(folder,name) {
     throw new Error(translateIgnis("Enter a file or folder name without slashes or leading/trailing spaces."));
   return folder ? folder+'/'+name : name;
 }
-export function openCopyDialog(obsidian,app,file,describe,copy) {
+export function openCopyDialog(obsidian,app,file,describe,copy,options={}) {
+  let destinationVault=app.vault;
   class CopyDialog extends obsidian.Modal {
-    onOpen() {
+    onClose(){this.closed=true;}
+    async onOpen() {
+      this.closed=false;
       this.modalEl.classList.add('ignis-management-modal');
-      this.setTitle(translateIgnis("Copy ")+file.name);
+      this.setTitle(options.title || translateIgnis("Copy ")+file.name);
+      if(options.load){
+        const loading=document.createElement('p');loading.textContent=translateIgnis("Loading vault…");this.contentEl.append(loading);
+        try{destinationVault=await options.load();}catch(error){loading.textContent=translateIgnis(error.message);return;}
+        if(this.closed)return;loading.remove();
+      }
       let folder='',busy=false;const expanded=new Set(['']);
       const create=(tag,text)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=text;return el;};
       const content=this.contentEl;
@@ -49,10 +57,11 @@ export function openCopyDialog(obsidian,app,file,describe,copy) {
       const nameLabel=create('label',translateIgnis("Name of the copy")),name=create('input');name.type='text';name.value=file.name;name.style.cssText='width:100%;margin:8px 0 12px';nameLabel.append(name);
       const error=errorBlock(create('div'));
       const actions=create('div');actions.className='ignis-ui-actions';
-      const cancel=create('button',translateIgnis("Cancel")),submit=create('button',translateIgnis("Copy here"));submit.className='mod-cta';actions.append(cancel,submit);
+      const cancel=create('button',translateIgnis("Cancel")),submit=create('button',(options.submit || translateIgnis("Copy here")));submit.className='mod-cta';actions.append(cancel,submit);
       const render=()=>{
-        location.textContent=translateIgnis("Destination: ")+(folder || translateIgnis("Vault root"));list.replaceChildren();search.disabled=busy;
-        const folders=copyDestinationFolders(app.vault.getAllLoadedFiles(),file.path,describe);
+        submit.disabled=busy || (options.multipleVaults && !folder);
+        location.textContent=translateIgnis("Destination: ")+(folder ? (destinationVault.displayPath?.(folder) || folder) : options.multipleVaults ? translateIgnis("Destination folder") : translateIgnis("Vault root"));list.replaceChildren();search.disabled=busy;
+        const folders=copyDestinationFolders(destinationVault.getAllLoadedFiles(),file.path,describe);
         const rows=copyFolderTree(folders,expanded,search.value);
         const draw=(entry)=>{
           const row=create('div');row.className='ignis-folder-row';row.style.setProperty('--tree-depth',String(entry.depth));row.style.cssText+=`display:flex;align-items:center;gap:4px;padding-left:${entry.depth*16}px;margin:2px 0`;
@@ -66,22 +75,22 @@ export function openCopyDialog(obsidian,app,file,describe,copy) {
           obsidian.setIcon?.(icon,describe(entry.path)?'folder-input':'folder');button.append(icon,text);button.title=entry.path||translateIgnis("Vault root");button.setAttribute('aria-pressed',String(entry.path===folder));button.dataset.folder=String(entry.index);
           button.disabled=busy;button.onclick=()=>{folder=entry.path;error.textContent='';render();list.querySelector(`[data-folder="${entry.index}"]`)?.focus();};row.append(toggle,button);list.append(row);
         };
-        draw({path:'',name:translateIgnis("Vault root"),depth:0,children:folders.length>0,open:!!search.value.trim()||expanded.has(''),index:0});
-        rows.forEach((entry,index)=>draw({...entry,index:index+1}));
+        if(!options.multipleVaults)draw({path:'',name:translateIgnis("Vault root"),depth:0,children:folders.length>0,open:!!search.value.trim()||expanded.has(''),index:0});
+        rows.forEach((entry,index)=>draw({...entry,depth:options.multipleVaults?entry.depth-1:entry.depth,index:index+1}));
         if(search.value.trim()&&!rows.length)list.append(create('div',translateIgnis("No matching folders")));
-        hint.textContent=describe(folder)?.direction==='incoming'?translateIgnis("Shared folder: the copy will be visible to its recipients."):translateIgnis("Select a folder, then choose Copy here. Existing items will not be overwritten.");
+        hint.textContent=options.hint || (describe(folder)?.direction==='incoming'?translateIgnis("Shared folder: the copy will be visible to its recipients."):translateIgnis("Select a folder, then choose Copy here. Existing items will not be overwritten."));
       };
       search.oninput=render;
       cancel.onclick=()=>this.close();
       submit.onclick=async()=>{
-        if(busy)return;error.textContent='';
+        if(busy || (options.multipleVaults && !folder))return;error.textContent='';
         try{
           const destination=copyDestinationPath(folder,name.value);
-          if(app.vault.getAbstractFileByPath(destination))throw new Error(translateIgnis("An item with that name already exists. Choose another name or folder."));
+          if(destinationVault.getAbstractFileByPath(destination))throw new Error(translateIgnis("An item with that name already exists. Choose another name or folder."));
           busy=true;submit.disabled=true;cancel.disabled=true;name.disabled=true;submit.textContent=translateIgnis("Copying…");render();
           await copy(file.path,destination);this.close();new obsidian.Notice(translateIgnis("Copy complete"));
         }catch(e){error.textContent=translateIgnis(e.message) || translateIgnis("Copy failed");}
-        finally{busy=false;submit.disabled=false;cancel.disabled=false;name.disabled=false;submit.textContent=translateIgnis("Copy here");render();}
+        finally{busy=false;submit.disabled=false;cancel.disabled=false;name.disabled=false;submit.textContent=(options.submit || translateIgnis("Copy here"));render();}
       };
       content.append(label,search,list,location,hint,nameLabel,error,actions);render();
     }

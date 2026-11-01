@@ -48,3 +48,12 @@ it('tolerates unavailable storage and merges acknowledgements from other tabs',(
  state.update([{id:'x',owned:false},{id:'y',owned:false}]);state.mark('x');expect(state.pending()).toEqual(['y']);
  stored='["y"]';state.update([{id:'x',owned:false},{id:'y',owned:false}]);expect(state.pending()).toEqual([]);
 });
+
+it('does not announce placed resources again after browser seen state is lost',()=>{
+ let stored;const state=createSharedUnread(()=>stored,value=>stored=value);
+ state.update([{id:'placed',owned:false,destination:'vault'},{id:'new',owned:false,destination:null}]);
+ expect(state.pending()).toEqual(['new']);
+ const restarted=createSharedUnread(()=>null,()=>{throw new Error('Storage unavailable');});
+ restarted.update([{id:'placed',owned:false,destination:'vault'},{id:'new',owned:false}]);expect(restarted.pending()).toEqual(['new']);
+ state.update([{id:'placed',owned:false,destination:null}]);expect(state.pending()).toEqual([]);
+});

@@ -21,7 +21,8 @@ export function installSharedIcons(obsidian, sharedFiles, host = window) {
         icon.__ignisShareIcon=name;
       }
       const label=shared.direction==='outgoing'?translateIgnis("Shared by you"):(shared.owner?translateIgnis("Shared by ")+shared.owner:translateIgnis("Shared"))+' · '+(shared.role==='editor'?translateIgnis("Read / Write"):translateIgnis("Read"));
-      icon.setAttribute('aria-label',label);icon.title=label;
+      // Obsidian renders aria-label as a tooltip; title would add a second, native one.
+      icon.setAttribute('aria-label',label);
     }
   }
   function schedule(){if(!stopped&&!queued){queued=true;queueMicrotask(paint);}}

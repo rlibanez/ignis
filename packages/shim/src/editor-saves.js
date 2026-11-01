@@ -1,3 +1,4 @@
+import {openRecoveryCopy} from './recovery-copy.js';
 import { contentHash } from "./fs/content-versions.js";
 
 // A per-call token, never an ambient "currently saving" flag: an unrelated plugin
@@ -72,14 +73,39 @@ export function installEditorSaves(obsidian, app, write, context, recover) {
       this.lastSavedData=previous;this.dirty=true;record.blocked=true;record.failureCode=error.code;
       // A lost response may already have published the bytes. No blind retry and
       // no automatic rebase, even if a background read subsequently returns data.
-      try {sameScope(state);recover({path,content:data,binary:false,...state.scope,code:error.code,
+      // Capture the current native view at the user action, not the earlier failed save.
+      let detached=false,restored=false;
+      const currentContent=()=>{
+        sameScope(state);
+        if(detached || restored)return data;
+        if(this.file!==file || file.deleted || file.path!==path)throw fail("CONTENT_CONFLICT");
+        return this.getViewData();
+      };
+      let retained=false;
+      try {sameScope(state);pending.set(record,{path,data,scope:state.scope});recover({path,content:data,currentContent,binary:false,...state.scope,code:error.code,
+        saveCopy:error.code==="EACCES" ? onSaved=>openRecoveryCopy(obsidian,app,{path,content:currentContent(),...state.scope},context,onSaved):undefined,
         restoreOriginal:error.code==="EACCES" && typeof this.setViewData==="function" ? ()=>{
           sameScope(state);
+          if(detached){
+            // The native view has been unloaded. Never apply its old baseline
+            // to a reopened editor: that editor may have received newer content.
+            const active=app.workspace.getActiveViewOfType?.(obsidian.TextFileView);
+            if(!active || active.file?.path!==path || active.saving || active.getViewData()!==active.lastSavedData)throw fail("CONTENT_CONFLICT");
+            return;
+          }
+          if(restored)return;
           if(this.saving || this.file!==file || file.deleted || file.path!==path || this.getViewData()!==data)throw fail("CONTENT_CONFLICT");
           clearTimeout(state.timer);
           this.setViewData(previous,false);this.data=previous;this.lastSavedData=previous;this.dirty=false;this.saveAgain=false;
-          pending.delete(record);
-        }:undefined});}catch{}
+          restored=true;
+          // Keep the draft available to both copy and download after restoration.
+        }:undefined});retained=true;}catch{}
+      // Native unload waits for save(true). A denied write is safe to detach
+      // only after retaining its exact draft; uncertain writes still block unload.
+      if(clear && error.code==="EACCES" && retained){
+        detached=true;this.data=null;this.lastSavedData=null;this.dirty=false;this.saveAgain=false;this.clear();
+        return;
+      }
       throw error;
     } finally {
       this.saving=false;

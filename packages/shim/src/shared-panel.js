@@ -51,7 +51,14 @@ export function createSharedUnread(read, write) {
   const restore = () => { try { const value = JSON.parse(read() || "[]"); if (Array.isArray(value)) for (const id of value) if (typeof id === "string") seen.add(id); } catch {} };
   restore();
   return {
-    update(items) { restore(); resources = items.filter(item => !item.owned); },
+    update(items) {
+      restore(); resources = items.filter(item => !item.owned);
+      // A saved destination proves that the recipient already handled this resource,
+      // even if browser-local acknowledgements were cleared or are unavailable.
+      let changed=false;
+      for(const item of resources)if(item.destination && !seen.has(item.id)){seen.add(item.id);changed=true;}
+      if(changed)try{write(JSON.stringify([...seen]));}catch{/* Presentation state remains usable in memory. */}
+    },
     pending() { return resources.filter(item => !seen.has(item.id)).map(item => item.id); },
     mark(id) {
       if (!resources.some(item => item.id === id)) return;
