@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import http from "node:http";
+import vm from "node:vm";
 import { randomBytes } from "node:crypto";
 const require = createRequire(import.meta.url);
 const express = require("express");
@@ -266,7 +267,7 @@ describe("setup HTTP boundary", () => {
     expect(JSON.parse(manifest.text)).toMatchObject({id:"/",start_url:"/",scope:"/",display:"standalone"});
     expect((await request("/pwa/icon-512.png")).status).toBe(200);
     expect((await request("/login")).headers["content-security-policy"]).toContain("manifest-src 'self'");
-    for (const route of ["/setup", "/auth/setup.js", "/auth/setup.css", "/manifest.webmanifest", "/auth/pwa.js", "/pwa/icon-192.svg", "/pwa/icon-maskable.svg"]) {
+    for (const route of ["/share-target", "/share-worker.js", "/auth/share-store.js", "/auth/share-target.js", "/auth/share-target.css", "/setup", "/auth/setup.js", "/auth/setup.css", "/manifest.webmanifest", "/auth/pwa.js", "/pwa/icon-192.svg", "/pwa/icon-maskable.svg"]) {
       const result = await request(route);
       expect(result.status).toBe(200);
       expect(result.text).not.toContain(KEY);
@@ -400,4 +401,14 @@ it("accepts a 16-byte hex key and rejects shorter or old 32-byte keys", () => {
     expect(() =>
       readInitialAdminKey({ IGNIS_INITIAL_ADMIN_KEY: value }),
     ).toThrow(/format/);
+});
+
+it('serves configured incoming-share limits to pages and imported worker scripts', async () => {
+  await start(KEY, {IGNIS_SHARE_MAX_MIB:'64', IGNIS_SHARE_MAX_FILES:'7', IGNIS_SHARE_TTL_MINUTES:'0'});
+  const response = await request('/auth/share-store.js');
+  expect(response.status).toBe(200); expect(response.headers['cache-control']).toBe('no-store');
+  const context = {}; vm.runInNewContext(response.text, context);
+  expect(context.IgnisIncoming.MAX_BYTES).toBe(64*1024*1024);
+  expect(context.IgnisIncoming.MAX_FILES).toBe(7); expect(context.IgnisIncoming.TTL).toBe(0);
+  expect((await request('/share-worker.js')).text).toContain("importScripts('/auth/share-store.js')");
 });

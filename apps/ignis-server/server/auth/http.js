@@ -4,6 +4,11 @@ const path = require("node:path");
 const { createInitialAdminSetup } = require("./initial-admin");
 const setupAssets = new Map(
   [
+    ["/share-target", ["text/html", "share-target.html"]],
+    ["/auth/share-target.js", ["text/javascript", "share-target.js"]],
+    ["/auth/share-target.css", ["text/css", "share-target.css"]],
+    ["/auth/share-store.js", ["text/javascript", "share-store.js"]],
+    ["/share-worker.js", ["text/javascript", "share-worker.js"]],
     ["/manifest.webmanifest", ["application/manifest+json", "manifest.webmanifest"]],
     ["/pwa/icon-192.svg", ["image/svg+xml", "icon-192.svg"]],
     ["/pwa/icon-maskable.svg", ["image/svg+xml", "icon-maskable.svg"]],
@@ -58,6 +63,8 @@ function createAuthBoundary({
   oidcDependencies,
 }) {
   const presentationAssets = require("./app-name").brandedAssets(setupAssets, config.appName);
+  require('./incoming-share-config').configureIncomingShareAsset(presentationAssets,
+    config.incomingShare || require('./incoming-share-config').readIncomingShareConfig({}));
   const cookies = createSessionCookies(config); // Validate before opening/listening.
   const rememberCookies = createSessionCookies({ ...config, purpose: "remember" });
   const resetCookies = createSessionCookies({ ...config, purpose: "reset" });
@@ -867,7 +874,7 @@ function createAuthBoundary({
         req.url.split("?")[0] === "/api/auth/oidc/callback";
       const entryNavigation =
         req.method === "GET" &&
-        ["/", "/index.html", "/login", "/account", "/admin/users", "/shares"].includes(req.url.split("?")[0]) &&
+        ["/", "/index.html", "/login", "/account", "/admin/users", "/shares", "/share-target"].includes(req.url.split("?")[0]) &&
         req.headers["sec-fetch-mode"] === "navigate" &&
         req.headers["sec-fetch-dest"] === "document";
       if (!transportAllowed(req) || (!callback && !entryNavigation && !originAllowed(req)))
@@ -891,7 +898,7 @@ function createAuthBoundary({
         const asset = presentationAssets.get(pathname);
         res.set(
           "Content-Security-Policy",
-          "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; manifest-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+          "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; manifest-src 'self'; connect-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
         );
         // Static PWA SVGs embed the existing logo; only these images need data URLs.
         if (asset.type === "image/svg+xml") res.set("Content-Security-Policy", "default-src 'none'; img-src data:; frame-ancestors 'none'; base-uri 'none'");

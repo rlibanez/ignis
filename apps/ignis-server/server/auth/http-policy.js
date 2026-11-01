@@ -55,6 +55,7 @@ function readAuthConfig(env = process.env) {
   return {
     appName: require("./app-name").readAppName(env),
     rememberDays: Number(rememberDays),
+    incomingShare: require("./incoming-share-config").readIncomingShareConfig(env),
     oidcButtonText,
     publicOrigin: origin.origin,
     allowHttpLoopback: env.IGNIS_ALLOW_HTTP_LOOPBACK === "true",

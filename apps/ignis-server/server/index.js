@@ -47,10 +47,11 @@ obCli.init({
 const REPO_ROOT = path.join(__dirname, "..", "..", "..");
 
 const app = express();
+const authConfig = readAuthConfig();
 const auth = createAuthBoundary({
   dataRoot: config.dataRoot,
   vaultRoot: config.vaultRoot,
-  config: readAuthConfig(),
+  config: authConfig,
   staticRoots: [
     { root: path.join(__dirname, "assets"), mount: "/assets/" },
     path.join(REPO_ROOT, "packages", "ui", "dist"),
@@ -66,13 +67,14 @@ auth.install(app);
 app.use((req, res, next) => {
   const declared = Number(req.headers["content-length"]);
 
-  if (Number.isFinite(declared) && declared > settings.get("maxBodyBytes")) {
+  if (Number.isFinite(declared) && declared > require("./auth/incoming-share-config").incomingWriteBodyLimit(settings.get("maxBodyBytes"), authConfig.incomingShare, req.path)) {
     return res.status(413).json({ error: "Request body too large" });
   }
 
   next();
 });
 
+app.use(require("./auth/incoming-share-config").incomingBinaryParser(authConfig.incomingShare));
 app.use(express.json({ limit: settings.MAX_BODY_BACKSTOP }));
 app.use(auth.revalidate);
 app.use(compression());

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title data-i18n="Save shared content">Save shared content</title>
+<link rel="icon" href="/favicon.png"><link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#17191e">
+<link rel="stylesheet" href="/auth/setup.css"><link rel="stylesheet" href="/auth/account.css"><link rel="stylesheet" href="/auth/components.css"><link rel="stylesheet" href="/auth/share-target.css">
+<script src="/auth/i18n.js" defer></script><script src="/auth/pwa.js" defer></script><script src="/auth/share-store.js" defer></script><script src="/auth/share-target.js" defer></script>
+</head>
+<body><main>
+<p class="brand" data-ignis-app-name>IGNIS</p><h1 data-i18n="Save shared content">Save shared content</h1>
+<p id="status" role="status" aria-live="polite"></p>
+<section id="signin" hidden><p data-i18n="Sign in, then return here to continue. Your incoming content stays on this device.">Sign in, then return here to continue. Your incoming content stays on this device.</p><a href="/login" target="_blank" rel="noopener" data-i18n="Sign in">Sign in</a><button id="retry" type="button" data-i18n="Continue">Continue</button></section>
+<form id="capture" hidden><fieldset id="fields">
+<section aria-labelledby="preview-heading"><h2 id="preview-heading" data-i18n="Shared content">Shared content</h2><pre id="preview"></pre><div id="files"></div></section>
+<label for="vault" data-i18n="Vault">Vault</label><select id="vault" required></select>
+<label for="destination-search" data-i18n="Destination">Destination</label>
+<input id="destination-search" type="search" data-i18n-placeholder="Search folders..." placeholder="Search folders..." autocomplete="off">
+<div id="destination-tree" class="destination-tree" aria-label="Destination"></div>
+<p id="destination" class="help"></p>
+<input id="folder" type="hidden"><input id="note" type="hidden">
+<div class="resource-actions">
+<button id="mkdir" type="button" class="account-button secondary" data-i18n="Create folder">Create folder</button>
+<button id="choose-new-note" type="button" class="account-button secondary" data-i18n="Create note">Create note</button>
+</div>
+<input id="note-name" type="hidden">
+<div class="capture-actions">
+<button type="submit" id="save-open" value="open" class="account-button" data-i18n="Save and open note">Save and open note</button>
+<button type="submit" id="save-return" value="return" class="account-button secondary" data-i18n="Save and return">Save and return</button>
+<button type="button" id="cancel" class="account-button secondary" data-i18n="Close without saving">Close without saving</button>
+</div>
+</fieldset></form>
+
+
+<dialog id="resource-dialog" aria-labelledby="resource-title">
+<form id="resource-form"><h2 id="resource-title"></h2>
+<label for="resource-name" data-i18n="Name">Name</label><input id="resource-name" maxlength="240" autocomplete="off" required>
+<p id="resource-error" role="alert"></p>
+<div class="capture-actions"><button id="resource-create" type="submit" class="account-button" data-i18n="Create">Create</button><button id="resource-cancel" type="button" class="account-button secondary" data-i18n="Cancel">Cancel</button></div>
+</form></dialog>
+</main></body></html>

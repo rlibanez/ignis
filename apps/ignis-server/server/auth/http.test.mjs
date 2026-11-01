@@ -1531,6 +1531,11 @@ it("allows external top-level PWA entry navigation without bypassing authenticat
   const entry = await request("/", {headers});
   expect(entry.status).toBe(303);
   expect(entry.headers.get("location")).toBe("/login");
+  const share = await request('/share-target', {headers});
+  expect(share.status).toBe(200);
+  expect(share.headers.get('content-security-policy')).toContain("worker-src 'self'");
+  expect((await request('/share-target', {method:'POST', headers})).status).toBe(403);
+  expect((await request('/share-target', {headers:{...headers,'sec-fetch-dest':'iframe'}})).status).toBe(403);
   for (const route of ["/api/auth/session", "/api/vault/list", "/api/fs/readFile?vault=vault&path=note.md"]) {
     expect((await request(route, {headers})).status).toBe(403);
   }

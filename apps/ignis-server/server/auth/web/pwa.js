@@ -1,5 +1,9 @@
-// Browser appearance and installation only: no service worker, offline cache or credential persistence.
+// Browser appearance, installation and incoming shares; no offline asset cache.
 (() => {
+  if (window.isSecureContext && 'serviceWorker' in window.navigator) {
+    window.navigator.serviceWorker.register('/share-worker.js', {scope: '/', updateViaCache: 'none'})
+      .catch(() => { /* Installation UI remains available; receiving shares requires this worker. */ });
+  }
   // Keep browser/system chrome in step with the current page or vault theme.
   // Android may still apply its own contrast scrim to system navigation bars.
   const themeMeta = document.querySelector('meta[name="theme-color"]');
