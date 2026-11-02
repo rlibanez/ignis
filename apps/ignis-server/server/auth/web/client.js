@@ -335,7 +335,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       if (!response.ok) throw new Error();
       // Clear the account-scoped storage while its local context is still valid.
       // Storage failure must not prevent leaving an already revoked session.
-      try { localStorage.clear(); sessionStorage.clear(); } catch { /* Optional browser storage. */ }
+      try { localStorage.clear(); sessionStorage.clear(); window.IgnisI18n?.rememberLanguage(); } catch { /* Optional browser storage. */ }
       channel?.postMessage("lock");
       lock(translateIgnis("You have signed out."));
       location.replace("/login");

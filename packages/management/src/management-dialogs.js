@@ -1,9 +1,8 @@
-import { setIcon } from "obsidian";
 const t = text => globalThis.IgnisI18n?.t(text) ?? text;
 
 // Presentation only. Closing always goes through the controller's cancellation
 // handler so pending requests and confirmation state retain their original guards.
-export function installManagementDialogs(frame, host, modal) {
+export function installManagementDialogs(frame, host, modal, setIcon) {
   const style = document.createElement("style");
   style.textContent = `@scope (.ignis-management-root) { ${managementDialogStyles} }`;
   frame.append(style);

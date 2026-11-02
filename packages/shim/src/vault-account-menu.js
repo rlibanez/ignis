@@ -17,7 +17,7 @@ export function installVaultAccountMenu(obsidian) {
       this.addItem(item => item
         .setTitle(spanish ? "Cuenta" : translateIgnis("Account"))
         .setIcon("user-round")
-        .onClick(() => window.__ignisOpenAccount ? window.__ignisOpenAccount() : window.location.assign("/account")));
+        .onClick(() => window.__ignisOpenAccount ? window.__ignisOpenAccount() : window.location.assign("/?manage=account")));
     }
     return original.call(this, element, ...args);
   };

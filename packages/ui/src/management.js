@@ -1,0 +1,168 @@
+import {X, Eye, EyeOff, User, ArrowLeft} from 'lucide-svelte';
+import settingsShellStyles from './settings-shell.css';
+import {createManagementModal} from '../../management/src/management-modal.js';
+import {createAccountSettings} from '../../management/src/account-settings.js';
+import {consumeManagementIntent} from '../../management/src/intent.js';
+const t=text=>globalThis.IgnisI18n?.t(text) ?? text;
+// Small DOM host for the same account forms/controllers when no Obsidian vault
+// exists. No fake app, Obsidian module or global DOM prototype patches.
+function element(tag,options={}) {
+  const el=document.createElement(tag);
+  if(options.cls)el.className=options.cls;
+  if(options.text!==undefined)el.textContent=options.text;
+  for(const key of ['type'])if(options[key])el[key]=options[key];
+  for(const [key,value] of Object.entries(options.attr || {}))el.setAttribute(key,value);
+  el.addClass=(...names)=>el.classList.add(...names);
+  el.empty=()=>el.replaceChildren();
+  el.createEl=(name,attrs)=>{const child=element(name,attrs);el.append(child);return child;};
+  el.createDiv=attrs=>el.createEl('div',attrs);
+  el.createSpan=attrs=>el.createEl('span',attrs);
+  return el;
+}
+const icons=new WeakMap();
+function setIcon(target,name){
+  icons.get(target)?.$destroy();target.replaceChildren();
+  const Icon=({x:X,eye:Eye,'eye-off':EyeOff,user:User,'arrow-left':ArrowLeft})[name] || X;
+  icons.set(target,new Icon({target,props:{size:18}}));
+}
+class BrowserModal {
+  constructor(){
+    this.containerEl=element('div',{cls:'modal-container ignis-shell-modal'});
+    this.containerEl.style.cssText='position:fixed;inset:0;z-index:100010;display:flex;align-items:center;justify-content:center';
+    const backdrop=this.containerEl.createDiv({cls:'modal-bg'});
+    backdrop.style.cssText='position:absolute;inset:0;background:rgba(0,0,0,.5)';
+    this.modalEl=this.containerEl.createDiv({cls:'modal'});
+    this.modalEl.style.cssText='position:relative;max-width:100vw;max-height:90dvh;overflow:auto';
+    const close=this.modalEl.createEl('button',{type:'button',cls:'modal-header-button mod-raised clickable-icon',attr:{'aria-label':t('Close'),'data-ignis-close':''}});
+    setIcon(close,'x');close.addEventListener('click',()=>this.close());
+    this.headerEl=this.modalEl.createDiv({cls:'modal-header'});
+    this.titleEl=this.headerEl.createDiv({cls:'modal-title'});
+    this.contentEl=this.modalEl.createDiv({cls:'modal-content'});
+    this.modalEl.setAttribute('role','dialog');this.modalEl.setAttribute('aria-modal','true');
+    this.titleEl.id=`ignis-shell-heading-${++sequence}`;this.modalEl.setAttribute('aria-labelledby',this.titleEl.id);
+    // Obsidian's delegated tooltip renderer is unavailable before a vault opens.
+    // Use its tooltip class in this host, outside the form's layout.
+    const hideHelp=()=>{this.tooltip?.remove();this.tooltip=null;};
+    this.containerEl.addEventListener('pointerover',event=>{
+      const button=event.target.closest?.('.ignis-password-help');
+      if(!button)return;
+      hideHelp();
+      this.tooltip=element('div',{cls:'tooltip',text:button.getAttribute('aria-label'),attr:{role:'tooltip'}});
+      const rect=button.getBoundingClientRect();
+      this.tooltip.style.cssText=`position:fixed;z-index:100011;max-width:min(320px,90vw);white-space:normal;left:${Math.max(8,Math.min(rect.left,window.innerWidth-328))}px;top:${rect.bottom+8}px`;
+      this.containerEl.append(this.tooltip);
+    });
+    this.containerEl.addEventListener('pointerout',hideHelp);
+    this.lost=()=>this.close();
+    this.keydown=event=>{
+      if([...document.querySelectorAll('.ignis-shell-modal')].at(-1)!==this.containerEl || this.containerEl.querySelector('dialog[open]'))return;
+      if(event.key==='Tab'){
+        const fields=[...this.containerEl.querySelectorAll('button,input,select,textarea,a[href],[tabindex]')].filter(el=>!el.disabled && el.tabIndex>=0 && el.getClientRects().length);
+        const first=fields[0],last=fields.at(-1);
+        if(event.shiftKey && document.activeElement===first){event.preventDefault();last?.focus();}
+        else if(!event.shiftKey && document.activeElement===last){event.preventDefault();first?.focus();}
+      }
+      if(event.key==='Escape' && [...document.querySelectorAll('.ignis-shell-modal')].at(-1)===this.containerEl && !this.containerEl.querySelector('dialog[open]')){event.preventDefault();this.close();}
+    };
+  }
+  setTitle(title){this.titleEl.textContent=title;}
+  open(){
+    if(!window.app?.workspace && window.matchMedia('(max-width: 599px)').matches){
+      document.body.classList.add('is-mobile','is-phone');
+      this.containerEl.style.alignItems='flex-start';
+      this.containerEl.style.paddingTop='max(var(--safe-area-inset-top,0px),env(safe-area-inset-top,0px))';
+      this.modalEl.addClass('mod-lg');
+      this.modalEl.style.margin='0';this.modalEl.style.width='100%';
+      this.modalEl.style.maxHeight='calc(100dvh - max(var(--safe-area-inset-top,0px),env(safe-area-inset-top,0px)))';
+    }
+    this.previousFocus=document.activeElement;
+    document.body.append(this.containerEl);document.addEventListener('keydown',this.keydown);
+    window.addEventListener('ignis:auth-lost',this.lost);window.addEventListener('pagehide',this.lost);
+    this.onOpen?.();
+    if(document.activeElement===this.previousFocus)this.containerEl.querySelector('button,input')?.focus();
+    return this;
+  }
+  close(){if(!this.containerEl.isConnected)return;this.onClose?.();document.removeEventListener('keydown',this.keydown);window.removeEventListener('ignis:auth-lost',this.lost);window.removeEventListener('pagehide',this.lost);this.containerEl.remove();if(this.previousFocus?.isConnected)this.previousFocus.focus();}
+}
+let sequence=0;
+class Notice {constructor(message){const el=element('div',{cls:'notice',text:message});el.setAttribute('role','alert');document.body.append(el);setTimeout(()=>el.remove(),6000);}}
+const ManagementModal=createManagementModal(BrowserModal,setIcon);
+const {settingDefinitions}=createAccountSettings({Modal:BrowserModal,Notice,setIcon,ManagementModal});
+class AccountModal extends BrowserModal {
+  constructor(kind){super();this.kind=kind;}
+  onOpen(){
+    if(!document.getElementById('ignis-settings-shell-styles')){
+      const style=element('style');style.id='ignis-settings-shell-styles';style.textContent=settingsShellStyles;document.head.append(style);
+    }
+    this.modalEl.addClass('mod-settings','ignis-shell-settings');
+    this.modalEl.style.overflow='hidden';
+    if(!document.body.classList.contains('is-phone')){
+      this.modalEl.style.width='var(--modal-setting-width,90vw)';
+      this.modalEl.style.height='var(--modal-setting-height,85vh)';
+    }
+    this.contentEl.addClass('vertical-tabs-container');
+    const sidebar=this.contentEl.createDiv({cls:'vertical-tab-header'});
+    const search=sidebar.createDiv({cls:'setting-search-container'}).createDiv({cls:'search-input-container'});
+    this.search=search.createEl('input',{type:'search',attr:{placeholder:t('Search settings...'),'aria-label':t('Search settings...')}});
+    const groups=sidebar.createDiv({cls:'vertical-tab-header-group-container'});
+    const group=groups.createDiv({cls:'vertical-tab-header-group'});
+    group.createDiv({cls:'vertical-tab-header-group-title',text:t('Ignis')});
+    const tabs=group.createDiv({cls:'vertical-tab-header-group-items',attr:{role:'tablist','aria-label':t('Settings')}});
+    this.accountTab=tabs.createEl('button',{type:'button',cls:'vertical-tab-nav-item is-active',attr:{role:'tab','aria-selected':'true'}});
+    this.accountTab.id=`ignis-shell-account-tab-${sequence}`;
+    setIcon(this.accountTab.createDiv({cls:'vertical-tab-nav-item-icon'}),'user');
+    this.accountTab.createSpan({cls:'vertical-tab-nav-item-title',text:t('Account')});
+    const content=this.contentEl.createDiv({cls:'vertical-tab-content-container'});
+    this.accountContent=content.createDiv({cls:'vertical-tab-content',attr:{role:'tabpanel','aria-labelledby':this.accountTab.id}});
+    this.accountContent.id=`ignis-shell-account-panel-${sequence}`;
+    this.accountTab.setAttribute('aria-controls',this.accountContent.id);
+    const back=this.modalEl.createEl('button',{type:'button',cls:'modal-header-button mod-start mod-raised clickable-icon',attr:{'aria-label':t('Back')}});
+    setIcon(back,'arrow-left');back.addEventListener('click',()=>this.showAccount(false));
+    this.accountTab.addEventListener('click',()=>{this.showAccount(true);this.accountContent.querySelector('button')?.focus();});
+    this.search.addEventListener('input',()=>this.filter());
+    this.tab={app:null,pendingEmailEdit:this.kind==='email',isActive:()=>this.containerEl.isConnected,update:()=>this.render()};
+    this.showAccount(true);this.render();
+  }
+  showAccount(selected){
+    this.modalEl.dataset.view=selected?'account':'navigation';
+    this.setTitle(t(selected?'Account':'Settings'));
+    if(!selected)this.accountTab.focus();
+  }
+  filter(){
+    const query=this.search.value.trim().toLocaleLowerCase();
+    const matchesTab=[t('Account'),t('Ignis')].some(text=>text.toLocaleLowerCase().includes(query));
+    let visible=0;
+    for(const row of this.accountContent.querySelectorAll('.setting-item')){
+      row.hidden=!!query && !matchesTab && !row.textContent.toLocaleLowerCase().includes(query);
+      if(!row.hidden)visible++;
+    }
+    if(this.empty)this.empty.hidden=visible>0 || !query;
+  }
+  render(){
+    if(!this.containerEl.isConnected)return;
+    this.accountContent.replaceChildren();
+    for(const group of settingDefinitions(this.tab)){
+      const items=this.accountContent.createDiv({cls:'setting-group'}).createDiv({cls:'setting-items'});
+      for(const item of group.items){
+        const row=items.createDiv({cls:'setting-item'}),info=row.createDiv({cls:'setting-item-info'});
+        if(item.name)info.createDiv({cls:'setting-item-name',text:item.name});
+        const desc=info.createDiv({cls:'setting-item-description'}),controls=row.createDiv({cls:'setting-item-control'});
+        const setting={settingEl:row,setDesc(text){desc.textContent=text;return this;},addButton(fn){
+          const el=controls.createEl('button',{type:'button'});
+          const button={setButtonText(text){el.textContent=text;return this;},setDisabled(disabled){el.disabled=disabled;return this;},setWarning(){el.classList.add('mod-warning');return this;},onClick(fn){el.addEventListener('click',fn);return this;}};
+          fn(button);return this;
+        }};
+        item.render(setting);
+      }
+    }
+    this.empty=this.accountContent.createEl('p',{cls:'ignis-settings-empty',text:t('No results found')});this.empty.hidden=true;
+    this.filter();
+  }
+}
+export function openAccount(kind='account') {
+  if(window.__ignisOpenManagement && window.app?.workspace){window.__ignisOpenManagement(kind);return;}
+  if(['users','shares'].includes(kind))new ManagementModal(null,kind).open();
+  else if(kind==='password')new ManagementModal(null,'login',{passwordSetup:true}).open();
+  else new AccountModal(kind).open();
+}
+export function openRequestedManagement(){consumeManagementIntent(window,openAccount);}

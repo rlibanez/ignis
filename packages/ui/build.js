@@ -11,6 +11,7 @@ module.exports = esbuild.build({
   globalName: "IgnisUI",
   platform: "browser",
   target: ["chrome90"],
+  loader: {".css":"text"},
   mainFields: ["svelte", "browser", "module", "main"],
   conditions: ["svelte", "browser"],
   plugins: [sveltePlugin({ compilerOptions })],

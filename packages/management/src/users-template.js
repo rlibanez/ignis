@@ -1,25 +1,5 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <link rel="icon" type="image/png" href="/favicon.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title data-i18n="Users – Ignis">Users – Ignis</title>
-    <link rel="stylesheet" href="/auth/setup.css" />
-    <link rel="stylesheet" href="/auth/account.css" />
-    <link rel="stylesheet" href="/auth/users.css" />
-    <script src="/auth/i18n.js" defer></script>
-    <script src="/auth/users.js" defer></script>
-    <script src="/auth/password-visibility.js" defer></script>
-    <link rel="stylesheet" href="/auth/components.css">
-<link rel="manifest" href="/manifest.webmanifest">
-<meta name="theme-color" content="#f4f5f8" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#17191e" media="(prefers-color-scheme: dark)">
-<link rel="apple-touch-icon" href="/pwa/icon-512.png">
-<script src="/auth/pwa.js" defer></script>
-<script src="/auth/events.js" defer></script>
-</head>
-  <body>
+// Bundled internal form template. No standalone page or network fetch.
+export default String.raw`
     <main class="users-page">
       <p class="brand" data-ignis-app-name>IGNIS</p>
       <h1 data-i18n="Users">Users</h1>
@@ -206,5 +186,4 @@
       </dialog>
       <noscript data-i18n="JavaScript is required to manage users.">JavaScript is required to manage users.</noscript>
     </main>
-  </body>
-</html>
+  `;

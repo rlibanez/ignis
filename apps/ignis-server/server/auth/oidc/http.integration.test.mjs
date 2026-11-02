@@ -159,6 +159,7 @@ beforeEach(async () => {
   const app = express();
   boundary.install(app);
   app.get("/api/vault/list", (_req, res) => res.json([]));
+  app.get("/", (_req,res)=>res.type("html").send("<!doctype html><title>Ignis</title>"));
   server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   port = server.address().port;
@@ -241,7 +242,7 @@ it("performs cross-site callback, provisions a normal account and sets only an o
     "sec-fetch-site": "cross-site",
   });
   expect(result.status).toBe(303);
-  expect(result.headers.location).toBe("/login?oidc=success");
+  expect(result.headers.location).toBe("/");
   const landing = await request(result.headers.location, jar, "GET", undefined, {
     "sec-fetch-site": "cross-site",
     "sec-fetch-mode": "navigate",
@@ -294,7 +295,7 @@ it("does not consume a legitimate callback when the browser binding is missing",
   expect((await request(callback)).headers.location).toBe("/login?oidc=failed");
   expect(tokenRequests).toBe(0);
   expect((await request(callback, jar)).headers.location).toBe(
-    "/login?oidc=success",
+    "/",
   );
 });
 it("manually links an administrator only from its existing recent session", async () => {
@@ -323,7 +324,7 @@ it("manually links an administrator only from its existing recent session", asyn
     undefined,
     { "sec-fetch-site": "cross-site" },
   );
-  expect(result.headers.location).toBe("/account?oidc=linked");
+  expect(result.headers.location).toBe("/?manage=account");
   const landing = await request(result.headers.location, jar, "GET", undefined, {
     "sec-fetch-site": "cross-site",
     "sec-fetch-mode": "navigate",
@@ -373,7 +374,7 @@ it("keeps provider errors and invalid claims out of responses", async () => {
   expect(result.text).not.toContain("SYNTHETIC");
 });
 it("serves account UI and fixed public assets without exposing provider secrets", async () => {
-  for (const route of ["/login", "/account", "/auth/login.js"]) {
+  for (const route of ["/login", "/auth/login.js"]) {
     const res = await request(route);
     expect(res.status).toBe(200);
     expect(res.text).not.toContain("SYNTHETIC_CLIENT_SECRET");
@@ -539,7 +540,7 @@ it("OIDC reauthentication preserves the administrator and rejects another provid
   const again = await begin();
   const before = jar["ignis-dev-session"];
   const completed = await request(providerCallback(again.json().authorizationUrl), jar);
-  expect(completed.headers.location).toBe("/admin/users?reauth=success");
+  expect(completed.headers.location).toBe("/?manage=users&reauth=success");
   expect(jar["ignis-dev-session"]).not.toBe(before);
   expect((await request("/api/auth/session", jar)).json().user.id).toBe(initial.user.id);
   expect((await request(completed.headers.location, jar, "GET", undefined, {
@@ -584,8 +585,8 @@ it('lets a normal OIDC user reauthenticate and set only their own first password
  expect((await request(providerCallback(start.json().authorizationUrl),jar)).headers.location).toBe('/login?oidc=failed');
  callbackClaims={};
  const retry=await send('/api/auth/oidc/reauth',{purpose:'password'});
- expect((await request(providerCallback(retry.json().authorizationUrl),jar)).headers.location).toBe('/account?password=setup');
- expect((await request('/account?password=setup',jar,'GET',undefined,{'sec-fetch-site':'cross-site','sec-fetch-mode':'navigate','sec-fetch-dest':'document'})).status).toBe(200);
+ expect((await request(providerCallback(retry.json().authorizationUrl),jar)).headers.location).toBe('/?manage=password');
+ expect((await request('/?manage=password',jar,'GET',undefined,{'sec-fetch-site':'cross-site','sec-fetch-mode':'navigate','sec-fetch-dest':'document'})).status).toBe(200);
  const body={newPassword:'new-local-password!'};
  expect((await send('/api/auth/password',body,{'x-ignis-csrf':'invalid'})).status).toBe(403);
  expect((await send('/api/auth/password',body,{'x-ignis-context':'wrong'})).status).toBe(409);
@@ -651,7 +652,7 @@ it('reauthenticates a normal linked identity for email without granting admin or
  expect((await request(providerCallback(wrong.json().authorizationUrl),jar)).headers.location).toBe('/login?oidc=failed');
  callbackClaims={};
  const start=await send('/api/auth/oidc/reauth',{purpose:'email'});
- expect((await request(providerCallback(start.json().authorizationUrl),jar)).headers.location).toBe('/?account=email');
+ expect((await request(providerCallback(start.json().authorizationUrl),jar)).headers.location).toBe('/?manage=email');
  const current=(await request('/api/auth/session',jar)).json();expect(current.user.id).toBe(initial.user.id);expect(current.oidcLinked).toBe(true);
  expect((await send('/api/auth/password',{newPassword:'new-local-password!'})).json().code).toBe('REAUTH_REQUIRED');
  expect((await request('/api/auth/users',jar)).status).toBe(403);

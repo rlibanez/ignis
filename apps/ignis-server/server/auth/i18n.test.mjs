@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
+import vm from 'node:vm';
 const require=createRequire(import.meta.url);
 const { createI18n, catalog }=require('./web/i18n.js');
 function fixture(language='en-US') {
  const values=new Map();
- const host={navigator:{languages:[language]},localStorage:{getItem:k=>values.get(k),setItem:(k,v)=>values.set(k,v)}};
+ const host={navigator:{languages:[language]},localStorage:{getItem:k=>values.get(k),setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)}};
  return {host,values,i18n:createI18n(host)};
 }
 describe('Ignis UI languages',()=>{
@@ -52,7 +53,7 @@ describe('Ignis UI languages',()=>{
   }
  });
  it('loads the common runtime before the standalone page controllers and the vault bootstrap',()=>{
-  for(const name of ['login','setup','users','shares','reset-password']){
+  for(const name of ['login','setup','reset-password']){
    const page=fs.readFileSync(new URL(`./web/${name}.html`,import.meta.url),'utf8');
    expect(page.indexOf('/auth/i18n.js')).toBeGreaterThan(0);
    expect(page.indexOf('/auth/i18n.js')).toBeLessThan(page.indexOf(`/auth/${name}.js`));
@@ -65,4 +66,47 @@ describe('Ignis UI languages',()=>{
   try {const {kindOf}=require('../plugins/headless-sync/obsidian/src/sync-log-kinds.js');expect(kindOf('Uploading note.md')).toBe('upload');expect(kindOf('Deleting note.md')).toBe('deletion');}
   finally {delete globalThis.IgnisI18n;}
  });
+});
+
+
+it('carries the setup/login language through real sign-in cleanup into Obsidian account storage',async()=>{
+ const {host,values,i18n:setup}=fixture('es-ES');
+ setup.setLanguage('en');
+ const login=createI18n(host);expect(login.language).toBe('en');
+ host.IgnisI18n=login;
+ values.set('cached-note','private');values.set('ignis-account-v1:old:language','es');
+ const sessionValues=new Map([['private-session','secret']]);
+ host.localStorage.clear=()=>values.clear();
+ host.sessionStorage={clear:()=>sessionValues.clear(),getItem:key=>sessionValues.get(key)??null,setItem:(key,value)=>sessionValues.set(key,value),removeItem:key=>sessionValues.delete(key)};
+ const source=fs.readFileSync(new URL('./web/login.js',import.meta.url),'utf8');
+ const cleanupSource=source.slice(source.indexOf('  async function clearBrowserData('),source.indexOf('  const loginError ='));
+ const clear=vm.runInNewContext(cleanupSource+';clearBrowserData;',{window:host,localStorage:host.localStorage,sessionStorage:host.sessionStorage});
+ await clear(undefined,true);
+ expect([...values.keys()].sort()).toEqual(['ignis-signin-language-v1','ignis-ui-language-v1']);
+ expect(sessionValues.size).toBe(0);
+ host.IgnisI18n=createI18n(host);host.__ignisAuth={userId:'alice',blocked:false};
+ const {installAccountStorage}=await import('../../../../packages/shim/src/account-storage.js');
+ installAccountStorage(host);
+ expect(host.localStorage.getItem('language')).toBe('en');
+ host.IgnisI18n.fromObsidian({getLanguage:()=>host.localStorage.getItem('language')});
+ expect(host.IgnisI18n.language).toBe('en');expect(host.IgnisI18n.t('Account')).toBe('Account');
+ expect(values.has('ignis-signin-language-v1')).toBe(false);
+});
+it('applies the selected language to the signing-in account only and consumes it once',()=>{
+ const {host,values,i18n}=fixture('es-ES');
+ values.set('ignis-account-v1:alice:language','es');
+ i18n.setLanguage('en');i18n.rememberLanguage({forSignIn:true});
+ const app=createI18n(host);app.useAccount('alice');expect(app.language).toBe('en');
+ app.useAccount('bob');expect(app.language).toBe('es');
+ expect(values.get('ignis-account-v1:alice:language')).toBe('en');
+});
+it('keeps only the UI language after logout and discards pending sign-in state',()=>{
+ const {host,values,i18n}=fixture('es-ES');i18n.setLanguage('en');
+ i18n.rememberLanguage({forSignIn:true});values.clear();i18n.rememberLanguage();
+ expect([...values]).toEqual([['ignis-ui-language-v1','en']]);
+ expect(createI18n(host).language).toBe('en');
+});
+it('ignores invalid language handoffs without replacing an existing Obsidian language',()=>{
+ const {values,i18n}=fixture('es-ES');values.set('ignis-signin-language-v1','../../secret');values.set('ignis-account-v1:alice:language','fr');
+ i18n.useAccount('alice');expect(i18n.language).toBe('en');expect(values.get('ignis-account-v1:alice:language')).toBe('fr');expect(values.has('ignis-signin-language-v1')).toBe(false);
 });

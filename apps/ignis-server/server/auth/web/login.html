@@ -36,8 +36,8 @@
         <nav class="account-actions" aria-label="Account navigation" data-i18n-aria-label="Account navigation">
           <button type="button" class="account-button install-button" data-install-ignis hidden data-i18n="Install Ignis">Install Ignis</button>
           <a id="open-ignis" class="account-button" href="/" hidden data-i18n="Open Ignis">Open Ignis</a>
-          <a class="account-button secondary" href="/shares" data-i18n="Shared resources">Shared resources</a>
-          <a id="manage-users" class="account-button secondary" href="/admin/users" hidden data-i18n="Manage users">Manage users</a>
+          <a class="account-button secondary" href="/?manage=shares" data-i18n="Shared resources">Shared resources</a>
+          <a id="manage-users" class="account-button secondary" href="/?manage=users" hidden data-i18n="Manage users">Manage users</a>
         </nav>
 
         </section>
@@ -107,7 +107,7 @@
       </form>
       <div class="login-actions">
       <button id="oidc-sign-in" hidden data-provider-template="Sign in with OpenID Connect">Sign in with OpenID Connect</button>
-      <a id="manage-account" class="account-button secondary" href="/account" hidden data-i18n="Manage account">Manage account</a>
+      <a id="manage-account" class="account-button secondary" href="/?manage=account" hidden data-i18n="Manage account">Manage account</a>
       <button id="sign-out" class="account-button" hidden data-i18n="Sign out">Sign out</button>
       </div>
       <dialog id="reauth-dialog" aria-labelledby="reauth-title">

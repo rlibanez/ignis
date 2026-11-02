@@ -662,18 +662,23 @@ it("rejects user administration from a stale browser context", async () => {
   expect(db.prepare("SELECT id FROM users WHERE login='new-user'").get()).toBeUndefined();
 });
 
-it("serves the administrative UI without embedding account data", async () => {
-  const page = await request("/admin/users");
-  expect(page.status).toBe(200);
-  expect(page.headers.get("cache-control")).toBe("no-store");
-  expect(page.headers.get("content-security-policy")).toContain("script-src 'self'");
-  expect(await page.text()).toContain('id="administration" hidden');
-  expect((await request("/auth/users.js")).status).toBe(200);
+it("does not serve or redirect removed management pages", async () => {
+  const jar=await login();
+  for(const route of ["/account","/shares","/admin/users"]){
+    for(const method of ["GET","HEAD"]){
+      const page=await request(route,{jar,method});expect(page.status).toBe(404);
+      expect(page.headers.get("location")).toBe(null);
+      expect(page.headers.get("cache-control")).toBe("no-store");
+    }
+    const landing=await request(route,{jar,headers:{"sec-fetch-site":"cross-site","sec-fetch-mode":"navigate","sec-fetch-dest":"document"}});
+    expect(landing.status).toBe(403);
+  }
+  expect((await request("/auth/users.js")).status).toBe(401);
   expect((await request("/api/auth/users")).status).toBe(401);
 });
 
 it("serves the shared favicon anonymously for authentication and administration pages", async () => {
-  for (const route of ["/setup", "/login", "/account", "/admin/users"]) {
+  for (const route of ["/setup", "/login"]) {
     const page = await request(route);
     expect(await page.text()).toContain('rel="icon" type="image/png" href="/favicon.png"');
     expect(page.headers.get("content-security-policy")).toContain("img-src 'self'");
@@ -802,7 +807,7 @@ it("keeps login assets and password login available after auth-read exhaustion",
   const limited = await request("/api/auth/session");
   expect(limited.status).toBe(429);
   expect(limited.headers.get("retry-after")).toBe("60");
-  for (const route of ["/login?oidc=success", "/account?oidc=linked", "/auth/login.js", "/auth/client.js", "/favicon.png"])
+  for (const route of ["/login?oidc=success", "/auth/login.js", "/auth/client.js", "/favicon.png"])
     expect((await request(route)).status).toBe(200);
   clock += 60000;
   const jar = await login();

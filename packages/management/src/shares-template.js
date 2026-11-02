@@ -1,22 +1,5 @@
-<!doctype html>
-<html lang="en">
-<head>
-<script src="/auth/resource-tree.js" defer></script>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1, viewport-fit=cover">
-  <title data-i18n="Shared resources · Ignis">Shared resources · Ignis</title><link rel="icon" href="/favicon.png">
-  <link rel="stylesheet" href="/auth/setup.css"><link rel="stylesheet" href="/auth/account.css"><link rel="stylesheet" href="/auth/shares.css">
-  <script src="/auth/i18n.js" defer></script>
-    <script src="/auth/shares.js" defer></script>
-  <link rel="stylesheet" href="/auth/components.css">
-<link rel="manifest" href="/manifest.webmanifest">
-<meta name="theme-color" content="#f4f5f8" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#17191e" media="(prefers-color-scheme: dark)">
-<link rel="apple-touch-icon" href="/pwa/icon-512.png">
-<script src="/auth/pwa.js" defer></script>
-<link rel="stylesheet" href="/auth/resource-tree.css">
-<script src="/auth/events.js" defer></script>
-</head>
-<body><main>
+// Bundled internal form template. No standalone page or network fetch.
+export default String.raw`<main>
   <p class="brand" data-ignis-app-name>IGNIS</p><h1 data-i18n="Shared resources">Shared resources</h1><p id="status" role="alert"></p>
   <section id="workspace" hidden>
     <div class="toolbar page-actions"><button id="new-share" class="account-button" data-i18n="Share a resource">Share a resource</button></div>
@@ -72,4 +55,4 @@
       <div class="dialog-actions"><button type="button" data-close="grant-dialog" class="account-button secondary" data-i18n="Cancel">Cancel</button><button type="submit" class="account-button" data-i18n="Add access">Add access</button></div>
     </form>
   </dialog>
-</main></body></html>
+</main>`;

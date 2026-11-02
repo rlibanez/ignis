@@ -20,7 +20,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   const button = form.querySelector('button[type="submit"]');
   const dialog = document.getElementById("create-dialog");
   const addButton = document.getElementById("add-user");
-  document.getElementById("back-to-account").addEventListener("click", () => window.location.assign("/account"));
+  document.getElementById("back-to-account").addEventListener("click", () => window.location.assign("/?manage=account"));
   const cancelButton = document.getElementById("cancel-create");
   const createStatus = document.getElementById("create-status");
   const editDialog = document.getElementById("edit-dialog");
@@ -786,7 +786,6 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       const saved = sessionStorage.getItem("ignis-admin-reauth");
       sessionStorage.removeItem("ignis-admin-reauth");
       if (new URL(location.href).searchParams.get("reauth") === "success") {
-        history.replaceState(null, "", "/admin/users");
         if (saved) {
           const intent = JSON.parse(saved);
           if (intent.userId === currentUserId && session.recentAuthentication) {

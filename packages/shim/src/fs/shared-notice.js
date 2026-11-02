@@ -77,7 +77,7 @@ export function createSharedNotice(currentContext, host=window, ordinary=false) 
       restore.onclick=()=>{if(!valid()){clear();return;}try{restorers.get(path)();dismiss();}catch{restore.textContent=translateIgnis("The note changed. Try again from its latest recovery notice.");}};
       actions.append(restore);
     }
-    const link=host.document.createElement("a");link.href=ordinary?"/account":"/shares";link.textContent=ordinary?translateIgnis("Manage account"):translateIgnis("Manage shared resources");link.target="_blank";link.rel="noopener";Object.assign(link.style,actionStyle);if(!permissionDenied)actions.append(link);
+    const link=host.document.createElement("a");link.href=ordinary?"/?manage=account":"/?manage=shares";link.textContent=ordinary?translateIgnis("Manage account"):translateIgnis("Manage shared resources");link.target="_blank";link.rel="noopener";Object.assign(link.style,actionStyle);if(!permissionDenied)actions.append(link);
     if(pending.size && (!permissionDenied || [...pending.values()].some(value=>value.encoding!=="utf8"))){const button=host.document.createElement("button");button.textContent=translateIgnis("Download recovery copy");Object.assign(button.style,actionStyle);button.onclick=download;actions.append(button);}
   }
   function preserve(event,message){

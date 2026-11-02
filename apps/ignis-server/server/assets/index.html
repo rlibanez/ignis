@@ -84,6 +84,7 @@
       await load(uiSrc);
       document.getElementById("ignis-status")?.remove();
       window.IgnisUI.showVaultManager();
+      window.IgnisUI.openRequestedManagement();
       return;
     }
     await load("__SHIM_LOADER_SRC__");

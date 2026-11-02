@@ -1,3 +1,4 @@
+import {consumeManagementIntent} from "../../../management/src/intent.js";
 import { ManagementModal } from "./management-modal.js";
 
 const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
@@ -182,6 +183,15 @@ function patchSettingsModal(plugin) {
 
   ignisTabs = createIgnisTabs(plugin.app);
   window.__ignisOpenResourceSharing = options => { const modal = new ManagementModal(plugin.app, "shares", options); modal.open(); return modal; };
+  window.__ignisOpenManagement = kind => {
+    if(kind==='users' || kind==='shares')return new ManagementModal(plugin.app,kind).open();
+    if(kind==='password')return new ManagementModal(plugin.app,'login',{passwordSetup:true}).open();
+    if(kind==='email'){
+      const account=ignisTabs.find(tab=>tab.id==='ignis-account');
+      if(account)account.pendingEmailEdit=true;
+    }
+    window.__ignisOpenAccount();
+  };
   window.__ignisOpenAccount = () => {
     setting.open();
     const account = ignisTabs.find(tab => tab.id === "ignis-account");
@@ -208,6 +218,7 @@ function patchSettingsModal(plugin) {
 
     refreshIgnisSettings();
   };
+  consumeManagementIntent(window,window.__ignisOpenManagement);
 }
 
 function unpatchSettingsModal(plugin) {
@@ -223,6 +234,7 @@ function unpatchSettingsModal(plugin) {
 
   ignisTabs = [];
   delete window.__ignisOpenAccount;
+  delete window.__ignisOpenManagement;
   delete window.__ignisOpenResourceSharing;
   setting.refreshSearch();
 

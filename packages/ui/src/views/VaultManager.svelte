@@ -2,6 +2,7 @@
 const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 
   import { onMount, tick } from "svelte";
+  import {openAccount} from "../management.js";
   import {
     Vault,
     Folder,
@@ -347,7 +348,7 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
     </div>
     <div class="footer-right">
       {#if window.__ignisAuth && (!currentVaultId || !hasAccountSwitcher)}
-        <Button variant="ghost" on:click={() => window.location.assign("/account")}>{translateIgnis("Account")}</Button>
+        <Button variant="ghost" on:click={() => openAccount()}>{translateIgnis("Account")}</Button>
         <Button variant="ghost" on:click={() => window.__ignisAuth.logout()}>{translateIgnis("Sign out")}</Button>
       {/if}
       <Button variant="ghost" on:click={showCreateDialog}>

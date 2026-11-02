@@ -19,11 +19,11 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   const button = form.querySelector('button[type="submit"]');
   const oidcButton = document.getElementById("oidc-sign-in");
   const linkButton = document.getElementById("link-oidc");
-  const accountPage = location.pathname === "/account";
+  const accountPage = scope.accountPage === true;
   let oidcAvailable = false, activeSessionId = null, settingLocalPassword = false;
   const requested = new URL(location.href).searchParams.get("reauth");
   const intent = ["users", "link"].includes(requested) ? requested : null;
-  const destination = (value) => value === "users" ? "/admin/users" : "/account";
+  const destination = (value) => value === "users" ? "/?manage=users" : "/?manage=account";
   const reauthDialog = document.getElementById("reauth-dialog");
   document.getElementById("cancel-reauth").addEventListener("click", () => reauthDialog.close());
   if (accountPage) {
@@ -52,7 +52,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     try {
       channel?.postMessage("lock");
       const response = await window.ignisOidcStart({
-        clear: clearBrowserData,
+        clear: signal=>clearBrowserData(signal,!link),
         request: signal => {
           status.textContent = translateIgnis("Connecting to {p0}…", {p0: (providerName)});
           return request(link ? "/api/auth/oidc/link" : "/api/auth/oidc/start", link ? {} : {rememberMe: document.getElementById("remember-me").checked}, signal);
@@ -116,10 +116,11 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       body: JSON.stringify(body),
     });
   }
-  async function clearBrowserData(signal) {
+  async function clearBrowserData(signal, forSignIn=false) {
     signal?.throwIfAborted();
     localStorage.clear();
     sessionStorage.clear();
+    window.IgnisI18n?.rememberLanguage({forSignIn});
     if (window.caches)
       await Promise.all((await caches.keys()).map((key) => { signal?.throwIfAborted(); return caches.delete(key); }));
     signal?.throwIfAborted();
@@ -163,7 +164,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     button.disabled = true;
     try {
       channel?.postMessage("lock");
-      await clearBrowserData();
+      await clearBrowserData(undefined,true);
       const response = await request("/api/auth/login", {
         login: form.elements.login.value,
         password: form.elements.password.value,
@@ -178,7 +179,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       const session = await response.json();
       if (session.passwordResetRequired) { location.replace("/reset-password"); return; }
       if (intent) location.replace(destination(intent));
-      else if (accountPage) location.replace("/account");
+      else if (accountPage) location.replace("/?manage=account");
       else location.replace("/");
     } catch {
       showLoginError(translateIgnis("Unable to sign in. Close other Ignis tabs and try again."));
@@ -236,7 +237,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       if (outcome) history.replaceState(null, "", location.pathname);
       if (["success", "linked"].includes(outcome)) {
         channel?.postMessage("lock");
-        await clearBrowserData();
+        await clearBrowserData(undefined,true);
       }
       const current = await fetch("/api/auth/session", {
         cache: "no-store",
@@ -251,8 +252,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
         settingLocalPassword = !session.hasLocalPassword;
         document.getElementById("change-password").hidden = !accountPage || !session.hasLocalPassword;
         document.getElementById("set-own-password").hidden = !accountPage || session.hasLocalPassword || !session.oidcLinked || !oidcAvailable;
-        if(accountPage && settingLocalPassword && session.oidcLinked && new URL(location.href).searchParams.get("password") === "setup") {
-          history.replaceState(null, "", "/account");
+        if(accountPage && settingLocalPassword && session.oidcLinked && scope.passwordSetup === true) {
           openPasswordDialog();
         }
         document.getElementById("password-policy").textContent =
@@ -266,6 +266,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
           location.replace("/");
           return;
         }
+        if(!accountPage && !intent){location.replace("/");return;}
         logout.hidden = false;
         document.getElementById("manage-account").hidden = accountPage;
         document.getElementById("account").hidden = !accountPage;
@@ -371,7 +372,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     status.textContent = translateIgnis("Confirm your identity with your linked provider before setting a local password.");
     try {
       channel?.postMessage("lock");
-      const response = await window.ignisOidcStart({clear: clearBrowserData,
+      const response = await window.ignisOidcStart({clear: signal=>clearBrowserData(signal,true),
         request: signal => request("/api/auth/oidc/reauth", {purpose:"password"}, signal)});
       if(!response.ok) throw new Error();
       const url = new URL(response.body.authorizationUrl);

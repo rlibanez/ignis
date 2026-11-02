@@ -8,3 +8,5 @@ export { default as SyncSetupModal } from "./views/SyncSetupModal.svelte";
 export { default as ExcludedFoldersEditor } from "./components/settings/ExcludedFoldersEditor.svelte";
 export { default as IgnoreRulesEditor } from "./components/settings/IgnoreRulesEditor.svelte";
 export { default as RecordEditor } from "./components/settings/RecordEditor.svelte";
+
+export {openAccount,openRequestedManagement} from "./management.js";

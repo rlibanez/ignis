@@ -20,14 +20,7 @@ const setupAssets = new Map(
     ["/reset-password", ["text/html", "reset-password.html"]],
     ["/auth/reset-password.js", ["text/javascript", "reset-password.js"]],
     ["/login", ["text/html", "login.html"]],
-    ["/account", ["text/html", "login.html"]],
-    ["/shares", ["text/html", "shares.html"]],
-    ["/auth/shares.js", ["text/javascript", "shares.js"]],
     ["/auth/components.css", ["text/css", "components.css"]],
-    ["/auth/shares.css", ["text/css", "shares.css"]],
-    ["/admin/users", ["text/html", "users.html"]],
-    ["/auth/users.js", ["text/javascript", "users.js"]],
-    ["/auth/users.css", ["text/css", "users.css"]],
     ["/auth/password-visibility.js", ["text/javascript", "password-visibility.js"]],
     ["/auth/login.js", ["text/javascript", "login.js"]],
     ["/auth/oidc-start.js", ["text/javascript", "oidc-start.js"]],
@@ -831,9 +824,9 @@ function createAuthBoundary({
         req.ignisLogUsername = authentication.session.user.login;
         return res.redirect(
           303,
-          result.kind === "email" ? "/?account=email" : result.kind === "password" ? "/account?password=setup" : result.kind === "reauth" ? "/admin/users?reauth=success" : result.kind === "link"
-            ? "/account?oidc=linked"
-            : "/login?oidc=success",
+          result.kind === "email" ? "/?manage=email" : result.kind === "password" ? "/?manage=password" : result.kind === "reauth" ? "/?manage=users&reauth=success" : result.kind === "link"
+            ? "/?manage=account"
+            : "/",
         );
       } catch {
         // Never render provider errors, code, state, URLs or claims.
@@ -971,14 +964,14 @@ function createAuthBoundary({
         req.url.split("?")[0] === "/api/auth/oidc/callback";
       const entryNavigation =
         req.method === "GET" &&
-        ["/", "/index.html", "/login", "/account", "/admin/users", "/shares", "/share-target"].includes(req.url.split("?")[0]) &&
+        ["/", "/index.html", "/login", "/share-target"].includes(req.url.split("?")[0]) &&
         req.headers["sec-fetch-mode"] === "navigate" &&
         req.headers["sec-fetch-dest"] === "document";
       if (!transportAllowed(req) || (!callback && !entryNavigation && !originAllowed(req)))
         return safe(res, 403, "Request rejected");
       const pathname = canonicalRequestPath(req);
       if (!pathname) return safe(res, 400, "Invalid request");
-      if (!setupAssets.has(pathname) || ["/login","/account","/shares","/admin/users"].includes(pathname)) {
+      if (!setupAssets.has(pathname) || pathname === "/login") {
         const restored=sessions.resume(rememberCookies.read(req.headers.cookie),cookies.read(req.headers.cookie));
         if(restored){
           res.append("Set-Cookie",cookies.serialize(restored.token,restored.session.expiresAt,now()));

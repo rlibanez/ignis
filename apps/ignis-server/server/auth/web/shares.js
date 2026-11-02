@@ -151,7 +151,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   $("location-search").oninput=renderLocationTree;
   $("location-dialog").addEventListener("close",()=>{locationGeneration++;locationReady=false;});
 
-  $("back-to-account").onclick=()=>window.location.assign("/account");
+  $("back-to-account").onclick=()=>window.location.assign("/?manage=account");
   $("create-dialog").addEventListener("close",()=>{pickerGeneration++;});
   function selectResource(path){
     selectedPath=path;$("selection").textContent=translateIgnis("Selected: ")+path;$("create-submit").disabled=false;

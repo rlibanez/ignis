@@ -98,6 +98,9 @@
   "Access": "Acceso",
   "Automatic": "Automático",
   "Available": "Disponible",
+  "Settings": "Ajustes",
+  "Search settings...": "Buscar ajustes...",
+  "No results found": "No se han encontrado resultados",
   "Back": "Volver",
   "Back to account": "Volver a la cuenta",
   "Back to sign in": "Volver al inicio de sesión",
@@ -875,6 +878,8 @@
     try { storage = host.localStorage; } catch { /* Browser privacy settings may deny access. */ }
     const read = key => { try { return storage?.getItem(key); } catch { return null; } };
     const write = (key, value) => { try { storage?.setItem(key, value); } catch { /* Storage can be disabled. */ } };
+    const pendingLanguageKey='ignis-signin-language-v1';
+    const remove=key=>{try{storage?.removeItem(key);}catch{}};
     const browserLanguage = () => normalize(host.navigator?.languages?.[0] || host.navigator?.language);
     let locale = normalize(read('ignis-ui-language-v1') || host.navigator?.languages?.[0] || host.navigator?.language), account = null;
     const keyFor = id => 'ignis-account-v1:' + encodeURIComponent(id) + ':language';
@@ -914,10 +919,20 @@
     function useAccount(id) {
       if (typeof id !== 'string' || !id || account === id) return;
       account = id;
-      const saved = read(keyFor(id));
-      // Never inherit another account's preference when this account has none.
-      locale = saved ? normalize(saved) : browserLanguage();
+      const saved = read(keyFor(id)), pending=read(pendingLanguageKey);
+      remove(pendingLanguageKey);
+      if(['es','en'].includes(pending)){
+        // Only an authentication attempt carries the public selection into the
+        // account. No other account's browser data is imported.
+        locale=pending;write(keyFor(id),pending);
+      }else locale = saved ? normalize(saved) : browserLanguage();
       applyStatic();
+    }
+    function rememberLanguage({forSignIn=false}={}) {
+      // Called after storage cleanup: retain only this non-sensitive UI choice.
+      write('ignis-ui-language-v1',locale);
+      if(forSignIn)write(pendingLanguageKey,locale);
+      else remove(pendingLanguageKey);
     }
     function fromObsidian(obsidian) {
       const value = obsidian?.getLanguage?.();
@@ -929,14 +944,14 @@
     }
     function installSelector() {
       const doc=host.document, main=doc?.querySelector('main');
-      if (!main || !['/login', '/account', '/setup', '/admin/users', '/shares', '/reset-password'].includes(host.location?.pathname) || doc.querySelector('[data-ignis-language]')) return;
+      if (!main || !['/login', '/setup', '/reset-password'].includes(host.location?.pathname) || doc.querySelector('[data-ignis-language]')) return;
       const label=doc.createElement('label'),select=doc.createElement('select');
       label.className='ignis-language';
       select.setAttribute('data-ignis-language','');select.setAttribute('aria-label',t('Language'));select.setAttribute('data-i18n-aria-label','Language');
       for(const [value,text] of [['es','Español'],['en','English']]){const option=doc.createElement('option');option.value=value;option.textContent=text;select.append(option);}
       select.value=locale;select.addEventListener('change',()=>{setLanguage(select.value);host.location.reload();});label.append(select);main.append(label);
     }
-    return {t, appName, get language(){return locale;}, normalize, setLanguage, useAccount, fromObsidian, applyStatic, installSelector};
+    return {t, appName, get language(){return locale;}, normalize, setLanguage, useAccount, rememberLanguage, fromObsidian, applyStatic, installSelector};
   }
   if (typeof module !== 'undefined' && module.exports) module.exports = { createI18n, catalog };
   if (typeof window !== 'undefined' && !window.IgnisI18n) {

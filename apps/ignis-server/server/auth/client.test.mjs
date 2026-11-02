@@ -206,7 +206,7 @@ it("opens the standalone manager without booting the removed vault or Obsidian",
   let opened = false;
   let splashRemoved = false;
   await vm.runInNewContext(script, {
-    window: { __ignisAuth: { ready: Promise.resolve() }, IgnisUI: { showVaultManager() { opened = true; } } },
+    window: { __ignisAuth: { ready: Promise.resolve() }, IgnisUI: { openRequestedManagement() {}, showVaultManager() { opened = true; } } },
     location: { search: "?manager=1" },
     URLSearchParams,
     document: {
@@ -236,7 +236,7 @@ it("shows the manager for empty installations and unavailable vaults for either 
     const loaded = [];
     let opened = false;
     await vm.runInNewContext(script, {
-      window: { __ignisAuth: { role, ready: Promise.resolve() }, IgnisUI: { showVaultManager() { opened = true; } } },
+      window: { __ignisAuth: { role, ready: Promise.resolve() }, IgnisUI: { openRequestedManagement() {}, showVaultManager() { opened = true; } } },
       location: { search }, URLSearchParams,
       fetch: async () => ({ status: 404 }),
       document: { createElement: () => ({}), head: { appendChild(script) { loaded.push(script.src); script.onload(); } }, getElementById: () => ({ remove() {} }) },
