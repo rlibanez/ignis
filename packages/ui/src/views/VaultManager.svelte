@@ -349,7 +349,6 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
     <div class="footer-right">
       {#if window.__ignisAuth && (!currentVaultId || !hasAccountSwitcher)}
         <Button variant="ghost" on:click={() => openAccount()}>{translateIgnis("Account")}</Button>
-        <Button variant="ghost" on:click={() => window.__ignisAuth.logout()}>{translateIgnis("Sign out")}</Button>
       {/if}
       <Button variant="ghost" on:click={showCreateDialog}>
         <svelte:fragment slot="icon">
