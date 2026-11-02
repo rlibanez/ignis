@@ -159,6 +159,32 @@ function createSessionService(
       return insert(current, "local", null, null, at, at);
     });
   }
+  // Reconfirm the existing identity without replacing the editor's session
+  // context. Rotate the bearer secret; never accept the previous credential.
+  async function reauthenticateLocal(token, expectedId, password) {
+    const hash = tokenHash(token);
+    const before = hash && find(hash, time());
+    const credential = before && db.prepare("SELECT password_hash FROM local_credentials WHERE user_id=?").get(before.user_id);
+    const matches = await verifyPassword(password, credential?.password_hash);
+    if (!matches || !before || before.id !== expectedId || before.role !== "admin") return null;
+    return transaction(db, () => {
+      const at = time();
+      const row = find(hash, at);
+      const current = db.prepare("SELECT password_hash FROM local_credentials WHERE user_id=?").get(before.user_id);
+      if (!row || row.id !== expectedId || row.role !== "admin" ||
+          row.auth_version !== before.auth_version || current?.password_hash !== credential.password_hash) return null;
+      const replacement = randomBytes(32).toString("hex");
+      db.prepare("UPDATE sessions SET token_hash=?, authenticated_at=?, created_at=?, last_activity=?, method='local', issuer=NULL, subject=NULL WHERE id=?")
+        .run(tokenHash(replacement), at, at, at, row.id);
+      db.prepare("DELETE FROM remembered_sessions WHERE session_id=?").run(row.id);
+      row.created_at = at;
+      row.method = "local";
+      row.issuer = row.subject = null;
+      row.authenticated_at = at;
+      row.last_activity = at;
+      return { token: replacement, session: publicSession(row) };
+    });
+  }
   // Future OIDC adapter may call ONLY after full protocol/token validation and controlled linking.
   // No JWT parsing, discovery, provisioning, role claims or email matching happens here.
   function issueForVerifiedOidcIdentity({ issuer, subject, authenticatedAt }) {
@@ -347,7 +373,7 @@ function createSessionService(
   }
   return {
     remember, remembered, resume, forget,
-    loginLocal,
+    loginLocal, reauthenticateLocal,
     issueForVerifiedOidcIdentity,
     resolve,
     rotate,

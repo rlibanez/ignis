@@ -5,6 +5,8 @@ const { createInitialAdminSetup } = require("./initial-admin");
 const setupAssets = new Map(
   [
     ["/share-target", ["text/html", "share-target.html"]],
+    ["/auth/resource-tree.js", ["text/javascript", "resource-tree.js"]],
+    ["/auth/resource-tree.css", ["text/css", "resource-tree.css"]],
     ["/auth/share-target.js", ["text/javascript", "share-target.js"]],
     ["/auth/share-target.css", ["text/css", "share-target.css"]],
     ["/auth/share-store.js", ["text/javascript", "share-store.js"]],
@@ -279,7 +281,7 @@ function createAuthBoundary({
         try {
           const permitted = (capability, path) => {
             if (!vault.id) return false;
-            return vaultAccess.check(token, { reference: vault.id, capability, path }).allowed;
+            return vaultAccess.check(socketEntries.get(ws)?.token, { reference: vault.id, capability, path }).allowed;
           };
           const projected = require("./vault-events").projectVaultEvent(message, {
             canRead: path => permitted("content.read", path),
@@ -294,7 +296,7 @@ function createAuthBoundary({
       function expire() {
         try {
           if (!checkSocket(ws)) return;
-          const current = sessions.resolve(token);
+          const current = sessions.resolve(socketEntries.get(ws)?.token);
           timer = setTimeout(
             expire,
             Math.max(
@@ -630,6 +632,36 @@ function createAuthBoundary({
       res.append("Set-Cookie", resetCookies.clear());
       return res.json({ reset: true });
     }
+    if (pathname === "/api/auth/oidc/unlink" && req.method === "POST") {
+      if (!session) return safe(res, 401, "Authentication required");
+      if (!oidc) return safe(res, 404, "OpenID Connect unavailable");
+      if (!originAllowed(req, true) || !csrf.valid(req, session)) return safe(res, 403, "Request rejected");
+      if (req.headers["x-ignis-context"] !== session.id) return safe(res, 409, "Session changed");
+      if (!req.body || Array.isArray(req.body) || Object.keys(req.body).join(",") !== "password" || typeof req.body.password !== "string")
+        return safe(res, 400, "Expected password only");
+      if (!limits.login(req.ip, session.user.login)) return safe(res, 429, "Too many requests");
+      const credential = db.prepare("SELECT password_hash FROM local_credentials WHERE user_id=?").get(session.user.id);
+      // Confirm the local login method immediately before unlinking; never trust a client timestamp.
+      if (!credential || !await require("./password").verifyPassword(req.body.password, credential.password_hash))
+        return safe(res, 400, "Incorrect password");
+      const isCurrent = (withinTransaction = false) => {
+        const current = sessions.resolve(cookies.read(req.headers.cookie), { withinTransaction });
+        return current?.id === session.id && current.user.id === session.user.id &&
+          db.prepare("SELECT password_hash FROM local_credentials WHERE user_id=?").get(session.user.id)?.password_hash === credential.password_hash;
+      };
+      if (!isCurrent()) return safe(res, 409, "Session changed");
+      req.ignisLogUsername = session.user.login;
+      try {
+        const result = oidc.unlink(session.user.id, session.user.id, { isCurrent, self: true });
+        csrf.consume(req);
+        res.append("Set-Cookie", cookies.clear());
+        sweepSockets();
+        return res.json({ ...result, signedOut: true });
+      } catch (error) {
+        if (["LOCAL_PASSWORD_REQUIRED", "OIDC_NOT_LINKED"].includes(error.code)) return safe(res, 409, "Account linking changed");
+        throw error;
+      }
+    }
     if (pathname === "/api/auth/reauth" && req.method === "POST") {
       if (!session) return safe(res, 401, "Authentication required");
       if (session.user.role !== "admin" || !originAllowed(req, true) || !csrf.valid(req, session))
@@ -639,14 +671,14 @@ function createAuthBoundary({
         return safe(res, 400, "Expected password only");
       if (!limits.login(req.ip, session.user.login)) return safe(res, 429, "Too many requests");
       const previous = cookies.read(req.headers.cookie);
-      const result = await sessions.loginLocal(session.user.login, req.body.password);
-      if (!result) return res.status(400).json({ error: "Incorrect password" });
-      if (sessions.resolve(previous)?.id !== session.id || result.session.user.id !== session.user.id || result.session.user.role !== "admin") {
-        sessions.revoke(result.token);
-        return safe(res, 401, "Session changed");
-      }
       const keepSignedIn=sessions.remembered(previous);
-      sessions.revoke(previous);
+      const result = await sessions.reauthenticateLocal(previous, session.id, req.body.password);
+      if (!result) return res.status(400).json({ error: "Incorrect password" });
+      // Existing sockets retain the same verified identity and vault context.
+      // Rebind only this session's sockets; future handshakes reject the old secret.
+      for (const entry of socketEntries.values()) {
+        if (entry.token === previous) entry.token = result.token;
+      }
       finishRemember(req,res,result,keepSignedIn);
       csrf.consume(req);
       res.append("Set-Cookie", cookies.serialize(result.token, result.session.expiresAt, now()));

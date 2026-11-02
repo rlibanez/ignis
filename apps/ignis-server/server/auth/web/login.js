@@ -1,4 +1,9 @@
-(() => {
+function mountLogin(scope = {}) {
+  const document = scope.document ?? globalThis.document;
+  const window = scope.window ?? globalThis.window;
+  const location = scope.location ?? globalThis.location;
+  const fetch = scope.fetch ?? globalThis.fetch;
+  const BroadcastChannel = scope.BroadcastChannel ?? globalThis.BroadcastChannel;
 var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 
   let providerName = "OpenID Connect";
@@ -23,6 +28,16 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   document.getElementById("cancel-reauth").addEventListener("click", () => reauthDialog.close());
   if (accountPage) {
     document.body.classList.add("account-page");
+    for (const category of document.querySelectorAll("[data-account-section]")) {
+      category.addEventListener("click", () => {
+        for (const item of document.querySelectorAll("[data-account-section]")) {
+          const selected = item === category;
+          item.setAttribute("aria-pressed", String(selected));
+          document.getElementById("account-" + item.dataset.accountSection).hidden = !selected;
+        }
+      });
+    }
+    if (location.hash === "#account-security") document.querySelector('[data-account-section="security"]')?.click();
     document.title = translateIgnis("Account – Ignis");
     document.querySelector("title").setAttribute("data-i18n", translateIgnis("Account – Ignis"));
     document.querySelector("h1").textContent = translateIgnis("Account");
@@ -433,4 +448,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     form.elements.password.value = "";
   });
   start();
-})();
+}
+globalThis.IgnisManagementControllers ??= {};
+globalThis.IgnisManagementControllers["login"] = mountLogin;
+if (globalThis.document && !globalThis.window?.__ignisAuth) mountLogin();

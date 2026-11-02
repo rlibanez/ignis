@@ -56,6 +56,7 @@
     for (const button of $('destination-tree').querySelectorAll('[data-path]'))
       button.setAttribute('aria-pressed', String(button.dataset.path === path));
   }
+  const destinationExpanded=new Set();
   function renderTree() {
     const query = $('destination-search').value.trim().toLocaleLowerCase();
     const entries = Object.entries(tree).filter(([path, entry]) => contentPath(path) &&
@@ -63,30 +64,23 @@
     const visible = entries.filter(([path]) => !query || path.toLocaleLowerCase().includes(query));
     const included = new Set();
     for (const [path] of visible) { let p = path; while (p) { included.add(p); p = parent(p); } }
-    function button(path, note) {
-      const el = document.createElement('button'); el.type = 'button'; el.className = 'destination-choice';
-      const label = path ? path.split('/').pop() : t('Vault root');
-      el.textContent = (note ? '📄 ' : '📁 ') + (note ? label.replace(/\.md$/i, '') : label);
-      el.dataset.path = path; el.setAttribute('aria-pressed', String(path === ($('note').value || $('folder').value)));
-      el.onclick = () => selectDestination(path, note); return el;
-    }
-    function children(container, folder) {
-      for (const [path, entry] of entries.filter(([p]) => parent(p) === folder && included.has(p))
-        .sort(([a, x], [b, y]) => Number(y.type === 'directory') - Number(x.type === 'directory') || a.localeCompare(b))) {
-        if (entry.type === 'directory') {
-          const branch = document.createElement('details'), row = document.createElement('summary');
-          branch.open = !!query || ($('folder').value + '/').startsWith(path + '/');
-          row.append(button(path, false)); branch.append(row);
-          const nested = document.createElement('div'); nested.className = 'destination-children'; children(nested, path);
-          branch.append(nested); container.append(branch);
-        } else { const row = document.createElement('div'); row.className = 'destination-file'; row.append(button(path, true)); container.append(row); }
+    const rows=[{path:'',name:t('Vault root'),depth:0,kind:'directory'}];
+    function children(folder,depth){
+      for(const [path,entry] of entries.filter(([p])=>parent(p)===folder&&included.has(p)).sort(([a,x],[b,y])=>Number(y.type==='directory')-Number(x.type==='directory')||a.localeCompare(b))){
+        const directory=entry.type==='directory',open=!!query||destinationExpanded.has(path);
+        rows.push({path,name:directory?path.split('/').pop():path.split('/').pop().replace(/\.md$/i,''),depth,kind:directory?'directory':'file',children:directory,open});
+        if(directory&&open)children(path,depth+1);
       }
     }
-    const root = document.createElement('div'); root.append(button('', false)); children(root, '');
-    $('destination-tree').replaceChildren(root);
+    children('',0);
+    globalThis.IgnisResourceTree.render($('destination-tree'),rows,{selected:$('note').value||$('folder').value,translate:t,
+      onSelect:entry=>selectDestination(entry.path,entry.kind==='file'),
+      onToggle:entry=>{if(destinationExpanded.has(entry.path))destinationExpanded.delete(entry.path);else destinationExpanded.add(entry.path);renderTree();}});
   }
+
   async function folders(selected = '') {
     tree = await (await api('/api/fs/tree?vault=' + encodeURIComponent(vault()))).json();
+    let ancestor=selected;while(ancestor){destinationExpanded.add(ancestor);ancestor=parent(ancestor);}
     selectDestination(selected); renderTree();
   }
   function renderContentHeading() {

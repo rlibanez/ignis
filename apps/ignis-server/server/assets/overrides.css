@@ -25,8 +25,11 @@ body {
     height: 100dvh;
   }
 
+  /* Move only the editing tools. When the keyboard is hidden, keep the
+     toolbar above the gesture area; retain its normal keyboard attachment. */
   body.is-phone .mobile-toolbar {
-    top: calc(100dvh - var(--keyboard-height) - var(--mobile-toolbar-height));
+    --ignis-toolbar-safe-lift: max(0px, calc(max(var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px), var(--size-4-4, 16px)) - var(--keyboard-height, 0px) - 4px));
+    top: calc(100dvh - var(--keyboard-height, 0px) - var(--mobile-toolbar-height) - var(--ignis-toolbar-safe-lift));
   }
 }
 
@@ -48,7 +51,7 @@ body {
   .ignis-responsive-table select { width:100%; max-width:100%; }
 }
 @media (max-width: 600px) {
-  .modal.ignis-management-modal { width:calc(100% - 1rem) !important; max-width:none; max-height:calc(100dvh - 1rem); }
+  /* Keep native mobile modal dimensions and safe-area positioning. */
   .ignis-management-modal .modal-content { overflow-y:auto; overscroll-behavior:contain; scroll-padding-block:1rem; }
   .ignis-management-modal .modal-title { overflow-wrap:anywhere; }
   .ignis-management-modal .ignis-ui-actions { display:grid; grid-template-columns:1fr; }
@@ -62,3 +65,9 @@ body {
 }
 
 @media (max-width:600px) { .ignis-management-heading { flex-wrap:wrap; } .ignis-management-modal .ignis-ui-icon { min-width:44px; min-height:44px; } }
+
+/* Primary copy action precedes Cancel in the mobile vertical layout. */
+body.is-mobile .ignis-copy-actions { display:flex;flex-direction:column;align-items:stretch; }
+body.is-mobile .ignis-copy-actions > .mod-cta { order:-1; }
+body.is-mobile .ignis-copy-actions > button { width:100%; }
+@media(max-width:600px) { .ignis-copy-actions > .mod-cta { order:-1; } }

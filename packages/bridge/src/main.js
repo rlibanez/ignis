@@ -30,13 +30,15 @@ class IgnisBridgePlugin extends Plugin {
 
     if (window.__ignisAuth?.role === "admin") {
       await pluginRegistry.refresh();
-      patchSettingsModal(this);
+
       refreshIgnisSettings();
       this._pluginTogglesUnsub = watchPluginToggles();
     }
 
+    patchSettingsModal(this);
+
     this.registerDomEvent(window, "ignis:virtual-plugin-loaded", () => {
-      reconcilePluginTabs(this.app.setting);
+      if (window.__ignisAuth?.role === "admin") reconcilePluginTabs(this.app.setting);
     });
 
     this._statusBarUnsub = initStatusBar(this);

@@ -32,7 +32,6 @@
               <tbody id="users"></tbody>
             </table>
           </div>
-          <p class="help action-help" data-i18n="Manage account details, roles, access and deletion.">Manage account details, roles, access and deletion.</p>
         </section>
         <dialog id="create-dialog" aria-labelledby="create-heading">
         <h2 id="create-heading" data-i18n="Create user">Create user</h2>
@@ -51,7 +50,7 @@
             </span>
           </div>
           <input id="new-email" name="email" type="email" maxlength="254" autocomplete="off" />
-          <label class="email-confirmation"><input name="emailVerified" type="checkbox" /><span data-i18n="I confirm that this email belongs to this user"> I confirm that this email belongs to this user</span></label>
+          <label class="email-confirmation"><input name="emailVerified" type="checkbox" /><span data-i18n="Verified email"> Verified email</span></label>
           <div class="field-heading"><label for="new-password" data-i18n="Password">Password</label>
             <span class="field-help"><button type="button" class="help-toggle" aria-label="About password" aria-expanded="false" aria-controls="policy" data-i18n-aria-label="About password">?</button>
               <span id="policy" class="help-tooltip" role="tooltip" hidden data-i18n="Password requirements are loaded from the server.">Password requirements are loaded from the server.</span>
@@ -61,7 +60,7 @@
           <label for="confirm-password" data-i18n="Confirm password">Confirm password</label>
           <input id="confirm-password" name="confirmation" type="password" required maxlength="1024" autocomplete="new-password" />
           <div class="field-heading">
-            <label class="email-confirmation"><input name="requirePasswordChange" type="checkbox" /><span data-i18n="Require password change at next sign-in"> Require password change at next sign-in</span></label>
+            <label class="email-confirmation"><input name="requirePasswordChange" type="checkbox" /><span data-i18n="Force password change"> Force password change</span></label>
             <span class="field-help"><button type="button" class="help-toggle" aria-label="About required password changes" aria-expanded="false" aria-controls="create-password-change-help" data-i18n-aria-label="About required password changes">?</button>
               <span id="create-password-change-help" class="help-tooltip" role="tooltip" hidden data-i18n="Requires a local password. Existing sessions are closed. The user must sign in with their current local password and choose a different password before accessing Ignis, including through OpenID Connect.">Requires a local password. Existing sessions are closed. The user must sign in with their current local password and choose a different password before accessing Ignis, including through OpenID Connect.</span>
             </span>
@@ -80,7 +79,7 @@
             </span>
           </div>
           <input id="edit-email" name="email" type="email" maxlength="254" autocomplete="off" />
-          <label class="email-confirmation"><input name="emailVerified" type="checkbox" /><span data-i18n="I confirm that this email belongs to this user"> I confirm that this email belongs to this user</span></label>
+          <label class="email-confirmation"><input name="emailVerified" type="checkbox" /><span data-i18n="Verified email"> Verified email</span></label>
           <div class="field-heading"><label for="user-role" data-i18n="Account role">Account role</label>
             <span class="field-help"><button type="button" class="help-toggle" aria-label="About account roles" aria-expanded="false" aria-controls="role-help" data-i18n-aria-label="About account roles">?</button>
               <span id="role-help" class="help-tooltip" role="tooltip" hidden data-i18n="Administrators can manage users. Vault access still requires explicit membership. Changing a role closes all the user&#x27;s sessions. You cannot change your own role.">Administrators can manage users. Vault access still requires explicit membership. Changing a role closes all the user's sessions. You cannot change your own role.</span>
@@ -99,7 +98,7 @@
           </select>
 
           <div class="field-heading">
-            <label class="email-confirmation"><input name="requirePasswordChange" type="checkbox" /><span data-i18n="Require password change at next sign-in"> Require password change at next sign-in</span></label>
+            <label class="email-confirmation"><input name="requirePasswordChange" type="checkbox" /><span data-i18n="Force password change"> Force password change</span></label>
             <span class="field-help"><button type="button" class="help-toggle" aria-label="About required password changes" aria-expanded="false" aria-controls="edit-password-change-help" data-i18n-aria-label="About required password changes">?</button>
               <span id="edit-password-change-help" class="help-tooltip" role="tooltip" hidden data-i18n="Requires a local password. Existing sessions are closed. The user must sign in with their current local password and choose a different password before accessing Ignis, including through OpenID Connect.">Requires a local password. Existing sessions are closed. The user must sign in with their current local password and choose a different password before accessing Ignis, including through OpenID Connect.</span>
             </span>
@@ -110,11 +109,7 @@
           <button id="set-password" type="button" class="cancel-button" hidden data-i18n="Set local password">Set local password</button>
           <section class="session-actions" aria-label="Session management" data-i18n-aria-label="Session management">
             <button id="revoke-sessions" type="button" class="warning-button" data-i18n="Close all sessions">Close all sessions</button>
-            <div id="revoke-confirmation" hidden>
-              <p id="revoke-warning" data-provider-template="Close all Ignis sessions for this user? Their account remains active. This does not sign them out of their OpenID Connect provider.">Close all Ignis sessions for this user? Their account remains active. This does not sign them out of their OpenID Connect provider.</p>
-              <button id="confirm-revoke" type="button" class="warning-button" data-i18n="Confirm closing sessions">Confirm closing sessions</button>
-              <button id="cancel-revoke" type="button" class="cancel-button" data-i18n="Keep sessions">Keep sessions</button>
-            </div>
+
           </section>
           <section id="unlink-section" class="session-actions" aria-label="OpenID Connect linking" hidden data-i18n-aria-label="OpenID Connect linking">
             <div id="unlink-control" class="unlink-control">
@@ -174,8 +169,7 @@
       </dialog>
       <dialog id="delete-dialog" aria-labelledby="delete-heading">
         <h2 id="delete-heading"><span data-i18n="Delete user ">Delete user </span><span id="delete-user-name"></span></h2>
-        <p data-i18n="This permanently removes the Ignis account and its access. The external identity provider account is not deleted.">This permanently removes the Ignis account and its access. The external identity provider account is not deleted.</p>
-        <p class="help" data-i18n="If automatic provisioning is enabled, a later provider sign-in can create a new Ignis account without the old permissions.">If automatic provisioning is enabled, a later provider sign-in can create a new Ignis account without the old permissions.</p>
+        <p data-i18n="This permanently removes the Ignis account and its access.">This permanently removes the Ignis account and its access.</p>
         <p data-i18n="Owned vaults:">Owned vaults:</p>
         <ul id="delete-vaults"></ul>
         <form id="delete-user-form">
@@ -187,10 +181,17 @@
           <div class="dialog-actions"><button id="cancel-delete" type="button" class="cancel-button" data-i18n="Cancel">Cancel</button><button id="confirm-delete" type="submit" class="danger-button" data-i18n="Delete user">Delete user</button></div>
         </form>
       </dialog>
+      <dialog id="revoke-confirmation" class="ignis-confirm" aria-labelledby="revoke-heading">
+        <h2 id="revoke-heading" data-i18n="Close all sessions">Close all sessions</h2>
+        <p id="revoke-warning"></p>
+        <div class="dialog-actions">
+          <button id="cancel-revoke" type="button" class="cancel-button" data-i18n="Cancel">Cancel</button>
+          <button id="confirm-revoke" type="button" class="warning-button" data-i18n="Confirm">Confirm</button>
+        </div>
+      </dialog>
       <dialog id="reauth-dialog" aria-labelledby="reauth-heading">
         <h2 id="reauth-heading" data-i18n="Confirm your identity">Confirm your identity</h2>
         <p id="reauth-user"></p>
-        <p class="help" data-i18n="Confirm your identity to continue. No changes will be saved automatically.">Confirm your identity to continue. No changes will be saved automatically.</p>
         <div class="reauth-actions">
         <form id="reauth-form">
           <label for="reauth-password" data-i18n="Password">Password</label>

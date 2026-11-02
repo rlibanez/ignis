@@ -602,3 +602,34 @@ it('lets a normal OIDC user reauthenticate and set only their own first password
  expect((await post('/api/auth/login',jar,{login:initial.user.login,password:body.newPassword})).status).toBe(200);
  expect((await send('/api/auth/password',{newPassword:'another-password!'})).status).not.toBe(200);
 });
+
+it("allows normal users to unlink only themselves after fresh local password verification", async () => {
+  const jar = {};
+  const start = await post("/api/auth/oidc/start", jar);
+  await request(providerCallback(start.json().authorizationUrl), jar, "GET", undefined, { "sec-fetch-site": "cross-site" });
+  const session = (await request("/api/auth/session", jar)).json();
+  const send = async (body, headers = {}) => {
+    const csrf = (await request("/api/auth/csrf", jar)).json().csrfToken;
+    return request("/api/auth/oidc/unlink", jar, "POST", body, {
+      origin: ORIGIN, "x-ignis-csrf": csrf, "x-ignis-context": session.sessionId, ...headers,
+    });
+  };
+  expect((await send({ password: "synthetic-passphrase" })).status).toBe(400);
+  db.prepare("INSERT INTO local_credentials (user_id,password_hash,updated_at) VALUES (?,?,?)").run(session.user.id, hash, Date.now());
+  // Credential creation invalidates old sessions; sign in again with the local password.
+  await post("/api/auth/login", jar, { login: session.user.login, password: "synthetic-passphrase" });
+  Object.assign(session, (await request("/api/auth/session", jar)).json());
+  expect((await send({ password: "wrong" })).status).toBe(400);
+  expect((await send({ password: "synthetic-passphrase", userId: "another-user" })).status).toBe(400);
+  expect((await send({ password: "synthetic-passphrase" }, { origin: "https://evil.example" })).status).toBe(403);
+  expect((await send({ password: "synthetic-passphrase" }, { "x-ignis-csrf": "invalid" })).status).toBe(403);
+  expect((await send({ password: "synthetic-passphrase" }, { "x-ignis-context": "stale" })).status).toBe(409);
+  expect(db.prepare("SELECT count(*) n FROM oidc_identities WHERE user_id=?").get(session.user.id).n).toBe(1);
+  const result = await send({ password: "synthetic-passphrase" });
+  expect(result.status).toBe(200);
+  expect(result.json().signedOut).toBe(true);
+  expect(db.prepare("SELECT count(*) n FROM sessions WHERE user_id=?").get(session.user.id).n).toBe(0);
+  expect(db.prepare("SELECT count(*) n FROM oidc_identities WHERE user_id=?").get(session.user.id).n).toBe(0);
+  expect((await request("/api/auth/session", jar)).status).toBe(401);
+  expect((await post("/api/auth/login", jar, { login: session.user.login, password: "synthetic-passphrase" })).status).toBe(200);
+});

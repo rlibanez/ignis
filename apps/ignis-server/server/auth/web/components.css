@@ -22,6 +22,9 @@
 }
 .ignis-confirm { box-sizing:border-box; width:min(30rem,calc(100% - 2rem)); max-height:calc(100dvh - 2rem); overflow:auto; padding:1.5rem; border:1px solid light-dark(#d4d7e1,#414653); border-radius:.75rem; background:light-dark(#fff,#20232b); color:inherit; }
 .ignis-confirm h2 { margin-top:0; }.ignis-confirm::backdrop { background:#080b1480;backdrop-filter:blur(3px); }
+.ignis-confirm h2 { padding-inline-end:2rem; }
+.ignis-confirm .share-dialog-close { position:absolute; top:.75rem; right:.75rem; display:flex; align-items:center; justify-content:center; width:28px; height:28px; min-height:28px; margin:0; padding:0; border:0; background:transparent; color:inherit; }
+.ignis-confirm .share-dialog-close svg { width:18px; height:18px; }
 
 /* Edit status also carries successful operation feedback. */
 #edit-status:not(:empty) { padding:.75rem; border:1px solid light-dark(#b9bdc9,#696d7b); border-radius:.5rem; background:light-dark(#f6f5fb,#272933); overflow-wrap:anywhere; }

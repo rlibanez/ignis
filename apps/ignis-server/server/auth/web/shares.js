@@ -1,8 +1,13 @@
-(() => {
+function mountShares(scope = {}) {
+  const document = scope.document ?? globalThis.document;
+  const window = scope.window ?? globalThis.window;
+  const location = scope.location ?? globalThis.location;
+  const fetch = scope.fetch ?? globalThis.fetch;
+  const BroadcastChannel = scope.BroadcastChannel ?? globalThis.BroadcastChannel;
 var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 
   const $=id=>document.getElementById(id);
-  let context, catalog, managed, placed, busy=false, locked=false, selectedPath="", pickerGeneration=0;
+  let context, catalog, managed, draft, placed, busy=false, locked=false, selectedPath="", pickerGeneration=0;
   const node=(tag,text)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=text;return el;};
   function lock(){locked=true;for(const dialog of document.querySelectorAll("dialog"))dialog.close();$("workspace").hidden=true;$("status").textContent=translateIgnis("Your session has ended or changed. Return to Account to sign in again.");}
   async function api(operation,input){
@@ -11,21 +16,27 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     if(operation){const response=await fetch("/api/auth/csrf",{credentials:"same-origin",cache:"no-store",headers});if(!response.ok)throw new Error(translateIgnis("Unable to check your session."));headers["X-Ignis-Csrf"]=(await response.json()).csrfToken;headers["Content-Type"]="application/json";}
     const response=await fetch("/api/shares",{method:operation?"POST":"GET",credentials:"same-origin",cache:"no-store",headers,...(operation?{body:JSON.stringify({operation,input})}:{})});
     if(response.status===401 || response.headers.get("content-type")?.includes("text/html")){lock();throw new Error(translateIgnis("Session unavailable"));}
-    const data=await response.json();if(locked)throw new Error(translateIgnis("Session unavailable"));if(!response.ok){if(data.code==="AUTH_CONTEXT_CHANGED")lock();throw new Error(translateIgnis(data.error) || translateIgnis("Request failed"));}return data;
+    const data=await response.json();scope.assertContext?.();if(locked)throw new Error(translateIgnis("Session unavailable"));if(!response.ok){if(data.code==="AUTH_CONTEXT_CHANGED")lock();throw new Error(translateIgnis(data.error) || translateIgnis("Request failed"));}if(operation && !["browse","validateGrant"].includes(operation))await scope.onMutation?.();return data;
   }
-  function confirmAction(title, message, action) {
+  function confirmAction(title, message, action, opened) {
     return new Promise(resolve => {
       const dialog=node("dialog");dialog.className="ignis-confirm";
       const heading=node("h2",title),description=node("p",message),actions=node("div");actions.className="dialog-actions";
       dialog.setAttribute("aria-label",title);
       const cancel=button(translateIgnis("Cancel"),()=>dialog.close(),false),accept=button(action,()=>dialog.close("confirmed"),false);
       cancel.className="account-button secondary";accept.className="account-button danger";
-      actions.append(cancel,accept);dialog.append(heading,description,actions);document.body.append(dialog);
+      const close=iconButton(translateIgnis("Close"),["M18 6 6 18","m6 6 12 12"],()=>dialog.close());
+      close.className="share-dialog-close";
+      actions.append(cancel,accept);dialog.append(close,heading,description,actions);document.body.append(dialog);
       dialog.addEventListener("close",()=>{const accepted=dialog.returnValue==="confirmed" && !locked;dialog.remove();resolve(accepted);},{once:true});
-      dialog.showModal();cancel.focus();
+      dialog.showModal();opened?.(dialog);cancel.focus();
     });
   }
-  async function run(fn,dialog){if(busy||locked)return;busy=true;const status=dialog?dialog.querySelector(".error"):$("status");status.textContent="";try{await fn();}catch(error){(dialog && !dialog.open ? $("status") : status).textContent=error.message;}finally{busy=false;}}
+  async function run(fn,dialog){if(busy||locked)return;busy=true;const status=dialog?dialog.querySelector(".error"):$("status");status.textContent="";try{await fn();}catch(error){
+    if(dialog?.open && ["grant-dialog","create-dialog"].includes(dialog.id)){
+      const field=$(dialog.id==="grant-dialog"?"grant-login":"recipient");field.setCustomValidity(error.message);field.reportValidity();
+    }else (dialog && !dialog.open ? $("status") : status).textContent=error.message;
+  }finally{busy=false;}}
   const button=(text,action,secondary=true)=>{const el=node("button",text);el.type="button";if(secondary)el.className="secondary table-action";el.onclick=action;return el;};
   function iconButton(label,paths,action){
     const el=button("",action);el.className="icon-button";el.title=label;el.setAttribute("aria-label",label);
@@ -47,7 +58,13 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
         }
         if(owned && !resource.available){const state=node("span",translateIgnis("Unavailable"));state.className="resource-detail";title.append(state);}
         const actions=node("div");actions.className="toolbar";
-        actions.append(owned?button(translateIgnis("Manage"),()=>manage(resource)):button(translateIgnis("Location"),()=>locationDialog(resource)));
+        if(owned){
+          actions.append(iconButton(translateIgnis("Edit"),["M12 20h9","M16 4l4 4-12 12H4v-4Z"],()=>manage(resource)),
+            iconButton(translateIgnis("Delete"),["M3 6h18","M9 6V4h6v2","M5 6l1 14h12l1-14","M10 10v6","M14 10v6"],()=>run(async()=>{
+              if(!await confirmAction(translateIgnis("Stop sharing"),translateIgnis("Stop sharing “{p0}” with all recipients?",{p0:resource.name}),translateIgnis("Stop sharing")))return;
+              await api("revoke",{action:"revoke",id:resource.id,revision:resource.revision});await reload();
+            })));
+        }else actions.append(button(translateIgnis("Location"),()=>locationDialog(resource)));
         return [title,resource.kind==="directory"?translateIgnis("Folder"):translateIgnis("File"),owned?(catalog.ownedVaults.find(v=>v.id===resource.vault)?.name || translateIgnis("Vault"))+" / "+resource.path:resource.owner,...(owned?[]:[resource.available?(resource.role==="editor"?translateIgnis("Read / Write"):translateIgnis("Read")):translateIgnis("Unavailable")]),actions];
       });
       $(id).replaceChildren(rows.length?table([translateIgnis("Resource"),translateIgnis("Type"),owned?translateIgnis("Path"):translateIgnis("Owner"),...(owned?[]:[translateIgnis("Access")]),translateIgnis("Actions")],rows):node("p",translateIgnis("No shared resources.")));
@@ -56,131 +73,225 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   }
   async function reload(){catalog=await api();render();}
   function locationDialog(resource){
-    placed=resource;$("location-resource").textContent=resource.name;
+    placed=resource;$("location-heading").textContent=translateIgnis("Resource location")+" "+resource.name;
     const select=$("destination-vault");const none=node("option",translateIgnis("Not placed — choose a vault"));none.value="";
     select.replaceChildren(none,...catalog.destinationVaults.map(v=>{const option=node("option",v.name);option.value=v.id;return option;}));
-    select.value=resource.destination || "";$("destination-path").value=resource.localPath || resource.name;
-    $("location-dialog").querySelector(".error").textContent="";$("location-dialog").showModal();
+    select.value=resource.destination || (catalog.destinationVaults.length===1?catalog.destinationVaults[0].id:"");const localPath=resource.localPath || resource.name;$("destination-path").value=localPath.split("/").pop();
+    locationFolder=localPath.includes("/")?localPath.slice(0,localPath.lastIndexOf("/")):"";
+    $("location-dialog").querySelector(".error").textContent="";$("location-dialog").showModal();void loadLocationTree(locationFolder);
   }
   $("location-form").onsubmit=event=>{event.preventDefault();run(async()=>{
-    await api("destination",{id:placed.id,vault:$("destination-vault").value || null,localPath:$("destination-path").value});
+    if(!locationReady)return;
+    if($("destination-vault").value && /[\\/]/.test($("destination-path").value))throw new Error(translateIgnis("Invalid local name."));
+    await api("destination",{id:placed.id,vault:$("destination-vault").value || null,localPath:[locationFolder,$("destination-path").value].filter(Boolean).join("/")});
     $("location-dialog").close();await reload();
   },$("location-dialog"));};
-  async function updateGrant(login,role){
-    await api("grant",{action:"grant",id:managed.id,revision:managed.revision,login,role});
-    await reload();const updated=catalog.resources.find(r=>r.id===managed.id);
-    if(!updated){$("manage-dialog").close();return;}
-    manage(updated);
-  }
   function manage(resource){
-    managed=resource;$("manage-resource").textContent=resource.name;
+    if(busy||locked)return;
+    managed=resource;draft=resource.grants.map(g=>({...g}));
+    $("manage-heading").textContent=translateIgnis("Manage resource")+" "+resource.name;
     $("manage-dialog").querySelector(".error").textContent="";
-    const rows=resource.grants.map(grant=>{
+    renderGrants();
+    if(!$("manage-dialog").open)$("manage-dialog").showModal();
+  }
+  function renderGrants(){
+    const rows=draft.map(grant=>{
       const select=node("select");select.setAttribute("aria-label",translateIgnis("Permission for ")+grant.login);
       for(const [value,title] of [["reader",translateIgnis("Read")],["editor",translateIgnis("Read / Write")]]){const option=node("option",title);option.value=value;select.append(option);}
       select.value=grant.role;
       const actions=node("div");actions.className="toolbar";
-      const save=iconButton(translateIgnis("Save permission for ")+grant.login,["M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2Z","M17 21v-8H7v8","M7 3v5h8"],()=>run(()=>updateGrant(grant.login,select.value),$("manage-dialog")));save.disabled=true;
-      select.onchange=()=>{save.disabled=select.value===grant.role;};
-      const remove=iconButton(translateIgnis("Remove access for ")+grant.login,["M3 6h18","M9 6V4h6v2","M5 6l1 14h12l1-14","M10 10v6","M14 10v6"],()=>run(async()=>{
-        if(await confirmAction(translateIgnis("Remove access"), translateIgnis("Remove {p0}'s access to “{p1}”? Other permissions are unaffected.", {p0: (grant.login), p1: (managed.name)}), translateIgnis("Remove access")))await updateGrant(grant.login,null);
-      },$("manage-dialog")));remove.classList.add("danger");actions.append(save,remove);
+      select.onchange=()=>{if(!busy)grant.role=select.value;};
+      const remove=iconButton(translateIgnis("Remove access for ")+grant.login,["M3 6h18","M9 6V4h6v2","M5 6l1 14h12l1-14","M10 10v6","M14 10v6"],()=>{
+        if(busy)return;draft=draft.filter(g=>g!==grant);renderGrants();
+      });actions.append(remove);
       return [grant.login,select,actions];
     });
     $("grants").replaceChildren(rows.length?table([translateIgnis("User"),translateIgnis("Permission"),translateIgnis("Actions")],rows):node("p",translateIgnis("No direct recipients.")));
-    if(!$("manage-dialog").open)$("manage-dialog").showModal();
   }
   for(const el of document.querySelectorAll("[data-close]"))el.onclick=()=>{if(!busy)$(el.dataset.close).close();};
   for(const dialog of document.querySelectorAll("dialog"))dialog.addEventListener("cancel",event=>{if(busy)event.preventDefault();});
-  for (const toggle of document.querySelectorAll(".setup-help-toggle")) {
-    const tip = document.getElementById(toggle.getAttribute("aria-controls"));
-    const region = toggle.parentElement;
-    const show = (open) => {
-      tip.hidden = !open;
-      toggle.setAttribute("aria-expanded", String(open));
-      if (open) toggle.setAttribute("aria-describedby", tip.id);
-      else toggle.removeAttribute("aria-describedby");
-    };
-    toggle.addEventListener("click", () => show(true));
-    region.addEventListener("mouseenter", () => show(true));
-    region.addEventListener("mouseleave", () => show(false));
-    region.addEventListener("focusout", (event) => {
-      if (!region.contains(event.relatedTarget)) show(false);
-    });
-    toggle.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") { event.preventDefault(); show(false); }
-    });
-    document.addEventListener("click", (event) => {
-      if (!region.contains(event.target)) show(false);
-    });
+  let locationFolder="",locationTree={},locationGeneration=0,locationReady=false;
+  const locationExpanded=new Set();
+  const parentPath=path=>path.includes("/")?path.slice(0,path.lastIndexOf("/")):"";
+  function renderLocationTree(){
+    const query=$("location-search").value.trim().toLocaleLowerCase();
+    const paths=Object.keys(locationTree).filter(path=>locationTree[path].type==="directory" && path.split("/").every(part=>part && !part.startsWith(".")));
+    const included=new Set();
+    for(const path of paths.filter(path=>!query||path.toLocaleLowerCase().includes(query))){let p=path;while(p){included.add(p);p=parentPath(p);}}
+    const rootOpen=!!query||locationExpanded.has("");
+    const rows=[{path:"",name:translateIgnis("Vault root"),kind:"directory",depth:0,children:paths.length>0,open:rootOpen}];
+    function visit(parent,depth){for(const path of paths.filter(p=>parentPath(p)===parent&&included.has(p)).sort((a,b)=>a.localeCompare(b))){
+      const open=!!query||locationExpanded.has(path);
+      rows.push({path,name:path.split("/").pop(),kind:"directory",depth,children:paths.some(p=>parentPath(p)===path),open});
+      if(open)visit(path,depth+1);
+    }}if(rootOpen)visit("",1);
+    globalThis.IgnisResourceTree.render($("location-tree"),rows,{selected:locationFolder,translate:translateIgnis,
+      onSelect:entry=>{locationFolder=entry.path;renderLocationTree();},
+      onToggle:entry=>{if(query)return;if(locationExpanded.has(entry.path))locationExpanded.delete(entry.path);else locationExpanded.add(entry.path);renderLocationTree();}});
+    $("location-selection").textContent=translateIgnis("Destination: ")+(locationFolder||translateIgnis("Vault root"));
   }
-  $("location-dialog").addEventListener("close",()=>{ $("local-path-help").hidden=true; document.querySelector(".setup-help-toggle").setAttribute("aria-expanded","false"); });
+  async function loadLocationTree(selected=""){
+    const generation=++locationGeneration,vault=$("destination-vault").value;
+    locationReady=false;locationFolder=selected;locationExpanded.clear();locationExpanded.add("");$("location-search").value="";
+    $("location-folders").hidden=!vault;$("destination-path").disabled=!vault;
+    $("location-form").querySelector('[type="submit"]').disabled=!!vault;
+    $("location-tree").replaceChildren();$("location-selection").textContent="";
+    if(!vault){locationReady=true;return;}
+    try{
+      const response=await fetch("/api/fs/tree?vault="+encodeURIComponent(vault),{credentials:"same-origin",cache:"no-store",headers:{"X-Ignis-Context":context}});
+      if(!response.ok)throw new Error(translateIgnis("Unable to load folders."));
+      const data=await response.json();if(generation!==locationGeneration||locked)return;
+      locationTree=data;
+      if(selected && data[selected]?.type!=="directory")throw new Error(translateIgnis("Destination folder is unavailable."));
+      let p=selected;while(p){locationExpanded.add(p);p=parentPath(p);}
+      locationReady=true;renderLocationTree();$("location-form").querySelector('[type="submit"]').disabled=false;
+    }catch(error){if(generation===locationGeneration)$("location-dialog").querySelector(".error").textContent=error.message;}
+  }
+  $("destination-vault").onchange=()=>{ $("location-dialog").querySelector(".error").textContent="";void loadLocationTree(); };
+  $("location-search").oninput=renderLocationTree;
+  $("location-dialog").addEventListener("close",()=>{locationGeneration++;locationReady=false;});
+
   $("back-to-account").onclick=()=>window.location.assign("/account");
-  $("reload").onclick=()=>run(reload);
   $("create-dialog").addEventListener("close",()=>{pickerGeneration++;});
   function selectResource(path){
     selectedPath=path;$("selection").textContent=translateIgnis("Selected: ")+path;$("create-submit").disabled=false;
-    for(const item of $("picker").querySelectorAll(".tree-select"))item.setAttribute("aria-pressed",String(item.dataset.path===path));
+    for(const item of $("picker").querySelectorAll(".resource-tree-select"))item.setAttribute("aria-pressed",String(item.dataset.path===path));
   }
+  let treeEntries=new Map(), expanded=new Set();
   function renderEntries(container,entries,parent,vault,generation){
-    container.replaceChildren();
-    if(!entries.length){container.append(node("p",translateIgnis("This folder is empty.")));return;}
-    for(const entry of [...entries].sort((a,b)=>(a.kind===b.kind?0:a.kind==="directory"?-1:1)||a.name.localeCompare(b.name))){
-      const path=parent?parent+"/"+entry.name:entry.name;
-      const branch=node("div"),row=node("div");row.className="tree-row";row.style.setProperty("--tree-depth",String(parent?parent.split("/").length:0));branch.append(row);
-      const children=node("div");children.className="tree-children";children.hidden=true;
-      if(entry.kind==="directory"){
-        const expand=button("▸",async()=>{
-          if(expand.disabled)return;
-          if(!children.hidden){children.hidden=true;expand.textContent="▸";expand.setAttribute("aria-expanded","false");return;}
-          expand.disabled=true;
-          try{
-            const data=await api("browse",{vault,path});
-            if(generation!==pickerGeneration || locked)return;
-            renderEntries(children,data.entries,path,vault,generation);children.hidden=false;expand.textContent="▾";expand.setAttribute("aria-expanded","true");
-          }catch(error){if(generation===pickerGeneration)$("create-dialog").querySelector(".error").textContent=error.message;}
-          finally{expand.disabled=false;}
-        },false);expand.className="tree-toggle";expand.setAttribute("aria-label",translateIgnis("Expand or collapse ")+entry.name);expand.setAttribute("aria-expanded","false");row.append(expand);
-      }else{const spacer=node("span");spacer.className="tree-spacer";row.append(spacer);}
-      const choose=button((entry.kind==="directory"?"📁 ":"📄 ")+entry.name,()=>selectResource(path),false);
-      choose.className="tree-select";choose.dataset.path=path;choose.setAttribute("aria-pressed",String(path===selectedPath));
-      row.append(choose);branch.append(children);container.append(branch);
+    treeEntries.set(parent,entries);
+    const query=$("share-search").value.trim().toLocaleLowerCase();
+    const included=new Set();
+    if(query)for(const [folder,children] of treeEntries)for(const entry of children){
+      let path=folder?folder+"/"+entry.name:entry.name;
+      if(path.toLocaleLowerCase().includes(query))while(path){included.add(path);path=parentPath(path);}
     }
+    const rows=[];
+    function visit(folder,depth){for(const entry of [...(treeEntries.get(folder)||[])].sort((a,b)=>(a.kind===b.kind?0:a.kind==="directory"?-1:1)||a.name.localeCompare(b.name))){
+      const path=folder?folder+"/"+entry.name:entry.name;
+      if(query&&!included.has(path))continue;
+      rows.push({...entry,path,depth,children:entry.kind==='directory',open:!!query||expanded.has(path)});
+      if(query||expanded.has(path))visit(path,depth+1);
+    }}
+    visit('',0);
+    globalThis.IgnisResourceTree.render(container,rows,{selected:selectedPath,translate:translateIgnis,
+      onSelect:entry=>selectResource(entry.path),
+      onToggle:async entry=>{
+        if(query)return;
+        if(expanded.has(entry.path)){expanded.delete(entry.path);renderEntries(container,treeEntries.get(''),'',vault,generation);return;}
+        try{const data=await api('browse',{vault,path:entry.path});
+          if(generation!==pickerGeneration||locked)return;
+          treeEntries.set(entry.path,data.entries);expanded.add(entry.path);renderEntries(container,treeEntries.get(''),'',vault,generation);
+        }catch(error){if(generation===pickerGeneration)$("create-dialog").querySelector('.error').textContent=error.message;}
+      }});
   }
+  let searchTimer;
+  let searchRun=0;
+  $("share-search").oninput=()=>{
+    clearTimeout(searchTimer);
+    const runId=++searchRun,generation=pickerGeneration,vault=$("vault").value;
+    searchTimer=setTimeout(async()=>{
+      try{
+        // Use the authorized sharing browser, including its path exclusions.
+        // Cache each directory and stop immediately when the query or vault changes.
+        const pending=[""];
+        while(pending.length && $("share-search").value.trim()){
+          if(runId!==searchRun||generation!==pickerGeneration||locked)return;
+          const folder=pending.shift();
+          if(!treeEntries.has(folder)){
+            const data=await api("browse",{vault,path:folder});
+            if(runId!==searchRun||generation!==pickerGeneration||locked)return;
+            treeEntries.set(folder,data.entries);
+          }
+          for(const entry of treeEntries.get(folder))if(entry.kind==="directory")pending.push(folder?folder+"/"+entry.name:entry.name);
+        }
+        if(runId===searchRun&&generation===pickerGeneration&&!locked)renderEntries($("picker"),treeEntries.get("")||[],"",vault,generation);
+      }catch(error){if(runId===searchRun&&generation===pickerGeneration)$("create-dialog").querySelector(".error").textContent=error.message;}
+    },250);
+  };
   async function loadTree(){
+    clearTimeout(searchTimer);searchRun++;$("share-search").value="";
     const generation=++pickerGeneration,vault=$("vault").value;
+    treeEntries=new Map();expanded=new Set();
     selectedPath="";$("selection").textContent=translateIgnis("Select a file or folder.");$("create-submit").disabled=true;
     $("picker").replaceChildren(node("p",translateIgnis("Loading vault…")));
     $("create-dialog").querySelector(".error").textContent="";
     try{
       const data=await api("browse",{vault,path:""});
       if(generation!==pickerGeneration || locked)return;
-      const root=node("div",catalog.ownedVaults.find(v=>v.id===vault)?.name || translateIgnis("Vault"));root.className="tree-root";
-      const children=node("div");renderEntries(children,data.entries,"",vault,generation);$("picker").replaceChildren(root,children);
+      renderEntries($("picker"),data.entries,"",vault,generation);
+      return true;
     }catch(error){if(generation===pickerGeneration){$("picker").replaceChildren();$("create-dialog").querySelector(".error").textContent=error.message;}}
   }
-  $("new-share").onclick=()=>{
+  async function openCreate(vault, path){
     if(busy||locked)return;
-    $("create-form").reset();$("vault").replaceChildren(...catalog.ownedVaults.map(v=>{const option=node("option",v.name);option.value=v.id;return option;}));
-    $("create-dialog").showModal();void loadTree();
-  };
+    $("create-form").reset();$("recipient").setCustomValidity("");$("vault").replaceChildren(...catalog.ownedVaults.map(v=>{const option=node("option",v.name);option.value=v.id;return option;}));
+    if(vault)$("vault").value=vault;
+    $("create-dialog").showModal();
+    if(await loadTree() && path)selectResource(path);
+  }
+  $("new-share").onclick=()=>{void openCreate();};
   $("vault").onchange=()=>{void loadTree();};
+  $("recipient").addEventListener("input",()=>$("recipient").setCustomValidity(""));
+  $("permission").addEventListener("change",()=>$("recipient").setCustomValidity(""));
   $("create-form").onsubmit=event=>{event.preventDefault();if(!selectedPath)return;run(async()=>{
     await api("create",{vault:$("vault").value,path:selectedPath,login:$("recipient").value,role:$("permission").value});
     $("create-dialog").close();await reload();
   },$("create-dialog"));};
   $("add-access").onclick=()=>{
     if(busy||locked)return;
-    $("grant-form").reset();$("grant-resource").textContent=managed.name;
+    $("grant-form").reset();$("grant-login").setCustomValidity("");
     $("grant-dialog").querySelector(".error").textContent="";$("grant-dialog").showModal();$("grant-login").focus();
   };
+  $("grant-login").addEventListener("input",()=>$("grant-login").setCustomValidity(""));
+  $("grant-role").addEventListener("change",()=>$("grant-login").setCustomValidity(""));
   $("grant-form").onsubmit=event=>{event.preventDefault();run(async()=>{
-    await updateGrant($("grant-login").value,$("grant-role").value);$("grant-dialog").close();
+    const login=$("grant-login").value.trim().toLowerCase(),role=$("grant-role").value;
+    await api("validateGrant",{id:managed.id,revision:managed.revision,login,role});
+    const existing=draft.find(g=>g.login===login);
+    if(existing)existing.role=role;else draft.push({login,role});
+    renderGrants();$("grant-dialog").close();
   },$("grant-dialog"));};
-  $("revoke").onclick=()=>run(async()=>{
-    if(!await confirmAction(translateIgnis("Stop sharing"), translateIgnis("Stop sharing “{p0}” with all recipients? Other shares and vault memberships are unaffected.", {p0: (managed.name)}), translateIgnis("Stop sharing")))return;
-    await api("revoke",{action:"revoke",id:managed.id,revision:managed.revision});$("manage-dialog").close();await reload();
+  $("save-resource").onclick=()=>run(async()=>{
+    const changes=draft.filter(g=>!managed.grants.some(old=>old.login===g.login && old.role===g.role)).map(({login,role})=>({login,role}));
+    for(const old of managed.grants)if(!draft.some(g=>g.login===old.login))changes.push({login:old.login,role:null});
+    if(changes.length)await api("grants",{id:managed.id,revision:managed.revision,changes});
+    $("manage-dialog").close();await reload();
   },$("manage-dialog"));
   if(typeof BroadcastChannel==="function"){const channel=new BroadcastChannel("ignis-auth");channel.onmessage=()=>lock();}
-  run(async()=>{const response=await fetch("/api/auth/session",{credentials:"same-origin",cache:"no-store"});if(!response.ok){location.replace("/login");return;}const session=await response.json();window.IgnisI18n?.useAccount(session.user.id);context=session.sessionId;if(!context){location.replace("/login");return;}await reload();$("workspace").hidden=false;});
-})();
+  run(async()=>{const response=await fetch("/api/auth/session",{credentials:"same-origin",cache:"no-store"});if(!response.ok){location.replace("/login");return;}const session=await response.json();window.IgnisI18n?.useAccount(session.user.id);context=session.sessionId;if(!context){location.replace("/login");return;}if(scope.initialResource && context!==scope.initialResource.session)throw new Error(translateIgnis("Session unavailable"));await reload();$("workspace").hidden=false;}).then(async()=>{
+    const initial=scope.initialResource;
+    if(!initial || !catalog || locked)return;
+    try {
+      scope.assertContext?.();
+      if(initial.id){
+        const resource=catalog.resources.find(r=>r.id===initial.id);
+        if(!resource)throw new Error(translateIgnis("Shared resource unavailable"));
+        if(initial.action === "revoke"){
+          if(!resource.owned)throw new Error(translateIgnis("Shared resource unavailable"));
+          if(await confirmAction(translateIgnis("Stop sharing"),translateIgnis("Stop sharing “{p0}” with all recipients?",{p0:resource.name}),translateIgnis("Stop sharing"),scope.onResourceDialogOpened)){
+            await api("revoke",{action:"revoke",id:resource.id,revision:resource.revision});
+          }
+          scope.onResourceActionFinished?.();
+          return;
+        }
+        if(resource.owned)manage(resource);else locationDialog(resource);
+        scope.onResourceDialogOpened?.($(resource.owned?"manage-dialog":"location-dialog"));
+        return;
+      }
+      if(!catalog.ownedVaults.some(v=>v.id===initial.vault))throw new Error(translateIgnis("Only the vault owner can share its resources."));
+      const resource=catalog.resources.find(r=>r.owned && r.vault===initial.vault && r.path===initial.path);
+      if(resource){
+        if(!resource.available)throw new Error(translateIgnis("This shared resource is unavailable. Review it in Shared resources."));
+        manage(resource);
+        scope.onResourceDialogOpened?.($("manage-dialog"));
+      }else{
+        await openCreate(initial.vault,initial.path);
+        scope.onResourceDialogOpened?.($("create-dialog"));
+      }
+    }catch(error){$("status").textContent=error.message;}
+  });
+}
+globalThis.IgnisManagementControllers ??= {};
+globalThis.IgnisManagementControllers["shares"] = mountShares;
+if (globalThis.document && !globalThis.window?.__ignisAuth) mountShares();

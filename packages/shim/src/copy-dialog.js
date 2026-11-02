@@ -1,4 +1,4 @@
-import {nativeTooltip} from './native-tooltip.js';
+import "../../../apps/ignis-server/server/auth/web/resource-tree.js";
 
 const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import {errorBlock} from "./shared-ui.js";
@@ -40,56 +40,62 @@ export function openCopyDialog(obsidian,app,file,describe,copy,options={}) {
     onClose(){this.closed=true;}
     async onOpen() {
       this.closed=false;
-      this.modalEl.classList.add('ignis-management-modal');
+      this.modalEl.classList.add('ignis-management-modal', 'mod-lg', 'mod-form');
       this.setTitle(options.title || translateIgnis("Copy ")+file.name);
       if(options.load){
         const loading=document.createElement('p');loading.textContent=translateIgnis("Loading vault…");this.contentEl.append(loading);
         try{destinationVault=await options.load();}catch(error){loading.textContent=translateIgnis(error.message);return;}
         if(this.closed)return;loading.remove();
       }
-      let folder='',busy=false;const expanded=new Set(['']);
+      let folder='',busy=false,loading=false,destinationId=options.currentVault;const expanded=new Set(['']);
       const create=(tag,text)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=text;return el;};
       const content=this.contentEl;
+      let vaultSelect;
+      if(options.listVaults){
+        const vaultLabel=create('label',translateIgnis('Vault'));content.append(vaultLabel);
+        const dropdown=new obsidian.DropdownComponent(vaultLabel);
+        vaultSelect=dropdown.selectEl;
+        vaultSelect.style.cssText='display:block;width:100%;margin:8px 0 16px';
+        try{for(const vault of await options.listVaults())dropdown.addOption(vault.uuid,vault.name);if(this.closed)return;dropdown.setValue(destinationId);}
+        catch(e){content.append(create('p',translateIgnis(e.message)));return;}
+      }
+
       const label=create('div',translateIgnis("Destination folder"));label.style.fontWeight='600';
       const search=create('input');search.type='search';search.placeholder=translateIgnis("Search folders…");search.setAttribute('aria-label',translateIgnis("Search destination folders"));search.style.cssText='width:100%;margin:10px 0';
-      const location=create('div');location.style.cssText='margin:8px 0;color:var(--text-muted);overflow-wrap:anywhere';location.setAttribute('aria-live','polite');
-      const list=create('div');list.className='ignis-folder-picker';list.style.cssText='max-height:240px;overflow:auto;min-height:90px;border:1px solid var(--background-modifier-border);border-radius:6px;padding:6px';
+      const location=create('div');location.className='resource-tree-destination';location.setAttribute('aria-live','polite');
+      const list=create('div');list.className='ignis-folder-picker';
       const hint=create('p');hint.style.cssText='color:var(--text-muted);font-size:var(--font-smallest)';
       const nameLabel=create('label',translateIgnis("Name of the copy")),name=create('input');name.type='text';name.value=file.name;name.style.cssText='width:100%;margin:8px 0 12px';nameLabel.append(name);
       const error=errorBlock(create('div'));
-      const actions=create('div');actions.className='ignis-ui-actions';
+      const actions=create('div');actions.className='ignis-ui-actions ignis-copy-actions';
       const cancel=create('button',translateIgnis("Cancel")),submit=create('button',(options.submit || translateIgnis("Copy here")));submit.className='mod-cta';actions.append(cancel,submit);
       const render=()=>{
-        submit.disabled=busy || (options.multipleVaults && !folder);
-        location.textContent=translateIgnis("Destination: ")+(folder ? (destinationVault.displayPath?.(folder) || folder) : options.multipleVaults ? translateIgnis("Destination folder") : translateIgnis("Vault root"));list.replaceChildren();search.disabled=busy;
-        const folders=copyDestinationFolders(destinationVault.getAllLoadedFiles(),file.path,describe);
+        submit.disabled=busy || loading || (options.multipleVaults && !folder);
+        location.textContent=translateIgnis("Destination: ")+(folder ? (destinationVault.displayPath?.(folder) || folder) : options.multipleVaults ? translateIgnis("Destination folder") : translateIgnis("Vault root"));list.replaceChildren();search.disabled=busy||loading;if(vaultSelect)vaultSelect.disabled=busy;
+        const folders=copyDestinationFolders(destinationVault.getAllLoadedFiles(),destinationId===options.currentVault?file.path:'',destinationId===options.currentVault?describe:()=>null);
         const rows=copyFolderTree(folders,expanded,search.value);
-        const draw=(entry)=>{
-          const row=create('div');row.className='ignis-folder-row';row.style.setProperty('--tree-depth',String(entry.depth));row.style.cssText+=`display:flex;align-items:center;gap:4px;padding-left:${entry.depth*16}px;margin:2px 0`;
-          const toggle=create('button');toggle.className='ignis-folder-toggle';toggle.style.cssText='width:26px;padding:2px;box-shadow:none;background:transparent';toggle.disabled=busy;
-          if(entry.children){obsidian.setIcon?.(toggle,entry.open?'chevron-down':'chevron-right');toggle.setAttribute('aria-label',(entry.open?translateIgnis("Collapse "):translateIgnis("Expand "))+entry.name);toggle.setAttribute('aria-expanded',String(entry.open));
-            toggle.disabled=busy||!!search.value.trim();toggle.onclick=()=>{if(expanded.has(entry.path))expanded.delete(entry.path);else expanded.add(entry.path);render();list.querySelector(`[data-toggle="${entry.index}"]`)?.focus();};
-          }else{toggle.style.visibility='hidden';toggle.tabIndex=-1;}
-          toggle.dataset.toggle=String(entry.index);
-          const button=create('button');button.className='ignis-folder-select';button.style.cssText='display:flex;align-items:center;gap:8px;flex:1;min-width:0;justify-content:flex-start;box-shadow:none';button.style.background=entry.path===folder?'var(--background-modifier-hover)':'transparent';
-          const icon=create('span'),text=create('span',entry.name);text.style.cssText='overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-          obsidian.setIcon?.(icon,describe(entry.path)?'folder-input':'folder');button.append(icon,text);nativeTooltip(window,button,destinationVault.displayPath?.(entry.path) || entry.path || translateIgnis("Vault root"));button.setAttribute('aria-pressed',String(entry.path===folder));button.dataset.folder=String(entry.index);
-          button.disabled=busy;button.onclick=()=>{folder=entry.path;error.textContent='';render();list.querySelector(`[data-folder="${entry.index}"]`)?.focus();};row.append(toggle,button);list.append(row);
-        };
-        if(!options.multipleVaults)draw({path:'',name:translateIgnis("Vault root"),depth:0,children:folders.length>0,open:!!search.value.trim()||expanded.has(''),index:0});
-        rows.forEach((entry,index)=>draw({...entry,depth:options.multipleVaults?entry.depth-1:entry.depth,index:index+1}));
+        const visible=rows.map((entry,index)=>({...entry,kind:'directory',depth:options.multipleVaults?entry.depth-1:entry.depth,index:index+1}));
+        if(!options.multipleVaults)visible.unshift({path:'',name:translateIgnis("Vault root"),depth:0,kind:'directory',children:folders.length>0,open:!!search.value.trim()||expanded.has('')});
+        globalThis.IgnisResourceTree.render(list,visible,{selected:folder,disabled:busy||loading,translate:translateIgnis,
+          onSelect:entry=>{folder=entry.path;error.textContent='';render();},
+          onToggle:entry=>{if(search.value.trim())return;if(expanded.has(entry.path))expanded.delete(entry.path);else expanded.add(entry.path);render();}});
         if(search.value.trim()&&!rows.length)list.append(create('div',translateIgnis("No matching folders")));
-        hint.textContent=options.hint || (describe(folder)?.direction==='incoming'?translateIgnis("Shared folder: the copy will be visible to its recipients."):translateIgnis("Select a folder, then choose Copy here. Existing items will not be overwritten."));
+        hint.textContent=options.hint || (describe(folder)?.direction==='incoming'?translateIgnis("Shared folder: the copy will be visible to its recipients."):"");hint.hidden=!hint.textContent;
       };
+      if(vaultSelect){let generation=0;vaultSelect.onchange=async()=>{
+        const current=++generation;destinationId=vaultSelect.value;loading=true;folder='';search.value='';expanded.clear();expanded.add('');error.textContent='';render();
+        try{const loaded=await options.loadVault(destinationId);if(current!==generation||this.closed)return;destinationVault=loaded;loading=false;render();}
+        catch(e){if(current===generation&&!this.closed){error.textContent=translateIgnis(e.message);loading=true;render();}}
+      };}
       search.oninput=render;
       cancel.onclick=()=>this.close();
       submit.onclick=async()=>{
-        if(busy || (options.multipleVaults && !folder))return;error.textContent='';
+        if(busy || loading || (options.multipleVaults && !folder))return;error.textContent='';
         try{
           const destination=copyDestinationPath(folder,name.value);
           if(destinationVault.getAbstractFileByPath(destination))throw new Error(translateIgnis("An item with that name already exists. Choose another name or folder."));
           busy=true;submit.disabled=true;cancel.disabled=true;name.disabled=true;submit.textContent=translateIgnis("Copying…");render();
-          await copy(file.path,destination);this.close();new obsidian.Notice(translateIgnis("Copy complete"));
+          await copy(file.path,destination,destinationId);this.close();new obsidian.Notice(translateIgnis("Copy complete"));
         }catch(e){error.textContent=translateIgnis(e.message) || translateIgnis("Copy failed");}
         finally{busy=false;submit.disabled=false;cancel.disabled=false;name.disabled=false;submit.textContent=(options.submit || translateIgnis("Copy here"));render();}
       };

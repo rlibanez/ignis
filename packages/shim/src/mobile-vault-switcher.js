@@ -57,9 +57,7 @@ export function installMobileVaultSwitcher(app, obsidian) {
         menu.addSeparator();
         addFullscreenMenuItem(menu, obsidian, spanish);
         menu.addItem(item => item.setTitle(spanish ? "Cuenta" : translateIgnis("Account")).setIcon("user-round")
-          .onClick(() => window.location.assign("/account")));
-        menu.addItem(item => item.setTitle(spanish ? "Cerrar sesión" : translateIgnis("Sign out")).setIcon("log-out")
-          .onClick(() => window.__ignisAuth?.logout()));
+          .onClick(() => window.__ignisOpenAccount ? window.__ignisOpenAccount() : window.location.assign("/account")));
       }
       const rect = button.getBoundingClientRect();
       button.setAttribute("aria-expanded", "true");

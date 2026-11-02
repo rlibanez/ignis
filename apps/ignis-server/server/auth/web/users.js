@@ -1,4 +1,9 @@
-(() => {
+function mountUsers(scope = {}) {
+  const document = scope.document ?? globalThis.document;
+  const window = scope.window ?? globalThis.window;
+  const location = scope.location ?? globalThis.location;
+  const fetch = scope.fetch ?? globalThis.fetch;
+  const BroadcastChannel = scope.BroadcastChannel ?? globalThis.BroadcastChannel;
 var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 
   let providerName = "OpenID Connect";
@@ -49,15 +54,13 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   const cancelRevoke = document.getElementById("cancel-revoke");
   revokeButton.addEventListener("click", () => {
     if (locked || editBusy || !editing) return;
-    document.getElementById("revoke-warning").textContent = editing.id === currentUserId
-      ? translateIgnis("Close all your Ignis sessions, including this one? You will need to sign in again. Your account and provider session are kept.")
-      : translateIgnis("Close all Ignis sessions for this user? Their account status and provider session are kept. They can sign in again if the account is active.");
+    document.getElementById("revoke-warning").textContent = translateIgnis("Close all sessions for {p0}?", {p0: editing.login});
     unlinkConfirmation.hidden = true;
-    revokeConfirmation.hidden = false;
+    revokeConfirmation.showModal();
     confirmRevoke.focus();
   });
   cancelRevoke.addEventListener("click", () => {
-    revokeConfirmation.hidden = true;
+    revokeConfirmation.close();
     revokeButton.focus();
   });
   const unlinkSection = document.getElementById("unlink-section");
@@ -98,7 +101,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   const cancelUnlink = document.getElementById("cancel-unlink");
   unlinkButton.addEventListener("click", () => {
     if (locked || editBusy || !editing?.hasLocalPassword) return;
-    revokeConfirmation.hidden = true;
+    revokeConfirmation.close();
     unlinkConfirmation.hidden = false;
     confirmUnlink.focus();
   });
@@ -120,7 +123,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   editDialog.addEventListener("cancel", (event) => {
     if (editBusy) event.preventDefault();
   });
-  editDialog.addEventListener("close", () => { editing = null; revokeConfirmation.hidden = unlinkConfirmation.hidden = true; });
+  editDialog.addEventListener("close", () => { editing = null; revokeConfirmation.close(); unlinkConfirmation.hidden = true; });
   const resetDialog = document.getElementById("reset-dialog");
   const resetButton = document.getElementById("reset-password");
   const generateReset = document.getElementById("generate-reset");
@@ -572,7 +575,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
           unlinkSection.hidden = user.oidcLinked !== true;
           updateUnlinkAvailability();
           unlinkConfirmation.hidden = true;
-          revokeConfirmation.hidden = true;
+          revokeConfirmation.close();
           document.getElementById("edit-user-name").textContent = user.login;
           editForm.elements.requirePasswordChange.checked = !!user.password_change_required;
           editForm.elements.requirePasswordChange.disabled = !user.hasLocalPassword;
@@ -737,12 +740,12 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
         location.replace("/login");
         return;
       }
-      revokeConfirmation.hidden = unlinkConfirmation.hidden = true;
+      revokeConfirmation.close(); unlinkConfirmation.hidden = true;
       if (unlink) {
         editDialog.close();
         status.textContent = translateIgnis("{p0} unlinked. All Ignis sessions closed.", {p0: (providerName)});
         await refresh();
-      } else editStatus.textContent = translateIgnis("All Ignis sessions closed. Account status unchanged.");
+      } else editStatus.textContent = "";
     } catch {
       if (!locked) editStatus.textContent = translateIgnis("The result could not be confirmed. Reload before trying again.");
     } finally {
@@ -753,7 +756,10 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       updateUnlinkAvailability();
     }
   }
-  confirmRevoke.addEventListener("click", () => revokeOrUnlink(false));
+  confirmRevoke.addEventListener("click", () => {
+    revokeConfirmation.close();
+    revokeOrUnlink(false);
+  });
   confirmUnlink.addEventListener("click", () => revokeOrUnlink(true));
   window.addEventListener("pagehide", lock);
   window.addEventListener("pageshow", (event) => {
@@ -794,4 +800,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     }
   }
   start();
-})();
+}
+globalThis.IgnisManagementControllers ??= {};
+globalThis.IgnisManagementControllers["users"] = mountUsers;
+if (globalThis.document && !globalThis.window?.__ignisAuth) mountUsers();

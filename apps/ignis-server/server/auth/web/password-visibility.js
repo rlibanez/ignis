@@ -1,4 +1,6 @@
-(() => {
+function mountPasswordVisibility(scope = {}) {
+  const document = scope.document ?? globalThis.document;
+  const window = scope.window ?? globalThis.window;
 var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 
   const hideAll = [];
@@ -48,4 +50,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     input.closest("dialog")?.addEventListener("close", hide);
   }
   window.addEventListener("pagehide", () => hideAll.forEach(hide => hide()));
-})();
+}
+globalThis.IgnisManagementControllers ??= {};
+globalThis.IgnisManagementControllers["password-visibility"] = mountPasswordVisibility;
+if (globalThis.document && !globalThis.window?.__ignisAuth) mountPasswordVisibility();

@@ -100,3 +100,55 @@ body:not(.account-page) .login-actions > * { margin: 0; }
 .account-button.install-button:focus-visible {
   outline-color: light-dark(#0f766e, #5eead4);
 }
+
+/* Obsidian-style account pilot; intentionally scoped away from login/shares/users. */
+body.account-page {
+  --account-bg: light-dark(#fafafa, #1e1e1e);
+  --account-surface: light-dark(#ffffff, #262626);
+  --account-control: light-dark(#eeeeee, #333333);
+  --account-line: light-dark(#dddddd, #383838);
+  --account-muted: light-dark(#666666, #aaaaaa);
+  background: light-dark(#ededed, #161616);
+  color: light-dark(#262626, #dadada);
+}
+body.account-page main { max-width: 60rem; margin: 5vh auto; padding: 2rem; background: var(--account-bg); border: 1px solid var(--account-line); border-radius: .85rem; box-shadow: 0 1rem 4rem #0003; }
+.account-page .brand { font-size: .8rem; color: var(--account-muted); margin-bottom: .5rem; }
+.account-page h1 { font-size: 1.5rem; font-weight: 600; }
+.account-settings-layout { display: grid; grid-template-columns: 12rem minmax(0, 1fr); gap: 2rem; min-height: 20rem; }
+.account-categories { border-inline-end: 1px solid var(--account-line); padding-inline-end: 1rem; }
+.account-page .account-categories button { display: flex; align-items: center; gap: .65rem; padding: .6rem .7rem; margin: 0 0 .25rem; border: 0; border-radius: .4rem; background: transparent; color: inherit; text-align: start; font: inherit; min-height: 2.75rem; }
+.account-page .account-categories button[aria-pressed="true"], .account-page .account-categories button:hover { background: var(--account-control); }
+.account-categories svg { width: 1.15rem; height: 1.15rem; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.account-settings-content { min-width: 0; }
+.account-page .account-identity { background: var(--account-surface); border: 0; border-radius: .75rem; padding: 1.25rem; }
+.account-page .identity-label { color: var(--account-muted); }
+.account-page #account-status { font-size: 1rem; font-weight: 500; }
+.account-page .account-actions { gap: 0; padding: .5rem 1.25rem; background: var(--account-surface); border-radius: .75rem; }
+.account-page .account-actions .account-button { margin: 0; border-radius: 0; border: 0; border-bottom: 1px solid var(--account-line); background: transparent; color: inherit; justify-content: flex-start; padding: 1rem 0; font-weight: 400; }
+.account-page .account-actions .account-button:last-child { border-bottom: 0; }
+.account-page .account-actions .account-button:hover { color: light-dark(#6942bd, #b89af7); filter: none; }
+.account-page #account-security { background: var(--account-surface); border-radius: .75rem; padding: 1.25rem; }
+.account-page #account-security h2 { font-size: 1rem; font-weight: 600; margin: 0 0 1rem; }
+.account-page #account-security .account-button { background: var(--account-control); color: inherit; border: 1px solid var(--account-line); font-weight: 500; }
+.account-page #sign-out { width: auto; min-width: 10rem; margin-inline-start: auto; }
+body.account-page #password-dialog { background: var(--account-bg); border-color: var(--account-line); border-radius: .85rem; padding: 1.5rem; }
+.account-page #password-dialog h2 { font-size: 1.25rem; font-weight: 600; }
+.account-page #password-dialog > p { color: var(--account-muted); }
+.account-page #password-dialog input { background: var(--account-control); color: inherit; border-color: var(--account-line); border-radius: .5rem; }
+.account-page #password-dialog label { font-weight: 500; }
+.account-page #password-dialog .secondary { background: var(--account-control); color: inherit; border-color: var(--account-line); }
+@media (max-width: 640px) {
+  body.account-page { background: var(--account-bg); }
+  body.account-page main { border: 0; box-shadow: none; margin: 0 auto; padding: 1.25rem; border-radius: 0; }
+  .account-page h1 { text-align: center; font-size: 1.25rem; }
+  .account-settings-layout { grid-template-columns: 1fr; gap: 1rem; min-height: 0; }
+  .account-categories { display: flex; gap: .5rem; border: 0; padding: 0; flex-wrap: wrap; }
+  .account-page .account-categories button { width: auto; flex: 1; border-radius: 1.5rem; justify-content: center; }
+  .account-page .account-actions, .account-page .account-identity, .account-page #account-security { border-radius: 1.5rem; }
+  .account-page .account-actions .account-button { min-height: 3.5rem; }
+  .account-page #account-security .account-button, .account-page #sign-out { border-radius: 1.5rem; min-height: 3rem; }
+  .account-page #sign-out { width: 100%; }
+  body.account-page #password-dialog { border-radius: 1.5rem; }
+  .account-page #password-dialog input, .account-page #password-dialog .account-button { border-radius: 1.5rem; }
+}
+.account-page .account-actions .install-button { color: light-dark(#0f766e, #5eead4); font-weight: 600; }

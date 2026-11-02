@@ -5,12 +5,13 @@ import {webcrypto, createHash} from 'node:crypto';
 const source = fs.readFileSync(new URL('./web/share-target.js', import.meta.url), 'utf8');
 async function fixture({conflict = false, text = 'received\ncontent', title = 'Title', files = []} = {}) {
   class Element {
-    constructor(tag = '') { this.tag = tag; this.children = []; this.value = ''; this.dataset = {}; this.textContent = ''; }
+    constructor(tag = '') { this.tag = tag; this.children = []; this.value = ''; this.dataset = {}; this.textContent = ''; this.style={setProperty(){}}; this.classList={add(){},contains(){return false;}}; }
+    get ownerDocument(){return document;} getRootNode(){return document;} contains(){return false;}
     append(...children) { this.children.push(...children); }
     replaceChildren(...children) { this.children = children; if (this.id === 'vault') this.value = children[0]?.value || ''; }
     get options() { return this.children; }
     setAttribute(name, value) { this[name] = value; }
-    querySelectorAll(selector) { return this.children.flatMap(c => [...((selector === '[data-path]' && c.dataset.path !== undefined) || (selector === 'input' && c.tag === 'input') ? [c] : []), ...c.querySelectorAll(selector)]); }
+    querySelectorAll(selector) { return this.children.flatMap(c => [...((selector === '[data-path]' && c.dataset.path !== undefined && c.className === 'resource-tree-select') || (selector === 'input' && c.tag === 'input') ? [c] : []), ...c.querySelectorAll(selector)]); }
     addEventListener() {} focus() {} select() {} showModal() {} close() {}
   }
   const elements = new Map();
@@ -27,7 +28,8 @@ async function fixture({conflict = false, text = 'received\ncontent', title = 'T
     if (url.startsWith('/api/fs/writeFile') && conflict) return Response.json({error: 'Content changed'}, {status: 409});
     return Response.json({ok: true});
   };
-  vm.runInNewContext(source, {document: {getElementById: $, createElement: tag => new Element(tag)},
+  const document={getElementById:$,createElement:tag=>new Element(tag),createElementNS:(ns,tag)=>new Element(tag)};
+  vm.runInNewContext(fs.readFileSync(new URL('./web/resource-tree.js',import.meta.url),'utf8')+'\n'+source, {document,
     window: {addEventListener() {}, close() { closed.push(true); }}, history: {length: 1}, setTimeout() {},
     location: {href: 'https://ignis.test/share-target?id=one', replace: url => redirects.push(url)},
     URL, URLSearchParams, Blob, TextDecoder, crypto: webcrypto, fetch,

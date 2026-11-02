@@ -186,21 +186,46 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
     });
   }
   function grant(token,input) {
+    return transaction(db,()=>applyGrant(token,input));
+  }
+  function applyGrant(token,input) {
+    const user=actor(token), row=db.prepare("SELECT * FROM shared_resources WHERE id=?").get(input.id);
+    if(!row || !owner(user,row.vault_id)) fail();
+    vault(row.vault_id);
+    if(!Number.isSafeInteger(input.revision) || row.revision!==input.revision || row.revision>=Number.MAX_SAFE_INTEGER) fail("SHARE_CONFLICT");
+    if(input.action === "revoke") {db.prepare("DELETE FROM shared_resources WHERE id=?").run(row.id);audit(user,"revoke-resource-share",{id:row.id});return {ok:true};}
+    if(![null,"reader","editor"].includes(input.role)) fail("INVALID_SHARE");
+    const recipient=db.prepare("SELECT id,status FROM users WHERE login=?").get(normalizeLogin(input.login));
+    if(!recipient || (input.role!==null && recipient.status!=="active") || recipient.id===user.id) fail("INVALID_SHARE");
+    if(input.role!==null) {
+      resource(token,row.id); // Cannot extend access to a replaced root.
+      db.prepare("INSERT INTO resource_grants VALUES (?,?,?) ON CONFLICT(resource_id,user_id) DO UPDATE SET role=excluded.role").run(row.id,recipient.id,input.role);
+    } else db.prepare("DELETE FROM resource_grants WHERE resource_id=? AND user_id=?").run(row.id,recipient.id);
+    db.prepare("UPDATE shared_resources SET revision=revision+1 WHERE id=?").run(row.id);
+    audit(user,"update-resource-grant",{id:row.id,userId:recipient.id,role:input.role});
+    return {ok:true};
+  }
+  function validateGrant(token,input) {
+    const user=actor(token), row=db.prepare("SELECT * FROM shared_resources WHERE id=?").get(input.id);
+    if(!row || !owner(user,row.vault_id)) fail();
+    vault(row.vault_id);
+    if(!Number.isSafeInteger(input.revision) || row.revision!==input.revision) fail("SHARE_CONFLICT");
+    const recipient=db.prepare("SELECT id,status FROM users WHERE login=?").get(normalizeLogin(input.login));
+    if(!recipient || recipient.status!=="active" || recipient.id===user.id || !["reader","editor"].includes(input.role)) fail("INVALID_SHARE");
+    resource(token,row.id);
+    return {ok:true};
+  }
+  function grants(token,input) {
     return transaction(db,()=>{
-      const user=actor(token), row=db.prepare("SELECT * FROM shared_resources WHERE id=?").get(input.id);
-      if(!row || !owner(user,row.vault_id)) fail();
-      vault(row.vault_id);
-      if(!Number.isSafeInteger(input.revision) || row.revision!==input.revision || row.revision>=Number.MAX_SAFE_INTEGER) fail("SHARE_CONFLICT");
-      if(input.action === "revoke") {db.prepare("DELETE FROM shared_resources WHERE id=?").run(row.id);audit(user,"revoke-resource-share",{id:row.id});return {ok:true};}
-      if(![null,"reader","editor"].includes(input.role)) fail("INVALID_SHARE");
-      const recipient=db.prepare("SELECT id,status FROM users WHERE login=?").get(normalizeLogin(input.login));
-      if(!recipient || (input.role!==null && recipient.status!=="active") || recipient.id===user.id) fail("INVALID_SHARE");
-      if(input.role!==null) {
-        resource(token,row.id); // Cannot extend access to a replaced root.
-        db.prepare("INSERT INTO resource_grants VALUES (?,?,?) ON CONFLICT(resource_id,user_id) DO UPDATE SET role=excluded.role").run(row.id,recipient.id,input.role);
-      } else db.prepare("DELETE FROM resource_grants WHERE resource_id=? AND user_id=?").run(row.id,recipient.id);
-      db.prepare("UPDATE shared_resources SET revision=revision+1 WHERE id=?").run(row.id);
-      audit(user,"update-resource-grant",{id:row.id,userId:recipient.id,role:input.role});
+      if(!Array.isArray(input.changes) || !input.changes.length || input.changes.length>MAX_ENTRIES) fail("INVALID_SHARE");
+      const seen=new Set();
+      for(const [index,change] of input.changes.entries()) {
+        if(!change || typeof change!=="object" || Object.keys(change).sort().join(",")!=="login,role") fail("INVALID_SHARE");
+        const login=normalizeLogin(change.login);
+        if(seen.has(login)) fail("INVALID_SHARE");
+        seen.add(login);
+        applyGrant(token,{id:input.id,revision:input.revision+index,action:"grant",login,role:change.role});
+      }
       return {ok:true};
     });
   }
@@ -522,6 +547,6 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
       return {ok:true,etag:digest(bytes),mtime:stat.mtimeMs,size:stat.size};
     });
   }
-  return {catalog,mounts,destination,create,grant,browseOwner,read,rename,renameOriginal,writeOriginal,copy,previewRemoval,removeConfirmed,mutate,limits};
+  return {catalog,mounts,destination,create,grant,grants,validateGrant,browseOwner,read,rename,renameOriginal,writeOriginal,copy,previewRemoval,removeConfirmed,mutate,limits};
 }
 module.exports={createResourceSharesService};

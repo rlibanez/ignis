@@ -342,3 +342,27 @@ it.each(["removed", "dirty", "session", "failed"])("does not redirect after an u
   expect(f.events).not.toContain("redirect");
   expect(f.window.__ignisAuth.blocked).toBe(true);
 });
+
+
+it("returns to the manager after intentional deletion despite an early unavailable event", async () => {
+  const f = await fixture();
+  f.window.__currentVaultUuid = "original";
+  await f.window.__ignisAuth.beginVaultDelete("original");
+  f.window.__ignisAuth.vaultUnavailable();
+  expect(f.window.__ignisAuth.blocked).toBe(false);
+  f.catalog([]);
+  await f.window.__ignisAuth.finishVaultDelete(true);
+  expect(f.redirects).toEqual(["/?manager=1"]);
+});
+it.each(["present", "dirty", "session", "failed"])("preserves protection during unsafe deletion: %s", async reason => {
+  const f = await fixture();
+  f.window.__currentVaultUuid = "original";
+  await f.window.__ignisAuth.beginVaultDelete("original");
+  f.window.__ignisAuth.vaultUnavailable();
+  f.catalog(reason === "present" ? [{id: "Notes", uuid: "original"}] : []);
+  if (reason === "session") f.identity("another-session");
+  if (reason === "dirty") f.window.__ignis = { writes: { snapshotPending: () => [{path: "note.md", data: "draft"}] } };
+  await f.window.__ignisAuth.finishVaultDelete(reason !== "failed");
+  expect(f.redirects).toEqual([]);
+  expect(f.window.__ignisAuth.blocked).toBe(true);
+});

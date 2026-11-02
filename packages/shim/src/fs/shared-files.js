@@ -224,9 +224,22 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
     }
     if(obsidian && app.workspace?.on)app.workspace.on("file-menu",(menu,file)=>{
       if(!file?.path || file.path.split("/").some(part=>part.startsWith(".")))return;
-      menu.addItem(item=>item.setTitle("Copy to…").setIcon("copy").onClick(()=>{
-        openCopyDialog(obsidian,app,file,describe,async(from,to)=>{
-          await copyContent(from,to);if(adapter.reconcileInternalFile)await adapter.reconcileInternalFile(to);
+      menu.addItem(item=>item.setTitle(globalThis.IgnisI18n?.t("Copy to…") ?? "Copy to…").setIcon("copy").onClick(()=>{
+        const sourceVault=scope.vault,sourceSession=scope.sessionId;
+        const checkSource=()=>{context();if(scope.vault!==sourceVault||scope.sessionId!==sourceSession)fail("AUTH_CONTEXT_CHANGED","Session or vault changed");};
+        const read=async url=>{checkSource();const response=await request(url,{cache:'no-store',headers:{'X-Ignis-Context':sourceSession}});checkSource();return result(response.status,await response.json());};
+        openCopyDialog(obsidian,app,file,describe,async(from,to,destination)=>{
+          checkSource();
+          if(destination===sourceVault){await copyContent(from,to);if(adapter.reconcileInternalFile)await adapter.reconcileInternalFile(to);}
+          else await exchange('copy',{from:copySelector(from),to:{id:null,vault:destination,path:to}});
+        },{
+          currentVault:sourceVault,
+          listVaults:async()=> (await read('/api/vault/list')).filter(v=>v.uuid===sourceVault||['owner','editor'].includes(v.membership)),
+          loadVault:async id=>{
+            if(id===sourceVault)return app.vault;
+            const entries=await read('/api/fs/tree?vault='+encodeURIComponent(id));
+            return {getAllLoadedFiles:()=>Object.entries(entries).filter(([,meta])=>meta.type==='directory').map(([path])=>({path,name:path.split('/').pop(),children:[]})),getAbstractFileByPath:path=>Object.hasOwn(entries,path)};
+          },
         });
       }));
     });

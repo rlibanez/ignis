@@ -167,15 +167,23 @@ export const vaultService = {
   },
 
   async deleteVault(id, uuid) {
-    const result = await fetchJson(API_BASE + "/remove?vault=" + encodeURIComponent(uuid || id), {
-      method: "DELETE",
-    });
-
-    const wasCurrentVault = id === this.getCurrentVaultId();
-
-    await this.listVaults();
-
-    return { wasCurrentVault, cleanupPending: result.cleanupPending === true };
+    const reference = uuid || this.referenceFor(id);
+    const wasCurrentVault = window.__currentVaultUuid
+      ? reference === window.__currentVaultUuid
+      : id === this.getCurrentVaultId();
+    const coordinated = wasCurrentVault && !!window.__currentVaultUuid;
+    if (coordinated) await window.__ignisAuth?.beginVaultDelete?.(reference);
+    let success = false;
+    try {
+      const result = await fetchJson(API_BASE + "/remove?vault=" + encodeURIComponent(reference), {
+        method: "DELETE",
+      });
+      success = true;
+      await this.listVaults();
+      return { wasCurrentVault, cleanupPending: result.cleanupPending === true };
+    } finally {
+      if (coordinated) await window.__ignisAuth?.finishVaultDelete?.(success);
+    }
   },
 
   deleteVaultSync(id) {

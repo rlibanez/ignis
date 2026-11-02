@@ -18,3 +18,17 @@ it("sizes the JSON parser from the configured limit including Base64 overhead",a
  const error=await post({operation:"read",input:{id:"synthetic",path:""}});expect(error.status).toBe(413);expect((await error.json()).error).toContain("1 MiB");
  }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
 });
+
+it("routes grant batches and preserves conflict responses",async()=>{
+ const limits=readResourceShareLimits({});let calls=0;
+ const app=express();app.use(createResourceSharesRouter({limits,grants:(_token,input)=>{calls++;if(input.revision===2)throw Object.assign(new Error(),{code:"SHARE_CONFLICT"});return {ok:true};}}));
+ const server=app.listen(0,"127.0.0.1");await once(server,"listening");
+ const post=input=>fetch(`http://127.0.0.1:${server.address().port}/api/shares`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({operation:"grants",input})});
+ try{
+  const input={id:"resource",revision:1,changes:[{login:"recipient",role:"reader"}]};
+  expect((await post(input)).status).toBe(200);
+  expect((await post({...input,unexpected:true})).status).toBe(400);
+  expect((await post({...input,revision:2})).status).toBe(409);
+  expect(calls).toBe(2);
+ }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
+});

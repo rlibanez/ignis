@@ -57,3 +57,25 @@ it('does not announce placed resources again after browser seen state is lost',(
  restarted.update([{id:'placed',owned:false,destination:'vault'},{id:'new',owned:false}]);expect(restarted.pending()).toEqual(['new']);
  state.update([{id:'placed',owned:false,destination:null}]);expect(state.pending()).toEqual([]);
 });
+
+ it('recreates a missing Shared tab without activating it, including after it is closed',async()=>{
+   const leaves=[];
+   const leaf={setViewState:vi.fn(async()=>{leaves.push(leaf);})};
+   const workspace={getLeavesOfType:()=>leaves,getLeftLeaf:vi.fn(()=>leaf),revealLeaf:vi.fn()};
+   const restorer=createSharedViewRestorer(workspace);
+   restorer.schedule();restorer.schedule();await new Promise(resolve=>setTimeout(resolve,0));
+   expect(leaf.setViewState).toHaveBeenCalledExactlyOnceWith({type:'ignis-shared-resources',active:false});
+   restorer.schedule();await new Promise(resolve=>setTimeout(resolve,0));
+   expect(leaf.setViewState).toHaveBeenCalledTimes(1);
+   leaves.length=0;restorer.schedule();await new Promise(resolve=>setTimeout(resolve,0));
+   expect(leaf.setViewState).toHaveBeenCalledTimes(2);expect(workspace.revealLeaf).not.toHaveBeenCalled();
+   restorer.stop();
+ });
+
+it('recognizes deferred saved tabs and removes existing duplicates before creating any tab',async()=>{
+ const first={getViewState:()=>({type:'ignis-shared-resources'}),isDeferred:true,loadIfDeferred:vi.fn(async()=>{}),detach:vi.fn()};
+ const second={getViewState:()=>({type:'ignis-shared-resources'}),detach:vi.fn()};
+ const workspace={getLeavesOfType:()=>[],iterateAllLeaves:fn=>[first,second].forEach(fn),getLeftLeaf:vi.fn()};
+ const restorer=createSharedViewRestorer(workspace);restorer.schedule();await new Promise(resolve=>setTimeout(resolve,0));
+ expect(workspace.getLeftLeaf).not.toHaveBeenCalled();expect(first.detach).not.toHaveBeenCalled();expect(second.detach).toHaveBeenCalledOnce();expect(first.loadIfDeferred).toHaveBeenCalledOnce();restorer.stop();
+});

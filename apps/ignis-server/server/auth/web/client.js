@@ -124,7 +124,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       throw new Error(translateIgnis("Some writes are not confirmed. Wait for saving to finish or resolve failed writes before renaming the vault."));
     renaming={uuid,sessionId,unavailable:false};
   }
-  async function finishVaultRename(success) {
+  async function finishVaultRename(success, deleted = false) {
     const operation=renaming;
     if(!operation)return;
     try {
@@ -133,7 +133,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       if(blocked || sessionId!==operation.sessionId) return;
       const response=await nativeFetch("/api/vault/list",{credentials:"same-origin",cache:"no-store",headers:{"X-Ignis-Context":sessionId}});
       const list=response.ok ? await response.json() : [];
-      if(!Array.isArray(list) || !list.some(v=>v.uuid===operation.uuid)) throw new Error("Vault unavailable");
+      if(!Array.isArray(list) || list.some(v=>v.uuid===operation.uuid) === deleted) throw new Error("Vault unavailable");
       if(hasPendingVaultChanges()) throw new Error("Pending changes");
       location.replace("/?manager=1");
       return;
@@ -361,6 +361,8 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     vaultUnavailable,
     beginVaultRename,
     finishVaultRename,
+    beginVaultDelete: beginVaultRename,
+    finishVaultDelete: success => finishVaultRename(success, true),
     get blocked() {
       return blocked;
     },

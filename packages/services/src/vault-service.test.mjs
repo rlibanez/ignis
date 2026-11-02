@@ -131,3 +131,26 @@ it("coordinates active-vault rename with the authentication boundary", async () 
   expect(order).toEqual(["prepare:original", "/api/vault/rename", "/api/vault/list", "finish:true"]);
   expect(window.__currentVaultUuid).toBe("original");
 });
+
+
+it("coordinates deletion of the active UUID before sending the request", async () => {
+  const order = [];
+  vi.stubGlobal("window", { __currentVaultId: "Notes", __currentVaultUuid: "original", __ignisAuth: {
+    beginVaultDelete: async id => order.push(`prepare:${id}`),
+    finishVaultDelete: async ok => order.push(`finish:${ok}`),
+  } });
+  vi.stubGlobal("fetch", vi.fn(async url => {
+    order.push(url);
+    return {ok: true, json: async () => url.endsWith("/list") ? [] : {ok: true}};
+  }));
+  await vaultService.deleteVault("Notes", "original");
+  expect(order).toEqual(["prepare:original", "/api/vault/remove?vault=original", "/api/vault/list", "finish:true"]);
+});
+it("does not delete while preparation refuses pending writes", async () => {
+  vi.stubGlobal("window", {__currentVaultUuid: "original", __ignisAuth: {
+    beginVaultDelete: async () => { throw new Error("Pending writes"); },
+  }});
+  const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+  await expect(vaultService.deleteVault("Notes", "original")).rejects.toThrow("Pending writes");
+  expect(fetch).not.toHaveBeenCalled();
+});

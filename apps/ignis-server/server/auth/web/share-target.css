@@ -14,18 +14,6 @@ select:focus-visible { outline: 3px solid #a48be8; outline-offset: 3px; }
 #status:empty { display: none; }
 .destination-picker { position: relative; border: 1px solid light-dark(#d4d7e1, #414653); border-radius: .65rem; padding: .65rem; margin-top: .75rem; }
 .destination-tree { max-height: 22rem; overflow: auto; }
-.destination-tree summary { display: grid; grid-template-columns: 2.75rem minmax(0, 1fr); align-items: center; min-height: 2.75rem; list-style: none; margin: 0; padding: 0; cursor: pointer; }
-.destination-tree summary::-webkit-details-marker { display: none; }
-.destination-tree summary::before { content: "▸"; display: grid; place-items: center; width: 2.75rem; height: 2.75rem; border-radius: .4rem; }
-.destination-tree details[open] > summary::before { content: "▾"; }
-.destination-tree summary:hover::before { background: #8964d322; }
-.destination-tree summary:focus-visible { outline: 2px solid #a48be8; outline-offset: -2px; }
-.destination-tree summary .destination-choice { max-width: 100%; }
-.destination-tree .destination-choice { display: inline-block; width: auto; max-width: calc(100% - 1.5rem); min-height: 2.75rem; margin: 0; padding: .5rem; border: 1px solid transparent; background: transparent; color: inherit; text-align: left; overflow-wrap: anywhere; font: inherit; }
-.destination-tree .destination-choice[aria-pressed="true"] { background: #8964d333; border-color: #a48be8; }
-.destination-tree .destination-choice:focus-visible { outline: 2px solid #a48be8; outline-offset: -2px; }
-.destination-children { padding-inline-start: 2.75rem; }
-.destination-file { padding-inline-start: 2.75rem; }
 .resource-actions { position: absolute; inset-block-start: .65rem; inset-inline-end: .65rem; z-index: 1; display: flex; gap: .5rem; margin: 0; }
 .resource-actions button { display: flex; align-items: center; justify-content: center; gap: .5rem; margin: 0; width: 2.75rem; min-width: 2.75rem; height: 2.75rem; padding: .6rem; background: light-dark(#f2eef9, #292534); border-color: light-dark(#d6cbe9, #514463); }
 .resource-actions button svg { width: 1.15rem; height: 1.15rem; flex-shrink: 0; }
@@ -42,4 +30,4 @@ select:focus-visible { outline: 3px solid #a48be8; outline-offset: 3px; }
 .incoming-file-original { margin: 0 0 1rem; color: inherit; font-size: 1.1rem; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
 #files .incoming-file label { margin: 0 0 .5rem; }
 
-.destination-tree > div > .destination-choice:first-child { max-width: calc(100% - 6.5rem); }
+.destination-tree .resource-tree-row:first-child { padding-inline-end: 6.5rem; }

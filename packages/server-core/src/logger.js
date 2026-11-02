@@ -18,7 +18,7 @@ const components = new Set(["auth", "oidc", "users", "shares", "vault", "files",
 const errorCodes = new Set(["EACCES", "EPERM", "ENOSPC", "ENOENT", "EIO", "EMFILE", "ENFILE", "ETIMEDOUT", "ECONNREFUSED", "ECONNRESET", "ENOTFOUND", "EAI_AGAIN", "ERR_TLS_CERT_ALTNAME_INVALID", "CERT_HAS_EXPIRED", "DEPTH_ZERO_SELF_SIGNED_CERT", "SQLITE_BUSY", "SQLITE_FULL"]);
 const operations = new Map([
   ...["login", "logout", "reauth", "setup", "password", "reset-password", "session", "csrf", "status"].map(name => [`/api/auth/${name}`, `auth.${name}`]),
-  ...["start", "link", "reauth", "callback"].map(name => [`/api/auth/oidc/${name}`, `oidc.${name}`]),
+  ...["start", "link", "unlink", "reauth", "callback"].map(name => [`/api/auth/oidc/${name}`, `oidc.${name}`]),
   ...["status", "revoke-sessions", "unlink-oidc", "set-password", "reset-password", "delete"].map(name => [`/api/auth/users/${name}`, `users.${name}`]),
   ["/api/auth/users", "users.list"], ["/api/shares", "shares.manage"], ["/api/shares/content", "shares.content"],
   ...["create", "rename", "remove", "members", "transfer-ownership", "list", "info"].map(name => [`/api/vault/${name}`, `vault.${name}`]),

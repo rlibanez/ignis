@@ -1,3 +1,4 @@
+import resourceTreeCss from "../../../apps/ignis-server/server/auth/web/resource-tree.css";
 import bridgeCss from "@ignis/bridge/styles.css";
 
 export function installCssOverrides() {
@@ -8,7 +9,7 @@ export function installCssOverrides() {
   document.head.appendChild(link);
 
   const bridgeStyle = document.createElement("style");
-  bridgeStyle.textContent = bridgeCss;
+  bridgeStyle.textContent = bridgeCss + resourceTreeCss;
   bridgeStyle.setAttribute("data-ignis", "bridge-css");
   document.head.appendChild(bridgeStyle);
 }

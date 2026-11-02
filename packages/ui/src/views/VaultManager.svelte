@@ -241,7 +241,7 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
       if (cleanupPending) {
         deletedCurrentVault = wasCurrentVault;
         activeDialog = "cleanup";
-      } else if (wasCurrentVault) {
+      } else if (wasCurrentVault && !window.__ignisAuth?.blocked) {
         vaultService.openVault("");
       }
     } catch (err) {
@@ -455,7 +455,7 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
     message="{translateIgnis("The vault has been removed from Ignis. File cleanup is pending and will be retried on restart.")}"
     on:confirm={() => {
       closeDialog();
-      if (deletedCurrentVault) vaultService.openVault("");
+      if (deletedCurrentVault && !window.__ignisAuth?.blocked) vaultService.openVault("");
       deletedCurrentVault = false;
     }}
   />

@@ -900,9 +900,12 @@ it("admin email updates require recent authorized requests and revoke self sessi
   expect(db.prepare("SELECT email_trust FROM users WHERE id=?").get(admin.id).email_trust).toBe("admin_confirmed");
 });
 
-it("reauthenticates the same administrator with a rotated session and rejects account injection", async () => {
+it("reauthenticates the same administrator without changing the vault context and rejects account injection", async () => {
   const jar = await login();
   const session = await (await request("/api/auth/session", { jar })).json();
+  const old = { ...jar };
+  const ws = connect(jar);
+  await once(ws, "open");
   clock += 300001;
   async function confirm(body) {
     return request("/api/auth/reauth", { jar, method: "POST", body,
@@ -914,8 +917,17 @@ it("reauthenticates the same administrator with a rotated session and rejects ac
   expect(response.status).toBe(200);
   const current = await (await request("/api/auth/session", { jar })).json();
   expect(current.user.id).toBe(session.user.id);
-  expect(current.sessionId).not.toBe(session.sessionId);
+  expect(current.sessionId).toBe(session.sessionId);
   expect(current.recentAuthentication).toBe(true);
+  expect((await request("/api/auth/session", { jar: old })).status).toBe(401);
+  const message = once(ws, "message");
+  wss.broadcastToVault("vault", { type: "modified", path: "note.md" });
+  expect(JSON.parse((await message)[0].toString()).path).toBe("note.md");
+  const closed = once(ws, "close");
+  db.exec("UPDATE users SET auth_version=auth_version+1 WHERE login='admin'");
+  wss.broadcastToVault("vault", { type: "modified", path: "revoked.md" });
+  await closed;
+
 });
 
 it("guards initial password setup with admin identity, CSRF, context and recent authentication", async () => {

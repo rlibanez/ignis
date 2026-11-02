@@ -1,6 +1,8 @@
+import { ManagementModal } from "./management-modal.js";
 
 const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import { Platform } from "obsidian";
+import * as accountTab from "./account-tab.js";
 import * as generalTab from "./general-tab.js";
 import * as vaultTab from "./vault-tab.js";
 import * as serverPluginsTab from "./server-plugins-tab.js";
@@ -20,7 +22,10 @@ import {
 let ignisTabs = [];
 
 function createIgnisTabs(app) {
+  const account = new IgnisSettingTab(app, "ignis-account", translateIgnis("Account"), "user-round", accountTab.settingDefinitions);
+  if (window.__ignisAuth?.role !== "admin") return [account];
   return [
+    account,
     new IgnisSettingTab(
       app,
       "ignis-general",
@@ -46,6 +51,7 @@ function createIgnisTabs(app) {
 }
 
 function refreshIgnisSettings() {
+  if (window.__ignisAuth?.role !== "admin") return;
   for (const store of [serverSettings, pluginList]) {
     store.refresh().then((changed) => {
       if (!changed) {
@@ -158,6 +164,8 @@ function injectIgnisSettings(setting, plugin) {
 
   setting.tabGroupContainerEl.appendChild(ignis.group);
 
+  if (window.__ignisAuth?.role !== "admin") return ignisTabs;
+
   const corePlugins = createGroup(translateIgnis("Ignis Core Plugins"), "ignis-core-plugins");
   setting.tabGroupContainerEl.appendChild(corePlugins.group);
 
@@ -173,6 +181,12 @@ function patchSettingsModal(plugin) {
   plugin._originalOnOpen = original;
 
   ignisTabs = createIgnisTabs(plugin.app);
+  window.__ignisOpenResourceSharing = options => { const modal = new ManagementModal(plugin.app, "shares", options); modal.open(); return modal; };
+  window.__ignisOpenAccount = () => {
+    setting.open();
+    const account = ignisTabs.find(tab => tab.id === "ignis-account");
+    if (account) setting.openTab(account);
+  };
 
   for (const tab of ignisTabs) {
     tab.update();
@@ -208,6 +222,8 @@ function unpatchSettingsModal(plugin) {
   }
 
   ignisTabs = [];
+  delete window.__ignisOpenAccount;
+  delete window.__ignisOpenResourceSharing;
   setting.refreshSearch();
 
   if (setting._ignisOriginalOpenTab) {

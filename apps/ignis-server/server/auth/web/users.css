@@ -122,3 +122,6 @@ footer { margin-top: 1.5rem; }
 .reauth-actions { display: grid; gap: .6rem; }
 .reauth-actions > button, .reauth-actions > p { margin: 0; }
 #reauth-status:empty { display: none; }
+
+/* The final field opens its help above, clear of the dialog footer. */
+#create-password-change-help { top:auto; bottom:calc(100% + .4rem); }

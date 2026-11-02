@@ -126,12 +126,15 @@ function revokeUserSessions(db, actorId, userId, { isCurrent = () => true } = {}
   });
 }
 
-function unlinkUserOidc(db, actorId, userId, issuer, { isCurrent = () => true } = {}) {
+function unlinkUserOidc(db, actorId, userId, issuer, { isCurrent, self = false } = {}) {
   if (typeof userId !== "string" || typeof issuer !== "string" || !issuer)
     throw new Error("Invalid unlink request");
   return transaction(db, () => {
-    authorize(db, actorId);
-    if (!isCurrent(true)) throw new Error("Administrator session required");
+    if (self) {
+      if (actorId !== userId || !db.prepare("SELECT 1 FROM users WHERE id=? AND status='active'").get(actorId)) throw new Error("Own active account required");
+    } else authorize(db, actorId);
+    if ((self && typeof isCurrent !== "function") || (isCurrent && !isCurrent(true)))
+      throw Object.assign(new Error("Current session required"), {code: "SESSION_CHANGED"});
     const fail = (code) => { throw Object.assign(new Error("OIDC unlink rejected"), { code }); };
     if (!db.prepare("SELECT 1 FROM users WHERE id = ?").get(userId)) fail("USER_NOT_FOUND");
     if (!db.prepare("SELECT 1 FROM oidc_identities WHERE user_id = ? AND issuer = ?").get(userId, issuer))

@@ -459,3 +459,33 @@ it('bounds remembered devices through the existing per-user session limit',()=>{
  expect(service.resume(grant.token,null)).toBeNull();
  expect(db.prepare('SELECT count(*) n FROM remembered_sessions').get().n).toBe(10);
 });
+
+describe("local reauthentication preserves the editor context", () => {
+  it("rotates the secret, preserves identity and expiry, and refreshes authentication", async () => {
+    const initial = await service.loginLocal("admin", PASSWORD);
+    clock += 50;
+    const renewed = await service.reauthenticateLocal(initial.token, initial.session.id, PASSWORD);
+    expect(renewed.session.id).toBe(initial.session.id);
+    expect(renewed.session.user).toEqual(initial.session.user);
+    expect(renewed.session.expiresAt).toBe(initial.session.expiresAt);
+    expect(renewed.session.authenticatedAt).toBe(clock);
+    expect(renewed.token).not.toBe(initial.token);
+    expect(service.resolve(initial.token)).toBeNull();
+    expect(service.resolve(renewed.token).id).toBe(initial.session.id);
+  });
+  it("rejects a wrong password, context and non-admin identity", async () => {
+    const initial = await service.loginLocal("admin", PASSWORD);
+    expect(await service.reauthenticateLocal(initial.token, initial.session.id, "wrong")).toBeNull();
+    expect(await service.reauthenticateLocal(initial.token, "different", PASSWORD)).toBeNull();
+    expect(service.resolve(initial.token)).not.toBeNull();
+    const normal = await service.loginLocal("alice", PASSWORD);
+    expect(await service.reauthenticateLocal(normal.token, normal.session.id, PASSWORD)).toBeNull();
+  });
+  it("does not revive a session revoked while password verification is running", async () => {
+    const initial = await service.loginLocal("admin", PASSWORD);
+    const pending = service.reauthenticateLocal(initial.token, initial.session.id, PASSWORD);
+    service.revokeUser("admin");
+    expect(await pending).toBeNull();
+    expect(service.resolve(initial.token)).toBeNull();
+  });
+});

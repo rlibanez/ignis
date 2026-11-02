@@ -294,3 +294,26 @@ it("protects the last administrator and rolls back combined email/status/role ed
   expect(() => changeUserStatus(db, "admin", "normal", "active", "active", { roleUpdate })).toThrow();
   expect(db.prepare("SELECT role FROM users WHERE id='normal'").get().role).toBe("user");
 });
+
+it("allows normal users to unlink only themselves with a current session and local password", async () => {
+  const user = await createLocalUser(db, "admin", "self-unlink", password);
+  db.prepare("INSERT INTO oidc_identities VALUES ('https://current.example','self-sub',?,0)").run(user.id);
+  const sessions = require("./sessions").createSessionService(db);
+  const login = await sessions.loginLocal(user.login, password);
+  const second = await sessions.loginLocal(user.login, password);
+  expect(() => unlinkUserOidc(db, user.id, user.id, "https://current.example", {self:true})).toThrow();
+  expect(() => unlinkUserOidc(db, user.id, "admin", "https://current.example", {self:true})).toThrow();
+  expect(() => unlinkUserOidc(db, user.id, user.id, "https://current.example", {self:true,isCurrent:()=>false})).toThrow();
+  expect(sessions.resolve(login.token)).not.toBeNull();
+  expect(unlinkUserOidc(db, user.id, user.id, "https://current.example", {self:true,isCurrent:()=>true})).toEqual({unlinked:true});
+  expect(sessions.resolve(login.token)).toBeNull();
+  expect(sessions.resolve(second.token)).toBeNull();
+  expect(await sessions.loginLocal(user.login,password)).not.toBeNull();
+});
+it("rejects self-unlink without a local credential or for a disabled account", () => {
+  db.exec("INSERT INTO oidc_identities VALUES ('https://current.example','self-sub','normal',0)");
+  expect(() => unlinkUserOidc(db,"normal","normal","https://current.example",{self:true,isCurrent:()=>true})).toThrow();
+  expect(db.prepare("SELECT count(*) n FROM oidc_identities").get().n).toBe(1);
+  db.exec("UPDATE users SET status='disabled' WHERE id='normal'");
+  expect(() => unlinkUserOidc(db,"normal","normal","https://current.example",{self:true})).toThrow();
+});

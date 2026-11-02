@@ -593,3 +593,40 @@ it('refreshes placement snapshots per request and retains collisions from stale 
  mounts=service.mounts('recipient',{vault:dest}).mounts;
  expect(mounts).toHaveLength(1);expect(mounts[0].blocked).not.toBe(true);expect(mounts[0].tree).toHaveProperty('note.md');
 });
+
+it("saves a batch of grant edits atomically and rejects stale or unauthorized edits",()=>{
+ const id=share();
+ const changes=[{login:"recipient",role:"editor"},{login:"outsider",role:"reader"}];
+ for(const token of ["recipient","outsider","admin"])expect(()=>service.grants(token,{id,revision:1,changes})).toThrow();
+ expect(()=>service.grants("owner",{id,revision:1,changes:[changes[0],{login:"missing",role:"reader"}]})).toThrow();
+ expect(service.catalog("owner").resources[0].revision).toBe(1);
+ expect(service.catalog("recipient").resources[0].role).toBe("reader");
+ service.grants("owner",{id,revision:1,changes});
+ expect(service.catalog("recipient").resources[0].role).toBe("editor");
+ expect(service.catalog("outsider").resources[0].role).toBe("reader");
+ expect(()=>service.grants("owner",{id,revision:1,changes})).toThrow();
+ const revision=service.catalog("owner").resources[0].revision;
+ service.grants("owner",{id,revision,changes:[{login:"recipient",role:null},{login:"outsider",role:"editor"}]});
+ expect(service.catalog("recipient").resources).toEqual([]);
+ expect(service.catalog("outsider").resources[0].role).toBe("editor");
+});
+it("rejects duplicate and invalid batch changes without changing access",()=>{
+ const id=share();
+ for(const changes of [[],[{login:"recipient",role:"owner"}],[{login:"recipient",role:"editor"},{login:"recipient",role:null}]]){
+  expect(()=>service.grants("owner",{id,revision:1,changes})).toThrow();
+  expect(service.catalog("owner").resources[0].revision).toBe(1);
+ }
+});
+
+it("validates draft recipients without granting access or changing revisions",()=>{
+ const id=share(),input={id,revision:1,login:"outsider",role:"editor"};
+ const before=db.prepare("SELECT * FROM resource_grants").all();
+ expect(service.validateGrant("owner",input)).toEqual({ok:true});
+ expect(db.prepare("SELECT * FROM resource_grants").all()).toEqual(before);
+ expect(db.prepare("SELECT revision FROM shared_resources WHERE id=?").get(id).revision).toBe(1);
+ for(const login of ["missing","owner"])expect(()=>service.validateGrant("owner",{...input,login})).toThrow();
+ db.prepare("UPDATE users SET status='disabled' WHERE id='outsider'").run();
+ expect(()=>service.validateGrant("owner",input)).toThrow();
+ for(const token of ["recipient","admin","bad"])expect(()=>service.validateGrant(token,{...input,login:"recipient"})).toThrow();
+ expect(()=>service.validateGrant("owner",{...input,revision:2})).toThrow();
+});

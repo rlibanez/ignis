@@ -17,11 +17,7 @@ export function installVaultAccountMenu(obsidian) {
       this.addItem(item => item
         .setTitle(spanish ? "Cuenta" : translateIgnis("Account"))
         .setIcon("user-round")
-        .onClick(() => window.location.assign("/account")));
-      this.addItem(item => item
-        .setTitle(spanish ? "Cerrar sesión" : translateIgnis("Sign out"))
-        .setIcon("log-out")
-        .onClick(() => window.__ignisAuth?.logout()));
+        .onClick(() => window.__ignisOpenAccount ? window.__ignisOpenAccount() : window.location.assign("/account")));
     }
     return original.call(this, element, ...args);
   };
