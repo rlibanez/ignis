@@ -36,7 +36,12 @@ export function installEditorSaves(obsidian, app, write, context, recover) {
     const state={scope:{...context()},files:new WeakMap(),timer:null};views.set(view,state);
     // Existing views bound the original save in their constructor before module
     // extraction. Replace their debounce too, not just the prototype method.
-    view.requestSave=()=>{view.dirty=true;clearTimeout(state.timer);state.timer=setTimeout(()=>{void view.save().catch(()=>{});},2000);};
+    view.requestSave=()=>{
+      // A new edit may retry a definite permission denial. Uncertain writes and
+      // version conflicts remain terminal; every retry still checks its baseline.
+      const record=view.file && state.files.get(view.file);
+      if(record?.failureCode==="EACCES")record.blocked=false;
+      view.dirty=true;clearTimeout(state.timer);state.timer=setTimeout(()=>{void view.save().catch(()=>{});},2000);};
     view.register?.(()=>clearTimeout(state.timer));
   }
   function sameScope(state) {
@@ -68,6 +73,11 @@ export function installEditorSaves(obsidian, app, write, context, recover) {
       await this.app.vault.modify(file,data,{[editorWrite]:{expectedHash:contentHash(previous),check}});
       check();
       pending.delete(record);
+      if(record.recoveryToken){
+        try{recover({path,resolved:true,recoveryToken:record.recoveryToken,...state.scope});}catch{}
+        record.recoveryToken=null;
+      }
+      record.failureCode=undefined;
       if(clear){this.data=null;this.lastSavedData=null;this.clear();}
     } catch(error) {
       this.lastSavedData=previous;this.dirty=true;record.blocked=true;record.failureCode=error.code;
@@ -81,8 +91,8 @@ export function installEditorSaves(obsidian, app, write, context, recover) {
         if(this.file!==file || file.deleted || file.path!==path)throw fail("CONTENT_CONFLICT");
         return this.getViewData();
       };
-      let retained=false;
-      try {sameScope(state);pending.set(record,{path,data,scope:state.scope});recover({path,content:data,currentContent,binary:false,...state.scope,code:error.code,
+      let retained=false;record.recoveryToken={};
+      try {sameScope(state);pending.set(record,{path,data,scope:state.scope});recover({path,recoveryToken:record.recoveryToken,content:data,currentContent,binary:false,...state.scope,code:error.code,
         saveCopy:error.code==="EACCES" ? onSaved=>openRecoveryCopy(obsidian,app,{path,content:currentContent(),...state.scope},context,onSaved):undefined,
         restoreOriginal:error.code==="EACCES" && typeof this.setViewData==="function" ? ()=>{
           sameScope(state);
@@ -97,7 +107,7 @@ export function installEditorSaves(obsidian, app, write, context, recover) {
           if(this.saving || this.file!==file || file.deleted || file.path!==path || this.getViewData()!==data)throw fail("CONTENT_CONFLICT");
           clearTimeout(state.timer);
           this.setViewData(previous,false);this.data=previous;this.lastSavedData=previous;this.dirty=false;this.saveAgain=false;
-          restored=true;
+          restored=true;record.recoveryToken=null;
           // Keep the draft available to both copy and download after restoration.
         }:undefined});retained=true;}catch{}
       // Native unload waits for save(true). A denied write is safe to detach

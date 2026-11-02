@@ -71,10 +71,10 @@ it('decorates only explicit outgoing roots without mounting them or changing the
  f.setOutgoing([{path:'Sent',kind:'directory'}]);await f.shared.refresh();f.shared.stop();expect(f.shared.describe('Sent')).toBe(null);
 });
 
-it('preserves open editors on downgrade and blocks stale saves even after write access returns',async()=>{
+it('preserves open editors on downgrade and resumes versioned saves when write access returns',async()=>{
  const f=fixture();await f.fs.readFile(f.file);f.setRole('reader');await f.shared.refresh();expect(f.removed).toHaveBeenCalledWith(f.file,"read-only");
  await expect(f.fs.writeFile(f.file,'draft')).rejects.toMatchObject({code:'EACCES'});expect(f.failure).toHaveBeenCalledWith(expect.objectContaining({content:'draft'}));
- f.setRole('editor');await f.shared.refresh();await expect(f.fs.writeFile(f.file,'old draft')).rejects.toMatchObject({code:'SHARE_CONFLICT'});
+ f.setRole('editor');await f.shared.refresh();await f.fs.writeFile(f.file,'new draft');expect(await f.fs.readFile(f.file,'utf8')).toBe('new draft');
 });
 it('retains disconnected writes and never retries stale content automatically on reconnection',async()=>{
  const f=fixture();await f.fs.readFile(f.file);f.setOffline(true);await expect(f.fs.writeFile(f.file,'offline draft')).rejects.toMatchObject({code:'SHARE_NETWORK_UNAVAILABLE'});
@@ -189,4 +189,23 @@ it('keeps server rejection notices visible during catalog refresh',async()=>{
  const f=fixture();f.setMountStatus(403);await f.shared.refresh();
  expect(f.notice).toHaveBeenCalledWith('Shared resource unavailable');
  expect(f.failure).not.toHaveBeenCalled();
+});
+it('refreshes on pushed changes without installing a periodic poll and stops after logout',async()=>{
+ const listeners=new Map(),interval=vi.spyOn(globalThis,'setInterval');
+ vi.stubGlobal('window',{addEventListener:(type,fn)=>listeners.set(type,fn),removeEventListener:(type)=>listeners.delete(type)});
+ const f=fixture();
+ try{
+  f.shared.start();await new Promise(resolve=>setTimeout(resolve,0));expect(interval).not.toHaveBeenCalled();
+  f.revoke();listeners.get('ignis:state-changed')({detail:{shares:true}});await new Promise(resolve=>setTimeout(resolve,0));
+  expect(f.cache.has(f.file)).toBe(false);expect(f.removed).toHaveBeenCalledWith(f.file);
+  f.shared.stop();expect(listeners.has('ignis:state-changed')).toBe(false);
+ }finally{f.shared.stop();vi.unstubAllGlobals();interval.mockRestore();}
+});
+
+it('restores write permission without resetting the baseline of an open shared editor',async()=>{
+ const f=fixture();await f.fs.readFile(f.file);
+ f.setRole('reader');await f.shared.refresh();f.change();
+ f.setRole('editor');await f.shared.refresh();
+ await expect(f.shared.writeEditor(f.file,'stale draft',contentHash('original'))).rejects.toBeDefined();
+ expect(await f.fs.readFile(f.file,'utf8')).toBe('remote');
 });

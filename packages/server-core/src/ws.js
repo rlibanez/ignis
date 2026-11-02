@@ -169,6 +169,14 @@ function setupWebSocket(server, opts = {}) {
       }
     }
 
+    if (security?.accountEvents?.(req)) {
+      // Account invalidations never join a vault, start a watcher or subscribe
+      // to plugin channels. Keep only the ordinary connection heartbeat.
+      ws.isAlive=true;ws.on("pong",()=>{ws.isAlive=true;});
+      ws.on("message",()=>ws.close(4003,"Message not allowed"));
+      ws.on("error",()=>ws.terminate());
+      return;
+    }
     const params = new url.URL(req.url, "http://localhost").searchParams;
     // Authentication may resolve a stable UUID to the canonical watcher key.
     const vaultId = security?.vaultId ? security.vaultId(req) : params.get("vault");

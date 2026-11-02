@@ -12,13 +12,13 @@ function fixture(ordinary=false){
 it('dismisses the global notice while keeping recovery available, without repeated identical alerts',async()=>{
  const f=fixture();f.fail();expect(f.find('Shared/note.md')).toBeDefined();f.close();expect(f.body.children.map(n=>n.tag)).toEqual(['button']);
  f.fail();expect(f.body.children.map(n=>n.tag)).toEqual(['button']);
- f.find('Manage changes').click();f.find('Download shared recovery copy').click();
+ f.find('Manage changes').click();f.find('Download recovery copy').click();
  const blob=f.host.URL.createObjectURL.mock.calls[0][0];expect(JSON.parse(await blob.text()).files['Shared/note.md'].content).toBe('draft');
  f.close();f.fail('new draft');expect(f.body.children.map(n=>n.tag)).toEqual(['aside']);
 });
-it('describes removal as precautionary recovery and includes only the affected shared editor',()=>{
- const f=fixture();f.leaves.push({view:{file:{path:'Shared/note.md'},editor:{getValue:()=> 'shared text'}}},{view:{file:{path:'Local.md'},editor:{getValue:()=> 'local text'}}});
- f.notice.removed('Shared/note.md');expect(f.nodes.some(n=>n.textContent.includes('as a precaution'))).toBe(true);expect(f.nodes.some(n=>n.textContent==='Local.md')).toBe(false);
+it('retains only actual unsaved changes from the affected removed shared editor',()=>{
+ const f=fixture();f.leaves.push({view:{file:{path:'Shared/note.md'},lastSavedData:'saved text',editor:{getValue:()=> 'shared text'}}},{view:{file:{path:'Local.md'},editor:{getValue:()=> 'local text'}}});
+ f.notice.removed('Shared/note.md');expect(f.nodes.some(n=>n.textContent.includes('Download your unsaved changes'))).toBe(true);expect(f.nodes.some(n=>n.textContent==='Local.md')).toBe(false);
  expect(f.nodes.some(n=>n.textContent.includes('could not be saved'))).toBe(false);
 });
 it('does not raise a save failure when a removed resource has no open editor',()=>{const f=fixture();f.notice.removed('Missing.md');expect(f.body.children).toEqual([]);});
@@ -26,20 +26,20 @@ it('suppresses a dismissed repeated generic warning without a recovery copy',()=
 it('clears recovery on logout and prevents downloading under another session or vault',()=>{
  const f=fixture();f.fail();f.close();f.events['ignis:auth-lost']();expect(f.body.children).toEqual([]);
  f.fail();f.close();f.context.vault='other';f.find('Manage changes').click();expect(f.body.children).toEqual([]);expect(f.host.URL.createObjectURL).not.toHaveBeenCalled();
- f.fail();f.context.sessionId='other';f.find('Download shared recovery copy').click();expect(f.host.URL.createObjectURL).not.toHaveBeenCalled();
+ f.fail();f.context.sessionId='other';f.find('Download recovery copy').click();expect(f.host.URL.createObjectURL).not.toHaveBeenCalled();
 });
 it('renders file names as text and revokes previous download URLs',()=>{
  const f=fixture();f.notice.failure({path:'<img onerror=bad>',content:'draft',...f.context});expect(f.find('<img onerror=bad>').tag).toBe('li');
- f.find('Download shared recovery copy').click();f.find('Download shared recovery copy').click();expect(f.host.URL.revokeObjectURL).toHaveBeenCalledWith('blob:recovery');
+ f.find('Download recovery copy').click();f.find('Download recovery copy').click();expect(f.host.URL.revokeObjectURL).toHaveBeenCalledWith('blob:recovery');
 });
 
 it('captures a downgraded editor with an accurate read-only explanation',async()=>{
- const f=fixture();f.leaves.push({view:{file:{path:'Shared/note.md'},editor:{getValue:()=> 'unsubmitted draft'}}});
+ const f=fixture();f.leaves.push({view:{file:{path:'Shared/note.md'},lastSavedData:'saved text',editor:{getValue:()=> 'unsubmitted draft'}}});
  f.notice.removed('Shared/note.md','read-only');
- expect(f.nodes.some(n=>n.textContent.includes('now read-only'))).toBe(true);
+ expect(f.nodes.some(n=>n.textContent.includes('You do not have write permission'))).toBe(true);
  expect(f.nodes.some(n=>n.textContent.includes('no longer available'))).toBe(false);
- f.find('Download shared recovery copy').click();
- expect(JSON.parse(await f.host.URL.createObjectURL.mock.calls[0][0].text()).files['Shared/note.md'].content).toBe('unsubmitted draft');
+ f.find('Download note').click();
+ expect(await f.host.URL.createObjectURL.mock.calls[0][0].text()).toBe('unsubmitted draft');
 });
 
 it('offers dismissible ordinary recovery without claiming local notes are unaffected',async()=>{
@@ -54,11 +54,11 @@ it('offers dismissible ordinary recovery without claiming local notes are unaffe
 it('exports exact Unicode drafts for multiple files and retains recovery after download',async()=>{
  const f=fixture(),drafts={'Shared/á.md':'# Borrador\nñ 👩🏽‍💻\n','Shared/empty.md':''};
  for(const [path,content] of Object.entries(drafts))f.notice.failure({path,content,...f.context});
- f.find('Download shared recovery copy').click();
+ f.find('Download recovery copy').click();
  const blob=f.host.URL.createObjectURL.mock.calls[0][0],data=JSON.parse(await blob.text());
  for(const [path,content] of Object.entries(drafts))expect(data.files[path].content).toBe(content);
  expect(Object.keys(data.files).sort()).toEqual(Object.keys(drafts).sort());
- f.close();f.find('Manage changes').click();f.find('Download shared recovery copy').click();
+ f.close();f.find('Manage changes').click();f.find('Download recovery copy').click();
  const second=JSON.parse(await f.host.URL.createObjectURL.mock.calls[1][0].text());
  expect(second.files).toEqual(data.files);
 });
@@ -138,4 +138,36 @@ it('keeps buttons mounted through focus events and repeated identical save failu
  expect(panel.style.zIndex).toBe('var(--layer-popover, 30)');
  f.close();const control=f.find('Manage changes');expect(control.title).toBeUndefined();
  expect(control.attrs['aria-label']).toBe('Manage unsaved changes');
+});
+it.each(['read-only',undefined])('does not create recovery for unchanged open editors on access change (%s)',reason=>{
+ const f=fixture(),save=vi.fn();
+ f.leaves.push({view:{file:{path:'Shared/note.md'},lastSavedData:'saved',dirty:true,editor:{getValue:()=> 'saved'},getViewData:()=> 'saved',save}});
+ f.notice.removed('Shared/note.md',reason);expect(f.body.children).toEqual([]);expect(save).not.toHaveBeenCalled();
+});
+it('does not infer unsaved changes merely from an editor without a saved baseline',()=>{
+ const f=fixture();f.leaves.push({view:{file:{path:'Shared/note.md'},dirty:false,editor:{getValue:()=> 'content'}}});
+ f.notice.removed('Shared/note.md','read-only');expect(f.body.children).toEqual([]);
+});
+it('uses the normal denied-write recovery actions after a downgrade with actual edits',async()=>{
+ const f=fixture(),saveCopy=vi.fn(),restoreOriginal=vi.fn();
+ const save=vi.fn(async()=>{
+  f.notice.failure({path:'Shared/note.md',content:'draft',code:'EACCES',saveCopy,restoreOriginal,...f.context});
+  throw Object.assign(new Error('Read only'),{code:'EACCES'});
+ });
+ f.leaves.push({view:{file:{path:'Shared/note.md'},lastSavedData:'saved',editor:{getValue:()=> 'draft'},save}});
+ f.notice.removed('Shared/note.md','read-only');expect(save).not.toHaveBeenCalled();
+ await new Promise(resolve=>setTimeout(resolve,0));expect(save).toHaveBeenCalledOnce();
+ expect(f.find('Save a copy').parent.children.map(n=>n.textContent)).toEqual(['Save a copy','Download note','Show original content']);
+});
+it('leaves recovery of an in-flight save to the save integration without duplicate warnings',()=>{
+ const f=fixture(),save=vi.fn();f.leaves.push({view:{file:{path:'Shared/note.md'},lastSavedData:'draft',saving:true,editor:{getValue:()=> 'draft'},save}});
+ f.notice.removed('Shared/note.md','read-only');expect(save).not.toHaveBeenCalled();expect(f.body.children).toEqual([]);
+});
+
+it('clears acknowledged recovery only for its matching token and account',()=>{
+ const f=fixture(),recoveryToken={};
+ f.notice.failure({path:'note.md',content:'draft',code:'EACCES',recoveryToken,...f.context});
+ f.notice.failure({path:'note.md',resolved:true,recoveryToken:{},...f.context});expect(f.body.children).not.toEqual([]);
+ f.notice.failure({path:'note.md',resolved:true,recoveryToken,...f.context,sessionId:'other'});expect(f.body.children).not.toEqual([]);
+ f.notice.failure({path:'note.md',resolved:true,recoveryToken,...f.context});expect(f.body.children).toEqual([]);
 });

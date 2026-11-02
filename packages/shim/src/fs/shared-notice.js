@@ -78,7 +78,7 @@ export function createSharedNotice(currentContext, host=window, ordinary=false) 
       actions.append(restore);
     }
     const link=host.document.createElement("a");link.href=ordinary?"/account":"/shares";link.textContent=ordinary?translateIgnis("Manage account"):translateIgnis("Manage shared resources");link.target="_blank";link.rel="noopener";Object.assign(link.style,actionStyle);if(!permissionDenied)actions.append(link);
-    if(pending.size && (!permissionDenied || [...pending.values()].some(value=>value.encoding!=="utf8"))){const button=host.document.createElement("button");button.textContent=ordinary?translateIgnis("Download recovery copy"):translateIgnis("Download shared recovery copy");Object.assign(button.style,actionStyle);button.onclick=download;actions.append(button);}
+    if(pending.size && (!permissionDenied || [...pending.values()].some(value=>value.encoding!=="utf8"))){const button=host.document.createElement("button");button.textContent=translateIgnis("Download recovery copy");Object.assign(button.style,actionStyle);button.onclick=download;actions.append(button);}
   }
   function preserve(event,message){
     const context=currentContext();if(!context?.sessionId || context.sessionId!==event.sessionId || context.vault!==event.vault || event.code==="AUTH_CONTEXT_CHANGED")return;
@@ -89,9 +89,41 @@ export function createSharedNotice(currentContext, host=window, ordinary=false) 
     if(typeof event.currentContent==="function")readers.set(event.path,event.currentContent);else readers.delete(event.path);
     messages.set(event.path,message);codes.set(event.path,event.code);
     permissionDenied=event.code==="EACCES";
+    Object.defineProperty(value,"recoveryToken",{value:event.recoveryToken});
     pending.set(event.path,value);show(message,!previous || previous.content!==value.content || previous.encoding!==value.encoding);
   }
-  function failure(event){preserve(event,event.code==="EACCES"?translateIgnis("You do not have write permission for this file. You can save your changes as a copy in a vault where you have write permission or download the note."):ordinary?translateIgnis("Saving is paused for the files listed below because their content changed or the save could not be confirmed. Download a recovery copy before reloading. Other files are unaffected."):translateIgnis("The shared files listed below could not be saved. Saving is paused only for those files; local notes are unaffected. Download a recovery copy before reloading."));}
-  function removed(path,reason){try{host.app?.workspace?.iterateAllLeaves?.(leaf=>{const file=leaf.view?.file?.path;if(file===path && leaf.view?.editor){preserve({path:file,content:leaf.view.editor.getValue(),code:"SHARE_UNAVAILABLE",...currentContext()},reason==="read-only" ? translateIgnis("The shared files listed below are now read-only. A recovery copy of their open editors is retained as a precaution. Download it before reloading. Local notes are unaffected.") : translateIgnis("The shared files listed below are no longer available. A recovery copy of their open editors is retained as a precaution. Local notes are unaffected."));}});}catch{}}
+  function failure(event){
+    if(event.resolved){
+      const current=currentContext();
+      if(!valid() || current.sessionId!==event.sessionId || current.vault!==event.vault || !event.recoveryToken || pending.get(event.path)?.recoveryToken!==event.recoveryToken)return;
+      for(const map of [pending,restorers,copiers,readers,messages,codes])map.delete(event.path);
+      if(!pending.size)clear();
+      else {panel?.remove();panel=null;show(messages.get(activePath()) ?? messages.values().next().value,true);syncVisibility();}
+      return;
+    }
+    preserve(event,event.code==="EACCES"?translateIgnis("You do not have write permission for this file. You can save your changes as a copy in a vault where you have write permission or download the note."):ordinary?translateIgnis("Saving is paused for the files listed below because their content changed or the save could not be confirmed. Download a recovery copy before reloading. Other files are unaffected."):translateIgnis("The shared files listed below could not be saved. Saving is paused only for those files; local notes are unaffected. Download a recovery copy before reloading."));}
+  function removed(path,reason){
+    try{host.app?.workspace?.iterateAllLeaves?.(leaf=>{
+      const view=leaf.view,file=view?.file?.path;
+      if(file!==path || !view.editor)return;
+      const content=typeof view.getViewData==="function"?view.getViewData():view.editor.getValue();
+      // An open editor is not an unsaved editor. Compare its actual text with
+      // the native saved baseline; dirty alone can be set by a no-op change.
+      if(typeof view.lastSavedData==="string"){
+        if(content===view.lastSavedData && !view.saving)return;
+      }else if(!view.dirty && !view.saving)return;
+      if(reason==="read-only"){
+        // The editor save integration retains the draft and supplies the same
+        // copy/download/restore actions as any other denied editor write.
+        // An in-flight save already owns its recovery and must finish first.
+        if(view.saving)return;
+        if(typeof view.save==="function"){
+          // Wait until the mount update has installed its new Read permission.
+          void Promise.resolve().then(()=>{if(view.file?.path===path)return view.save();}).catch(()=>{});return;
+        }
+        failure({path:file,content,code:"EACCES",...currentContext()});
+      }else preserve({path:file,content,code:"SHARE_UNAVAILABLE",...currentContext()},translateIgnis("This shared resource is no longer available. Download your unsaved changes before leaving."));
+    });}catch{}
+  }
   return {show,failure,removed};
 }

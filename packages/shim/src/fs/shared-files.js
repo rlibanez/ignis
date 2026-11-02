@@ -8,7 +8,7 @@ function wire(input){const value={...input};delete value.role;return value;}
 const base64 = bytes => {let binary="";for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(binary);};
 const bytes = value => Uint8Array.from(atob(value),character=>character.charCodeAt(0));
 export function createSharedFiles({metadataCache,watch,currentContext,request=fetch,createXHR=()=>new XMLHttpRequest(),onFailure=()=>{},onNotice=()=>{},onRemoved=()=>{}}) {
-  let scope=null, enabled=false, outgoing=[], mounted=new Map(), tree=Object.create(null), timer=null, refreshing=false, maxBytes=0;
+  let scope=null, enabled=false, outgoing=[], mounted=new Map(), tree=Object.create(null), listening=false, refreshing=false, refreshPending=false, retryTimer=null, retryDelay=2000, maxBytes=0;
   const states=new Map(),reserved=new Set(),subscribers=new Set();
   function context(){const value=currentContext();if(!scope?.sessionId || value?.sessionId!==scope.sessionId || value?.vault!==scope.vault)fail("AUTH_CONTEXT_CHANGED","Session or vault changed");}
   function owns(path){return enabled && [...reserved].some(root=>under(normalize(path),root));}
@@ -51,7 +51,7 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
     // Capture open editors before a downgrade can refresh them as read-only.
     for(const [root,oldMount] of mounted)if(oldMount.role==="editor" && map.get(root)?.role==="reader"){
       for(const path of Object.keys(tree))if(under(path,root) && tree[path].type==="file"){
-        state(path).blocked=true;if(notify)onRemoved(path,"read-only");
+        if(notify)onRemoved(path,"read-only");
       }
     }
     mounted=map;
@@ -72,11 +72,23 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
     const safe={...ordinary};for(const [root,mount] of mounted)if(mount.blocked)for(const path of Object.keys(safe))if(under(path,root))delete safe[path];
     return {...safe,...tree};
   }
-  // A failed catalog poll is not a failed save. Keep the last snapshot until the next poll.
+  // A failed refresh is not a failed save. Keep the snapshot until reconnection or the next event.
   // Actual writes still pass through writeError and retain their recovery copy.
-  async function refresh(){if(!enabled || refreshing)return;refreshing=true;try{accept(await exchange("mounts",{vault:scope.vault}),true);}catch(error){if(error.code!=="SHARE_NETWORK_UNAVAILABLE")onNotice(error.message);}finally{refreshing=false;}}
-  function start(){if(enabled&&!timer)timer=setInterval(refresh,60000);}
-  function stop(){if(timer)clearInterval(timer);timer=null;for(const path of Object.keys(tree))metadataCache.delete(path);tree=Object.create(null);mounted.clear();outgoing=[];states.clear();reserved.clear();enabled=false;scope=null;}
+  async function refresh(){
+    if(!enabled)return;
+    if(refreshing){refreshPending=true;return;}
+    clearTimeout(retryTimer);retryTimer=null;refreshing=true;
+    try{accept(await exchange("mounts",{vault:scope.vault}),true);retryDelay=2000;}
+    catch(error){
+      if(error.code!=="SHARE_NETWORK_UNAVAILABLE")onNotice(error.message);
+      if(enabled && ["SHARE_NETWORK_UNAVAILABLE","SHARE_UNAVAILABLE"].includes(error.code)){
+        retryTimer=setTimeout(()=>{retryTimer=null;void refresh();},retryDelay);retryTimer.unref?.();retryDelay=Math.min(30000,retryDelay*2);
+      }
+    }finally{refreshing=false;if(refreshPending){refreshPending=false;void refresh();}}
+  }
+  const changed=event=>{if(event.detail?.shares)void refresh();};
+  function start(){if(enabled&&!listening){listening=true;globalThis.window?.addEventListener("ignis:state-changed",changed);void refresh();}}
+  function stop(){clearTimeout(retryTimer);retryTimer=null;retryDelay=2000;if(listening)globalThis.window?.removeEventListener("ignis:state-changed",changed);listening=false;refreshPending=false;for(const path of Object.keys(tree))metadataCache.delete(path);tree=Object.create(null);mounted.clear();outgoing=[];states.clear();reserved.clear();enabled=false;scope=null;}
   function stat(path){context();const value=metadataCache.toStat(path);if(!value)fail("ENOENT");return value;}
   function readdir(path){if(!stat(path).isDirectory())fail("ENOTDIR");return metadataCache.readdir(path).map(entry=>entry.name);}
   function state(path){if(!states.has(path))states.set(path,{etag:undefined,blocked:false,busy:false});return states.get(path);}
@@ -86,7 +98,7 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
   async function read(path,encoding){return readAccepted(path,await exchange("read",target(path)),encoding);}
   function readSync(path,encoding){return readAccepted(path,exchangeSync("read",target(path)),encoding);}
   function writeStart(path,data,encoding){context();const destination=target(path);if(destination.role!=="editor")fail("EACCES","This shared resource is read-only");const value=state(path);if(value.blocked)fail("SHARE_CONFLICT","Shared saves paused; preserve your changes and reload");if(value.busy)fail("EBUSY");value.busy=true;return {destination,value,content:base64(inputBytes(data,encoding))};}
-  function writeError(path,data,error){const value=state(path);value.blocked=true;try{onFailure({path,content:typeof data==="string"?data:base64(data),binary:typeof data!=="string",code:error.code,...scope});}catch{}throw error;}
+  function writeError(path,data,error){const value=state(path);if(error.code!=="EACCES")value.blocked=true;try{onFailure({path,content:typeof data==="string"?data:base64(data),binary:typeof data!=="string",code:error.code,...scope});}catch{}throw error;}
   async function write(path,data,encoding,expected){let operation;try{
     operation=writeStart(path,data,encoding);const {destination,value,content}=operation;
     value.etag=expected!==undefined?expected:metadataCache.has(path)?(await exchange("read",destination)).etag:null;

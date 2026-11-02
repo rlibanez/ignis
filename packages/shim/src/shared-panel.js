@@ -123,7 +123,7 @@ export function installSharedPanel(obsidian, app, sharedFiles, host = window) {
       }, {threshold: 0.5});
       for (const title of this.contentEl.querySelectorAll(".ignis-shared-section:not([hidden]) [data-shared-id]")) this.observer.observe(title);
     }
-    async reload(){
+    async reload(snapshot){
       if(this.loading)return;
       this.loading=true;
       this.observer?.disconnect();
@@ -152,7 +152,7 @@ export function installSharedPanel(obsidian, app, sharedFiles, host = window) {
       }
       this.contentEl.append(header,status);
       try {
-        const data=await api();
+        const data=snapshot ?? await api();
         if (stopped || this.closed) return;
         unread.update(data.resources);updateBadge();
         const pending = new Set(unread.pending());
@@ -255,29 +255,34 @@ export function installSharedPanel(obsidian, app, sharedFiles, host = window) {
       this.register(()=>restorer.stop());
       this.registerEvent(app.workspace.on("layout-change",()=>restorer.schedule()));
       app.workspace.onLayoutReady(()=>{if(!stopped)restorer.schedule();});
-      let checking=false;
+      let checking=false,checkPending=false,retryTimer=null,retryDelay=2000;
       const check=async()=>{
-        if(stopped || checking || host.document.visibilityState!=="visible")return;
-        checking=true;
+        if(stopped || host.document.visibilityState!=="visible")return;
+        if(checking){checkPending=true;return;}
+        clearTimeout(retryTimer);retryTimer=null;checking=true;
         try {
-          const data=await api();if(stopped)return;
+          const data=await api();retryDelay=2000;if(stopped)return;
           unread.update(data.resources);updateBadge();
           for(const leaf of app.workspace.getLeavesOfType(type)) {
             const view=leaf.view;
-            const ids=data.resources.filter(r=>!r.owned).map(r=>r.id);
-            // Refresh new received resources without interrupting an active dialog.
-            if(view.renderedIds && ids.some(id=>!view.renderedIds.includes(id)) && !view.contentEl.contains(host.document.activeElement)) await view.reload();
+            // The panel is informational; resource editors keep their separate drafts.
+            if(view.renderedIds) await view.reload(data);
             else view.observeUnread?.();
           }
-        } catch { /* Preserve unread state during connection failures. */ }
-        finally {checking=false;}
+        } catch {
+          // Retry a missed invalidation after an outage, without steady polling.
+          if(!stopped){retryTimer=setTimeout(()=>{retryTimer=null;void check();},retryDelay);retryTimer.unref?.();retryDelay=Math.min(30000,retryDelay*2);}
+        }
+        finally {checking=false;if(checkPending){checkPending=false;void check();}}
       };
       // Refresh on use, rather than polling for notification updates.
       this.registerEvent(app.workspace.on("active-leaf-change",leaf=>{
         if(leaf?.view?.getViewType?.()===type)void leaf.view.reload();
       }));
+      const stateChanged=event=>{if(event.detail?.shares)void check();};
+      host.addEventListener("ignis:state-changed",stateChanged);
       host.document.addEventListener("visibilitychange",check);
-      this.register(()=>{stopped=true;host.document.removeEventListener("visibilitychange",check);for(const leaf of app.workspace.getLeavesOfType(type))leaf.view.observer?.disconnect();});
+      this.register(()=>{stopped=true;clearTimeout(retryTimer);host.removeEventListener("ignis:state-changed",stateChanged);host.document.removeEventListener("visibilitychange",check);for(const leaf of app.workspace.getLeavesOfType(type))leaf.view.observer?.disconnect();});
       void check();
     }
   }

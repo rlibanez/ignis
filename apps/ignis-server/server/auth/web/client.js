@@ -378,7 +378,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     channel.onmessage = (event) => {
       if (event.data === "lock") lock();
     };
-  setInterval(check, 15000);
+  window.addEventListener("ignis:state-changed",event=>{if(event.detail?.account || event.detail?.vaults)void check();});
   window.addEventListener("focus", check);
   window.addEventListener("pagehide", () => {
     document.body.style.visibility = "hidden";

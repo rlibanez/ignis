@@ -36,7 +36,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     if(dialog?.open && ["grant-dialog","create-dialog"].includes(dialog.id)){
       const field=$(dialog.id==="grant-dialog"?"grant-login":"recipient");field.setCustomValidity(error.message);field.reportValidity();
     }else (dialog && !dialog.open ? $("status") : status).textContent=error.message;
-  }finally{busy=false;}}
+  }finally{busy=false;if(externalRefresh)setTimeout(refreshExternal,0);}}
   const button=(text,action,secondary=true)=>{const el=node("button",text);el.type="button";if(secondary)el.className="secondary table-action";el.onclick=action;return el;};
   function iconButton(label,paths,action){
     const el=button("",action);el.className="icon-button";el.title=label;el.setAttribute("aria-label",label);
@@ -258,6 +258,14 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     if(changes.length)await api("grants",{id:managed.id,revision:managed.revision,changes});
     $("manage-dialog").close();await reload();
   },$("manage-dialog"));
+  let externalRefresh=false;
+  const refreshExternal=()=>{
+    if(locked)return;
+    if(busy || [...document.querySelectorAll("dialog")].some(dialog=>dialog.open)){externalRefresh=true;return;}
+    externalRefresh=false;void run(reload);
+  };
+  window.addEventListener("ignis:state-changed",event=>{if(event.detail?.shares)refreshExternal();});
+  document.addEventListener("close",()=>{if(externalRefresh)setTimeout(refreshExternal,0);},true);
   if(typeof BroadcastChannel==="function"){const channel=new BroadcastChannel("ignis-auth");channel.onmessage=()=>lock();}
   run(async()=>{const response=await fetch("/api/auth/session",{credentials:"same-origin",cache:"no-store"});if(!response.ok){location.replace("/login");return;}const session=await response.json();window.IgnisI18n?.useAccount(session.user.id);context=session.sessionId;if(!context){location.replace("/login");return;}if(scope.initialResource && context!==scope.initialResource.session)throw new Error(translateIgnis("Session unavailable"));await reload();$("workspace").hidden=false;}).then(async()=>{
     const initial=scope.initialResource;

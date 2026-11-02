@@ -32,6 +32,7 @@ const setupAssets = new Map(
     ["/auth/login.js", ["text/javascript", "login.js"]],
     ["/auth/oidc-start.js", ["text/javascript", "oidc-start.js"]],
     ["/auth/account.css", ["text/css", "account.css"]],
+    ["/auth/events.js", ["text/javascript", "events.js"]],
     ["/auth/client.js", ["text/javascript", "client.js"]],
     ["/auth/setup.js", ["text/javascript", "setup.js"]],
     ["/auth/setup.css", ["text/css", "setup.css"]],
@@ -196,7 +197,7 @@ function createAuthBoundary({
             return false;
           }
         }
-        if (!canReadVault(entry.token, entry.vault?.id)) { ws.terminate(); return false; }
+        if (!entry.events && !canReadVault(entry.token, entry.vault?.id)) { ws.terminate(); return false; }
         return true;
       }
     } catch {
@@ -208,8 +209,34 @@ function createAuthBoundary({
   function sweepSockets() {
     for (const ws of socketEntries.keys()) checkSocket(ws);
   }
-  const poll = setInterval(sweepSockets, 1000);
-  poll.unref();
+  const stateEvents=require("./state-events").createStateEvents({
+    resolve:token=>sessions.resolve(token),valid:checkSocket,entries:socketEntries,
+    snapshot:token=>{
+      const session=sessions.resolve(token);
+      if(!session)return null;
+      const user=session.user;
+      return {user,shares:sharesService?.catalog(token),vaults:db.prepare("SELECT v.*,m.role AS membership FROM vaults v JOIN memberships m ON m.vault_id=v.id WHERE m.user_id=? ORDER BY v.id").all(user.id)};
+    },
+  });
+  let contentTimer;const contentUsers=new Set();
+  let stateTimer,closed=false,updateSharedWatchers=()=>{},stopSharedWatchers=()=>{};
+  function scheduleStateEvents(){
+    if(closed || stateTimer)return;
+    stateTimer=setTimeout(()=>{
+      stateTimer=null;if(closed)return;
+      try{stateEvents.reconcile();updateSharedWatchers();}
+      catch{require("@ignis/server-core/src/logger").emit("warn","auth.state_events.failed");sweepSockets();}
+    },25);
+    stateTimer.unref();
+  }
+  // Covers changes from the CLI too, which uses another SQLite connection.
+  const identityWatch=fs.watch(path.join(dataRoot,"auth"),(_event,name)=>{
+    if(!name || ["identity.sqlite","identity.sqlite-wal","identity.sqlite-journal"].includes(String(name)))scheduleStateEvents();
+  });
+  identityWatch.on("error",()=>{
+    require("@ignis/server-core/src/logger").emit("warn","auth.state_watch.unavailable");
+    sweepSockets();
+  });
   const cleanup = setInterval(() => {
     try {
       sessions.purgeExpired();
@@ -220,6 +247,7 @@ function createAuthBoundary({
   cleanup.unref();
 
   const wsSecurity = {
+    accountEvents(req) { return socketVaults.get(req)?.events === true; },
     vaultId(req) { return socketVaults.get(req)?.directory; },
     verify(req) {
       if (
@@ -231,16 +259,18 @@ function createAuthBoundary({
       const url = new URL(req.url, publicUrl.origin);
       if (
         [...url.searchParams.keys()].some(
-          (key) => !["vault", "context"].includes(key),
+          (key) => !["vault", "context", "events"].includes(key),
         ) ||
-        url.searchParams.getAll("vault").length !== 1 ||
+        (url.searchParams.has("events")
+          ? url.searchParams.getAll("events").length!==1 || url.searchParams.get("events")!=="1" || url.searchParams.has("vault") || url.searchParams.getAll("context").length!==1
+          : url.searchParams.getAll("vault").length !== 1) ||
         url.searchParams.getAll("context").length > 1
       )
         return false;
       const token = cookies.read(req.headers.cookie);
       if (
         socketEntries.size >= 256 ||
-        [...socketEntries.values()].filter((entry) => entry.token === token)
+        [...socketEntries.values()].filter((entry) => entry.token === token && entry.events === url.searchParams.has("events"))
           .length >= 8
       )
         return false;
@@ -248,6 +278,7 @@ function createAuthBoundary({
       if (!(initialized() && session &&
           (!url.searchParams.has("context") || url.searchParams.get("context") === session.id))) return false;
       try {
+        if(url.searchParams.get("events")==="1") {socketVaults.set(req,{events:true});return true;}
         const vault = socketVault(url.searchParams.get("vault"));
         if (!canReadVault(token, vault.id)) return false;
         socketVaults.set(req, vault);
@@ -262,14 +293,15 @@ function createAuthBoundary({
         return;
       }
       const vault = socketVaults.get(req);
-      if (!vault || (!canReadVault(token, vault.id)) || !sameSocketVault(vault, socketVault(vault.id || vault.directory))) {
+      if (!vault || (!vault.events && ((!canReadVault(token, vault.id)) || !sameSocketVault(vault, socketVault(vault.id || vault.directory))))) {
         ws.close(4002, "Vault changed");
         return;
       }
       req.ignisLogUsername = session.user.login;
       req.ignisLogVaultName = vault.directory;
-      socketEntries.set(ws, { token, vault, window: now(), messages: 0 });
       const original = ws.send.bind(ws);
+      socketEntries.set(ws, { token, vault:vault.events?null:vault,events:!!vault.events,window:now(),messages:0,
+        stateSnapshot:stateEvents.capture(token),sendState:message=>original(JSON.stringify(message)) });
       ws.send = (...args) => {
         if (!checkSocket(ws)) return;
         let message;
@@ -279,6 +311,7 @@ function createAuthBoundary({
           return;
         }
         try {
+          if(vault.events)return; // Only trusted per-account invalidations use sendState.
           const permitted = (capability, path) => {
             if (!vault.id) return false;
             return vaultAccess.check(socketEntries.get(ws)?.token, { reference: vault.id, capability, path }).allowed;
@@ -310,9 +343,13 @@ function createAuthBoundary({
         }
       }
       expire();
+      // Reuse heartbeat acknowledgements as a reconciliation fallback if an
+      // operating-system file notification was lost. No session polling loop.
+      ws.on("pong",scheduleStateEvents);
+      scheduleStateEvents();
       ws.once("close", () => {
         clearTimeout(timer);
-        socketEntries.delete(ws);
+        socketEntries.delete(ws);scheduleStateEvents();
       });
     },
     receive(ws) {
@@ -333,6 +370,7 @@ function createAuthBoundary({
         Array.isArray(message)
       )
         return false;
+      if(socketEntries.get(ws)?.events)return false;
       return (
         ["subscribe-channel", "unsubscribe-channel"].includes(message.type) &&
         (message.channel === "metadata" || (message.channel === "plugin:headless-sync" && sessions.resolve(socketEntries.get(ws).token)?.user.role === "admin"))
@@ -1232,6 +1270,13 @@ function createAuthBoundary({
     app.set("trust proxy", config.trustedProxies);
     trustProxy = app.get("trust proxy fn");
     app.use(require("@ignis/server-core/src/logger").httpMiddleware);
+    app.use((req,res,next)=>{
+      res.once("finish",()=>{
+        if(res.statusCode<400 && !["GET","HEAD","OPTIONS"].includes(req.method) &&
+          !["shares.mounts","shares.browse","shares.read","shares.validateGrant"].includes(req.ignisLogOperation))scheduleStateEvents();
+      });
+      next();
+    });
     app.use(middleware);
   }
   function errorHandler(error, _req, res, _next) {
@@ -1246,7 +1291,7 @@ function createAuthBoundary({
     );
   }
   function close() {
-    clearInterval(poll);
+    closed=true;clearTimeout(stateTimer);clearTimeout(contentTimer);contentUsers.clear();identityWatch.close();stopSharedWatchers();
     clearInterval(cleanup);
     for (const ws of socketEntries.keys()) ws.terminate();
     oidc?.clear();
@@ -1258,6 +1303,39 @@ function createAuthBoundary({
     revalidate,
     errorHandler,
     wsSecurity,
+    observeSharedSources(watcher,getVaultPath){
+      const watched=new Map();
+      updateSharedWatchers=()=>{
+        const users=new Set([...socketEntries.values()].filter(e=>e.events).map(e=>sessions.resolve(e.token)?.user.id).filter(Boolean));
+        const wanted=new Set();
+        for(const row of db.prepare(`SELECT DISTINCT v.directory,g.user_id FROM shared_resources r
+          JOIN vaults v ON v.id=r.vault_id JOIN resource_grants g ON g.resource_id=r.id WHERE v.status='active'`).all())
+          if(users.has(row.user_id))wanted.add(row.directory);
+        for(const [directory,listener] of watched)if(!wanted.has(directory)){watcher.removeListener(directory,listener);watched.delete(directory);}
+        for(const directory of wanted)if(!watched.has(directory)){
+          const root=getVaultPath(directory);if(!root)continue;
+          const listener=()=>{};watcher.startWatching(directory,root);watcher.addListener(directory,listener);watched.set(directory,listener);
+        }
+      };
+      const rebuilt=directory=>{if(watched.delete(directory))scheduleStateEvents();};
+      watcher.onWatcherRebuild(rebuilt);
+      stopSharedWatchers=()=>{watcher.offWatcherRebuild(rebuilt);for(const [directory,listener] of watched)watcher.removeListener(directory,listener);watched.clear();};
+    },
+    sharedContentChanged(directory,event){
+      if(closed)return;
+      if(!event?.path || event.path.split("/").some(part=>part.startsWith(".")))return;
+      const users=new Set();
+      for(const row of db.prepare(`SELECT r.path,m.user_id AS owner_id,g.user_id FROM shared_resources r
+        JOIN vaults v ON v.id=r.vault_id JOIN memberships m ON m.vault_id=v.id AND m.role='owner' LEFT JOIN resource_grants g ON g.resource_id=r.id WHERE v.directory=?`).all(directory)){
+        if(event.path===row.path || event.path.startsWith(row.path+"/") || row.path.startsWith(event.path+"/")){
+          users.add(row.owner_id);if(row.user_id)users.add(row.user_id);
+        }
+      }
+      for(const user of users)contentUsers.add(user);
+      if(!contentUsers.size || contentTimer)return;
+      contentTimer=setTimeout(()=>{contentTimer=null;const pending=new Set(contentUsers);contentUsers.clear();if(!closed)stateEvents.sharedContent(pending);},50);
+      contentTimer.unref();
+    },
     resolveVaultDirectory: reference => require("./vault-request").resolveVaultRequest(db, vaultRoot, { vault: reference }, null),
     close,
     staticRoots,

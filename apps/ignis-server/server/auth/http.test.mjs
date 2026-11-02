@@ -1595,3 +1595,57 @@ it('preserves opt-in after actual local reauthentication without reviving the ol
  expect((await request('/api/auth/session',{jar:old})).status).toBe(401);
  clock+=13*3600000;expect((await request('/api/auth/session',{jar})).status).toBe(200);
 });
+
+async function accountSocket(jar) {
+ const session=await (await request('/api/auth/session',{jar})).json();
+ const ws=new WebSocket(base.replace('http:','ws:')+'/ws?events=1&context='+encodeURIComponent(session.sessionId),{headers:{host:'localhost:8080',origin:ORIGIN,cookie:Object.entries(jar).map(([k,v])=>`${k}=${v}`).join('; ')}});
+ await once(ws,'open');return ws;
+}
+it('pushes new shares to recipients with no open vault and excludes unrelated accounts',async()=>{
+ const admin=await login(),recipient=await login('normal');
+ db.prepare("INSERT INTO users(id,login,role,created_at) VALUES ('other','other','user',1)").run();db.prepare("INSERT INTO local_credentials VALUES ('other',?,1)").run(hash);
+ const other=await login('other'),ws=await accountSocket(recipient),outsider=await accountSocket(other);
+ const unrelated=[];outsider.on('message',data=>unrelated.push(JSON.parse(String(data))));
+ const event=once(ws,'message');const vault=db.prepare("SELECT id FROM vaults WHERE directory='vault'").get();
+ const response=await request('/api/shares',{jar:admin,method:'POST',headers:{'x-ignis-context':(await (await request('/api/auth/session',{jar:admin})).json()).sessionId,'x-ignis-csrf':await csrf(admin)},body:{operation:'create',input:{vault:vault.id,path:'note.md',login:'normal',role:'reader'}}});
+ expect(response.status).toBe(200);
+ expect(JSON.parse(String((await event)[0]))).toEqual({type:'ignis-state',account:false,shares:true,vaults:false});
+ await new Promise(resolve=>setTimeout(resolve,75));expect(unrelated).toEqual([]);
+ const catalog=await (await request('/api/shares',{jar:recipient,headers:{'x-ignis-context':(await (await request('/api/auth/session',{jar:recipient})).json()).sessionId}})).json();expect(catalog.resources).toHaveLength(1);
+ const closed=once(ws,'close');db.prepare("UPDATE users SET status='disabled' WHERE id='normal'").run();await closed;
+ ws.terminate();outsider.terminate();
+});
+it('keeps account sockets out of file and plugin broadcasts and forbids subscriptions',async()=>{
+ const ws=await accountSocket(await login('normal'));let received=false;ws.on('message',()=>{received=true;});
+ wss.broadcastToVault('vault',{type:'modified',path:'secret.md'});
+ const closed=once(ws,'close');ws.send(JSON.stringify({type:'subscribe-channel',channel:'metadata'}));await closed;expect(received).toBe(false);
+});
+it('pushes shared source edits while the owner has no open socket and ignores private siblings',async()=>{
+ const admin=await login(),recipient=await login('normal');
+ const session=(await (await request('/api/auth/session',{jar:admin})).json()).sessionId;
+ const vault=db.prepare("SELECT id FROM vaults WHERE directory='vault'").get();
+ await request('/api/shares',{jar:admin,method:'POST',headers:{'x-ignis-context':session,'x-ignis-csrf':await csrf(admin)},body:{operation:'create',input:{vault:vault.id,path:'note.md',login:'normal',role:'reader'}}});
+ boundary.observeSharedSources(watcher,directory=>path.join(root,directory));
+ const listener=(directory,event)=>boundary.sharedContentChanged(directory,event);watcher.addGlobalListener(listener);
+ const ws=await accountSocket(recipient);
+ try{
+  for(let i=0;i<100 && !watcher.isWatching('vault');i++)await new Promise(resolve=>setTimeout(resolve,10));
+  expect(watcher.isWatching('vault')).toBe(true);
+  const messages=[];ws.on('message',data=>messages.push(JSON.parse(String(data))));
+  fs.writeFileSync(path.join(root,'vault','private.md'),'not shared');await new Promise(resolve=>setTimeout(resolve,150));expect(messages).toEqual([]);
+  const event=once(ws,'message');fs.writeFileSync(path.join(root,'vault','note.md'),'changed from outside Ignis');
+  expect(JSON.parse(String((await event)[0]))).toEqual({type:'ignis-state',shares:true});
+ }finally{watcher.removeGlobalListener(listener);ws.terminate();}
+});
+it('rejects account event upgrades with foreign origin, missing context or mixed vault scope',async()=>{
+ const jar=await login('normal'),session=(await (await request('/api/auth/session',{jar})).json()).sessionId;
+ for(const [query,origin,cookie] of [
+  ['events=1',ORIGIN,jar],['events=1&context=wrong',ORIGIN,jar],
+  [`events=1&context=${session}&vault=vault`,ORIGIN,jar],
+  [`events=1&context=${session}`,'https://foreign.example',jar],
+  [`events=1&context=${session}`,ORIGIN,{}],
+ ]){
+  const ws=new WebSocket(base.replace('http:','ws:')+'/ws?'+query,{headers:{host:'localhost:8080',origin,cookie:Object.entries(cookie).map(([k,v])=>`${k}=${v}`).join('; ')}});
+  const status=await new Promise(resolve=>{ws.on('unexpected-response',(_req,res)=>{res.resume();resolve(res.statusCode);ws.terminate();});ws.on('error',()=>{});});expect(status).toBe(401);
+ }
+});

@@ -130,3 +130,20 @@ it('retains all recovery actions after unload without restoring stale content in
  f.view.text='new edits';expect(()=>event.restoreOriginal()).toThrow();
  expect(event.saveCopy).toBeTypeOf('function');
 });
+
+it('resumes a denied save only on a new edit and resolves its recovery after acknowledgement',async()=>{
+ vi.useFakeTimers();const f=fixture();f.write.mockRejectedValueOnce(Object.assign(new Error('Read only'),{code:'EACCES'}));
+ await expect(f.view.save()).rejects.toMatchObject({code:'EACCES'});
+ const denied=f.recover.mock.calls.at(-1)[0];
+ await vi.advanceTimersByTimeAsync(3000);expect(f.write).toHaveBeenCalledTimes(1);
+ f.view.text='new edit';f.view.requestSave();await vi.advanceTimersByTimeAsync(2100);
+ expect(f.stored()).toBe('new edit');expect(f.controller.snapshotPending()).toEqual([]);
+ expect(f.recover).toHaveBeenCalledWith(expect.objectContaining({resolved:true,recoveryToken:denied.recoveryToken}));
+});
+it('does not overwrite remote changes when write permission returns',async()=>{
+ vi.useFakeTimers();const f=fixture();f.write.mockRejectedValueOnce(Object.assign(new Error('Read only'),{code:'EACCES'}));
+ await expect(f.view.save()).rejects.toThrow();await f.app.vault.modify(f.view.file,'remote change');
+ f.view.requestSave();await vi.advanceTimersByTimeAsync(2100);
+ expect(f.stored()).toBe('remote change');expect(f.recover.mock.calls.at(-1)[0].code).toBe('CONTENT_CONFLICT');
+ f.view.requestSave();await vi.advanceTimersByTimeAsync(2100);expect(f.write).toHaveBeenCalledTimes(2);
+});

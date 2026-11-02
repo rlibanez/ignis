@@ -247,6 +247,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
         window.IgnisI18n?.useAccount(session.user.id);
         setProviderName(installation.oidcButtonText);
         activeSessionId = session.sessionId;
+        window.IgnisEvents?.connect(session.sessionId);
         settingLocalPassword = !session.hasLocalPassword;
         document.getElementById("change-password").hidden = !accountPage || !session.hasLocalPassword;
         document.getElementById("set-own-password").hidden = !accountPage || session.hasLocalPassword || !session.oidcLinked || !oidcAvailable;

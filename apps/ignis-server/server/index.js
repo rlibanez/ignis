@@ -213,6 +213,8 @@ const wss = setupWebSocket(server, {
   security: auth.wsSecurity,
 });
 vaultLifecycle.setWss(wss);
+auth.observeSharedSources(watcher,config.getVaultPath);
+watcher.addGlobalListener((vaultId,event)=>auth.sharedContentChanged(vaultId,event));
 
 const metadataChannel = createMetadataChannel(wss);
 
