@@ -91,6 +91,92 @@ class PasswordModal extends Modal {
   onClose() { this.contentEl.querySelectorAll("input").forEach(input => { input.value = ""; }); this.contentEl.empty(); }
 }
 
+class EmailModal extends Modal {
+  constructor(app, session, updated) { super(app); this.session=session; this.updated=updated; }
+  open() {
+    super.open();
+    // The help button precedes the input in DOM order. Native modal autofocus
+    // otherwise selects it and opens its focus-triggered tooltip immediately.
+    this.emailInput?.focus();
+  }
+  onOpen() {
+    this.setTitle(t("Change email"));
+    this.modalEl.addClass("mod-lg","mod-form","ignis-password-modal");
+    const form=this.contentEl.createEl("form");
+    const label=form.createEl("label",{cls:"ignis-password-field"});
+    const heading=label.createSpan({cls:"ignis-password-heading"});
+    heading.createSpan({text:t("Email (optional)")});
+    const help=heading.createEl("button",{type:"button",text:"?",cls:"ignis-password-help"});
+    nativeTooltip(window,help,t("Changing your email requires an administrator to verify it again. All your Ignis sessions will be closed."),{help:true});
+    const email=label.createEl("input",{type:"email"});this.emailInput=email;email.autofocus=true;email.value=this.session.email ?? "";email.maxLength=254;email.autocomplete="email";
+    const passwordLabel=form.createEl("label",{cls:"ignis-password-field",text:t("Current password")});
+    const control=passwordLabel.createSpan({cls:"ignis-password-control"});
+    const password=control.createEl("input",{type:"password"});password.autocomplete="current-password";password.maxLength=1024;
+    password.placeholder=t("Your current password...");
+    password.addEventListener("input",()=>password.setCustomValidity(""));
+    const toggle=control.createEl("button",{type:"button",cls:"ignis-password-toggle"});
+    const updateToggle=()=>{
+      const visible=password.type==="text";
+      toggle.setAttribute("aria-label",`${t(visible ? "Hide" : "Show")} ${t("Current password")}`);
+      toggle.setAttribute("aria-pressed",String(visible));
+      setIcon(toggle,visible ? "eye-off" : "eye");
+    };
+    toggle.addEventListener("click",event=>{event.preventDefault();password.type=password.type==="password" ? "text" : "password";updateToggle();});
+    updateToggle();
+    passwordLabel.hidden=this.session.recentAuthentication || !this.session.hasLocalPassword;
+    const error=form.createEl("p",{attr:{role:"alert"}});
+    const actions=form.createDiv({cls:"modal-button-container"});
+    actions.createEl("button",{text:t("Cancel"),type:"button"}).addEventListener("click",()=>this.close());
+    const submit=actions.createEl("button",{text:t("Save"),type:"submit",cls:"mod-cta"});
+    const post=async(path,body)=>{
+      const csrf=await fetch("/api/auth/csrf",{credentials:"same-origin",cache:"no-store",signal:AbortSignal.timeout(15000)});
+      if(!csrf.ok)throw new Error();
+      const {csrfToken}=await csrf.json();
+      return fetch(path,{method:"POST",credentials:"same-origin",signal:AbortSignal.timeout(15000),
+        headers:{"Content-Type":"application/json","X-Ignis-Csrf":csrfToken,"X-Ignis-Context":this.session.sessionId},body:JSON.stringify(body)});
+    };
+    form.addEventListener("submit",async event=>{
+      event.preventDefault();if(submit.disabled)return;
+      if(window.__ignis?.writes?.snapshotPending?.().length){error.textContent=t("Some writes are not confirmed. Wait for saving to finish or resolve failed writes before signing out.");return;}
+      submit.disabled=true;error.textContent="";
+      try{
+        if(!passwordLabel.hidden){
+          const response=await post("/api/auth/reauth",{password:password.value});
+          if(!response.ok){
+            if(response.status===400){
+              password.value="";
+              password.setCustomValidity(t("Incorrect password"));
+              password.reportValidity();
+            }else error.textContent=t("Request failed");
+            return;
+          }
+          password.setCustomValidity("");
+          passwordLabel.hidden=true;
+        }
+        const response=await post("/api/auth/email",{email:email.value,expectedEmail:this.session.email ?? null,expectedEmailTrust:this.session.emailTrust ?? "unverified"});
+        const body=await response.json();
+        if(response.status===403 && body.code==="REAUTH_REQUIRED"){
+          if(this.session.hasLocalPassword){passwordLabel.hidden=false;password.focus();error.textContent=t("Confirm your identity");return;}
+          if(window.__ignis?.writes?.snapshotPending?.().length){error.textContent=t("Some writes are not confirmed. Wait for saving to finish or resolve failed writes before signing out.");return;}
+          const start=await post("/api/auth/oidc/reauth",{purpose:"email"});
+          if(!start.ok)throw new Error();
+          const {authorizationUrl}=await start.json(),url=new URL(authorizationUrl);
+          if(url.protocol!=="https:" || url.username || url.password)throw new Error();
+          window.location.assign(url.href);return;
+        }
+        if(!response.ok){error.textContent=t(body.code==="INVALID_EMAIL" ? "Invalid or unavailable email." : body.code==="EMAIL_CHANGED" ? "Account changed. Reopen your account settings." : "Request failed");return;}
+        if(body.signedOut){
+          if(typeof BroadcastChannel==="function"){const channel=new BroadcastChannel("ignis-auth");channel.postMessage("lock");channel.close();}
+          window.location.assign("/login");return;
+        }
+        Object.assign(this.session,body);this.updated();this.close();
+      }catch{error.textContent=t("The change could not be confirmed. Reopen your account settings before retrying.");}
+      finally{submit.disabled=false;password.value="";}
+    });
+  }
+  onClose(){this.contentEl.querySelectorAll("input").forEach(input=>{input.value="";});this.contentEl.empty();}
+}
+
 class UnlinkProviderModal extends Modal {
   constructor(app, session, provider) { super(app); this.session = session; this.provider = provider || "OpenID Connect"; }
   onOpen() {
@@ -206,7 +292,7 @@ export function settingDefinitions(tab) {
   const action = (name, callback, warning = false) => ({
     name: t(name),
     render: setting => setting.setDesc(t(descriptions[name] || "")).addButton(button => {
-      button.setButtonText(t(warning ? name : "Open")).onClick(callback);
+      button.setButtonText(t(warning ? name : name === "Change password" ? "Change" : "Open")).onClick(callback);
       if (warning) button.setWarning();
     }),
   });
@@ -215,8 +301,7 @@ export function settingDefinitions(tab) {
   return [
     {type: "group", items: [
       {name: t("Username"), render: setting => setting.setDesc(session.user.login).addButton(button => button.setButtonText(t("Sign out")).setWarning().onClick(() => window.__ignisAuth?.logout()))},
-      action("Shared resources", () => open("shares")),
-      ...(session.user.role === "admin" ? [action("Manage users", () => open("users"))] : []),
+      {name:t("Email"),render:setting=>setting.setDesc(session.email || t("Not set")).addButton(button=>button.setButtonText(t("Change")).onClick(()=>new EmailModal(tab.app,session,()=>tab.update()).open()))},
       ...(session.hasLocalPassword ? [action("Change password", () => new PasswordModal(tab.app, session).open())] : []),
       ...(!session.hasLocalPassword && session.oidcLinked ? [action("Set local password", () => open("login"))] : []),
       ...(state.oidc?.oidcAvailable && session.oidcLinked ? [{
@@ -234,6 +319,8 @@ export function settingDefinitions(tab) {
             .onClick(() => linkProvider(session, button));
         }),
       }] : []),
+      ...(session.user.role === "admin" ? [action("Manage users", () => open("users"))] : []),
+      action("Shared resources", () => open("shares")),
     ]},
   ];
 }

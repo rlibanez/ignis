@@ -66,4 +66,21 @@ function setUserEmail(db, userId, value, trust = "unverified", actorId = null) {
     return { email, trust };
   });
 }
-module.exports = { normalizeEmail, setUserEmail };
+// Own-account updates cannot carry a verification decision or another user id.
+function changeOwnEmail(db, userId, value, expectedEmail, expectedTrust, isCurrent) {
+  const fail=code=>{throw Object.assign(new Error("Email change rejected"),{code});};
+  let email;
+  try { email=value===null || value==="" ? null : normalizeEmail(value); } catch { fail("INVALID_EMAIL"); }
+  return transaction(db,()=>{
+    if(!isCurrent(true))fail("AUTH_CONTEXT_CHANGED");
+    const user=db.prepare("SELECT email,email_trust FROM users WHERE id=? AND status='active'").get(userId);
+    if(!user)fail("AUTH_CONTEXT_CHANGED");
+    if(user.email!==expectedEmail || user.email_trust!==expectedTrust)fail("EMAIL_CHANGED");
+    if(email && db.prepare("SELECT 1 FROM users WHERE email=? AND id!=?").get(email,userId))fail("INVALID_EMAIL");
+    if(user.email===email)return {email,emailTrust:user.email_trust};
+    db.prepare("UPDATE users SET email=?,email_trust='unverified' WHERE id=?").run(email,userId);
+    db.prepare("INSERT INTO audit_events VALUES (?,?,?,?,?)").run(randomUUID(),userId,"change-own-email",userId,Date.now());
+    return {email,emailTrust:"unverified"};
+  });
+}
+module.exports = { normalizeEmail, setUserEmail, changeOwnEmail };

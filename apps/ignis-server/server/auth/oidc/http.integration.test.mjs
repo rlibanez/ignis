@@ -633,3 +633,29 @@ it("allows normal users to unlink only themselves after fresh local password ver
   expect((await request("/api/auth/session", jar)).status).toBe(401);
   expect((await post("/api/auth/login", jar, { login: session.user.login, password: "synthetic-passphrase" })).status).toBe(200);
 });
+
+it('reauthenticates a normal linked identity for email without granting admin or password setup',async()=>{
+ const jar={};const login=await post('/api/auth/oidc/start',jar);
+ await request(providerCallback(login.json().authorizationUrl),jar);
+ const initial=(await request('/api/auth/session',jar)).json();
+ const send=async(route,body)=>{
+  const current=(await request('/api/auth/session',jar)).json();
+  const csrf=(await request('/api/auth/csrf',jar)).json().csrfToken;
+  return request(route,jar,'POST',body,{origin:ORIGIN,'x-ignis-csrf':csrf,'x-ignis-context':current.sessionId});
+ };
+ db.exec('UPDATE sessions SET authenticated_at=authenticated_at-300001');
+ const email={email:'changed@example.com',expectedEmail:initial.email,expectedEmailTrust:initial.emailTrust};
+ expect((await send('/api/auth/email',email)).json().code).toBe('REAUTH_REQUIRED');
+ const wrong=await send('/api/auth/oidc/reauth',{purpose:'email'});expect(wrong.status).toBe(200);
+ callbackClaims={sub:'different'};
+ expect((await request(providerCallback(wrong.json().authorizationUrl),jar)).headers.location).toBe('/login?oidc=failed');
+ callbackClaims={};
+ const start=await send('/api/auth/oidc/reauth',{purpose:'email'});
+ expect((await request(providerCallback(start.json().authorizationUrl),jar)).headers.location).toBe('/?account=email');
+ const current=(await request('/api/auth/session',jar)).json();expect(current.user.id).toBe(initial.user.id);expect(current.oidcLinked).toBe(true);
+ expect((await send('/api/auth/password',{newPassword:'new-local-password!'})).json().code).toBe('REAUTH_REQUIRED');
+ expect((await request('/api/auth/users',jar)).status).toBe(403);
+ expect((await send('/api/auth/email',email)).status).toBe(200);
+ expect((await request('/api/auth/session',jar)).status).toBe(401);
+ expect(db.prepare('SELECT email_trust FROM users WHERE id=?').get(initial.user.id).email_trust).toBe('unverified');
+});

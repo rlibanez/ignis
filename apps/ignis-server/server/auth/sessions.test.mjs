@@ -473,13 +473,16 @@ describe("local reauthentication preserves the editor context", () => {
     expect(service.resolve(initial.token)).toBeNull();
     expect(service.resolve(renewed.token).id).toBe(initial.session.id);
   });
-  it("rejects a wrong password, context and non-admin identity", async () => {
+  it("rejects a wrong password and context while allowing own normal-user reauthentication", async () => {
     const initial = await service.loginLocal("admin", PASSWORD);
     expect(await service.reauthenticateLocal(initial.token, initial.session.id, "wrong")).toBeNull();
     expect(await service.reauthenticateLocal(initial.token, "different", PASSWORD)).toBeNull();
     expect(service.resolve(initial.token)).not.toBeNull();
     const normal = await service.loginLocal("alice", PASSWORD);
-    expect(await service.reauthenticateLocal(normal.token, normal.session.id, PASSWORD)).toBeNull();
+    const renewed=await service.reauthenticateLocal(normal.token, normal.session.id, PASSWORD);
+    expect(renewed.session.user.id).toBe(normal.session.user.id);
+    expect(renewed.session.user.role).toBe("user");
+    expect(service.resolve(normal.token)).toBeNull();
   });
   it("does not revive a session revoked while password verification is running", async () => {
     const initial = await service.loginLocal("admin", PASSWORD);

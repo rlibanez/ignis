@@ -633,6 +633,7 @@ function createAuthBoundary({
       return session
         ? res.json({
             user: session.user,
+            ...db.prepare("SELECT email,email_trust AS emailTrust FROM users WHERE id=?").get(session.user.id),
             hasLocalPassword: !!db.prepare("SELECT 1 FROM local_credentials WHERE user_id=?").get(session.user.id),
             passwordPolicy: config.passwordPolicy,
             sessionId: session.id,
@@ -700,9 +701,35 @@ function createAuthBoundary({
         throw error;
       }
     }
+    if (pathname === "/api/auth/email" && req.method === "POST") {
+      if(!session)return safe(res,401,"Authentication required");
+      if(!originAllowed(req,true) || !csrf.valid(req,session))return safe(res,403,"Request rejected");
+      if(req.headers["x-ignis-context"]!==session.id)return safe(res,409,"Session changed");
+      const body=req.body;
+      if(!body || Array.isArray(body) || Object.keys(body).some(key=>!["email","expectedEmail","expectedEmailTrust"].includes(key)) ||
+        !(body.email===null || typeof body.email==="string") || !(body.expectedEmail===null || typeof body.expectedEmail==="string") ||
+        !["unverified","admin_confirmed","oidc_verified"].includes(body.expectedEmailTrust))return safe(res,400,"Invalid email update");
+      const token=cookies.read(req.headers.cookie);
+      const isCurrent=(withinTransaction=false)=>{
+        const current=sessions.resolve(token,{withinTransaction});
+        return current?.id===session.id && current.user.id===session.user.id && now()>=current.authenticatedAt && now()-current.authenticatedAt<300000;
+      };
+      if(!isCurrent())return res.status(403).json({error:"Confirm your identity before changing your email",code:"REAUTH_REQUIRED"});
+      try{
+        const result=require("./email").changeOwnEmail(db,session.user.id,body.email,body.expectedEmail,body.expectedEmailTrust,isCurrent);
+        csrf.consume(req);
+        const signedOut=!sessions.resolve(token);
+        if(signedOut){res.append("Set-Cookie",cookies.clear());sweepSockets();}
+        return res.json({...result,signedOut});
+      }catch(error){
+        if(["EMAIL_CHANGED","AUTH_CONTEXT_CHANGED"].includes(error.code))return res.status(409).json({error:"Account changed; reopen your account settings",code:error.code});
+        if(error.code==="INVALID_EMAIL")return res.status(400).json({error:"Invalid or unavailable email",code:error.code});
+        throw error;
+      }
+    }
     if (pathname === "/api/auth/reauth" && req.method === "POST") {
       if (!session) return safe(res, 401, "Authentication required");
-      if (session.user.role !== "admin" || !originAllowed(req, true) || !csrf.valid(req, session))
+      if (!originAllowed(req, true) || !csrf.valid(req, session))
         return safe(res, 403, "Request rejected");
       if (req.headers["x-ignis-context"] !== session.id) return safe(res, 409, "Session changed");
       if (!req.body || Object.keys(req.body).some(key => key !== "password") || typeof req.body.password !== "string")
@@ -804,7 +831,7 @@ function createAuthBoundary({
         req.ignisLogUsername = authentication.session.user.login;
         return res.redirect(
           303,
-          result.kind === "password" ? "/account?password=setup" : result.kind === "reauth" ? "/admin/users?reauth=success" : result.kind === "link"
+          result.kind === "email" ? "/?account=email" : result.kind === "password" ? "/account?password=setup" : result.kind === "reauth" ? "/admin/users?reauth=success" : result.kind === "link"
             ? "/account?oidc=linked"
             : "/login?oidc=success",
         );
@@ -824,8 +851,8 @@ function createAuthBoundary({
         return safe(res, 403, "Request rejected");
       if (!limits.oidcStart(req.ip)) return safe(res, 429, "Too many requests");
       if (req.body?.rememberMe !== undefined && typeof req.body.rememberMe !== "boolean") return safe(res,400,"Invalid remember preference");
-      const kind = pathname.endsWith("/reauth") ? (req.body?.purpose === "password" ? "password" : "reauth") : pathname.endsWith("/link") ? "link" : "login";
-      if (kind === "password" && (!session || req.headers["x-ignis-context"] !== session.id || !oidc.linked(session.user.id)))
+      const kind = pathname.endsWith("/reauth") ? (["password","email"].includes(req.body?.purpose) ? req.body.purpose : "reauth") : pathname.endsWith("/link") ? "link" : "login";
+      if (["password","email"].includes(kind) && (!session || req.headers["x-ignis-context"] !== session.id || !oidc.linked(session.user.id)))
         return safe(res, 403, "Reauthentication unavailable");
       if (kind === "reauth" && (!session || session.user.role !== "admin" ||
           req.headers["x-ignis-context"] !== session.id || !oidc.linked(session.user.id)))

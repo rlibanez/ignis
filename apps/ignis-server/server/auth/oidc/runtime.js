@@ -117,19 +117,19 @@ async function createOidcRuntime(
     },
     async begin(kind, sessionToken, cookie, {rememberMe = false} = {}) {
       purge();
-      if (pending.size >= 1000 || !["login", "link", "reauth", "password"].includes(kind))
+      if (pending.size >= 1000 || !["login", "link", "reauth", "password", "email"].includes(kind))
         throw new Error("OIDC unavailable");
       const original = sessions.resolve(sessionToken);
       const sessionId = original?.id ?? null;
       if (kind === "reauth" && original?.user.role !== "admin") throw new Error("OIDC unavailable");
-      if (kind === "password" && (!original || !this.linked(original.user.id))) throw new Error("OIDC unavailable");
+      if (["password","email"].includes(kind) && (!original || !this.linked(original.user.id))) throw new Error("OIDC unavailable");
       await ready();
       if ((sessions.resolve(sessionToken)?.id ?? null) !== sessionId)
         throw new Error("OIDC unavailable");
       const result =
         kind === "link"
           ? await manual.begin(sessionToken, cookie)
-          : ["reauth", "password"].includes(kind) ? await reauth.begin(cookie) : await login.begin(cookie);
+          : ["reauth", "password", "email"].includes(kind) ? await reauth.begin(cookie) : await login.begin(cookie);
       if (
         closed ||
         pending.size >= 1000 ||
@@ -163,7 +163,7 @@ async function createOidcRuntime(
       )
         throw new Error("OIDC authentication failed");
       pending.delete(id);
-      if (["reauth", "password"].includes(entry.kind)) {
+      if (["reauth", "password", "email"].includes(entry.kind)) {
         const identity = await reauth.complete(callback, cookie);
         const current = sessions.resolve(sessionToken);
         const linked = db.prepare("SELECT user_id FROM oidc_identities WHERE issuer=? AND subject=?").get(identity.issuer, identity.subject);

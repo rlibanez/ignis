@@ -166,12 +166,12 @@ function createSessionService(
     const before = hash && find(hash, time());
     const credential = before && db.prepare("SELECT password_hash FROM local_credentials WHERE user_id=?").get(before.user_id);
     const matches = await verifyPassword(password, credential?.password_hash);
-    if (!matches || !before || before.id !== expectedId || before.role !== "admin") return null;
+    if (!matches || !before || before.id !== expectedId) return null;
     return transaction(db, () => {
       const at = time();
       const row = find(hash, at);
       const current = db.prepare("SELECT password_hash FROM local_credentials WHERE user_id=?").get(before.user_id);
-      if (!row || row.id !== expectedId || row.role !== "admin" ||
+      if (!row || row.id !== expectedId ||
           row.auth_version !== before.auth_version || current?.password_hash !== credential.password_hash) return null;
       const replacement = randomBytes(32).toString("hex");
       db.prepare("UPDATE sessions SET token_hash=?, authenticated_at=?, created_at=?, last_activity=?, method='local', issuer=NULL, subject=NULL WHERE id=?")

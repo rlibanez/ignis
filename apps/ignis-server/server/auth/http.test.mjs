@@ -1649,3 +1649,53 @@ it('rejects account event upgrades with foreign origin, missing context or mixed
   const status=await new Promise(resolve=>{ws.on('unexpected-response',(_req,res)=>{res.resume();resolve(res.statusCode);ws.terminate();});ws.on('error',()=>{});});expect(status).toBe(401);
  }
 });
+
+it('lets a normal user change only their own email and removes verification atomically',async()=>{
+ db.prepare("UPDATE users SET email='old@example.com',email_trust='admin_confirmed' WHERE id='normal'").run();
+ const jar=await login('normal'),session=await(await request('/api/auth/session',{jar})).json();
+ const send=async body=>request('/api/auth/email',{jar,method:'POST',body,headers:{'x-ignis-context':session.sessionId,'x-ignis-csrf':await csrf(jar)}});
+ const body={email:'New@Example.com',expectedEmail:'old@example.com',expectedEmailTrust:'admin_confirmed'};
+ for(const injected of [{userId:'admin'},{emailVerified:true},{emailTrust:'admin_confirmed'},{role:'admin'}])expect((await send({...body,...injected})).status).toBe(400);
+ const result=await send(body);expect(result.status).toBe(200);expect(await result.json()).toEqual({email:'new@example.com',emailTrust:'unverified',signedOut:true});
+ expect(db.prepare("SELECT role,email,email_trust FROM users WHERE id='normal'").get()).toMatchObject({role:'user',email:'new@example.com',email_trust:'unverified'});
+ expect((await request('/api/auth/session',{jar})).status).toBe(401);
+ const fresh=await login('normal');const current=await(await request('/api/auth/session',{jar:fresh})).json();expect(current.emailTrust).toBe('unverified');
+ expect(db.prepare("SELECT count(*) AS n FROM audit_events WHERE actor_id='normal' AND action='change-own-email'").get().n).toBe(1);
+});
+it('enforces the five-minute boundary and permits normal-user reauthentication without granting admin access',async()=>{
+ const jar=await login('normal'),session=await(await request('/api/auth/session',{jar})).json();
+ const send=async(path,body,headers={})=>request(path,{jar,method:'POST',body,headers:{'x-ignis-context':session.sessionId,'x-ignis-csrf':await csrf(jar),...headers}});
+ const body={email:'new@example.com',expectedEmail:null,expectedEmailTrust:'unverified'};
+ clock+=300000;
+ const stale=await send('/api/auth/email',body);expect(stale.status).toBe(403);expect((await stale.json()).code).toBe('REAUTH_REQUIRED');
+ expect((await send('/api/auth/reauth',{password:'wrong'})).status).toBe(400);
+ expect((await send('/api/auth/reauth',{password:PASSWORD})).status).toBe(200);
+ expect((await request('/api/auth/users',{jar})).status).toBe(403);
+ expect((await send('/api/auth/email',body)).status).toBe(200);
+ expect((await request('/api/auth/session',{jar})).status).toBe(401);
+});
+it('rejects unauthenticated, forged, duplicate, invalid and stale email updates',async()=>{
+ const jar=await login('normal'),session=await(await request('/api/auth/session',{jar})).json();
+ const body={email:'bad',expectedEmail:null,expectedEmailTrust:'unverified'};
+ const send=async(value=body,headers={})=>request('/api/auth/email',{jar,method:'POST',body:value,headers:{'x-ignis-context':session.sessionId,'x-ignis-csrf':await csrf(jar),...headers}});
+ expect((await request('/api/auth/email',{method:'POST',body})).status).toBe(401);
+ expect((await send(body,{'x-ignis-context':'other'})).status).toBe(409);
+ expect((await send(body,{'x-ignis-csrf':'bad'})).status).toBe(403);
+ expect((await send()).status).toBe(400);
+ db.prepare("UPDATE users SET email='taken@example.com' WHERE login='admin'").run();
+ expect((await send({...body,email:'TAKEN@example.com'})).status).toBe(400);
+ expect((await send({...body,email:'valid@example.com',expectedEmailTrust:'admin_confirmed'})).status).toBe(409);
+ expect(db.prepare("SELECT email FROM users WHERE id='normal'").get().email).toBe(null);
+});
+
+it('keeps verification for an unchanged email and accepts changes just before five minutes',async()=>{
+ db.prepare("UPDATE users SET email='old@example.com',email_trust='admin_confirmed' WHERE id='normal'").run();
+ const jar=await login('normal'),other=await login('normal'),session=await(await request('/api/auth/session',{jar})).json();
+ const send=async body=>request('/api/auth/email',{jar,method:'POST',body,headers:{'x-ignis-context':session.sessionId,'x-ignis-csrf':await csrf(jar)}});
+ clock+=299999;
+ const same=await send({email:'OLD@example.com',expectedEmail:session.email,expectedEmailTrust:session.emailTrust});
+ expect(same.status).toBe(200);expect(await same.json()).toEqual({email:'old@example.com',emailTrust:'admin_confirmed',signedOut:false});
+ const cleared=await send({email:'',expectedEmail:session.email,expectedEmailTrust:session.emailTrust});expect(cleared.status).toBe(200);
+ expect(db.prepare("SELECT email,email_trust FROM users WHERE id='normal'").get()).toMatchObject({email:null,email_trust:'unverified'});
+ expect((await request('/api/auth/session',{jar:other})).status).toBe(401);
+});

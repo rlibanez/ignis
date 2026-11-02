@@ -21,10 +21,10 @@ it.each(["admin", "user"])("renders separate native rows and role-dependent acti
   const groups = settingDefinitions(tab);
   expect(groups).toHaveLength(1);
   expect(groups[0].heading).toBeUndefined();
-  expect(groups[0].items.map(i=>i.name)).toEqual(["Username", "Shared resources", ...(role === "admin" ? ["Manage users"] : []), "Change password", "OpenID Connect"]);
+  expect(groups[0].items.map(i=>i.name)).toEqual(["Username", "Email", "Change password", "OpenID Connect", ...(role === "admin" ? ["Manage users"] : []), "Shared resources"]);
   const button = {setButtonText:vi.fn().mockReturnThis(),onClick:vi.fn().mockReturnThis()};
   const row = {setDesc:vi.fn().mockReturnThis(),addButton:fn=>fn(button)};
-  groups[0].items[1].render(row);
+  groups[0].items.find(item=>item.name==="Shared resources").render(row);
   expect(row.setDesc).toHaveBeenCalledWith("Manage the files and folders you share and those shared with you.");
   expect(button.setButtonText).toHaveBeenCalledWith("Open");
 });
@@ -44,7 +44,7 @@ it("links directly with CSRF and the current session context", async () => {
   await vi.waitFor(()=>expect(tab.update).toHaveBeenCalledOnce());
   let click;
   const button={setButtonText:vi.fn().mockReturnThis(),setDisabled:vi.fn(),onClick:fn=>{click=fn;}};
-  settingDefinitions(tab)[0].items.at(-1).render({setDesc(){return this;},addButton:fn=>fn(button)});
+  settingDefinitions(tab)[0].items.find(item=>item.name==="OpenID Connect").render({setDesc(){return this;},addButton:fn=>fn(button)});
   expect(button.setButtonText).toHaveBeenCalledWith("Link Authentik account");
   await click();
   expect(fetch).toHaveBeenCalledWith("/api/auth/oidc/link",expect.objectContaining({method:"POST",headers:expect.objectContaining({"X-Ignis-Csrf":"csrf","X-Ignis-Context":"session"})}));
@@ -61,7 +61,7 @@ it.each([
   const tab={update:vi.fn(),app:{}};settingDefinitions(tab);
   await vi.waitFor(()=>expect(tab.update).toHaveBeenCalledOnce());
   let click;const button={setButtonText(){return this;},setDisabled:vi.fn(),onClick:fn=>{click=fn;}};
-  settingDefinitions(tab)[0].items.at(-1).render({setDesc(){return this;},addButton:fn=>fn(button)});
+  settingDefinitions(tab)[0].items.find(item=>item.name==="OpenID Connect").render({setDesc(){return this;},addButton:fn=>fn(button)});
   await click();
   if(destination) expect(assign).toHaveBeenCalledWith(destination);else expect(assign).not.toHaveBeenCalled();
   expect(button.setDisabled).toHaveBeenLastCalledWith(false);
@@ -74,7 +74,7 @@ it.each([true, false])("offers self-unlink to normal users, requiring a local pa
   const tab={update:vi.fn(),app:{}};settingDefinitions(tab);
   await vi.waitFor(()=>expect(tab.update).toHaveBeenCalledOnce());
   const button={setButtonText:vi.fn().mockReturnThis(),setDisabled:vi.fn().mockReturnThis(),onClick:vi.fn().mockReturnThis()};
-  settingDefinitions(tab)[0].items.at(-1).render({setDesc(){return this;},addButton:fn=>fn(button)});
+  settingDefinitions(tab)[0].items.find(item=>item.name==="OpenID Connect").render({setDesc(){return this;},addButton:fn=>fn(button)});
   expect(button.setButtonText).toHaveBeenCalledWith("Unlink Authentik account");
   expect(button.setDisabled).toHaveBeenCalledWith(!hasLocalPassword);
 });
@@ -122,4 +122,31 @@ it("preserves the new password after an incorrect current password and clears it
   modal.close();
   expect(password.value).toBe("");
   expect(confirmation.value).toBe("");
+});
+
+it.each([true,false])('submits email safely or reports an incorrect password on its field (recent=%s)',async recentAuthentication=>{
+ function element(tag='div',options={}){return {tag,...options,value:'',children:[],handlers:{},addClass(){},
+  createEl(name,attrs){const child=element(name,attrs);this.children.push(child);return child;},createDiv(attrs){return this.createEl('div',attrs);},createSpan(attrs){return this.createEl('span',attrs);},setAttribute(){},focus:vi.fn(),setCustomValidity:vi.fn(),reportValidity:vi.fn(),
+  addEventListener(name,fn){this.handlers[name]=fn;},querySelectorAll(name){return this.children.flatMap(child=>[...(child.tag===name?[child]:[]),...child.querySelectorAll(name)]);},empty(){this.children=[];}};}
+ modalHarness.element=element;vi.stubGlobal('window',{});
+ vi.stubGlobal('fetch',vi.fn(async url=>({ok:url!=='/api/auth/reauth',status:url==='/api/auth/reauth'?400:200,json:async()=>url==='/api/auth/session'
+  ?{sessionId:'s',user:{login:'alice',role:'user'},hasLocalPassword:true,recentAuthentication,email:'old@example.com',emailTrust:'admin_confirmed'}
+  :url==='/api/auth/csrf'?{csrfToken:'csrf'}:url==='/api/auth/email'?{email:'new@example.com',emailTrust:'unverified',signedOut:false}:{}})));
+ const tab={update:vi.fn(),app:{}};settingDefinitions(tab);await vi.waitFor(()=>expect(tab.update).toHaveBeenCalledOnce());
+ let click;settingDefinitions(tab)[0].items.find(item=>item.name==='Email').render({setDesc(){return this;},addButton(fn){fn({setButtonText(){return this;},onClick(fn){click=fn;}});}});
+ click();const modal=modalHarness.current;
+ expect(modal.contentEl.querySelectorAll('input')[0].focus).toHaveBeenCalledOnce();
+ modal.contentEl.querySelectorAll('input')[0].value='new@example.com';
+ await modal.contentEl.querySelectorAll('form')[0].handlers.submit({preventDefault(){}});
+ if(!recentAuthentication){
+  const password=modal.contentEl.querySelectorAll('input')[1];
+  expect(password.setCustomValidity).toHaveBeenCalledWith('Incorrect password');
+  expect(password.reportValidity).toHaveBeenCalledOnce();
+  expect(modal.contentEl.querySelectorAll('p')[0].textContent).toBe('');
+  expect(fetch.mock.calls.some(([url])=>url==='/api/auth/email')).toBe(false);
+  password.handlers.input();expect(password.setCustomValidity).toHaveBeenLastCalledWith('');return;
+ }
+ const options=fetch.mock.calls.find(([url])=>url==='/api/auth/email')[1];
+ expect(options.headers).toMatchObject({'X-Ignis-Csrf':'csrf','X-Ignis-Context':'s'});
+ expect(JSON.parse(options.body)).toEqual({email:'new@example.com',expectedEmail:'old@example.com',expectedEmailTrust:'admin_confirmed'});
 });
