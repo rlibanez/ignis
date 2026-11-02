@@ -10,7 +10,7 @@
   const option = (value, label) => { const el = document.createElement('option'); el.value = value; el.textContent = label; return el; };
   function status(message) { $('status').textContent = t(message); }
   function lock() {
-    locked = true; $('resource-dialog').close(); $('resource-name').value = ''; $('capture').hidden = true; $('signin').hidden = false; $('preview').textContent = ''; $('files').replaceChildren();
+    locked = true; $('resource-dialog').close(); $('resource-name').value = ''; $('capture').hidden = true; $('signin').hidden = false; clearPreview(); $('files').replaceChildren();
     status('Your session has ended or changed. Return to this page after signing in with the same account.');
   }
   async function session() {
@@ -83,6 +83,18 @@
     let ancestor=selected;while(ancestor){destinationExpanded.add(ancestor);ancestor=parent(ancestor);}
     selectDestination(selected); renderTree();
   }
+  function clearPreview() {
+    $('preview').textContent = '';
+    $('preview-title').textContent = ''; $('preview-title').hidden = true;
+  }
+  function renderPreview() {
+    const title = (item.title || '').trim();
+    const text = item.text || '';
+    const alreadyIncluded = text.trim() === title || text.split(/\r?\n/).some(line => line.trim() === title);
+    $('preview-title').textContent = title && !alreadyIncluded ? title : '';
+    $('preview-title').hidden = !$('preview-title').textContent;
+    $('preview').textContent = text; $('preview').hidden = !text;
+  }
   function renderContentHeading() {
     let heading = 'Shared text';
     if (item.files.length) {
@@ -131,7 +143,7 @@
     $('signin').hidden = true;
     if (item.state !== 'pending') { status('The save could not be confirmed. Check the destination in Ignis before sharing again.'); return; }
     renderContentHeading();
-    $('preview').textContent = item.text; $('preview').hidden = !item.text;
+    renderPreview();
     // eslint-disable-next-line no-control-regex
     const title = (item.title || '').replace(/[\\/\u0000-\u001f\u007f]/g, ' ').replace(/^\.+|[. ]+$/g, '').slice(0, 220).trim();
     $('note-name').value = (title || t('Shared note')) + '.md';
@@ -204,7 +216,18 @@
       let name = $('note-name').value.trim();
       if (!/\.(md|markdown|txt)$/i.test(name)) name += '.md';
       if (!IgnisIncoming.safeName(name)) throw new Error(t('Enter a valid name without slashes or hidden path segments.'));
-      notePath = join($('folder').value, name);
+      // The suggested title is hidden in this UI. A second share with the
+      // same title must create another note, never repeatedly target an
+      // existing note with the 'new' write precondition.
+      if (item.completed.length && item.destination?.note) notePath = item.destination.note;
+      else {
+        const currentTree = await (await api('/api/fs/tree?vault=' + encodeURIComponent(vault()))).json();
+        const dot = name.lastIndexOf('.'), stem = name.slice(0, dot), extension = name.slice(dot);
+        let candidate = name, suffix = 2;
+        while (Object.hasOwn(currentTree, join($('folder').value, candidate)) || names.includes(candidate))
+          candidate = stem + ' (' + suffix++ + ')' + extension;
+        notePath = join($('folder').value, candidate);
+      }
     }
     if (notePath && names.some(name => join($('folder').value, name) === notePath))
       throw new Error(t('Use a different valid name for each file.'));
@@ -258,7 +281,7 @@
       if (savedPath) destination.set('file', savedPath);
       await IgnisIncoming.change(id, () => null);
       const savedUrl = '/?' + destination;
-      $('capture').hidden = true; $('preview').textContent = ''; $('files').replaceChildren();
+      $('capture').hidden = true; clearPreview(); $('files').replaceChildren();
       if (returnAfterSaving) closeShare();
       else location.replace(savedUrl);
     } catch (error) {
@@ -283,7 +306,7 @@
       if (existing?.owner && existing.owner !== userId) throw new Error(t('Session locked'));
       return null;
     });
-    $('capture').hidden = true; $('preview').textContent = ''; $('files').replaceChildren(); status('');
+    $('capture').hidden = true; clearPreview(); $('files').replaceChildren(); status('');
     closeShare();
   });
   window.addEventListener('focus', () => { if (context) session().then(current => { if (current?.sessionId !== context) lock(); }).catch(() => {}); });

@@ -1,6 +1,7 @@
 main { max-width: 44rem; }
 fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 section { margin-block: 1.25rem; }
+#preview-title { white-space: pre-wrap; overflow-wrap: anywhere; font-weight: 600; margin-bottom: .5rem; }
 #preview { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 12rem; overflow: auto; font: inherit; font-size: 1.05rem; line-height: 1.6; }
 #files label { display: block; overflow-wrap: anywhere; margin-top: .75rem; }
 #files input, select { width: 100%; box-sizing: border-box; }

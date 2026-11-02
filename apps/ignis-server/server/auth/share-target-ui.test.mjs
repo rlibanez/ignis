@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import {webcrypto, createHash} from 'node:crypto';
 const source = fs.readFileSync(new URL('./web/share-target.js', import.meta.url), 'utf8');
-async function fixture({conflict = false, text = 'received\ncontent', title = 'Title', files = []} = {}) {
+async function fixture({conflict = false, text = 'received\ncontent', title = 'Title', files = [], tree = {'existing.md': {type: 'file'}}} = {}) {
   class Element {
     constructor(tag = '') { this.tag = tag; this.children = []; this.value = ''; this.dataset = {}; this.textContent = ''; this.style={setProperty(){}}; this.classList={add(){},contains(){return false;}}; }
     get ownerDocument(){return document;} getRootNode(){return document;} contains(){return false;}
@@ -23,7 +23,7 @@ async function fixture({conflict = false, text = 'received\ncontent', title = 'T
     if (url === '/api/auth/session') return Response.json({sessionId: 's1', user: {id: 'alice'}});
     if (url === '/api/auth/csrf') return Response.json({csrfToken: 'csrf'});
     if (url === '/api/vault/list') return Response.json([{uuid: 'v1', name: 'Vault', membership: 'owner'}]);
-    if (url.startsWith('/api/fs/tree')) return Response.json({'existing.md': {type: 'file'}});
+    if (url.startsWith('/api/fs/tree')) return Response.json(tree);
     if (url.startsWith('/api/fs/readFile')) return new Response('original\n');
     if (url.startsWith('/api/fs/writeFile') && conflict) return Response.json({error: 'Content changed'}, {status: 409});
     return Response.json({ok: true});
@@ -142,4 +142,38 @@ it.each([
   const f = await fixture({text: '', files});
   expect(f.$('preview-heading').textContent).toBe(heading);
   expect(f.$('files').children[0].children[1].textContent).toBe('Filename when saving');
+});
+
+it('creates a distinct note when the incoming title already exists, without overwriting it', async () => {
+  const f = await fixture({tree: {'Title.md': {type:'file'}, 'Title (2).md': {type:'file'}, 'Title (3).md': {type:'directory'}}});
+  f.$('capture').onsubmit({preventDefault(){}}); await f.settle();
+  const writes=f.calls.filter(c=>c.url.startsWith('/api/fs/writeFile'));
+  expect(writes).toHaveLength(1);
+  expect(new URL(writes[0].url,'https://ignis.test').searchParams.get('path')).toBe('Title (4).md');
+  expect(writes[0].init.headers['X-Ignis-Content-Version']).toBe('new');
+  expect(f.redirects).toEqual(['/?vault=v1&file=Title+%284%29.md']);
+});
+it('checks fresh destinations again before saving rather than trusting the initially displayed tree', async () => {
+  const tree={};const f=await fixture({tree});
+  tree['Title.md']={type:'file'};
+  f.$('capture').onsubmit({preventDefault(){}});await f.settle();
+  const write=f.calls.find(c=>c.url.startsWith('/api/fs/writeFile'));
+  expect(new URL(write.url,'https://ignis.test').searchParams.get('path')).toBe('Title (2).md');
+});
+
+it('shows the received title above a shared link as plain text',async()=>{
+ const title='<img src=x onerror=alert(1)> Video title';
+ const f=await fixture({title,text:'https://youtube.com/watch?v=example'});
+ expect(f.$('preview-title').textContent).toBe(title);expect(f.$('preview-title').hidden).toBe(false);
+ expect(f.$('preview-title').children).toEqual([]);
+ expect(f.$('preview').textContent).toBe('https://youtube.com/watch?v=example');
+ await f.$('cancel').onclick();expect(f.$('preview-title').textContent).toBe('');expect(f.$('preview-title').hidden).toBe(true);
+});
+it.each([
+ ['', 'https://example.com'],
+ ['Video title', 'Video title\n\nhttps://example.com'],
+ ['https://example.com', 'https://example.com'],
+ ['Video title', '  Video title  \r\nhttps://example.com'],
+])('does not repeat an empty title or one already in the shared text: %s',async(title,text)=>{
+ const f=await fixture({title,text});expect(f.$('preview-title').hidden).toBe(true);expect(f.$('preview-title').textContent).toBe('');expect(f.$('preview').textContent).toBe(text);
 });
