@@ -6,6 +6,10 @@ const t = (text, values = {}) => globalThis.IgnisI18n?.t(text, values) ?? text.r
 
 class PasswordModal extends Modal {
   constructor(app, session) { super(app); this.session = session; }
+  open() {
+    super.open();
+    this.currentPasswordInput?.focus();
+  }
   onOpen() {
     this.setTitle(t("Change password"));
     this.modalEl.addClass("ignis-password-modal");
@@ -29,6 +33,7 @@ class PasswordModal extends Modal {
       }
       const control = field.createSpan({cls: "ignis-password-control"});
       const input = control.createEl("input", {type: "password"});
+      if (key === "currentPassword") { this.currentPasswordInput=input; input.autofocus=true; }
       input.placeholder = t(placeholder);
       input.autocomplete = key === "currentPassword" ? "current-password" : "new-password";
       input.required = true;

@@ -391,6 +391,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     reauthOidc.hidden = !activeSession.oidcLinked;
     reauthOidc.textContent = translateIgnis("Continue with {p0}", {p0: (providerName)});
     if (!reauthDialog.open) reauthDialog.showModal();
+    if (!reauthForm.hidden) reauthForm.elements.password.focus();
   }
   document.getElementById("cancel-reauth").addEventListener("click", () => {
     if (!reauthBusy) { pendingUser = null; reauthDialog.close(); }

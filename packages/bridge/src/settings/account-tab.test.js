@@ -84,7 +84,7 @@ it("preserves the new password after an incorrect current password and clears it
   function element(tag = "div", options = {}) {
     return {
       tag, ...options, value: "", children: [], handlers: {},
-      addClass() {}, setAttribute() {},
+      addClass() {}, setAttribute() {}, focus: vi.fn(),
       createEl(name, attrs) { const child = element(name, attrs); this.children.push(child); return child; },
       createSpan(attrs) { return this.createEl("span", attrs); },
       createDiv(attrs) { return this.createEl("div", attrs); },
@@ -112,6 +112,8 @@ it("preserves the new password after an incorrect current password and clears it
   click();
   const modal = modalHarness.current;
   const [current, password, confirmation] = modal.contentEl.querySelectorAll("input");
+  expect(current.focus).toHaveBeenCalledOnce();
+  expect(current.autofocus).toBe(true);
   current.value = "incorrect";
   password.value = confirmation.value = "new password";
   await modal.contentEl.querySelectorAll("form")[0].handlers.submit({preventDefault() {}});
