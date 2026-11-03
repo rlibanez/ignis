@@ -32,6 +32,14 @@ function createVaults({store,sessions,access,createView}){
   });
   return Object.freeze({
    context,check,authorize,resolve,revalidateView,
+   exportAuthority:reference=>{
+    const vault=resolve(reference);
+    const validate=()=>{
+     guard();const live=store.resolve(vault.id);
+     if(store.membership(vault.id,context.userId)!=='owner' || live.path!==vault.path || live.policy_version!==vault.policy_version)unavailable();
+    };
+    validate();return {actor:context.userId,name:vault.name,path:vault.path,validate};
+   },
    project:(reference,operations)=>{
     const decision=access.project(token,reference,operations);
     if(decision.allowed&&!sameContext(decision))unavailable();

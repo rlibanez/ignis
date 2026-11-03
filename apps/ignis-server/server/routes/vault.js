@@ -12,6 +12,32 @@ const {validVaultName:isValidVaultName}=require('../features/vaults/application/
 const REFRESH_COOLDOWN_MS = 10 * 1000;
 const lastRefreshAt = new Map();
 
+// Owner-only portable content export; temporary archives stay outside the vault.
+router.post("/export", async (req,res) => {
+  if(!req.exportVault)return res.status(503).json({error:"Export unavailable"});
+  if(Object.keys(req.query).length || !req.body || Array.isArray(req.body) || Object.keys(req.body).sort().join(',')!=='configuration,vault' || typeof req.body.vault!=='string' || typeof req.body.configuration!=='boolean')
+    return res.status(400).json({error:"Invalid export request"});
+  const abort=new AbortController();
+  res.once('close',()=>{if(!res.writableEnded)abort.abort();});
+  let result;
+  try {
+    result=await req.exportVault(req.body.vault,req.body.configuration,abort.signal);
+    result.validate();
+    res.setHeader('Content-Type','application/zip');
+    res.setHeader('Cache-Control','no-store');
+    res.setHeader('Content-Disposition',require('@ignis/server-core').encodeContentDispositionFilename(result.name));
+    const {Transform}=require('node:stream');
+    const check=new Transform({transform(chunk,encoding,callback){try{result.validate();callback(null,chunk);}catch(error){callback(error);}}});
+    await require('node:stream/promises').pipeline(require('node:fs').createReadStream(result.file),check,res,{signal:abort.signal});
+  }catch(error){
+    if(res.headersSent || abort.signal.aborted){res.destroy();return;}
+    res.removeHeader('Content-Disposition');res.removeHeader('Content-Type');
+    const status={VAULT_UNAVAILABLE:404,EXPORT_BUSY:429,EXPORT_LIMIT:413,EXPORT_CHANGED:409,EXPORT_PATH:409}[error.code]||503;
+    const message={VAULT_UNAVAILABLE:'Vault unavailable or you are no longer its owner.',EXPORT_BUSY:'Another export is in progress. Try again later.',EXPORT_LIMIT:'Export limit exceeded (10000 entries, 32 MiB per file, 256 MiB total or 64 MiB ZIP).',EXPORT_CHANGED:'The vault changed during export. Try again.',EXPORT_PATH:'The vault contains an unsupported file path.'}[error.code]||'Export could not be completed.';
+    res.status(status).json({error:message});
+  }finally{if(result)await result.dispose();}
+});
+
 // GET /api/vault/list - returns all discovered vaults (re-scans on each call)
 router.get("/list", (req, res) => {
   config.refreshVaults();

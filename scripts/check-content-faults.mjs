@@ -17,6 +17,8 @@ try{
  const result=spawnSync('docker',['run','--rm','--init','--name',name,'--network','none','--read-only','--user','1000:1000',
   '--tmpfs','/tmp:rw,nosuid,noexec,size=128m','--tmpfs','/fault:rw,nosuid,noexec,size=1m',
   '--mount',`type=bind,source=${repository},target=/workspace,readonly`,'--workdir','/workspace',
+  // Vitest persists its API token here; keep the repository and image read-only.
+  '-e','XDG_DATA_HOME=/tmp/vitest-data',
   '-e','IGNIS_TEST_FAULT_ROOT=/fault','--entrypoint','node',image,'-e',source],
   {encoding:'utf8',timeout:45000,maxBuffer:2*1024*1024});
  if(result.stdout)process.stdout.write(result.stdout);

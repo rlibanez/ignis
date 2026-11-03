@@ -1,5 +1,5 @@
 // One lifetime per mounted component. No request or callback may outlive its host.
-export function createManagementClient({signal, assertContext = () => {}, request = globalThis.fetch}) {
+export function createManagementClient({signal, assertContext = () => {}, request = globalThis.fetch, timeoutMs = 15000}) {
   const check = () => { signal.throwIfAborted(); assertContext(); };
   function guard(response) {
     return {
@@ -11,7 +11,7 @@ export function createManagementClient({signal, assertContext = () => {}, reques
   return async (url, options = {}) => {
     check();
     const response = await request(url, {...options, credentials:"same-origin", cache:"no-store",
-      signal: AbortSignal.any([signal, AbortSignal.timeout(15000), ...(options.signal ? [options.signal] : [])])});
+      signal: AbortSignal.any([signal, AbortSignal.timeout(timeoutMs), ...(options.signal ? [options.signal] : [])])});
     check();
     return guard(response);
   };

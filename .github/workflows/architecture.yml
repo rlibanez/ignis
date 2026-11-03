@@ -76,3 +76,7 @@ jobs:
         env:
           IGNIS_E2E_OBSIDIAN_ASSETS: ${{ vars.IGNIS_E2E_OBSIDIAN_ASSETS }}
           IGNIS_CHROME_PATH: ${{ vars.IGNIS_CHROME_PATH }}
+      - run: npm run test:vault-transfers
+        env:
+          IGNIS_E2E_OBSIDIAN_ASSETS: ${{ vars.IGNIS_E2E_OBSIDIAN_ASSETS }}
+          IGNIS_CHROME_PATH: ${{ vars.IGNIS_CHROME_PATH }}

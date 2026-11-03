@@ -1,3 +1,4 @@
+import {createImportModal} from "./import-vault.js";
 import {createManagementClient} from "./client.js";
 import accountStyles from "./account.css";
 const messageDefinition=text=>({searchable:false,render:setting=>{setting.settingEl.addClass("ignis-message");setting.setDesc(text);}});
@@ -11,6 +12,7 @@ export function createAccountSettings({Modal, Notice, setIcon, ManagementModal})
     button.type=options.type || "button";
     return button;
   };
+  const ImportModal=createImportModal(Modal,Notice);
   const doc=globalThis.document;
   if(doc?.head && !doc.getElementById('ignis-account-form-styles')){
     const style=doc.createElement('style');style.id='ignis-account-form-styles';style.textContent=accountStyles;doc.head.append(style);
@@ -359,6 +361,7 @@ function settingDefinitions(tab) {
       }] : []),
       ...(session.user.role === "admin" ? [action("Manage users", () => open("users"))] : []),
       action("Shared resources", () => open("shares")),
+      {name:t("Import vault"),render:setting=>setting.setDesc(t("Create a new vault from a local folder or ZIP file.")).addButton(button=>button.setButtonText(t("Import")).onClick(()=>new ImportModal(tab.app,session).open()))},
     ]},
   ];
 }

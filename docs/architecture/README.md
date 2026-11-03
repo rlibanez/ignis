@@ -63,3 +63,9 @@ Tampoco una reescritura del shim original o de protocolos criptográficos.
 
 [Revisión de interfaces con y sin bóveda](zero-vault-review.md): escenarios,
 correcciones, comando de comparación nativa y límites de la emulación.
+
+[Importación desde carpeta local o ZIP](vault-import.md): asistente, límites,
+preferencias permitidas y publicación aislada por usuario.
+
+[Exportación ZIP para el propietario](vault-export.md): contenido físico,
+configuración opcional, exclusión de recursos recibidos y descarga acotada.

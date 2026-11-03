@@ -10,13 +10,16 @@ function createSecurity(options) {
     oidcEnv = process.env, oidcDependencies} = options;
   const db = openDatabase(dataRoot);
   let oidc, initialization, closed = false;
+  let vaultImport;
   const close = () => {
     if (closed) return;
     closed = true;
+    vaultImport?.close();
     try {oidc?.clear();} finally {db.close();}
   };
   try {
     const sessions = createSessionService(db, {rememberDays:config.rememberDays,...sessionOptions,now});
+    vaultImport=vaultRoot ? require('../features/vaults/adapters/vault-import').createVaultImport({db,root:vaultRoot,dataRoot,sessions,now}) : null;
     const effects={sessionsChanged:()=>{},sharingChanged:()=>{}};
     const deletion=require('../auth/user-deletion').createUserDeletionService(db,vaultRoot,{
       ...require('../vault/deletion-lifecycle').deletionLifecycle(),sessionsChanged:()=>effects.sessionsChanged(),
@@ -28,13 +31,16 @@ function createSecurity(options) {
     const vaults=vaultRoot ? require('../features/vaults/application/vaults').createVaults({
       store:vaultStore,sessions,access:vaultAccess,createView:require('../features/vaults/adapters/vault-view').createVaultView,
     }) : null;
+    const vaultExport=vaults ? require('../features/vaults/adapters/vault-export').createVaultExport({vaults,dataRoot,
+      flush:directory=>require('@ignis/server-core').writeCoalescer.flushPendingSubtree(directory),
+    }) : null;
     const content=vaultRoot ? require('../features/content/adapters/runtime').createContentRuntime({db,root:vaultRoot,sessions}) : null;
     const shareStore=vaultRoot ? require('../features/sharing/adapters/resource-shares').createResourceSharesService(db,vaultRoot,sessions,config.sharedResourceLimits,content) : null;
     const sharesService=shareStore ? require('../features/sharing/application/sharing').createSharing({store:shareStore,sessions,
       onChanged:()=>effects.sharingChanged(),onNotificationError:()=>require('@ignis/server-core/src/logger').emit('warn','auth.state_events.failed'),
     }) : null;
     const sharingEventStore=require('../features/sharing/adapters/event-store').createSharingEventStore(db,sessions,sharesService);
-    const services = {vaults,vaultStore,vaultAccess,content,sharesService,sharingEventStore,
+    const services = {vaultExport,vaultImport,vaults,vaultStore,vaultAccess,content,sharesService,sharingEventStore,
       identity,effects,
       db, sessions, close,
       initialize() {
@@ -42,6 +48,8 @@ function createSecurity(options) {
         return initialization ||= Promise.resolve().then(async () => {
           if (closed) throw new Error("Security services are closed");
           if (vaultRoot) {
+            await vaultImport.cleanup();
+            await vaultExport.cleanup();
             require("../features/vaults/adapters/vault-creation.js").quarantinePendingVaults(db);
             await require("../features/vaults/adapters/vault-deletion.js").purgeRetiredVaults(db,vaultRoot);
           }
