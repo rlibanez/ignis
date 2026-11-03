@@ -504,6 +504,7 @@
   "The browser could not change fullscreen mode.": "El navegador no ha permitido cambiar el modo de pantalla completa.",
   "The change could not be confirmed. Sign in again before retrying.": "No se ha podido confirmar el cambio. Vuelve a iniciar sesión antes de reintentar.",
   "The current password is incorrect.": "La contraseña actual es incorrecta.",
+  "Current password incorrect.": "Contraseña actual incorrecta.",
   "The files will be provided automatically.": "Los archivos se proporcionarán automáticamente.",
   "The last active administrator cannot be disabled or demoted.": "No se puede desactivar ni quitar el rol al último administrador activo.",
   "The link has already changed. Close this dialog and reload the page.": "El vínculo ya ha cambiado. Cierra este diálogo y recarga la página.",

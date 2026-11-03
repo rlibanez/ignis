@@ -72,7 +72,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - run: npm run test:runtime
+      - run: npm run test:management-parity
         env:
           IGNIS_E2E_OBSIDIAN_ASSETS: ${{ vars.IGNIS_E2E_OBSIDIAN_ASSETS }}
           IGNIS_CHROME_PATH: ${{ vars.IGNIS_CHROME_PATH }}

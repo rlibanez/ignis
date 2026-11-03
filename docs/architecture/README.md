@@ -60,3 +60,6 @@ escenarios manuales pendientes están identificados en los documentos enlazados.
 
 No se proponen microservicios, otro contenedor, un ORM o un framework de inyección.
 Tampoco una reescritura del shim original o de protocolos criptográficos.
+
+[Revisión de interfaces con y sin bóveda](zero-vault-review.md): escenarios,
+correcciones, comando de comparación nativa y límites de la emulación.

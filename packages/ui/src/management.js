@@ -27,12 +27,14 @@ function setIcon(target,name){
 }
 export class BrowserModal {
   constructor(){
+    if(!window.app?.workspace)document.body.classList.add('styled-scrollbars');
     this.containerEl=element('div',{cls:'modal-container ignis-shell-modal'});
-    this.containerEl.style.cssText='position:fixed;inset:0;z-index:100010;display:flex;align-items:center;justify-content:center';
+    // The Svelte vault manager is at 99999; preserve native layer ordering above it.
+    this.containerEl.style.cssText='position:fixed;inset:0;z-index:calc(100000 + var(--layer-modal,50));display:flex;align-items:center;justify-content:center';
     const backdrop=this.containerEl.createDiv({cls:'modal-bg'});
-    backdrop.style.cssText='position:absolute;inset:0;background:rgba(0,0,0,.5)';
+    backdrop.style.cssText='position:absolute;inset:0';
     this.modalEl=this.containerEl.createDiv({cls:'modal'});
-    this.modalEl.style.cssText='position:relative;max-width:100vw;max-height:90dvh;overflow:auto';
+    this.modalEl.style.cssText='position:relative;overflow:auto';
     const close=this.modalEl.createEl('button',{type:'button',cls:'modal-header-button mod-raised clickable-icon',attr:{'aria-label':t('Close'),'data-ignis-close':''}});
     setIcon(close,'x');close.addEventListener('click',()=>this.close());
     this.headerEl=this.modalEl.createDiv({cls:'modal-header'});
@@ -49,7 +51,7 @@ export class BrowserModal {
       hideHelp();
       this.tooltip=element('div',{cls:'tooltip',text:button.getAttribute('aria-label'),attr:{role:'tooltip'}});
       const rect=button.getBoundingClientRect();
-      this.tooltip.style.cssText=`position:fixed;z-index:100011;transform:none;margin:0;max-height:calc(100dvh - 16px);overflow:auto;max-width:min(320px,calc(100vw - 16px));white-space:normal;left:${Math.max(8,Math.min(rect.left,window.innerWidth-328))}px;top:${rect.bottom+8}px`;
+      this.tooltip.style.cssText=`position:fixed;z-index:calc(100000 + var(--layer-tooltip,70));transform:none;margin:0;max-height:calc(100dvh - 16px);overflow:auto;max-width:min(320px,calc(100vw - 16px));white-space:normal;left:${Math.max(8,Math.min(rect.left,window.innerWidth-328))}px;top:${rect.bottom+8}px`;
       // A dialog is in the browser top layer: help must belong to that layer too.
       (button.closest('dialog[open]') || this.containerEl).append(this.tooltip);
       const height=this.tooltip.getBoundingClientRect().height;
@@ -89,7 +91,17 @@ export class BrowserModal {
   close(){if(!this.containerEl.isConnected)return;this.onClose?.();document.removeEventListener('keydown',this.keydown);window.removeEventListener('ignis:auth-lost',this.lost);window.removeEventListener('pagehide',this.lost);this.containerEl.remove();if(this.previousFocus?.isConnected)this.previousFocus.focus();}
 }
 let sequence=0;
-class Notice {constructor(message){const el=element('div',{cls:'notice',text:message});el.setAttribute('role','alert');document.body.append(el);setTimeout(()=>el.remove(),6000);}}
+class Notice {
+  constructor(message){
+    let container=document.querySelector('.ignis-shell-notices');
+    if(!container){container=element('div',{cls:'notice-container ignis-shell-notices'});container.style.zIndex='calc(100000 + var(--layer-notice,60))';document.body.append(container);}
+    const el=container.createDiv({cls:'notice',attr:{role:'alert'}});
+    el.createDiv({cls:'notice-message',text:message});
+    const remove=()=>{el.remove();if(!container.childElementCount)container.remove();};
+    const timeout=setTimeout(remove,5000);
+    el.addEventListener('click',()=>{clearTimeout(timeout);remove();},{once:true});
+  }
+}
 const ManagementModal=createManagementModal(BrowserModal,setIcon);
 const {settingDefinitions}=createAccountSettings({Modal:BrowserModal,Notice,setIcon,ManagementModal});
 class AccountModal extends BrowserModal {
@@ -98,11 +110,12 @@ class AccountModal extends BrowserModal {
     if(!document.getElementById('ignis-settings-shell-styles')){
       const style=element('style');style.id='ignis-settings-shell-styles';style.textContent=settingsShellStyles;document.head.append(style);
     }
-    this.modalEl.addClass('mod-settings','ignis-shell-settings');
+    this.modalEl.addClass('mod-settings','mod-sidebar-layout','ignis-shell-settings');
     this.modalEl.style.overflow='hidden';
     if(!document.body.classList.contains('is-phone')){
-      this.modalEl.style.width='var(--modal-setting-width,90vw)';
-      this.modalEl.style.height='var(--modal-setting-height,85vh)';
+      this.modalEl.style.width='var(--modal-width,90vw)';
+      this.modalEl.style.maxWidth='var(--modal-max-width,1100px)';
+      this.modalEl.style.height='var(--modal-height,85vh)';
     }
     this.contentEl.addClass('vertical-tabs-container');
     const sidebar=this.contentEl.createDiv({cls:'vertical-tab-header'});
@@ -153,7 +166,7 @@ class AccountModal extends BrowserModal {
         const desc=info.createDiv({cls:'setting-item-description'}),controls=row.createDiv({cls:'setting-item-control'});
         const setting={settingEl:row,setDesc(text){desc.textContent=text;return this;},addButton(fn){
           const el=controls.createEl('button',{type:'button'});
-          const button={setButtonText(text){el.textContent=text;return this;},setDisabled(disabled){el.disabled=disabled;return this;},setWarning(){el.classList.add('mod-warning');return this;},onClick(fn){el.addEventListener('click',fn);return this;}};
+          const button={setButtonText(text){el.textContent=text;return this;},setDisabled(disabled){el.disabled=disabled;return this;},setWarning(){el.classList.add('mod-destructive','mod-cta');return this;},onClick(fn){el.addEventListener('click',fn);return this;}};
           fn(button);return this;
         }};
         item.render(setting);

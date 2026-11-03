@@ -56,6 +56,17 @@ const nativeCss=process.env.IGNIS_OBSIDIAN_CSS;
     fs.writeFileSync(path.join(screenshotDirectory,`${mobile?'mobile':'desktop'}-${name}.png`),Buffer.from(data,'base64'));
   };
   await screenshot('account');
+  if(nativeCss && !await run(`(()=>{const reference=document.createElement('div');reference.className='modal-bg';document.body.append(reference);const expected=getComputedStyle(reference).backgroundColor;reference.remove();return getComputedStyle(document.querySelector('.ignis-shell-modal .modal-bg')).backgroundColor===expected;})()`))throw Error('Shell backdrop overrides the native theme');
+  if(!mobile){
+    // Compare against a native settings shell at the same viewport, including ultrawide.
+    for(const width of [1280,2560]){
+      await call('Emulation.setDeviceMetricsOverride',{width,height:1440,deviceScaleFactor:1,mobile:false});
+      const sizes=await run(`(()=>{const actual=document.querySelector('.ignis-shell-settings');const reference=document.createElement('div');reference.className='modal mod-settings mod-sidebar-layout';reference.style.position='fixed';document.body.append(reference);const result={actual:actual.getBoundingClientRect().width,native:reference.getBoundingClientRect().width};reference.remove();return result;})()`);
+      if(nativeCss && Math.abs(sizes.actual-sizes.native)>1)throw Error('Settings width differs from native at '+width+': '+JSON.stringify(sizes));
+      if(sizes.actual>1102)throw Error('Settings width exceeds native default cap: '+JSON.stringify(sizes));
+    }
+    await call('Emulation.clearDeviceMetricsOverride');
+  }
   const rows=await run(`Array.from(document.querySelectorAll('.setting-item-name'),e=>e.textContent)`);
   if(rows.join('|')!=='Username|Email|Change password|OpenID Connect|Manage users|Shared resources')throw Error('Account rows: '+rows);
   const accountTabs=await run(`Array.from(document.querySelectorAll('.ignis-shell-settings [role=tab]'),el=>el.textContent)`);
@@ -73,8 +84,17 @@ const nativeCss=process.env.IGNIS_OBSIDIAN_CSS;
 
   await run(`document.querySelectorAll('.setting-item-control button')[1].click()`);
   await screenshot('email');
+  const checkNativeFormWidth=async()=>{
+    if(mobile || !nativeCss)return;
+    const sizes=await run(`(()=>{const actual=document.querySelector('.ignis-password-modal');const reference=document.createElement('div');reference.className='modal mod-lg mod-form';reference.style.position='fixed';document.body.append(reference);const result={actual:actual.getBoundingClientRect().width,native:reference.getBoundingClientRect().width};reference.remove();return result;})()`);
+    if(Math.abs(sizes.actual-sizes.native)>1)throw Error('Account form width differs from native: '+JSON.stringify(sizes));
+  };
+  await checkNativeFormWidth();
   if(!await run(`getComputedStyle(document.querySelector('.ignis-shell-modal:last-of-type input[type=password]').closest('label')).display==='none'`))throw Error('Recent-session password field must remain hidden');
   if(await run(`document.querySelectorAll('.ignis-shell-modal').length`)!==2)throw Error('Email form did not open');
+  await run(`document.querySelectorAll('.ignis-shell-modal [data-ignis-close]')[1].click();document.querySelectorAll('.setting-item-control button')[2].click()`);await new Promise(r=>setTimeout(r,150));
+  if(!await run(`document.querySelector('.ignis-password-modal input[autocomplete="current-password"]')!==null`))throw Error('Change password did not open');
+  await checkNativeFormWidth();await screenshot('change-password');
   await run(`document.querySelectorAll('.ignis-shell-modal [data-ignis-close]')[1].click();document.querySelector('[data-ignis-close]').click();IgnisUI.openAccount('users');`);await new Promise(r=>setTimeout(r,250));
   await screenshot('users');
   if(!await run(`!document.querySelector('#administration').hidden`))throw Error('Users failed: '+await run('document.body.innerText'));

@@ -4,6 +4,7 @@ import fs from 'node:fs';import os from 'node:os';import path from 'node:path';
 import net from 'node:net';import {spawn} from 'node:child_process';import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';import {browser} from './lib/chrome.mjs';
 import {waitForServerStarted} from './lib/server-readiness.mjs';
+import {managementParity} from './lib/management-parity.mjs';
 const require=createRequire(import.meta.url),repo=fileURLToPath(new URL('../',import.meta.url));
 const assets=process.env.IGNIS_E2E_OBSIDIAN_ASSETS;
 if(!assets)throw Error('Set IGNIS_E2E_OBSIDIAN_ASSETS to privately obtained Obsidian 1.14.4 assets');
@@ -18,6 +19,7 @@ try{
  db=openDatabase(path.join(root,'data'));const password='synthetic e2e password!',hash=await hashPassword(password);
  require('../apps/ignis-server/server/features/identity/adapters/store').bootstrapAdmin(db,'owner',hash);
  db.prepare("INSERT INTO users(id,login,role,created_at) VALUES ('receiver','receiver','user',0)").run();db.prepare('INSERT INTO local_credentials VALUES (?,?,0)').run('receiver',hash);
+ if((process.argv.includes('--management-parity')||process.argv.includes('--management-notices'))){db.prepare("INSERT INTO users(id,login,role,created_at) VALUES ('empty','empty','admin',0)").run();db.prepare('INSERT INTO local_credentials VALUES (?,?,0)').run('empty',hash);}
  const ownerId=db.prepare("SELECT id FROM users WHERE login='owner'").get().id;
  const owner=createRegisteredVault(db,vaultRoot,ownerId,'Owner',{isCurrent:()=>true}),receiver=createRegisteredVault(db,vaultRoot,'receiver','Receiver',{isCurrent:()=>true});
  fs.writeFileSync(path.join(vaultRoot,'Owner','Shared.md'),'# Shared\ninitial\n');
@@ -32,6 +34,7 @@ try{
   const client=await browser({mobile:process.argv.includes('--mobile')});clients.push(client);await client.call('Page.navigate',{url:origin+'/login'});await client.wait(`!!document.querySelector('#login-form') && !document.querySelector('#login-form').hidden`,'visible login form');
   await client.run(`(()=>{const form=document.querySelector('#login-form');form.elements.login.value=${JSON.stringify(user)};form.elements.password.value=${JSON.stringify(password)};form.requestSubmit();})()`);
   await client.wait(`location.pathname!=='/login'`,'login form submission');
+  if(!vault){await client.wait(`!!window.IgnisUI && !window.app?.workspace`,'zero-vault shell');return client;}
   await client.call('Page.navigate',{url:origin+'/?vault='+encodeURIComponent(vault.id)});
   try{await client.wait(`!!window.app?.workspace && !!window.app?.vault`,'real Obsidian workspace',30000);}catch(error){console.error(JSON.stringify({user,errors:client.errors,page:await client.run(`({url:location.href,body:document.body.innerText.slice(0,3000),hasApp:!!window.app})`)}));throw error;}return client;
  }
@@ -63,6 +66,7 @@ try{
  // Exercise the real bridge host, not the vaultless fallback or synthetic CSS.
  await alice.run(`window.__ignisOpenManagement('users')`);await alice.wait(`!!document.querySelector('#administration') && !document.querySelector('#administration').hidden`,'native users host');
  await alice.run(`document.querySelector('#administration').closest('.modal-container').querySelector('.modal-header-button:not(.mod-start),.modal-close-button').click()`);await alice.wait(`!document.querySelector('#administration')`,'native management close');
+ if((process.argv.includes('--management-parity')||process.argv.includes('--management-notices')))await managementParity({native:alice,shell:await login('empty'),origin,vault:owner.id,mobile:process.argv.includes('--mobile'),noticesOnly:process.argv.includes('--management-notices')});
  console.log(JSON.stringify({status:'passed',runtime:'1.14.4',mobile:process.argv.includes('--mobile'),checks:['two isolated accounts','real workspace and editor','recipient save reaches original bytes','native management host','read-only edit denied','live read/write restoration in same editor','live revocation']}));
 }finally{
  for(const client of clients)await client.close();db?.close();if(child){child.kill('SIGTERM');await Promise.race([new Promise(r=>child.once('exit',r)),new Promise(r=>setTimeout(r,3000))]);if(child.exitCode===null)child.kill('SIGKILL');}fs.rmSync(root,{recursive:true,force:true});

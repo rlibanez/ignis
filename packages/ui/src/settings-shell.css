@@ -12,20 +12,6 @@
 body:not(.is-phone) .ignis-shell-settings > .modal-header,
 body:not(.is-phone) .ignis-shell-settings > .mod-start { display: none; }
 .is-phone .ignis-shell-settings .vertical-tab-content-container { height: 100%; }
-.is-phone .ignis-shell-settings .vertical-tab-content { padding-top: var(--size-4-6,24px); }
 .is-phone .ignis-shell-settings[data-view="account"] .vertical-tab-header { display: none; }
 .is-phone .ignis-shell-settings[data-view="navigation"] .vertical-tab-content-container,
 .is-phone .ignis-shell-settings[data-view="navigation"] > .mod-start { display: none; }
-/* Keep the mobile title bar in flow; only its close/back controls float. */
-.is-phone .modal.mod-settings.ignis-shell-settings > .modal-header {
-  position: relative;
-  flex: 0 0 64px;
-  min-height: 64px;
-  padding: var(--size-4-4,16px) 56px;
-}
-.is-phone .modal.mod-settings.ignis-shell-settings > .modal-header .modal-title {
-  max-width: none;
-  width: 100%;
-  margin: 0;
-  padding: 0;
-}

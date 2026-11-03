@@ -163,3 +163,11 @@ Android real y proveedor OIDC.
 - CI añadida con Node 22/24, navegador, imagen y fallos reales. Proveedor OIDC de
   producción, teclado/gestos Android reales y recepción del sistema requieren la
   comprobación manual correspondiente; no se presentan como validados por CDP.
+
+## Comparación posterior del host sin bóvedas
+
+`test:management-parity` compara ventanas y estados con el host nativo de
+Obsidian 1.14.4 y exige también el estándar común de botones móviles.
+[Alcance y resultados](zero-vault-review.md), con evidencia resumida en
+`zero-vault-verification.json`. Los errores de API de la matriz son sintéticos;
+no sustituyen las pruebas de autorización ni ejecutan operaciones destructivas.

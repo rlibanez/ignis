@@ -25,10 +25,10 @@ return class ManagementModal extends Modal {
       // Match the actual settings window, including theme and viewport sizing.
       const settings = document.querySelector(".modal.mod-settings");
       const size = settings?.getBoundingClientRect();
-      this.modalEl.style.width = size?.width ? `${size.width}px` : "var(--modal-setting-width, 90vw)";
-      this.modalEl.style.height = size?.height ? `${size.height}px` : "var(--modal-setting-height, 85vh)";
-      this.modalEl.style.maxWidth = "100vw";
-      this.modalEl.style.maxHeight = "100dvh";
+      this.modalEl.style.width = size?.width ? `${size.width}px` : "var(--modal-width, 90vw)";
+      this.modalEl.style.height = size?.height ? `${size.height}px` : "var(--modal-height, 85vh)";
+      this.modalEl.style.maxWidth = size?.width ? "100vw" : "var(--modal-max-width, 1100px)";
+      this.modalEl.style.maxHeight = size?.height ? "100dvh" : "var(--modal-max-height, 1000px)";
     } else if (resourceOnly) {
       this.modalEl.addClass("mod-form");
     } else {

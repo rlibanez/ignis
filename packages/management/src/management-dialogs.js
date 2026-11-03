@@ -8,7 +8,13 @@ export function installManagementDialogs(frame, host, modal, setIcon) {
   frame.append(style);
   const mobile = document.body.classList.contains("is-mobile");
   if (mobile) frame.classList.add("native-management-mobile");
-  const align = () => host.style.setProperty("--management-sheet-top", `${Math.max(0, modal.getBoundingClientRect().top)}px`);
+  const align = () => {
+    // Native mobile opening animations translate the modal from below the screen.
+    // Use its layout position, not that transient visual transform, for top-layer dialogs.
+    let top = -window.scrollY;
+    for (let node = modal; node; node = node.offsetParent) top += node.offsetTop;
+    host.style.setProperty("--management-sheet-top", `${Math.max(0, top)}px`);
+  };
   const decorate = (fragment = frame) => {
     align();
     // DropdownComponent produces a select.dropdown; retain the existing nodes
@@ -131,6 +137,8 @@ dialog.native-management-form,dialog.native-management-confirmation{color:var(--
 .native-management-mobile dialog.native-management-form{border-radius:var(--touch-radius-s,24px);height:auto;bottom:auto;max-height:calc(100dvh - var(--management-sheet-top,0px))}
 .native-management-mobile #delete-dialog .dialog-actions,.native-management-mobile .native-management-form :is(.dialog-actions,.password-actions){display:flex;flex-direction:column-reverse;align-items:stretch;gap:12px}
 .native-management-mobile #delete-dialog .dialog-actions>button,.native-management-mobile .native-management-form :is(.dialog-actions,.password-actions)>button{width:100%;margin:0;min-height:var(--input-height,44px)}
+.native-management-mobile :is(dialog.ignis-confirm,dialog#delete-dialog) .dialog-actions{flex-direction:column-reverse;align-items:stretch;gap:12px}
+.native-management-mobile :is(dialog.ignis-confirm,dialog#delete-dialog) .dialog-actions>button{width:100%;margin:0;min-height:var(--input-height,44px)}
 .native-management-form #reset-result .password-with-copy input{padding-inline-end:88px}
 .native-management-form #reset-result .password-copy{inset-inline-end:44px}
 .native-management-form #reset-result .copy-feedback{position:absolute;inset-inline-end:0;bottom:calc(100% + 6px);padding:4px 8px;border-radius:var(--radius-s,4px);background:var(--background-secondary);color:var(--text-normal);box-shadow:var(--shadow-s);font-size:var(--font-ui-small);pointer-events:none}

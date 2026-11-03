@@ -5,6 +5,12 @@ import { nativeTooltip } from "../../shim/src/native-tooltip.js";
 const t = (text, values = {}) => globalThis.IgnisI18n?.t(text, values) ?? text.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 
 export function createAccountSettings({Modal, Notice, setIcon, ManagementModal}) {
+  const createButton=(parent,options)=>{
+    const button=parent.createEl("button",options);
+    // Obsidian createEl applies `type` to inputs, not buttons. Be explicit in both hosts.
+    button.type=options.type || "button";
+    return button;
+  };
   const doc=globalThis.document;
   if(doc?.head && !doc.getElementById('ignis-account-form-styles')){
     const style=doc.createElement('style');style.id='ignis-account-form-styles';style.textContent=accountStyles;doc.head.append(style);
@@ -44,7 +50,7 @@ class PasswordModal extends AccountFormModal {
       const heading = field.createSpan({cls: "ignis-password-heading"});
       heading.createSpan({text: t(label)});
       if (key !== "currentPassword") {
-        const help = heading.createEl("button", {type: "button", text: "?", cls: "ignis-password-help"});
+        const help = createButton(heading, {type: "button", text: "?", cls: "ignis-password-help"});
         nativeTooltip(window, help, t("Password: at least {p0} characters and {p1} punctuation/symbol characters.", {
           p0: this.session.passwordPolicy.minLength,
           p1: this.session.passwordPolicy.minSpecialChars,
@@ -57,7 +63,7 @@ class PasswordModal extends AccountFormModal {
       input.autocomplete = key === "currentPassword" ? "current-password" : "new-password";
       input.required = true;
       input.maxLength = 1024;
-      const toggle = control.createEl("button", {type: "button", cls: "ignis-password-toggle"});
+      const toggle = createButton(control, {type: "button", cls: "ignis-password-toggle"});
       const updateToggle = () => {
         const visible = input.type === "text";
         toggle.setAttribute("aria-label", `${t(visible ? "Hide" : "Show")} ${t(label)}`);
@@ -72,20 +78,22 @@ class PasswordModal extends AccountFormModal {
       updateToggle();
       fields[key] = input;
     }
-    const error = form.createEl("p", {attr: {role: "alert"}});
+    const clearErrors=()=>{for(const field of Object.values(fields))field.setCustomValidity("");};
+    const fieldError=(field,message)=>{field.setCustomValidity(t(message));field.reportValidity();};
+    form.addEventListener("input",clearErrors);
     const actions = form.createDiv({cls: "modal-button-container"});
-    actions.createEl("button", {text: t("Cancel"), type: "button"})
+    createButton(actions, {text: t("Cancel"), type: "button"})
       .addEventListener("click", () => this.close());
-    const submit = actions.createEl("button", {text: t("Change password"), type: "submit", cls: "mod-cta"});
+    const submit = createButton(actions, {text: t("Change password"), type: "submit", cls: "mod-cta"});
     form.addEventListener("submit", async event => {
       event.preventDefault();
       if (submit.disabled) return;
-      error.textContent = "";
+      clearErrors();
       if (window.__ignis?.writes?.snapshotPending?.().length) {
-        error.textContent = t("Some writes are not confirmed. Wait for saving to finish or resolve failed writes before signing out."); return;
+        fieldError(fields.currentPassword,"Some writes are not confirmed. Wait for saving to finish or resolve failed writes before signing out."); return;
       }
       if (fields.newPassword.value !== fields.confirmation.value) {
-        error.textContent = t("New passwords do not match."); return;
+        fieldError(fields.confirmation,"New passwords do not match."); return;
       }
       submit.disabled = true;
       try {
@@ -99,7 +107,10 @@ class PasswordModal extends AccountFormModal {
         });
         if (!response.ok) {
           const body = await response.json();
-          error.textContent = body.code === "INVALID_PASSWORD" ? t("The current password is incorrect.") : t("Unable to change your password. Sign in again before retrying.");
+          if(body.code==="INVALID_PASSWORD")fieldError(fields.currentPassword,"Current password incorrect.");
+          else if(body.code==="PASSWORD_POLICY")fieldError(fields.newPassword,"The new password does not meet the password policy.");
+          else if(body.code==="PASSWORD_UNCHANGED")fieldError(fields.newPassword,"Choose a password different from your current password.");
+          else fieldError(fields.currentPassword,"Unable to change your password. Sign in again before retrying.");
           return;
         }
         this.close();
@@ -108,7 +119,7 @@ class PasswordModal extends AccountFormModal {
         }
         try { localStorage.clear(); sessionStorage.clear(); window.IgnisI18n?.rememberLanguage(); } catch { /* Sessions are already revoked. */ }
         window.location.assign("/login?password=changed");
-      } catch { error.textContent = t("The change could not be confirmed. Sign in again before retrying."); }
+      } catch { fieldError(fields.currentPassword,"The change could not be confirmed. Sign in again before retrying."); }
       finally { submit.disabled = false; fields.currentPassword.value = ""; }
     });
   }
@@ -130,7 +141,7 @@ class EmailModal extends AccountFormModal {
     const label=form.createEl("label",{cls:"ignis-password-field"});
     const heading=label.createSpan({cls:"ignis-password-heading"});
     heading.createSpan({text:t("Email (optional)")});
-    const help=heading.createEl("button",{type:"button",text:"?",cls:"ignis-password-help"});
+    const help=createButton(heading, {type:"button",text:"?",cls:"ignis-password-help"});
     nativeTooltip(window,help,t("Changing your email requires an administrator to verify it again. All your Ignis sessions will be closed."),{help:true});
     const email=label.createEl("input",{type:"email"});this.emailInput=email;email.autofocus=true;email.value=this.session.email ?? "";email.maxLength=254;email.autocomplete="email";
     const passwordLabel=form.createEl("label",{cls:"ignis-password-field",text:t("Current password")});
@@ -138,7 +149,7 @@ class EmailModal extends AccountFormModal {
     const password=control.createEl("input",{type:"password"});password.autocomplete="current-password";password.maxLength=1024;
     password.placeholder=t("Your current password...");
     password.addEventListener("input",()=>password.setCustomValidity(""));
-    const toggle=control.createEl("button",{type:"button",cls:"ignis-password-toggle"});
+    const toggle=createButton(control, {type:"button",cls:"ignis-password-toggle"});
     const updateToggle=()=>{
       const visible=password.type==="text";
       toggle.setAttribute("aria-label",`${t(visible ? "Hide" : "Show")} ${t("Current password")}`);
@@ -150,8 +161,8 @@ class EmailModal extends AccountFormModal {
     passwordLabel.hidden=this.session.recentAuthentication || !this.session.hasLocalPassword;
     const error=form.createEl("p",{attr:{role:"alert"}});
     const actions=form.createDiv({cls:"modal-button-container"});
-    actions.createEl("button",{text:t("Cancel"),type:"button"}).addEventListener("click",()=>this.close());
-    const submit=actions.createEl("button",{text:t("Save"),type:"submit",cls:"mod-cta"});
+    createButton(actions, {text:t("Cancel"),type:"button"}).addEventListener("click",()=>this.close());
+    const submit=createButton(actions, {text:t("Save"),type:"submit",cls:"mod-cta"});
     const post=async(path,body)=>{
       const csrf=await fetch("/api/auth/csrf",{credentials:"same-origin",cache:"no-store",signal:AbortSignal.timeout(15000)});
       if(!csrf.ok)throw new Error();
@@ -212,7 +223,7 @@ class UnlinkProviderModal extends AccountFormModal {
     const control = label.createSpan({cls:"ignis-password-control"});
     const input = control.createEl("input", {type:"password"});
     input.placeholder = t("Your current password...");
-    const toggle = control.createEl("button", {type:"button", cls:"ignis-password-toggle"});
+    const toggle = createButton(control, {type:"button", cls:"ignis-password-toggle"});
     const updateToggle = () => {
       const visible = input.type === "text";
       toggle.setAttribute("aria-label", `${t(visible ? "Hide" : "Show")} ${t("Current password")}`);
@@ -224,8 +235,8 @@ class UnlinkProviderModal extends AccountFormModal {
     input.required = true; input.autocomplete = "current-password"; input.maxLength = 1024;
     const error = form.createEl("p", {attr:{role:"alert"}});
     const actions = form.createDiv({cls:"modal-button-container"});
-    actions.createEl("button", {type:"button", text:t("Cancel")}).addEventListener("click", () => this.close());
-    const submit = actions.createEl("button", {type:"submit", text:t("Unlink"), cls:"mod-warning"});
+    createButton(actions, {type:"button", text:t("Cancel")}).addEventListener("click", () => this.close());
+    const submit = createButton(actions, {type:"submit", text:t("Unlink"), cls:"mod-warning"});
     form.addEventListener("submit", async event => {
       event.preventDefault();
       if (submit.disabled) return;

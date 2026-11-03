@@ -833,6 +833,16 @@ it("changes a normal user's own password and revokes every session", async () =>
   const fresh = await login("normal", "replacement-passphrase");
   expect((await request("/api/auth/session", { jar: fresh })).status).toBe(200);
 });
+it.each([
+  ["incorrect", "replacement-passphrase", "INVALID_PASSWORD"],
+  [PASSWORD, "x", "PASSWORD_POLICY"],
+])("identifies password change errors without revoking the session: %s", async (currentPassword,newPassword,code) => {
+  const jar=await login("normal");
+  const response=await request("/api/auth/password",{jar,method:"POST",
+    headers:{"x-ignis-csrf":await csrf(jar)},body:{currentPassword,newPassword}});
+  expect(response.status).toBe(400);expect(await response.json()).toMatchObject({code});
+  expect((await request("/api/auth/session",{jar})).status).toBe(200);
+});
 it("requires a session, CSRF, same origin and an exact password change payload", async () => {
   const body = { currentPassword: PASSWORD, newPassword: "replacement-passphrase" };
   expect((await request("/api/auth/password", { method: "POST", body })).status).toBe(401);

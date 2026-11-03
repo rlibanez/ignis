@@ -350,6 +350,18 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   const reauthForm = byId("reauth-form");
   const reauthOidc = byId("reauth-oidc");
   const reauthStatus = byId("reauth-status");
+  const clearReauthError = () => {
+    reauthStatus.textContent = "";
+    reauthForm.elements.password.setCustomValidity("");
+  };
+  const reauthError = (message, oidc) => {
+    if (oidc) reauthStatus.textContent = translateIgnis(message);
+    else {
+      reauthForm.elements.password.setCustomValidity(translateIgnis(message));
+      reauthForm.elements.password.reportValidity();
+    }
+  };
+  reauthForm.elements.password.addEventListener("input", clearReauthError);
   let pendingUser = null, activeSession = null, reauthBusy = false;
   const editActions = new Map();
   const deleteActions = new Map();
@@ -365,7 +377,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     if (dialog.open) dialog.close();
     if (editDialog.open) editDialog.close();
     reauthForm.reset();
-    reauthStatus.textContent = "";
+    clearReauthError();
     byId("reauth-user").textContent = translateIgnis("Signed in as {p0}", {p0: (activeSession.user.login)});
     reauthForm.hidden = !activeSession.hasLocalPassword;
     reauthOidc.hidden = !activeSession.oidcLinked;
@@ -379,7 +391,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   reauthDialog.addEventListener("cancel", event => {
     if (reauthBusy) event.preventDefault(); else pendingUser = null;
   });
-  reauthDialog.addEventListener("close", () => reauthForm.reset());
+  reauthDialog.addEventListener("close", () => { reauthForm.reset(); clearReauthError(); });
   async function resumeEdit() {
     const target = pendingUser;
     pendingUser = null;
@@ -389,6 +401,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   }
   async function confirmIdentity(oidc) {
     if (reauthBusy || locked) return;
+    clearReauthError();
     reauthBusy = true;
     const submit = reauthForm.querySelector('button[type="submit"]');
     submit.disabled = reauthOidc.disabled = true;
@@ -400,7 +413,9 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
         body: JSON.stringify(oidc ? {} : { password: reauthForm.elements.password.value }),
       });
       if (!response.ok || locked) {
-        reauthStatus.textContent = response.status === 429 ? translateIgnis("Too many attempts. Wait before trying again.") : translateIgnis("Unable to confirm your identity. Check your password or try again.");
+        if (!locked) reauthError(response.status === 429 ? "Too many attempts. Wait before trying again."
+          : !oidc && response.status === 400 ? "Incorrect password"
+            : "Unable to confirm your identity. Check your password or try again.", oidc);
         return;
       }
       const result = await response.json();
@@ -415,7 +430,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
         reauthDialog.close();
         await resumeEdit();
       }
-    } catch { if (!locked) reauthStatus.textContent = translateIgnis("Unable to confirm your identity. Try again."); }
+    } catch { if (!locked) reauthError("Unable to confirm your identity. Try again.", oidc); }
     finally { reauthForm.reset(); reauthBusy = false; submit.disabled = reauthOidc.disabled = false; }
   }
   reauthForm.addEventListener("submit", event => { event.preventDefault(); confirmIdentity(false); });
