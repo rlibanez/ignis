@@ -12,6 +12,7 @@ import sveltePlugin from 'esbuild-svelte';
 const repo=fileURLToPath(new URL('../',import.meta.url));
 const chrome=process.env.IGNIS_CHROME_PATH || '/opt/google/chrome/chrome';
 const mobile=process.argv.includes('--mobile');
+const viewport=process.argv.includes('--landscape')?[844,390]:process.argv.includes('--compact')?[360,800]:[390,844];
 const screenshotDirectory=process.env.IGNIS_UI_SCREENSHOTS;
 const nativeCss=process.env.IGNIS_OBSIDIAN_CSS;
 (async()=>{
@@ -24,7 +25,7 @@ const nativeCss=process.env.IGNIS_OBSIDIAN_CSS;
   if(req.url==='/overrides.css'){res.setHeader('Content-Type','text/css');return res.end(fs.readFileSync(repo+'/apps/ignis-server/server/assets/overrides.css'));}
   if(req.url==='/test-harness.js'){res.setHeader('Content-Type','text/javascript');return res.end(harness.outputFiles[0].text);}
   if(req.url==='/bundle.js'){res.setHeader('Content-Type','text/javascript');return res.end(fs.readFileSync(repo+'/packages/ui/dist/ignis-ui.js'));}
-  if(req.url==='/'){res.setHeader('Content-Type','text/html');return res.end(`<!doctype html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">${nativeCss?'<link rel="stylesheet" href="/native.css">':''}<link rel="stylesheet" href="/overrides.css"></head><body class="theme-dark"><script>window.__ignisAuth={role:'admin',logout(){}};window.__ignis_registerUI=()=>{};</script><script src="/bundle.js"></script><script src="/test-harness.js"></script></body>`);}
+  if(req.url==='/'){res.setHeader('Content-Type','text/html');return res.end(`<!doctype html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">${nativeCss?'<link rel="stylesheet" href="/native.css">':''}<link rel="stylesheet" href="/overrides.css"></head><body class="theme-dark"><script>${mobile?"document.body.classList.add('is-mobile','is-phone');":''}window.__ignisAuth={role:'admin',logout(){}};window.__ignis_registerUI=()=>{};</script><script src="/bundle.js"></script><script src="/test-harness.js"></script></body>`);}
   if(req.url==='/api/auth/session')return json({sessionId:'s',user:{id:'a',login:'alice',role:'admin'},email:'a@example.com',emailTrust:'unverified',hasLocalPassword,oidcLinked:true,passwordPolicy:{minLength:8,minSpecialChars:0},recentAuthentication:true});
   if(req.url==='/api/auth/status')return json({initialized:true,oidcAvailable:true,oidcButtonText:'Provider',passwordPolicy:{minLength:8,minSpecialChars:0}});
   if(req.url==='/api/auth/users' && req.method==='POST'){res.statusCode=400;return json({error:'Invalid user'});}
@@ -45,7 +46,7 @@ const nativeCss=process.env.IGNIS_OBSIDIAN_CSS;
   let id=0;const waiting=new Map();ws.on('message',raw=>{const data=JSON.parse(raw);if(data.id){waiting.get(data.id)?.(data);waiting.delete(data.id);}if(data.method==='Runtime.exceptionThrown')errors.push(data.params.exceptionDetails.exception?.description || data.params.exceptionDetails.text);});
   const call=(method,params={})=>new Promise((resolve,reject)=>{const i=++id;waiting.set(i,result=>result.error?reject(Error(JSON.stringify(result.error))):resolve(result.result));ws.send(JSON.stringify({id:i,method,params}));});
   const run=async expression=>{const data=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(data.exceptionDetails)throw Error(data.exceptionDetails.exception?.description||data.exceptionDetails.text);return data.result.value;};
-  await call('Runtime.enable');if(mobile)await call('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await call('Page.navigate',{url:'http://127.0.0.1:'+server.address().port});
+  await call('Runtime.enable');if(mobile)await call('Emulation.setDeviceMetricsOverride',{width:viewport[0],height:viewport[1],deviceScaleFactor:1,mobile:true});await call('Page.navigate',{url:'http://127.0.0.1:'+server.address().port});
   for(let i=0;i<100;i++){if(await run('typeof window.IgnisUI?.openAccount === "function"'))break;await new Promise(r=>setTimeout(r,100));}
   if(errors.length)throw Error(errors.join('\n'));await run(`IgnisUI.openAccount();`);await new Promise(r=>setTimeout(r,250));
   const screenshot=async name=>{
@@ -110,6 +111,8 @@ const nativeCss=process.env.IGNIS_OBSIDIAN_CSS;
   await screenshot('individual-resource');
   await run(`document.querySelector('[data-close="manage-dialog"]').click()`);await new Promise(r=>setTimeout(r,50));
   if(await run(`document.querySelectorAll('.ignis-shell-modal').length`))throw Error('Individual resource did not dispose its host');
+  const retained=await run(`(async()=>{const Native=BroadcastChannel,active=new Set();window.BroadcastChannel=class extends Native{constructor(name){super(name);active.add(this);}close(){active.delete(this);super.close();}};try{for(let i=0;i<100;i++){const modal=testIndividualResource();await new Promise(r=>setTimeout(r,0));modal.close();}await new Promise(r=>setTimeout(r,50));return {channels:active.size,modals:document.querySelectorAll('.ignis-shell-modal').length};}finally{window.BroadcastChannel=Native;}})()`);
+  if(retained.channels || retained.modals)throw Error('Closing 100 components retained resources: '+JSON.stringify(retained));
   if(requests.some(url=>['/account','/shares','/admin/users'].includes(url)))throw Error('Standalone page requested');
   if(errors.length)throw Error('Runtime errors: '+errors);
   console.log(`PASS (${mobile?'mobile':'desktop'}): zero-vault account, email, users, sharing and OIDC password setup; no standalone HTML fetches or runtime errors`);

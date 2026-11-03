@@ -1,9 +1,9 @@
-function mountLogin(scope = {}) {
-  const document = scope.document ?? globalThis.document;
-  const window = scope.window ?? globalThis.window;
-  const location = scope.location ?? globalThis.location;
-  const fetch = scope.fetch ?? globalThis.fetch;
-  const BroadcastChannel = scope.BroadcastChannel ?? globalThis.BroadcastChannel;
+function mountLogin() {
+  const document = globalThis.document;
+  const window = globalThis.window;
+  const location = globalThis.location;
+  const fetch = globalThis.fetch;
+  const BroadcastChannel = globalThis.BroadcastChannel;
 var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 
   let providerName = "OpenID Connect";
@@ -15,7 +15,6 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
 
   const form = document.getElementById("login-form");
   const status = document.getElementById("status");
-  const logout = document.getElementById("sign-out");
   const button = form.querySelector('button[type="submit"]');
   const oidcButton = document.getElementById("oidc-sign-in");
   let activeSessionId = null;
@@ -156,28 +155,6 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     } finally {
       form.elements.password.value = "";
       button.disabled = false;
-    }
-  });
-  let logoutConfirmed = false;
-  logout.addEventListener("click", async () => {
-    logout.disabled = true;
-    try {
-      if (!logoutConfirmed) {
-        const response = await request("/api/auth/logout", {});
-        if (!response.ok) throw new Error();
-        logoutConfirmed = true;
-        channel?.postMessage("lock");
-        form.hidden = oidcButton.hidden = true;
-      }
-      await clearBrowserData();
-      location.replace("/login");
-    } catch {
-      status.classList.add("auth-error");
-      status.textContent = logoutConfirmed
-        ? translateIgnis("You are signed out. Close other Ignis tabs, then retry cleanup to remove this account's local browser data.")
-        : translateIgnis("Unable to confirm sign-out. Please try again.");
-      logout.textContent = logoutConfirmed ? translateIgnis("Retry cleanup") : translateIgnis("Sign out");
-      logout.disabled = false;
     }
   });
   async function start() {

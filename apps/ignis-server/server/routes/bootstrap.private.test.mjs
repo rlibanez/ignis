@@ -42,7 +42,7 @@ it("projects shared configuration without leaking other vaults or server code th
         } else {
           expect(result.vaultList).toEqual([{id:"Notes",uuid:"uuid"}]);
           expect(result.vault.path).toBe("/");
-          expect(result.configurationMode).toBe("shared");
+          expect(result).not.toHaveProperty("configurationMode");
           expect(JSON.stringify(result)).not.toMatch(/Other|shared-plugin|shared-code|shared-etag|\/vaults/);
         }
         expect(headers["Cache-Control"]).toBe("no-store");

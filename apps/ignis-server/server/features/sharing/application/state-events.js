@@ -3,10 +3,12 @@
 function createStateEvents({resolve, snapshot, valid, entries}) {
   function capture(token) { return JSON.stringify(snapshot(token)); }
   function reconcile() {
+    const snapshots=new Map();
     for (const [ws,entry] of entries) {
       try {
         if (!valid(ws) || !entry.events) continue;
-        const next=capture(entry.token);
+        if(!snapshots.has(entry.token))snapshots.set(entry.token,capture(entry.token));
+        const next=snapshots.get(entry.token);
         if (next===entry.stateSnapshot) continue;
         const before=JSON.parse(entry.stateSnapshot),after=JSON.parse(next);
         entry.stateSnapshot=next;

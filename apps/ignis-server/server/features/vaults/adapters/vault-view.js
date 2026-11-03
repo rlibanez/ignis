@@ -54,7 +54,6 @@ function createVaultView({ administrator, authorize, uuid, membership }) {
       vaultList: list(response.vaultList),
       tree,
       etag: '"' + createHash("sha256").update(JSON.stringify(tree)).digest("hex") + '"',
-      configurationMode: "shared",
       plugins: [],
       virtualPlugins: [],
       settings: {

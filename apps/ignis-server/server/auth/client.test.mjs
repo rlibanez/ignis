@@ -366,3 +366,9 @@ it.each(["present", "dirty", "session", "failed"])("preserves protection during 
   expect(f.redirects).toEqual([]);
   expect(f.window.__ignisAuth.blocked).toBe(true);
 });
+
+it('retains the verified account and its storage if server logout was not confirmed',async()=>{
+ const f=await fixture();const start=f.events.length;f.status(503);await f.window.__ignisAuth.logout();
+ expect(f.events.slice(start)).not.toContain('storage-clear');expect(f.events.slice(start)).not.toContain('redirect');
+ expect(f.events.slice(start)).not.toContain('ignis:auth-lost');expect(f.window.__ignisAuth.blocked).toBe(false);
+});

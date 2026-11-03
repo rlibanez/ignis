@@ -23,6 +23,11 @@ async function permitSubtree(req, root, source, capability, destination = null) 
 }
 
 function filterTree(req, root, tree) {
+  if(req.authorizeVaultFiles){
+    const entries=Object.entries(tree);
+    const allowed=req.authorizeVaultFiles(req._vaultId,entries.map(([relative,entry])=>({path:relative,capability:entry.type==="directory"?"content.list":"content.read"})));
+    return Object.fromEntries(entries.filter((_,index)=>allowed[index]));
+  }
   return Object.fromEntries(Object.entries(tree).filter(([relative, entry]) =>
     permit(req, root, path.join(root, relative), entry.type === "directory" ? "content.list" : "content.read")));
 }

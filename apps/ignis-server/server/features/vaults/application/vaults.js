@@ -32,6 +32,11 @@ function createVaults({store,sessions,access,createView}){
   });
   return Object.freeze({
    context,check,authorize,resolve,revalidateView,
+   project:(reference,operations)=>{
+    const decision=access.project(token,reference,operations);
+    if(decision.allowed&&!sameContext(decision))unavailable();
+    return decision;
+   },
    resolveRequest:(query,body)=>{guard();return store.resolveRequest(query,body);},
    resolvePluginRequest:(query,body,field)=>{admin();return store.resolvePluginRequest(query,body,field);},
    state:reference=>{guard();return store.state(reference);},

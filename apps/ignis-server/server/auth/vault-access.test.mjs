@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, afterEach, it, expect } from "vitest";
+import { beforeAll, beforeEach, afterEach, it, expect, vi } from "vitest";
 import { createRequire } from "node:module";
 import fs from "node:fs";
 import os from "node:os";
@@ -96,4 +96,28 @@ it("rejects aliases to protected data, including links in parent directories", (
     expect(access.check(token, { ...read(a.id), path: "alias/secret.json" })).toEqual({ allowed: false });
     expect(access.check(token, { ...read(a.id), capability: "content.list", path: "alias" })).toEqual({ allowed: false });
   }
+});
+
+it("projects a thousand paths with one session lookup and bounded SQL work",()=>{
+ const resolve=vi.fn(sessions.resolve),executed=vi.fn();
+ const prepare=vi.fn(sql=>{const statement=db.prepare(sql);return {
+  get(...params){executed(sql);return statement.get(...params);},
+  all(...params){executed(sql);return statement.all(...params);},
+ };});
+ const batch=createVaultAccessService({exec:sql=>db.exec(sql),prepare},vaultRoot,{resolve});
+ const operations=Array.from({length:1000},(_,i)=>({capability:'content.read',path:'Folder/note'+i+'.md'}));
+ const result=batch.project(alice,a.id,operations);
+ expect(result.allowed).toBe(true);expect(result.permittedOperations.every(Boolean)).toBe(true);
+ expect(resolve).toHaveBeenCalledOnce();expect(prepare.mock.calls.length).toBeLessThanOrEqual(4);expect(executed.mock.calls.length).toBeLessThanOrEqual(4);
+ // No client-supplied principal overrides the snapshot's authenticated roles.
+ expect(batch.project(alice,a.id,[{capability:'content.write',path:'note.md',membership:'owner',instanceRole:'admin'}]).permittedOperations).toEqual([false]);
+});
+it("does not retain membership or symlink decisions across projections",()=>{
+ const folder=path.join(vaultRoot,'A','Folder');fs.mkdirSync(folder);fs.writeFileSync(path.join(folder,'note.md'),'safe');
+ const operations=[{capability:'content.read',path:'Folder/note.md'}];
+ expect(access.project(alice,a.id,operations).permittedOperations).toEqual([true]);
+ fs.renameSync(folder,folder+'Old');fs.symlinkSync(folder+'Old',folder);
+ expect(access.project(alice,a.id,operations).permittedOperations).toEqual([false]);
+ db.prepare("DELETE FROM memberships WHERE user_id='alice'").run();
+ expect(access.project(alice,a.id,operations)).toEqual({allowed:false});
 });

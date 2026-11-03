@@ -18,7 +18,10 @@
     "test:watch": "vitest",
     "test:load": "node scripts/check-load.mjs",
     "test:image": "node scripts/check-image.mjs",
-    "test:content-faults": "node scripts/check-content-faults.mjs"
+    "test:content-faults": "node scripts/check-content-faults.mjs",
+    "test:management": "node scripts/check-management-ui.mjs && node scripts/check-management-ui.mjs --mobile && node scripts/check-management-ui.mjs --mobile --compact && node scripts/check-management-ui.mjs --mobile --landscape",
+    "test:runtime": "node scripts/check-obsidian-runtime.mjs && node scripts/check-obsidian-runtime.mjs --mobile",
+    "test:budget": "node scripts/compare-load.mjs"
   },
   "dependencies": {
     "acorn": "^8.18.0",

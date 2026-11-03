@@ -492,17 +492,27 @@ function createAuthBoundary({
           reference: req.query.vault || req.body?.vault, capability: "vault.refresh", path: "",
         }).allowed) return safe(res, 404, "Vault unavailable");
         const fileChecks = new Map();
-        req.authorizeVaultFile = (directory, capability, relativePath) => {
+        function rememberOperations(decision,operations){
+          if(!operations.length)return;
+          const reference=decision.vaultId;
+          if(!fileChecks.has(reference))fileChecks.set(reference,new Map());
+          for(const operation of operations)fileChecks.get(reference).set(JSON.stringify([operation.capability,operation.path]),operation);
+          req.revalidateVaultFile=()=>scope.revalidateView() && [...fileChecks].every(([id,items])=>{
+            const currentDecision=vaultAccess.checkMany(cookies.read(req.headers.cookie),id,[...items.values()]);
+            return currentDecision.allowed && currentDecision.sessionId===current.id;
+          });
+        }
+        req.authorizeVaultFile=(directory,capability,relativePath)=>{
           const decision=scope.authorize(directory,capability,relativePath);
           if(!decision.allowed)return false;
-          const reference=decision.vaultId;
-          if (!fileChecks.has(reference)) fileChecks.set(reference, new Map());
-          fileChecks.get(reference).set(JSON.stringify([capability, relativePath]), { capability, path: relativePath });
-          req.revalidateVaultFile = () => scope.revalidateView() && [...fileChecks].every(([id, operations]) => {
-            const decision = vaultAccess.checkMany(cookies.read(req.headers.cookie), id, [...operations.values()]);
-            return decision.allowed && decision.sessionId === current.id;
-          });
-          return true;
+          rememberOperations(decision,[{capability,path:relativePath}]);return true;
+        };
+        req.authorizeVaultFiles=(directory,operations)=>{
+          if(!operations.length)return [];
+          const decision=scope.project(directory,operations);
+          if(!decision.allowed)return operations.map(()=>false);
+          rememberOperations(decision,operations.filter((_,index)=>decision.permittedOperations[index]));
+          return decision.permittedOperations;
         };
         req.renameVaultResource = (directory,oldPath,newPath) => {
           const reference=scope.resolve(directory).id;

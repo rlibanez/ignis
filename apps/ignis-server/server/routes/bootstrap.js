@@ -30,7 +30,6 @@ router.get("/", async (req, res) => {
     entry = { ...entry, response: { ...entry.response, tree }, compressed: {} };
     // Trusted community plugins use the vault's shared Obsidian configuration.
     // The resource policy still enforces membership and read/write permissions.
-    entry.response.configurationMode = "shared";
     entry.response.vault = { ...entry.response.vault, uuid: req.vaultUUID?.(vaultId) };
     // The authorized view filters the catalog before resolving any UUID.
 

@@ -28,3 +28,11 @@ it('does not query account catalogs for vault-only subscribers',()=>{
  createStateEvents({entries:new Map([[ws,entry]]),valid:()=>true,resolve:()=>null,snapshot}).reconcile();
  expect(snapshot).not.toHaveBeenCalled();
 });
+
+it('projects each session once per flush, but still validates each socket',()=>{
+ const entries=new Map(),snapshot=vi.fn(()=>({user:{id:'alice'},shares:[]})),valid=vi.fn(()=>true);
+ const hub=createStateEvents({entries,snapshot,valid,resolve:()=>({user:{id:'alice'}})});
+ for(let i=0;i<50;i++)entries.set({readyState:1},{events:true,token:'same-session',stateSnapshot:'null',sendState:vi.fn()});
+ hub.reconcile();expect(snapshot).toHaveBeenCalledOnce();expect(valid).toHaveBeenCalledTimes(50);
+ hub.reconcile();expect(snapshot).toHaveBeenCalledTimes(2);
+});

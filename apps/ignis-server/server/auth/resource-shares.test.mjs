@@ -37,7 +37,7 @@ it("shares a single file but neither its parent nor sibling",async()=>{
 });
 it.each(["admin","recipient","outsider","bad"])("denies non-owner %s management",token=>{
  expect(()=>service.create(token,{vault:vault.id,path:"Project",login:"recipient",role:"editor"})).toThrow();
- const id=share();expect(()=>service.grant(token,{action:"revoke",id,revision:1})).toThrow();
+ const id=share();expect(()=>service.revoke(token,{action:"revoke",id,revision:1})).toThrow();
 });
 it("does not let a guessed share ID authorize outsiders",async()=>{const id=share();await expect(service.read("outsider",{id,path:""})).rejects.toThrow();expect(service.catalog("outsider").resources).toEqual([]);});
 it.each(["../secret.md","/secret.md","Project/../secret.md","Project//note.md","Project\\note.md",".obsidian/plugins.json","Project/.git/config","Project/note.md ","Project/note.md/."])("rejects invalid or protected path %s",p=>{expect(()=>share(p)).toThrow();});
@@ -66,8 +66,8 @@ it("protects the root, hidden configuration and stale existing files on creation
  await expect(write(id,null,"overwrite")).rejects.toMatchObject({code:"SHARE_CONFLICT"});await expect(write(id,null,"config",".obsidian/plugins.json")).rejects.toThrow();
 });
 it("revokes access, handles downgrade and refuses stale permission updates",async()=>{
- const id=share("Project","editor"),file=await read(id,"note.md");service.grant("owner",{action:"grant",id,revision:1,login:"recipient",role:"reader"});await expect(write(id,file.etag)).rejects.toThrow();
- expect(()=>service.grant("owner",{action:"revoke",id,revision:1})).toThrow();service.grant("owner",{action:"revoke",id,revision:2});await expect(read(id)).rejects.toThrow();
+ const id=share("Project","editor"),file=await read(id,"note.md");service.grants("owner",{id,revision:1,changes:[{login:"recipient",role:"reader"}]});await expect(write(id,file.etag)).rejects.toThrow();
+ expect(()=>service.revoke("owner",{action:"revoke",id,revision:1})).toThrow();service.revoke("owner",{action:"revoke",id,revision:2});await expect(read(id)).rejects.toThrow();
 });
 it("checks disabled users, revoked sessions and inactive vaults on each access",async()=>{
  const id=share();active=false;await expect(read(id)).rejects.toThrow();active=true;db.prepare("UPDATE users SET status='disabled' WHERE id='recipient'").run();await expect(read(id)).rejects.toThrow();
@@ -75,11 +75,11 @@ it("checks disabled users, revoked sessions and inactive vaults on each access",
 });
 it("never follows a replacement root and lets the owner revoke the stale share",async()=>{
  const id=share();fs.renameSync(path.join(root,"Notes","Project"),path.join(root,"Notes","Old"));fs.mkdirSync(path.join(root,"Notes","Project"));fs.writeFileSync(path.join(root,"Notes","Project","secret.md"),"private");
- await expect(read(id)).rejects.toThrow();expect(service.catalog("recipient").resources).toEqual([]);expect(service.catalog("owner").resources[0].available).toBe(false);service.grant("owner",{action:"revoke",id,revision:1});
+ await expect(read(id)).rejects.toThrow();expect(service.catalog("recipient").resources).toEqual([]);expect(service.catalog("owner").resources[0].available).toBe(false);service.revoke("owner",{action:"revoke",id,revision:1});
 });
 it("transfers management with vault ownership without turning admin into owner",()=>{
  const id=share();db.prepare("UPDATE memberships SET role='editor' WHERE user_id='owner'").run();db.prepare("INSERT INTO memberships VALUES (?,'admin','owner')").run(vault.id);
- expect(()=>service.grant("owner",{action:"revoke",id,revision:1})).toThrow();expect(service.grant("admin",{action:"revoke",id,revision:1})).toEqual({ok:true});
+ expect(()=>service.revoke("owner",{action:"revoke",id,revision:1})).toThrow();expect(service.revoke("admin",{action:"revoke",id,revision:1})).toEqual({ok:true});
 });
 it("rolls back grants and resource creation when audit fails",()=>{
  db.exec("CREATE TRIGGER fail_audit BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT,'audit failed'); END");expect(()=>share()).toThrow();expect(db.prepare("SELECT * FROM shared_resources").all()).toEqual([]);
@@ -99,11 +99,11 @@ it("enforces file and listing limits before returning data",async()=>{
 });
 it("rolls back permission edits and revision when audit fails",()=>{
  const id=share();db.exec("CREATE TRIGGER fail_audit BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT,'audit failed'); END");
- expect(()=>service.grant("owner",{action:"grant",id,revision:1,login:"recipient",role:"editor"})).toThrow();
+ expect(()=>service.grants("owner",{id,revision:1,changes:[{login:"recipient",role:"editor"}]})).toThrow();
  expect(db.prepare("SELECT role FROM resource_grants WHERE resource_id=?").get(id).role).toBe("reader");expect(db.prepare("SELECT revision FROM shared_resources WHERE id=?").get(id).revision).toBe(1);
 });
 it("revalidates a revoked grant after waiting for vault writes",async()=>{
- const id=share("Project","editor");const reading=read(id,"note.md");service.grant("owner",{action:"revoke",id,revision:1});await expect(reading).rejects.toThrow();
+ const id=share("Project","editor");const reading=read(id,"note.md");service.revoke("owner",{action:"revoke",id,revision:1});await expect(reading).rejects.toThrow();
 });
 it("does not truncate an existing file if writing the temporary file fails",async()=>{
  const id=share("Project/note.md","editor"),old=await read(id),original=fs.writeSync;
@@ -135,7 +135,7 @@ it('builds explorer mounts only from granted resources, excluding private config
  const id=share();fs.mkdirSync(path.join(root,'Notes','Project','.hidden'));fs.symlinkSync('../secret.md',path.join(root,'Notes','Project','link'));
  const destination=makeDestination();service.destination('recipient',{id,vault:destination.id});
  const snapshot=service.mounts('recipient',{vault:destination.id});expect(snapshot.mounts).toHaveLength(1);expect(snapshot.mounts[0]).toMatchObject({id,role:'reader',kind:'directory'});expect(Object.keys(snapshot.mounts[0].tree)).toEqual(['','note.md']);expect(()=>service.mounts('outsider',{vault:destination.id})).toThrow();expect(service.mounts('owner',{vault:vault.id}).mounts).toEqual([]);
- service.grant('owner',{action:'revoke',id,revision:1});expect(service.mounts('recipient',{vault:destination.id}).mounts).toEqual([]);
+ service.revoke('owner',{action:'revoke',id,revision:1});expect(service.mounts('recipient',{vault:destination.id}).mounts).toEqual([]);
 });
 it('rejects explorer snapshots after session revocation',()=>{share();active=false;expect(()=>service.mounts('recipient')).toThrow();});
 
@@ -165,7 +165,7 @@ it('clears placement on destination membership removal and grant removal',()=>{
  db.prepare("DELETE FROM memberships WHERE vault_id=? AND user_id='recipient'").run(a.id);
  expect(db.prepare('SELECT * FROM resource_destinations').all()).toEqual([]);
  db.prepare("INSERT INTO memberships VALUES (?,'recipient','owner')").run(a.id);expect(service.mounts('recipient',{vault:a.id}).mounts).toEqual([]);
- service.destination('recipient',{id,vault:a.id});service.grant('owner',{action:'grant',id,revision:1,login:'recipient',role:null});expect(db.prepare('SELECT * FROM resource_destinations').all()).toEqual([]);
+ service.destination('recipient',{id,vault:a.id});service.grants('owner',{id,revision:1,changes:[{login:'recipient',role:null}]});expect(db.prepare('SELECT * FROM resource_destinations').all()).toEqual([]);
 });
 it('rolls back placement on audit failure and rejects inactive destinations',()=>{
  const a=makeDestination(),id=share();db.prepare("UPDATE vaults SET status='quarantine' WHERE id=?").run(a.id);expect(()=>service.destination('recipient',{id,vault:a.id})).toThrow();
@@ -173,7 +173,7 @@ it('rolls back placement on audit failure and rejects inactive destinations',()=
 });
 it('keeps two recipients choices independent and clears deleted destinations',()=>{
  const a=makeDestination(),b=makeDestination('Outside','outsider'),id=share();
- service.grant('owner',{action:'grant',id,revision:1,login:'outsider',role:'reader'});
+ service.grants('owner',{id,revision:1,changes:[{login:'outsider',role:'reader'}]});
  service.destination('recipient',{id,vault:a.id});service.destination('outsider',{id,vault:b.id});
  service.destination('recipient',{id,vault:null});expect(service.catalog('outsider').resources[0].destination).toBe(b.id);
  db.prepare('DELETE FROM vaults WHERE id=?').run(b.id);expect(service.catalog('outsider').resources[0].destination).toBe(null);
@@ -205,7 +205,7 @@ it('renames writable notes and folders while preserving nested explicit grants',
 });
 it('denies rename for Read, foreign users, traversal and missing destination parents',async()=>{
  const id=share(),file=await read(id,'note.md');await expect(service.rename('recipient',{id,path:'note.md',to:'Other.md',etag:file.etag})).rejects.toThrow();
- service.grant('owner',{action:'grant',id,revision:1,login:'recipient',role:'editor'});
+ service.grants('owner',{id,revision:1,changes:[{login:'recipient',role:'editor'}]});
  for(const [token,from,to] of [['admin','note.md','Other.md'],['recipient','','Other'],['recipient','note.md','../Other.md'],['recipient','note.md','.hidden'],['recipient','note.md','Sub/Other.md']])await expect(service.rename(token,{id,path:from,to,etag:file.etag})).rejects.toThrow();
 });
 it('rejects stale revisions, overwrites and protected descendants on rename',async()=>{
@@ -243,7 +243,7 @@ it('refuses rename when a new buffered write appeared after the flush',async()=>
 it.each(['Project','secret.md'])('keeps independent aliases when the owner renames %s',async original=>{
  const id=share(original,'editor'),a=makeDestination(),b=makeDestination('Outside','outsider');
  fs.mkdirSync(path.join(root,'Inbox','Work'));
- service.grant('owner',{action:'grant',id,revision:1,login:'outsider',role:'reader'});
+ service.grants('owner',{id,revision:1,changes:[{login:'outsider',role:'reader'}]});
  const alias=original==='Project'?'carpetaAdmin':'admin.md',other=original==='Project'?'admin':'mario.md',to=original==='Project'?'carpetaMain':'main.md';
  service.destination('recipient',{id,vault:a.id,localPath:'Work/'+alias});service.destination('outsider',{id,vault:b.id,localPath:other});
  fs.writeFileSync(path.join(root,'Outside',to),'local collision with original name');
@@ -283,7 +283,7 @@ it('exposes outgoing badges only to the current vault owner and only for live re
  expect(service.mounts('outsider',{vault:vault.id}).outgoing).toEqual([]);
  const other=makeDestination('Other','owner');expect(service.mounts('owner',{vault:other.id}).outgoing).toEqual([]);
  expect(()=>service.mounts('admin',{vault:vault.id})).toThrow();
- service.grant('owner',{action:'revoke',id,revision:1});expect(service.mounts('owner',{vault:vault.id}).outgoing).toEqual([{path:'secret.md',kind:'file'}]);
+ service.revoke('owner',{action:'revoke',id,revision:1});expect(service.mounts('owner',{vault:vault.id}).outgoing).toEqual([{path:'secret.md',kind:'file'}]);
  fs.unlinkSync(path.join(root,'Notes','secret.md'));expect(service.mounts('owner',{vault:vault.id}).outgoing).toEqual([]);
  fs.writeFileSync(path.join(root,'Notes','secret.md'),'replacement');expect(service.mounts('owner',{vault:vault.id}).outgoing).toEqual([]);
  expect(single).toBeTruthy();
@@ -384,7 +384,7 @@ it('rejects descendant cycles, target collisions, missing parents and symlink de
 it('rechecks Write after draining a cross-directory move',async()=>{
  const id=share('Project','editor');fs.mkdirSync(path.join(root,'Notes/Project/Sub'));
  const etag=(await read(id,'note.md')).etag;
- const flush=vi.spyOn(writeCoalescer,'flushPendingSubtree').mockImplementationOnce(async()=>{service.grant('owner',{action:'grant',id,revision:1,login:'recipient',role:'reader'});});
+ const flush=vi.spyOn(writeCoalescer,'flushPendingSubtree').mockImplementationOnce(async()=>{service.grants('owner',{id,revision:1,changes:[{login:'recipient',role:'reader'}]});});
  try{await expect(service.rename('recipient',{id,path:'note.md',to:'Sub/note.md',etag})).rejects.toThrow();}finally{flush.mockRestore();}
  expect(fs.existsSync(path.join(root,'Notes/Project/note.md'))).toBe(true);
 });
@@ -592,7 +592,7 @@ it('refreshes placement snapshots per request and retains collisions from stale 
  fs.renameSync(path.join(root,'Notes/secret.md'),path.join(root,'Notes/moved.md'));
  let mounts=service.mounts('recipient',{vault:dest}).mounts;
  expect(mounts).toHaveLength(1);expect(mounts[0].blocked).toBe(true);expect(mounts[0].tree).toEqual({});
- service.grant('owner',{action:'revoke',id:second,revision:1});
+ service.revoke('owner',{action:'revoke',id:second,revision:1});
  mounts=service.mounts('recipient',{vault:dest}).mounts;
  expect(mounts).toHaveLength(1);expect(mounts[0].blocked).not.toBe(true);expect(mounts[0].tree).toHaveProperty('note.md');
 });
@@ -640,4 +640,18 @@ it('keeps file grants bound to originals after atomic append and native copy',as
  expect(Buffer.from((await read(id)).content,'base64').toString()).toBe('hello tail');
  await content.copyOriginal('owner',vault.id,'secret.md','Project/note.md');
  expect(Buffer.from((await read(id)).content,'base64').toString()).toBe('private');
+});
+
+it('resolves the catalog actor once for a snapshot of many resources',()=>{
+ for(let i=0;i<100;i++){const file='file'+i+'.md';fs.writeFileSync(path.join(root,'Notes',file),'content');share(file);}
+ const sessions={resolve:vi.fn(token=>({id:'s',user:{id:token,role:'user',authVersion:1}}))};
+ const snapshotService=createResourceSharesService(db,root,sessions);
+ const catalog=snapshotService.catalog('recipient');expect(catalog.resources).toHaveLength(100);expect(sessions.resolve).toHaveBeenCalledOnce();
+ expect(catalog.resources.every(row=>!Object.hasOwn(row,'vault')&&!Object.hasOwn(row,'path'))).toBe(true);
+});
+
+it('retains unavailable resources for owners of an inactive vault without exposing them to recipients',()=>{
+ const id=share();db.prepare("UPDATE vaults SET status='quarantine' WHERE id=?").run(vault.id);
+ expect(service.catalog('owner').resources).toMatchObject([{id,owned:true,available:false}]);
+ expect(service.catalog('recipient').resources).toEqual([]);
 });

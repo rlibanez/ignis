@@ -1,0 +1,78 @@
+name: architecture acceptance
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+    inputs:
+      real_runtime:
+        description: Run private Obsidian 1.14.4 acceptance on the dedicated runner
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22.23.4', '24.22.1']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - uses: browser-actions/setup-chrome@v2
+        if: matrix.node == '24.22.1'
+        id: chrome
+        with:
+          chrome-version: stable
+      - name: Browser component acceptance (synthetic API)
+        if: matrix.node == '24.22.1'
+        run: npm run test:management
+        env:
+          IGNIS_CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+      - name: Bounded functional load (not a cross-machine timing comparison)
+        if: matrix.node == '24.22.1'
+        run: node scripts/check-load.mjs --runs 1 --events --output /tmp/load.json
+      - uses: actions/upload-artifact@v7
+        if: always() && matrix.node == '24.22.1'
+        with:
+          name: load-acceptance-${{ github.run_attempt }}
+          path: /tmp/load.json
+          if-no-files-found: ignore
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.22.1'
+          cache: npm
+      - run: npm ci
+      - run: docker build -f apps/ignis-server/Dockerfile -t ignis:architecture-smoke .
+      - run: npm run test:image
+      - run: npm run test:content-faults
+  real-runtime:
+    if: github.event_name == 'workflow_dispatch' && inputs.real_runtime
+    runs-on: [self-hosted, ignis-acceptance]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.22.1'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:runtime
+        env:
+          IGNIS_E2E_OBSIDIAN_ASSETS: ${{ vars.IGNIS_E2E_OBSIDIAN_ASSETS }}
+          IGNIS_CHROME_PATH: ${{ vars.IGNIS_CHROME_PATH }}

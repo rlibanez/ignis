@@ -144,3 +144,22 @@ individual sin catálogo detrás. El harness importa los mismos componentes/host
 que producción, sin publicar una entrada de pruebas en el producto. El detalle
 está en `phase6.md`; sigue pendiente la aceptación manual con runtime 1.14.4,
 Android real y proveedor OIDC.
+
+
+## Evidencia añadida en fase 7
+
+- Proyecciones: vault-access y resource-shares comprueban trabajo acotado por
+  snapshot, aislamiento, roles inyectados rechazados y revalidación de symlinks /
+  membresía. State-events cuenta capturas por sesión y valida cada conexión.
+- Contratos retirados: la integración HTTP rechaza `grant`; `grants` es mutación
+  notificada. Bootstrap no incluye la bandera sin consumidores configurationMode.
+- `test:runtime`: Obsidian 1.14.4 real, dos perfiles aislados, editor, bytes guardados,
+  downgrade, intento lector, upgrade en la misma vista, revocación y host nativo.
+  Se prueba escritorio y viewport móvil con assets privados en solo lectura.
+- `check-management-ui`: CSS 1.14.4, escritorio y tres viewports móviles, incluyendo
+  landscape; cien ciclos con canales y modales retirados.
+- Carga: cinco rondas comparables, event loop, perfiles 1/10/50 y cien reconexiones
+  por fixture, con límites productivos activos. Informe y límites en phase7.md.
+- CI añadida con Node 22/24, navegador, imagen y fallos reales. Proveedor OIDC de
+  producción, teclado/gestos Android reales y recepción del sistema requieren la
+  comprobación manual correspondiente; no se presentan como validados por CDP.

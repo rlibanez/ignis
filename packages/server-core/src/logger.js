@@ -23,7 +23,7 @@ const operations = new Map([
   ["/api/auth/users", "users.list"], ["/api/shares", "shares.manage"], ["/api/shares/content", "shares.content"],
   ...["create", "rename", "remove", "members", "transfer-ownership", "list", "info"].map(name => [`/api/vault/${name}`, `vault.${name}`]),
 ]);
-const shareOperations = new Set(["copy", "previewRemoval", "removeConfirmed", "mounts", "destination", "rename", "create", "grant", "revoke", "browse", "read", "write", "mkdir", "remove"].map(name => `shares.${name}`));
+const shareOperations = new Set(["copy", "previewRemoval", "removeConfirmed", "mounts", "destination", "rename", "create", "grants", "validateGrant", "revoke", "browse", "read", "write", "mkdir", "remove"].map(name => `shares.${name}`));
 const operationNames = new Set([...operations.values(), ...shareOperations, "users.create"]);
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 function readLogConfig(env = process.env) {
@@ -48,7 +48,7 @@ function metadata(input = {}) {
   if (operationNames.has(input.operation)) out.operation = input.operation;
   if (errorCodes.has(input.errorCode)) out.errorCode = input.errorCode;
   for (const key of ["requestId", "vaultId"]) if (typeof input[key] === "string" && uuid.test(input[key])) out[key] = input[key];
-  if ((out.operation?.startsWith("users.") || ["vault.members", "vault.transfer-ownership", "shares.create", "shares.grant"].includes(out.operation)) && typeof input.targetUsername === "string" && input.targetUsername.length > 0 && input.targetUsername.length <= 128)
+  if ((out.operation?.startsWith("users.") || ["vault.members", "vault.transfer-ownership", "shares.create", "shares.validateGrant"].includes(out.operation)) && typeof input.targetUsername === "string" && input.targetUsername.length > 0 && input.targetUsername.length <= 128)
     out.targetUsername = input.targetUsername;
   if (out.operation === "users.status") {
     for (const [key, values] of Object.entries({previousAccountStatus:["active","disabled"],accountStatus:["active","disabled"],previousRole:["admin","user"],role:["admin","user"],previousEmailVerification:["unverified","admin_confirmed","oidc_verified"],emailVerification:["unverified","admin_confirmed","oidc_verified"]})) {

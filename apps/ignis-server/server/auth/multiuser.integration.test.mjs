@@ -189,7 +189,8 @@ it('validates three independent real sessions across conflicts, downgrade, revok
   await success(alice.call('/api/fs/mkdir?vault='+a,{path:'Project',recursive:false}));
   await success(alice.call('/api/fs/writeFile?vault='+a,{path:'Project/note.md',content:'original',expectedHash:null}));
   const id=(await success(alice.share('create',{vault:a,path:'Project',login:'bob',role:'editor'}))).id;
-  await success(alice.share('grant',{action:'grant',id,login:'carol',role:'editor',revision:1}));
+  expect((await alice.share('grant',{action:'grant',id,revision:1,login:'carol',role:'editor'})).status).toBe(400);
+  await success(alice.share('grants',{id,revision:1,changes:[{login:'carol',role:'editor'}]}));
   const receivedSource={id,vault:null,path:''},localCopy={id:null,vault:c,path:'CopiedProject'};
   await success(carol.share('copy',{from:receivedSource,to:localCopy}));
   expect((await carol.call('/api/fs/readFile?vault='+c+'&path=CopiedProject/note.md')).text).toBe('original');
@@ -214,7 +215,7 @@ it('validates three independent real sessions across conflicts, downgrade, revok
   expect((await alice.call('/api/fs/writeFile?vault='+a,{path:'Project/note.md',content:'stale after restart',expectedHash:beforeMixed.etag})).status).toBe(409);
   expect((await success(bob.share('mounts',{vault:b}))).mounts[0].localPath).toBe('Received');
   expect((await success(carol.share('mounts',{vault:c}))).mounts[0].localPath).toBe('Team');
-  await success(alice.share('grant',{action:'grant',id,login:'bob',role:'reader',revision:2}));
+  await success(alice.share('grants',{id,revision:2,changes:[{login:'bob',role:'reader'}]}));
   expect((await write(bob,latest.etag,'forbidden')).status).toBe(404);
   expect((await success(bob.share('mounts',{vault:b}))).mounts[0].role).toBe('reader');
   expect((await success(carol.share('read',{id,path:'note.md'}))).content).toBe(latest.content);
@@ -231,7 +232,7 @@ it('validates three independent real sessions across conflicts, downgrade, revok
   await success(alice.call('/api/vault/rename',{vault:a,name:'Alice renamed'}));
   expect((await success(bob.share('read',{id,path:'note.md'}))).content).toBe(latest.content);
   const catalog=await success(alice.call('/api/shares')),revision=catalog.resources.find(r=>r.id===id).revision;
-  await success(alice.share('grant',{action:'grant',id,login:'bob',role:null,revision}));
+  await success(alice.share('grants',{id,revision,changes:[{login:'bob',role:null}]}));
   expect((await bob.share('read',{id,path:'note.md'})).status).toBe(404);
   expect((await success(bob.share('mounts',{vault:b}))).mounts).toEqual([]);
   expect((await success(carol.share('read',{id,path:'note.md'}))).content).toBe(latest.content);
@@ -280,16 +281,16 @@ it('delivers targeted account events after commits, reconnects and observes CLI 
   expect((await success(bob.call('/api/shares'))).resources[0].role).toBe('editor');
   await success(bob.share('destination',{id,vault:b,localPath:'Received.md'}));
   recipient.messages.length=0;
-  await success(alice.share('grant',{action:'grant',id,revision:1,login:'bob',role:'reader'}));
+  await success(alice.share('grants',{id,revision:1,changes:[{login:'bob',role:'reader'}]}));
   await until(()=>recipient.messages.some(message=>message.shares));
   const note=await success(bob.share('read',{id,path:''}));
   expect((await bob.share('write',{id,path:'',action:'write',etag:note.etag,content:Buffer.from('denied').toString('base64')})).status).toBe(404);
   recipient.messages.length=0;
-  await success(alice.share('grant',{action:'grant',id,revision:2,login:'bob',role:'editor'}));
+  await success(alice.share('grants',{id,revision:2,changes:[{login:'bob',role:'editor'}]}));
   await until(()=>recipient.messages.some(message=>message.shares));
   await success(bob.share('write',{id,path:'',action:'write',etag:note.etag,content:Buffer.from('allowed').toString('base64')}));
   const closed=once(recipient.socket,'close');recipient.socket.close();await closed;
-  await success(alice.share('grant',{action:'grant',id,revision:3,login:'bob',role:'reader'}));
+  await success(alice.share('grants',{id,revision:3,changes:[{login:'bob',role:'reader'}]}));
   const reconnected=await account(bob);
   expect((await success(bob.share('mounts',{vault:b}))).mounts[0].role).toBe('reader');
   reconnected.messages.length=0;

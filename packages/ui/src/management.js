@@ -49,12 +49,12 @@ export class BrowserModal {
       hideHelp();
       this.tooltip=element('div',{cls:'tooltip',text:button.getAttribute('aria-label'),attr:{role:'tooltip'}});
       const rect=button.getBoundingClientRect();
-      this.tooltip.style.cssText=`position:fixed;z-index:100011;max-width:min(320px,90vw);white-space:normal;left:${Math.max(8,Math.min(rect.left,window.innerWidth-328))}px;top:${rect.bottom+8}px`;
+      this.tooltip.style.cssText=`position:fixed;z-index:100011;transform:none;margin:0;max-height:calc(100dvh - 16px);overflow:auto;max-width:min(320px,calc(100vw - 16px));white-space:normal;left:${Math.max(8,Math.min(rect.left,window.innerWidth-328))}px;top:${rect.bottom+8}px`;
       // A dialog is in the browser top layer: help must belong to that layer too.
       (button.closest('dialog[open]') || this.containerEl).append(this.tooltip);
       const height=this.tooltip.getBoundingClientRect().height;
-      if(rect.bottom+8+height>window.innerHeight-8)this.tooltip.style.top=`${Math.max(8,rect.top-height-8)}px`;
-      this.tooltip.style.maxHeight='calc(100dvh - 16px)';
+      const top=rect.bottom+8+height>window.innerHeight-8?rect.top-height-8:rect.bottom+8;
+      this.tooltip.style.top=`${Math.max(8,Math.min(top,window.innerHeight-height-8))}px`;
     });
     this.containerEl.addEventListener('pointerout',hideHelp);
     this.lost=()=>this.close();
@@ -71,7 +71,7 @@ export class BrowserModal {
   }
   setTitle(title){this.titleEl.textContent=title;}
   open(){
-    if(!window.app?.workspace && window.matchMedia('(max-width: 599px)').matches){
+    if(!window.app?.workspace && (document.body.classList.contains('is-mobile') || window.matchMedia('(max-width: 599px)').matches)){
       document.body.classList.add('is-mobile','is-phone');
       this.containerEl.style.alignItems='flex-start';
       this.containerEl.style.paddingTop='max(var(--safe-area-inset-top,0px),env(safe-area-inset-top,0px))';

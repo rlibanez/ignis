@@ -1,6 +1,6 @@
 const {sessionContext,matchesSession}=require('../../../../../../packages/contracts/src/session');
-const reads=new Set(['catalog','mounts','grants','validateGrant','browseOwner','read','previewRemoval']);
-const operations=[...reads,'destination','create','grant','rename','renameOriginal','copy','removeConfirmed','mutate'];
+const reads=new Set(['catalog','mounts','validateGrant','browseOwner','read','previewRemoval']);
+const operations=[...reads,'destination','create','grants','revoke','rename','renameOriginal','copy','removeConfirmed','mutate'];
 const unavailable=()=>{throw Object.assign(new Error('Shared resource unavailable'),{code:'SHARE_UNAVAILABLE'});};
 function createSharing({store,sessions,onChanged=()=>{},onNotificationError=()=>{}}){
  function changed(){try{onChanged();}catch(error){try{onNotificationError(error);}catch{/* Notification failure must not change a committed result. */}}}

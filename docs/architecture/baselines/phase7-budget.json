@@ -1,0 +1,168 @@
+{
+  "passed": true,
+  "budgetPercent": 15,
+  "comparisons": [
+    {
+      "fileCount": 1000,
+      "shareCount": 10,
+      "metric": "tree",
+      "baseline": 124.037,
+      "current": 16.318,
+      "changePercent": -86.8,
+      "passed": true
+    },
+    {
+      "fileCount": 1000,
+      "shareCount": 10,
+      "metric": "bootstrap",
+      "baseline": 127.481,
+      "current": 18.971,
+      "changePercent": -85.1,
+      "passed": true
+    },
+    {
+      "fileCount": 1000,
+      "shareCount": 10,
+      "metric": "catalog",
+      "baseline": 1.44,
+      "current": 0.705,
+      "changePercent": -51,
+      "passed": true
+    },
+    {
+      "fileCount": 1000,
+      "shareCount": 10,
+      "metric": "mounts",
+      "baseline": 1.962,
+      "current": 1.132,
+      "changePercent": -42.3,
+      "passed": true
+    },
+    {
+      "fileCount": 1000,
+      "shareCount": 10,
+      "metric": "read",
+      "baseline": 1.429,
+      "current": 1.167,
+      "changePercent": -18.3,
+      "passed": true
+    },
+    {
+      "fileCount": 1000,
+      "shareCount": 10,
+      "metric": "write",
+      "baseline": 1.736,
+      "current": 1.83,
+      "changePercent": 5.4,
+      "passed": true
+    },
+    {
+      "fileCount": 1000,
+      "shareCount": 10,
+      "metric": "postLoadRead",
+      "baseline": 1.173,
+      "current": 1.181,
+      "changePercent": 0.7,
+      "passed": true
+    },
+    {
+      "fileCount": 1000,
+      "shareCount": 10,
+      "metric": "sessionDuringTree",
+      "baseline": 122.1,
+      "current": 17.5,
+      "changePercent": -85.7,
+      "passed": true
+    },
+    {
+      "fileCount": 1000,
+      "shareCount": 10,
+      "metric": "peakServerRssMiB",
+      "baseline": 360.7,
+      "current": 311.2,
+      "changePercent": -13.7,
+      "passed": true
+    },
+    {
+      "fileCount": 10000,
+      "shareCount": 100,
+      "metric": "tree",
+      "baseline": 605.907,
+      "current": 79.245,
+      "changePercent": -86.9,
+      "passed": true
+    },
+    {
+      "fileCount": 10000,
+      "shareCount": 100,
+      "metric": "bootstrap",
+      "baseline": 608.54,
+      "current": 84.171,
+      "changePercent": -86.2,
+      "passed": true
+    },
+    {
+      "fileCount": 10000,
+      "shareCount": 100,
+      "metric": "catalog",
+      "baseline": 7.715,
+      "current": 1.784,
+      "changePercent": -76.9,
+      "passed": true
+    },
+    {
+      "fileCount": 10000,
+      "shareCount": 100,
+      "metric": "mounts",
+      "baseline": 23.081,
+      "current": 5.161,
+      "changePercent": -77.6,
+      "passed": true
+    },
+    {
+      "fileCount": 10000,
+      "shareCount": 100,
+      "metric": "read",
+      "baseline": 1.22,
+      "current": 1.311,
+      "changePercent": 7.5,
+      "passed": true
+    },
+    {
+      "fileCount": 10000,
+      "shareCount": 100,
+      "metric": "write",
+      "baseline": 1.703,
+      "current": 1.708,
+      "changePercent": 0.3,
+      "passed": true
+    },
+    {
+      "fileCount": 10000,
+      "shareCount": 100,
+      "metric": "postLoadRead",
+      "baseline": 1.153,
+      "current": 1.117,
+      "changePercent": -3.1,
+      "passed": true
+    },
+    {
+      "fileCount": 10000,
+      "shareCount": 100,
+      "metric": "sessionDuringTree",
+      "baseline": 587,
+      "current": 77.2,
+      "changePercent": -86.8,
+      "passed": true
+    },
+    {
+      "fileCount": 10000,
+      "shareCount": 100,
+      "metric": "peakServerRssMiB",
+      "baseline": 489.2,
+      "current": 439.1,
+      "changePercent": -10.2,
+      "passed": true
+    }
+  ]
+}

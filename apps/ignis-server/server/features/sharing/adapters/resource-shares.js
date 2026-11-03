@@ -46,9 +46,12 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
     const user = actor(token);
     const row = typeof id === "string" && db.prepare("SELECT * FROM shared_resources WHERE id=?").get(id);
     if (!row) fail();
-    const v = vault(row.vault_id);
-    const owns = owner(user,v.id);
-    const role = owns ? "editor" : db.prepare("SELECT role FROM resource_grants WHERE resource_id=? AND user_id=?").get(id,user.id)?.role;
+    return resourceFromRow(user,row,relative,write);
+  }
+  function resourceFromRow(user,row,relative="",write=false,selected) {
+    const v = selected?.vault || vault(row.vault_id);
+    const owns = selected ? selected.owns : owner(user,v.id);
+    const role = owns ? "editor" : selected ? selected.role : db.prepare("SELECT role FROM resource_grants WHERE resource_id=? AND user_id=?").get(row.id,user.id)?.role;
     if (!role || (write && role !== "editor")) fail();
     const base = inspect(v.path,row.path);
     if (String(base.stat.dev) !== row.device || identity(base.stat) !== row.inode ||
@@ -62,17 +65,22 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
     return transaction(db,()=>{
       const user=actor(token);
       const ownedVaults=db.prepare("SELECT v.id,v.name FROM vaults v JOIN memberships m ON m.vault_id=v.id WHERE m.user_id=? AND m.role='owner' AND v.status='active' ORDER BY v.name").all(user.id);
-      const rows=db.prepare(`SELECT DISTINCT r.* FROM shared_resources r LEFT JOIN resource_grants g ON g.resource_id=r.id
-        LEFT JOIN memberships m ON m.vault_id=r.vault_id AND m.user_id=? WHERE g.user_id=? OR m.role='owner' ORDER BY r.path`).all(user.id,user.id);
+      const rows=db.prepare(`SELECT r.*,g.role AS recipient_role,m.role AS caller_membership FROM shared_resources r LEFT JOIN resource_grants g ON g.resource_id=r.id AND g.user_id=?
+        LEFT JOIN memberships m ON m.vault_id=r.vault_id AND m.user_id=? WHERE g.user_id=? OR m.role='owner' ORDER BY r.path`).all(user.id,user.id,user.id);
+      const sources=new Map(),ownerNames=new Map();
+      const source=id=>{if(!sources.has(id))sources.set(id,vault(id));return sources.get(id);};
       const resources=rows.flatMap(row=>{
         // Owners retain stale entries so they can revoke them; recipients see only live resources.
-        const owns=owner(user,row.vault_id); let available=true, access;
-        try {access=resource(token,row.id);} catch {available=false;}
+        const owns=row.caller_membership==="owner"; let available=true, access;
+        try {access=resourceFromRow(user,row,"",false,{vault:source(row.vault_id),owns,role:row.recipient_role});} catch {available=false;}
         if(!owns && !available) return [];
         const result={id:row.id,name:path.basename(row.path),kind:row.kind,revision:row.revision,owned:owns,available,
           role:owns?"editor":access.role};
         if(owns) Object.assign(result,{vault:row.vault_id,path:row.path,grants:db.prepare("SELECT u.login,g.role FROM resource_grants g JOIN users u ON u.id=g.user_id WHERE g.resource_id=? ORDER BY u.login").all(row.id)});
-        else result.owner=db.prepare("SELECT u.login FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.vault_id=? AND m.role='owner'").get(row.vault_id)?.login || "";
+        else {
+          if(!ownerNames.has(row.vault_id))ownerNames.set(row.vault_id,db.prepare("SELECT u.login FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.vault_id=? AND m.role='owner'").get(row.vault_id)?.login || "");
+          result.owner=ownerNames.get(row.vault_id);
+        }
         return [result];
       });
       const destinationVaults=db.prepare("SELECT v.id,v.name FROM vaults v JOIN memberships m ON m.vault_id=v.id WHERE m.user_id=? AND v.status='active' ORDER BY v.name").all(user.id);
@@ -83,10 +91,10 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
       return {ownedVaults,destinationVaults,resources,limits:{maxFileBytes,maxFileMiB:limits.maxFileMiB}};
     });
   }
-  function checkPlacement(user,vaultId,localPath,id,kind,sourceName,placements) {
+  function checkPlacement(user,vaultId,localPath,id,kind,sourceName,placements,destinationVault) {
     canonical(localPath);
     if(kind==="file" && path.extname(localPath).toLowerCase()!==path.extname(sourceName).toLowerCase())fail("INVALID_SHARE_PATH");
-    const v=vault(vaultId),parent=path.posix.dirname(localPath);
+    const v=destinationVault || vault(vaultId),parent=path.posix.dirname(localPath);
     const folder=inspect(v.path,parent==="."?"":parent);
     if(!folder.stat.isDirectory())fail("INVALID_SHARE_PATH");
     const name=path.posix.basename(localPath).toLowerCase();
@@ -118,8 +126,8 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
     return transaction(db,()=>{
       const user=actor(token);
       if(typeof input?.vault!=="string" || !db.prepare("SELECT 1 FROM memberships m JOIN vaults v ON v.id=m.vault_id WHERE m.user_id=? AND v.id=? AND v.status='active'").get(user.id,input.vault))fail();
-      vault(input.vault);
-      const rows=db.prepare(`SELECT r.id,d.local_path FROM shared_resources r JOIN resource_grants g ON g.resource_id=r.id
+      const destinationVault=vault(input.vault),sources=new Map(),ownerNames=new Map();
+      const rows=db.prepare(`SELECT r.*,g.role AS recipient_role,d.local_path FROM shared_resources r JOIN resource_grants g ON g.resource_id=r.id
         JOIN resource_destinations d ON d.resource_id=g.resource_id AND d.user_id=g.user_id
         WHERE d.vault_id=? AND g.user_id=? AND NOT EXISTS (SELECT 1 FROM memberships m WHERE m.vault_id=r.vault_id AND m.user_id=? AND m.role='owner')
         ORDER BY r.id`).all(input.vault,user.id,user.id);
@@ -131,9 +139,9 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
       const mounts=[];
       for(const row of rows) {
         let access;
-        try {access=resource(token,row.id);} catch(error) {if(["SHARE_UNAVAILABLE","VAULT_UNAVAILABLE","ENOENT"].includes(error.code))continue;throw error;}
+        try {if(!sources.has(row.vault_id))sources.set(row.vault_id,vault(row.vault_id));access=resourceFromRow(user,row,"",false,{vault:sources.get(row.vault_id),owns:false,role:row.recipient_role});} catch(error) {if(["SHARE_UNAVAILABLE","VAULT_UNAVAILABLE","ENOENT"].includes(error.code))continue;throw error;}
         const localPath=row.local_path;
-        try{checkPlacement(user,input.vault,localPath,row.id,access.row.kind,access.row.path,placements);}catch{
+        try{checkPlacement(user,input.vault,localPath,row.id,access.row.kind,access.row.path,placements,destinationVault);}catch{
           mounts.push({id:row.id,localPath,kind:access.row.kind,role:access.role,blocked:true,tree:{}});continue;
         }
         const tree=Object.create(null);
@@ -144,11 +152,12 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
           if(item.stat.isDirectory())for(const entry of listing(item).entries) visit(relative?relative+"/"+entry.name:entry.name,depth+1);
         }
         visit("",0);
-        mounts.push({id:row.id,localPath,owner:db.prepare("SELECT u.login FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.vault_id=? AND m.role='owner'").get(access.v.id)?.login || "",name:path.basename(access.row.path),kind:access.row.kind,role:access.role,tree});
+        if(!ownerNames.has(access.v.id))ownerNames.set(access.v.id,db.prepare("SELECT u.login FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.vault_id=? AND m.role='owner'").get(access.v.id)?.login || "");
+        mounts.push({id:row.id,localPath,owner:ownerNames.get(access.v.id),name:path.basename(access.row.path),kind:access.row.kind,role:access.role,tree});
       }
       const outgoing=[];
-      if(owner(user,input.vault))for(const row of db.prepare("SELECT id,path,kind FROM shared_resources r WHERE vault_id=? AND EXISTS (SELECT 1 FROM resource_grants g WHERE g.resource_id=r.id)").all(input.vault)){
-        try{resource(token,row.id);outgoing.push({path:row.path,kind:row.kind});}
+      if(owner(user,input.vault))for(const row of db.prepare("SELECT * FROM shared_resources r WHERE vault_id=? AND EXISTS (SELECT 1 FROM resource_grants g WHERE g.resource_id=r.id)").all(input.vault)){
+        try{resourceFromRow(user,row,"",false,{vault:destinationVault,owns:true});outgoing.push({path:row.path,kind:row.kind});}
         catch(error){if(!["SHARE_UNAVAILABLE","VAULT_UNAVAILABLE","ENOENT"].includes(error.code))throw error;}
       }
       return {mounts,outgoing,limits:{maxFileBytes,maxFileMiB:limits.maxFileMiB}};
@@ -170,7 +179,8 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
       return {id};
     });
   }
-  function grant(token,input) {
+  function revoke(token,input) {
+    if(input.action!=="revoke")fail("INVALID_SHARE");
     return transaction(db,()=>applyGrant(token,input));
   }
   function applyGrant(token,input) {
@@ -477,6 +487,6 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
       return {ok:true,...(bytes?{etag:digest(bytes)}:{})};
     });
   }
-  return {catalog,mounts,destination,create,grant,grants,validateGrant,browseOwner,read,rename,renameOriginal,copy,previewRemoval,removeConfirmed,mutate,limits};
+  return {catalog,mounts,destination,create,revoke,grants,validateGrant,browseOwner,read,rename,renameOriginal,copy,previewRemoval,removeConfirmed,mutate,limits};
 }
 module.exports={createResourceSharesService};

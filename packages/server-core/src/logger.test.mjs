@@ -179,7 +179,7 @@ it.each(['text','json'])('logs unverified failed-login names distinctly and safe
  if(format==='json')expect(JSON.parse(stdout.lines[0])).not.toHaveProperty('username');
 });
 
-it.each(['users.delete','users.reset-password','users.set-password','users.revoke-sessions','users.unlink-oidc','vault.members','vault.transfer-ownership','shares.create','shares.grant'])('retains actor and target for %s',operation=>{
+it.each(['users.delete','users.reset-password','users.set-password','users.revoke-sessions','users.unlink-oidc','vault.members','vault.transfer-ownership','shares.create','shares.validateGrant'])('retains actor and target for %s',operation=>{
  const {root,logger}=fixture();logger.emit('info','http.request',{operation,username:'admin',targetUsername:'mario'});logger.close();expect(records(root)[0]).toMatchObject({operation,username:'admin',targetUsername:'mario'});
 });
 it('attributes websocket lifecycle events without exposing the session token',()=>{

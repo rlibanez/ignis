@@ -1,0 +1,64 @@
+{
+  "phase": 7,
+  "baseCommit": "5729923f9faf9178716707d69b1e22fa464f9f17",
+  "scope": "Uncommitted phase 7 working tree; measurements identify product and harness hashes separately.",
+  "verification": {
+    "lint": "passed",
+    "suite": {
+      "node": "24.22.1",
+      "filesPassed": 177,
+      "testsPassed": 2169,
+      "testsSkipped": 1,
+      "skip": "Real ENOSPC requires container; separately exercised by fault matrix."
+    },
+    "build": "passed; existing eval and Svelte accessibility warnings remain",
+    "management": {
+      "viewports": [
+        "desktop",
+        "390x844",
+        "360x800",
+        "844x390"
+      ],
+      "cyclesPerViewport": 100,
+      "nativeCss": "1.14.4; also passed without private CSS"
+    },
+    "runtime": {
+      "obsidian": "1.14.4",
+      "desktop": "passed",
+      "mobileEmulation": "passed",
+      "originalAssetVolumes": "read-only; not modified"
+    },
+    "image": {
+      "node": "22.23.4",
+      "startup": "passed",
+      "faultTestsPassed": 16,
+      "faults": [
+        "EACCES",
+        "ENOSPC",
+        "SIGKILL"
+      ]
+    },
+    "performanceBudget": "passed; five rounds, thirty samples, 15 percent limit",
+    "events": {
+      "fixtures": 10,
+      "connectionsPerProfile": [
+        1,
+        10,
+        50
+      ],
+      "reconnectCycles": 1000,
+      "maximumProfileP95Ms": 284.8
+    },
+    "stress": "passed; one round, 25000 notes, 1000 shares; functional evidence only"
+  },
+  "pendingManual": [
+    "GitHub workflow execution after publishing",
+    "Physical Android keyboard and system share sheet",
+    "Production OIDC provider acceptance"
+  ],
+  "notPerformed": [
+    "commit",
+    "push",
+    "phase 8 history reconstruction"
+  ]
+}

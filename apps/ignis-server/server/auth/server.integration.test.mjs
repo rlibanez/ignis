@@ -264,7 +264,7 @@ it("protects real server routes, persists auth and does not log request secrets"
     expect(ownerList[0].path).toBe(path.join(root, "vaults/Team"));
     const ownBoot = await request(port, `/api/bootstrap?vault=${ownUuid}`, ownerJar);
     expect(ownBoot.status).toBe(200);
-    expect(JSON.parse(ownBoot.text)).toMatchObject({ configurationMode: "shared", plugins: [], virtualPlugins: [] });
+    expect(JSON.parse(ownBoot.text)).toMatchObject({ plugins: [], virtualPlugins: [] });
     expect((await request(port, `/api/fs/writeFile?vault=${ownUuid}`, ownerJar, {
       method: "POST", headers: { "x-ignis-csrf": ownerCsrf }, body: { path: "owner-note.md", content: "owner-write", expectedHash: null },
     })).status).toBe(200);

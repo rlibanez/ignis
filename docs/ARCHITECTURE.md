@@ -2,6 +2,22 @@
 
 Ignis runs Obsidian in a browser by replacing its Electron backend with a shim layer that routes Node.js and Electron API calls to an Express server over HTTP and WebSocket.
 
+## Identity and sharing integration
+
+The current development branch is a modular monolith. Server composition and
+lifecycle live in `server/app`; identity, vaults, content and sharing each own
+application use cases and infrastructure adapters in `server/features`. HTTP
+controllers consume those use cases. Pure contracts live in `packages/contracts`.
+Both ordinary and mounted files use the same content publisher. Obsidian itself
+remains unmodified; the versioned editor adapter targets 1.14.4.
+
+`packages/management` owns shared account/users/sharing components. The bridge
+mounts them in native Obsidian Modals; the UI shell mounts the same components
+without a vault. There are no independent account/users/sharing HTML pages.
+Read [the architecture phases](architecture/README.md) and the
+[operation and recovery guide](architecture/operations.md) for current boundaries,
+permission rules, consistency guarantees and acceptance evidence.
+
 ## Contents
 
 - [Overview](#overview)
@@ -110,7 +126,7 @@ Obsidian on the desktop can make arbitrary cross-origin HTTP requests because it
 
 The shim handles this transparently. `window.fetch` and `window.requestUrl` are intercepted. Same-origin requests pass through unchanged, as do requests to hosts on the user-configured direct-fetch allowlist, which the browser fetches directly subject to its own CORS enforcement. All other cross-origin requests are POSTed to `/api/proxy`, which performs the outbound call from the server with headers that mimic Obsidian's desktop runtime: `Origin: app://obsidian.md` and the browser's own User-Agent. The response body is returned base64-encoded so binary content survives the JSON round-trip; the shim decodes it and hands the caller a normal `Response` or `requestUrl` result.
 
-The proxy itself is intentionally generic. It forwards method, headers, and body verbatim and returns whatever the upstream sent. It rejects requests whose hostname resolves to a private, loopback, or link-local address (SSRF guard) unless that address is listed in `PROXY_ALLOW_PRIVATE_HOSTS`. Redirects are followed on the server one hop at a time so every hop passes the same check. Outbound access is governed by `proxyMode`: `any` (the default) reaches any public host, `allowlist` restricts to a configured host list, and `disabled` blocks all proxying. Under the default `any`, the proxy is an open relay to public hosts, which is one of the reasons the server needs to be behind authentication when exposed to the internet.
+The proxy itself is intentionally generic. It forwards method, headers, and body verbatim and returns whatever the upstream sent. It rejects requests whose hostname resolves to a private, loopback, or link-local address (SSRF guard) unless that address is listed in `PROXY_ALLOW_PRIVATE_HOSTS`. Redirects are followed on the server one hop at a time so every hop passes the same check. Outbound access is governed by `proxyMode`: `any` (the default) reaches any public host, `allowlist` restricts to a configured host list, and `disabled` blocks all proxying. Outbound proxy operations remain behind the built-in authentication and capability boundary; enabling public destinations does not make the route anonymous.
 
 ### Workspaces in browser tabs
 

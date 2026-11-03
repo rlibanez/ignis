@@ -62,7 +62,7 @@ volumes:
 Save it as `docker-compose.yml`, then run `docker compose up -d` and open `http://localhost:8080`. The first start pulls Obsidian from its official source, so give it a minute or two. With no vaults yet, Ignis opens the vault manager to create your first one.
 
 > [!IMPORTANT]
-> Before exposing Ignis to other machines, put authentication in front of it and serve it over HTTPS. It has no built-in auth, so anyone who reaches an open instance can read and write the whole vault, and outside a secure context (HTTPS, or `localhost`) the browser disables features Ignis needs. See [Remote access](https://ignis.thiefling.com/docs/security/remote-access/) and [Authentication](https://ignis.thiefling.com/docs/security/authentication/).
+> This development branch includes local/OIDC authentication, users, vault authorization and shared resources. Serve it over HTTPS and configure the exact public origin and trusted proxies before exposing it. Use a clean installation with the current schema. See the [architecture](docs/architecture/README.md) and [operation and recovery guide](docs/architecture/operations.md).
 
 Full setup and configuration are in the [deploy guide](https://ignis.thiefling.com/docs/server/deploy/); the rest of the [documentation](https://ignis.thiefling.com/docs/) covers settings, security, and operations.
 
