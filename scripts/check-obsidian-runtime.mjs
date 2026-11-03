@@ -29,8 +29,9 @@ try{
  let startupLog="";child.stderr.on("data",chunk=>{startupLog=(startupLog+chunk).slice(-16000);});child.stdout.on("data",chunk=>{startupLog=(startupLog+chunk).slice(-16000);});
  try{await waitForServerStarted(child);}catch(error){console.error(startupLog);throw error;}
  async function login(user,vault){
-  const client=await browser({mobile:process.argv.includes('--mobile')});clients.push(client);await client.call('Page.navigate',{url:origin+'/login'});await client.wait(`!!document.querySelector('#login-form')`,'login form');
-  const signedIn=await client.run(`(async()=>{const c=await(await fetch('/api/auth/csrf')).json();const response=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json','X-Ignis-Csrf':c.csrfToken},body:JSON.stringify({login:${JSON.stringify(user)},password:${JSON.stringify(password)}})});return response.ok;})()`);assert.equal(signedIn,true);
+  const client=await browser({mobile:process.argv.includes('--mobile')});clients.push(client);await client.call('Page.navigate',{url:origin+'/login'});await client.wait(`!!document.querySelector('#login-form') && !document.querySelector('#login-form').hidden`,'visible login form');
+  await client.run(`(()=>{const form=document.querySelector('#login-form');form.elements.login.value=${JSON.stringify(user)};form.elements.password.value=${JSON.stringify(password)};form.requestSubmit();})()`);
+  await client.wait(`location.pathname!=='/login'`,'login form submission');
   await client.call('Page.navigate',{url:origin+'/?vault='+encodeURIComponent(vault.id)});
   try{await client.wait(`!!window.app?.workspace && !!window.app?.vault`,'real Obsidian workspace',30000);}catch(error){console.error(JSON.stringify({user,errors:client.errors,page:await client.run(`({url:location.href,body:document.body.innerText.slice(0,3000),hasApp:!!window.app})`)}));throw error;}return client;
  }

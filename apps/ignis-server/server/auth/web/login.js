@@ -179,6 +179,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
         if(!intent || outcome==="success"){location.replace("/");return;}
         form.elements.login.value=session.user.login;
       }else if(current.status!==401){status.textContent=translateIgnis("Unable to check your session. Reload or sign in again.");return;}
+      form.hidden=false;
       status.textContent=new URL(location.href).searchParams.get("password")==="changed"
         ? translateIgnis("Password changed. All Ignis sessions have been closed. Sign in with your new password.") : "";
       if(outcome==="failed")status.textContent=translateIgnis("{p0} sign-in failed. Please start again or contact your administrator.",{p0:providerName});
