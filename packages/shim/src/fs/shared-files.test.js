@@ -2,7 +2,7 @@ import {contentHash} from "./content-versions.js";
 import {it,expect,vi} from 'vitest';
 import {MetadataCache} from './metadata-cache.js';
 import {createSharedFiles,SHARED_ROOT} from './shared-files.js';
-function fixture(role='editor',initial={},mountPath='Project') {
+function fixture(role='editor',initial={},mountPath='Project',control={}) {
  const id='12345678-1234-1234-1234-123456789abc',folder=mountPath,file=folder+'/note.md';
  const ctx={sessionId:'session',vault:'vault'},cache=new MetadataCache(),failure=vi.fn(),notice=vi.fn(),removed=vi.fn(),watch={_dispatch:vi.fn()},ordinary={readFile:vi.fn(),writeFile:vi.fn(),rename:vi.fn(),readdir:vi.fn(),stat:vi.fn(),mkdir:vi.fn(),unlink:vi.fn(),appendFile:vi.fn()};
  let mountStatus=200,offline=false,loseResponse=false,outgoing=[],content='original',etag=contentHash('original'),revoked=false,sharedId=id,localPath=folder,notePath='note.md';
@@ -18,9 +18,9 @@ function fixture(role='editor',initial={},mountPath='Project') {
   if(operation==='read')return {status:200,data:{kind:'file',content:btoa(content),etag}};
   if(operation==='write'){if(input.etag!==etag)return {status:409,data:{code:'SHARE_CONFLICT'}};content=atob(input.content);etag=contentHash(content);return {status:200,data:{etag}};}
  };
- const shared=createSharedFiles({metadataCache:cache,watch,currentContext:()=>ctx,onFailure:failure,onNotice:notice,onRemoved:removed,request:async(url,options)=>{if(offline)throw new Error("Network unavailable");const r=serve(options.body);if(loseResponse && JSON.parse(options.body).operation==='write')throw new Error("Response lost");return {status:r.status,json:async()=>r.data};},createXHR:()=>({open(){},setRequestHeader(){},send(body){const r=serve(body);this.status=r.status;this.responseText=JSON.stringify(r.data);}})});
+ const shared=createSharedFiles({metadataCache:cache,watch,currentContext:()=>ctx,onFailure:failure,onNotice:notice,onRemoved:removed,request:async(url,options)=>{if(offline)throw new Error("Network unavailable");const r=serve(options.body);if(control.wait)await control.wait(JSON.parse(options.body).operation);if(loseResponse && JSON.parse(options.body).operation==='write')throw new Error("Response lost");return {status:r.status,json:async()=>r.data};},createXHR:()=>({open(){},setRequestHeader(){},send(body){const r=serve(body);this.status=r.status;this.responseText=JSON.stringify(r.data);}})});
  cache.populate(shared.configure(initial));
- return {notice,removed,setMountStatus:value=>mountStatus=value,setRole:value=>role=value,setOffline:value=>offline=value,loseResponse:()=>loseResponse=true,setOutgoing:value=>outgoing=value,shared,fs:shared.wrap(ordinary),ordinary,cache,ctx,calls,file,folder,failure,watch,revoke:()=>revoked=true,replace:()=>{sharedId='87654321-1234-1234-1234-123456789abc';},change:()=>{content='remote';etag=contentHash('remote');}};
+ return {notice,removed,setLocation:value=>localPath=value,setMountStatus:value=>mountStatus=value,setRole:value=>role=value,setOffline:value=>offline=value,loseResponse:()=>loseResponse=true,setOutgoing:value=>outgoing=value,shared,fs:shared.wrap(ordinary),ordinary,cache,ctx,calls,file,folder,failure,watch,revoke:()=>revoked=true,replace:()=>{sharedId='87654321-1234-1234-1234-123456789abc';},change:()=>{content='remote';etag=contentHash('remote');}};
 }
 it('mounts metadata without ordinary filesystem reads or copies',async()=>{const f=fixture();expect(await f.fs.readdir(f.folder)).toEqual(['note.md']);expect(await f.fs.readFile(f.file,'utf8')).toBe('original');expect(f.ordinary.readFile).not.toHaveBeenCalled();expect(f.calls.at(-1).input).toEqual({id:'12345678-1234-1234-1234-123456789abc',path:'note.md'});});
 it('writes the original with an etag and does not forward into the active vault',async()=>{const f=fixture();await f.fs.readFile(f.file);await f.fs.writeFile(f.file,'edited');expect(await f.fs.readFile(f.file,'utf8')).toBe('edited');expect(f.ordinary.writeFile).not.toHaveBeenCalled();});
@@ -208,4 +208,37 @@ it('restores write permission without resetting the baseline of an open shared e
  f.setRole('editor');await f.shared.refresh();
  await expect(f.shared.writeEditor(f.file,'stale draft',contentHash('original'))).rejects.toBeDefined();
  expect(await f.fs.readFile(f.file,'utf8')).toBe('remote');
+});
+
+function deferred(){let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};}
+it('ignores a mount response from the generation before stop and reconfiguration',async()=>{
+ const entered=deferred(),release=deferred();const f=fixture('editor',{},'Old',{wait:async operation=>{if(operation==='mounts'){entered.resolve();await release.promise;}}});
+ const old=f.shared.refresh();await entered.promise;f.shared.stop();f.ctx.sessionId='new';f.ctx.vault='new-vault';f.setLocation('Fresh');f.cache.populate(f.shared.configure({}));
+ release.resolve();await old;
+ expect(f.cache.has('Old/note.md')).toBe(false);expect(f.cache.has('Fresh/note.md')).toBe(true);expect(f.notice).not.toHaveBeenCalled();
+ f.shared.stop();
+});
+it('does not return an old read to a replacement account',async()=>{
+ const entered=deferred(),release=deferred(),control={wait:async operation=>{if(operation==='read'){entered.resolve();await release.promise;}}};
+ const f=fixture('editor',{},'Old',control),reading=f.fs.readFile(f.file,'utf8');await entered.promise;
+ f.shared.stop();f.ctx.sessionId='new';f.ctx.vault='new-vault';f.setLocation('Fresh');f.cache.populate(f.shared.configure({}));
+ release.resolve();await expect(reading).rejects.toMatchObject({code:'AUTH_CONTEXT_CHANGED'});expect(f.failure).not.toHaveBeenCalled();
+ control.wait=null;expect(await f.fs.readFile('Fresh/note.md','utf8')).toBe('original');f.shared.stop();
+});
+it('never registers an old failed write draft as recovery for the new account',async()=>{
+ const entered=deferred(),release=deferred();const f=fixture('editor',{},'Old',{wait:async operation=>{if(operation==='write'){entered.resolve();await release.promise;throw Error('lost old response');}}});
+ const writing=f.fs.writeFile(f.file,'private old draft');await entered.promise;
+ f.shared.stop();f.ctx.sessionId='new';f.ctx.vault='new-vault';f.setLocation('Fresh');f.cache.populate(f.shared.configure({}));
+ release.resolve();await expect(writing).rejects.toMatchObject({code:'AUTH_CONTEXT_CHANGED'});
+ expect(f.failure).not.toHaveBeenCalled();expect(f.cache.has('Fresh/note.md')).toBe(true);f.shared.stop();
+});
+it('does not apply an old rename acknowledgement to new mount metadata',async()=>{
+ const entered=deferred(),release=deferred();const f=fixture('editor',{},'Old',{wait:async operation=>{if(operation==='destination'){entered.resolve();await release.promise;}}});
+ const renaming=f.fs.rename(f.folder,'Renamed');await entered.promise;
+ f.shared.stop();f.ctx.sessionId='new';f.setLocation('Fresh');f.cache.populate(f.shared.configure({}));release.resolve();
+ await expect(renaming).rejects.toMatchObject({code:'AUTH_CONTEXT_CHANGED'});expect(f.cache.has('Fresh/note.md')).toBe(true);expect(f.cache.has('Renamed/note.md')).toBe(false);f.shared.stop();
+});
+
+it('does not expose mount descriptions after its session changes before teardown',()=>{
+ const f=fixture();expect(f.shared.describe(f.file)).toBeTruthy();f.ctx.sessionId='other';expect(f.shared.describe(f.file)).toBe(null);f.shared.stop();
 });

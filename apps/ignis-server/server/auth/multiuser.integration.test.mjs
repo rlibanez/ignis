@@ -245,3 +245,75 @@ it('validates three independent real sessions across conflicts, downgrade, revok
   expect((await success(carol.share('mounts',{vault:c}))).mounts).toEqual([]);
  }finally{for(const socket of sockets)socket.terminate();if(server)await stop(server.child);fs.rmSync(root,{recursive:true,force:true});}
 },45000);
+
+it('delivers targeted account events after commits, reconnects and observes CLI changes without heartbeat polling',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'ignis-sharing-events-')),password='synthetic-sharing-event-password';
+ fs.mkdirSync(path.join(root,'vaults'));fs.mkdirSync(path.join(root,'assets'));fs.writeFileSync(path.join(root,'assets/index.html'),'<script src="app.js"></script>');
+ const db=openDatabase(path.join(root,'data'));bootstrapAdmin(db,'admin',await hashPassword(password));
+ for(const id of ['alice','bob','carol']){
+  db.prepare("INSERT INTO users(id,login,role,created_at) VALUES (?,?,'user',0)").run(id,id);
+  db.prepare('INSERT INTO local_credentials SELECT ?,password_hash,updated_at FROM local_credentials LIMIT 1').run(id);
+ }
+ db.close();let server;const sockets=[];
+ const until=async(predicate)=>{const deadline=Date.now()+4000;while(!predicate()){if(Date.now()>deadline)throw Error('Account event timed out');await new Promise(r=>setTimeout(r,10));}};
+ try{
+  server=await launch(root);const port=await server.ready;
+  async function actor(login){
+   const jar={},challenge=JSON.parse((await request(port,'/api/auth/csrf',jar)).text).csrfToken;
+   expect((await request(port,'/api/auth/login',jar,{method:'POST',headers:{'x-ignis-csrf':challenge},body:{login,password}})).status).toBe(200);
+   const session=JSON.parse((await request(port,'/api/auth/session',jar)).text),csrf=JSON.parse((await request(port,'/api/auth/csrf',jar)).text).csrfToken;
+   const call=(route,body)=>request(port,route,jar,{method:body?'POST':'GET',headers:{'x-ignis-csrf':csrf,'x-ignis-context':session.sessionId},...(body?{body}:{})});
+   return {jar,session,call,share:(operation,input)=>call('/api/shares',{operation,input})};
+  }
+  const alice=await actor('alice'),bob=await actor('bob'),carol=await actor('carol');
+  const success=async promise=>{const result=await promise;expect(result.status,result.text).toBe(200);return JSON.parse(result.text);};
+  const a=(await success(alice.call('/api/vault/create',{name:'Source'}))).uuid;
+  const b=(await success(bob.call('/api/vault/create',{name:'Destination'}))).uuid;
+  await success(alice.call('/api/fs/writeFile?vault='+a,{path:'note.md',content:'initial',expectedHash:null}));
+  async function account(client){
+   const messages=[],socket=new WebSocket(`ws://127.0.0.1:${port}/ws?events=1&context=${client.session.sessionId}`,{headers:{host:'localhost:8080',origin:'http://localhost:8080',cookie:Object.entries(client.jar).map(([k,v])=>`${k}=${v}`).join('; ')}});
+   sockets.push(socket);socket.on('message',raw=>messages.push(JSON.parse(raw.toString())));await once(socket,'open');return {socket,messages};
+  }
+  const owner=await account(alice),recipient=await account(bob),outsider=await account(carol);
+  const id=(await success(alice.share('create',{vault:a,path:'note.md',login:'bob',role:'editor'}))).id;
+  await until(()=>recipient.messages.some(message=>message.shares));
+  expect((await success(bob.call('/api/shares'))).resources[0].role).toBe('editor');
+  await success(bob.share('destination',{id,vault:b,localPath:'Received.md'}));
+  recipient.messages.length=0;
+  await success(alice.share('grant',{action:'grant',id,revision:1,login:'bob',role:'reader'}));
+  await until(()=>recipient.messages.some(message=>message.shares));
+  const note=await success(bob.share('read',{id,path:''}));
+  expect((await bob.share('write',{id,path:'',action:'write',etag:note.etag,content:Buffer.from('denied').toString('base64')})).status).toBe(404);
+  recipient.messages.length=0;
+  await success(alice.share('grant',{action:'grant',id,revision:2,login:'bob',role:'editor'}));
+  await until(()=>recipient.messages.some(message=>message.shares));
+  await success(bob.share('write',{id,path:'',action:'write',etag:note.etag,content:Buffer.from('allowed').toString('base64')}));
+  const closed=once(recipient.socket,'close');recipient.socket.close();await closed;
+  await success(alice.share('grant',{action:'grant',id,revision:3,login:'bob',role:'reader'}));
+  const reconnected=await account(bob);
+  expect((await success(bob.share('mounts',{vault:b}))).mounts[0].role).toBe('reader');
+  reconnected.messages.length=0;
+  fs.writeFileSync(path.join(root,'vaults','Source','note.md'),'external change');
+  await until(()=>reconnected.messages.some(message=>message.shares));
+  expect(Buffer.from((await success(bob.share('read',{id,path:''}))).content,'base64').toString()).toBe('external change');
+  fs.mkdirSync(path.join(root,'vaults','Extra'));
+  owner.messages.length=0;
+  const command=spawn(process.execPath,[path.resolve('apps/ignis-server/server/auth/cli.js'),'register-vault','Extra','alice'],{env:{...process.env,DATA_ROOT:path.join(root,'data'),VAULT_ROOT:path.join(root,'vaults')},stdio:'ignore'});
+  expect((await once(command,'exit'))[0]).toBe(0);
+  await until(()=>owner.messages.some(message=>message.vaults));
+  expect((await success(alice.call('/api/vault/list'))).some(vault=>vault.name==='Extra')).toBe(true);
+  // No recipient names, paths or content are carried by any event.
+  for(const event of [...owner.messages,...recipient.messages,...reconnected.messages]){
+   expect(event.type).toBe('ignis-state');expect(Object.keys(event).every(key=>['type','account','shares','vaults'].includes(key))).toBe(true);
+  }
+  expect(outsider.messages).toEqual([]);
+  const revoked=once(reconnected.socket,'close');
+  const revokeCommand=spawn(process.execPath,[path.resolve('apps/ignis-server/server/auth/cli.js'),'set-email','bob','synthetic@example.test','unverified'],{env:{...process.env,DATA_ROOT:path.join(root,'data')},stdio:'ignore'});
+  expect((await once(revokeCommand,'exit'))[0]).toBe(0);
+  let revokeTimer;
+  try{await Promise.race([revoked,new Promise((_,reject)=>{revokeTimer=setTimeout(()=>reject(Error('CLI revocation not delivered')),4000);revokeTimer.unref();})]);}finally{clearTimeout(revokeTimer);}
+ }finally{
+  for(const socket of sockets)socket.terminate();if(server)await stop(server.child);
+  fs.rmSync(root,{recursive:true,force:true});
+ }
+},20000);

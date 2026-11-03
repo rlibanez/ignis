@@ -30,7 +30,7 @@ const {openDatabase}=require('../apps/ignis-server/server/platform/persistence/d
 const {bootstrapAdmin} = require("../apps/ignis-server/server/features/identity/adapters/store.js");
 const {registerExistingVault:registerVault}=require("../apps/ignis-server/server/features/vaults/adapters/vault-registration.js");
 const {hashPassword}=require('../apps/ignis-server/server/features/identity/adapters/password.js');
-const {createResourceSharesService}=require('../apps/ignis-server/server/auth/resource-shares');
+const {createResourceSharesService}=require("../apps/ignis-server/server/features/sharing/adapters/resource-shares.js");
 function launch(root, env = {}) {
   const child = spawn(
     process.execPath,

@@ -117,3 +117,16 @@ tmpfs de Docker dedicado de 1 MiB, sin red ni escritura sobre el repositorio.
 Las pruebas de transporte y write-durability comprueban que no se reenvían
 guardados inciertos; las de editor incluyen texto anterior al debounce, texto
 nuevo durante una escritura y aislamiento del borrador por contexto.
+
+## Evidencia añadida en fase 5
+
+`auth/multiuser.integration.test.mjs` ejecuta además tres cuentas, WebSockets
+reales, cambios de grants, una reconexión, escrituras externas y procesos CLI.
+Comprueba destinatarios, ausencia de payload privado y revocación sin esperar al
+heartbeat. Las pruebas del broker/observador están en `features/sharing/adapters/`,
+y las del contexto de operación en `features/sharing/application/`.
+
+`packages/shim/src/fs/shared-files.test.js` rechaza respuestas y acciones de una
+generación anterior. `auth/events-web.test.mjs` comprueba backoff acotado, respuesta
+de sesión obsoleta y ausencia de timers de sondeo mientras la conexión está sana.
+Las pruebas de editor/shared-notice de las fases anteriores se conservan.

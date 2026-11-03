@@ -17,7 +17,7 @@ function createSecurity(options) {
   };
   try {
     const sessions = createSessionService(db, {rememberDays:config.rememberDays,...sessionOptions,now});
-    const effects={sessionsChanged:()=>{}};
+    const effects={sessionsChanged:()=>{},sharingChanged:()=>{}};
     const deletion=require('../auth/user-deletion').createUserDeletionService(db,vaultRoot,{
       ...require('../vault/deletion-lifecycle').deletionLifecycle(),sessionsChanged:()=>effects.sessionsChanged(),
     });
@@ -29,10 +29,14 @@ function createSecurity(options) {
       store:vaultStore,sessions,access:vaultAccess,createView:require('../features/vaults/adapters/vault-view').createVaultView,
     }) : null;
     const content=vaultRoot ? require('../features/content/adapters/runtime').createContentRuntime({db,root:vaultRoot,sessions}) : null;
-    const services = {vaults,vaultStore,vaultAccess,content,
+    const shareStore=vaultRoot ? require('../features/sharing/adapters/resource-shares').createResourceSharesService(db,vaultRoot,sessions,config.sharedResourceLimits,content) : null;
+    const sharesService=shareStore ? require('../features/sharing/application/sharing').createSharing({store:shareStore,sessions,
+      onChanged:()=>effects.sharingChanged(),onNotificationError:()=>require('@ignis/server-core/src/logger').emit('warn','auth.state_events.failed'),
+    }) : null;
+    const sharingEventStore=require('../features/sharing/adapters/event-store').createSharingEventStore(db,sessions,sharesService);
+    const services = {vaults,vaultStore,vaultAccess,content,sharesService,sharingEventStore,
       identity,effects,
       db, sessions, close,
-      sharesService:vaultRoot ? require('../auth/resource-shares').createResourceSharesService(db,vaultRoot,sessions,config.sharedResourceLimits,content) : null,
       initialize() {
         if (closed) return Promise.reject(new Error('Security services are closed'));
         return initialization ||= Promise.resolve().then(async () => {

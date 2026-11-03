@@ -7,7 +7,7 @@ import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
 const {openDatabase}=require('../platform/persistence/database');
 const {registerExistingVault:registerVault}=require("../features/vaults/adapters/vault-registration.js");
-const {createResourceSharesService}=require('./resource-shares');
+const {createResourceSharesService}=require("../features/sharing/adapters/resource-shares.js");
 const sessions={resolve:id=>({user:{id,authVersion:1}})};
 function fixture(base=os.tmpdir()){
  const root=fs.mkdtempSync(path.join(base,'ignis-recovery-'));
@@ -28,7 +28,7 @@ async function crash(f,operation,phase){
  const script=`
  const fs=require('node:fs'),path=require('node:path');
  const {openDatabase}=require('./apps/ignis-server/server/platform/persistence/database');
- const {createResourceSharesService}=require('./apps/ignis-server/server/auth/resource-shares');
+ const {createResourceSharesService}=require('./apps/ignis-server/server/features/sharing/adapters/resource-shares');
  const f=JSON.parse(process.env.RECOVERY_FIXTURE),db=openDatabase(f.data);
  const s=createResourceSharesService(db,f.root,{resolve:id=>({user:{id,authVersion:1}})});
  const rename=fs.renameSync;

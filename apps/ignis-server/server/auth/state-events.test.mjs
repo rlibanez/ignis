@@ -1,6 +1,6 @@
 import {it,expect,vi} from 'vitest';
 import {createRequire} from 'node:module';
-const {createStateEvents}=createRequire(import.meta.url)('./state-events');
+const {createStateEvents}=createRequire(import.meta.url)('../features/sharing/application/state-events');
 function fixture(){
  const state={alice:{shares:{resources:[]}},bob:{shares:{resources:[]}}};
  const entries=new Map();
@@ -22,4 +22,9 @@ it('targets file invalidations by authenticated recipient, never vault subscript
 it('revalidates connections before sending and terminates on snapshot failure',()=>{
  const f=fixture(),a=f.socket('alice');a.ws.revoked=true;f.state.alice={changed:true};f.hub.reconcile();expect(a.entry.sendState).not.toHaveBeenCalled();
  const entries=new Map([[a.ws,a.entry]]);const broken=createStateEvents({entries,valid:()=>true,resolve:()=>null,snapshot:()=>{throw Error('database');}});broken.reconcile();expect(a.ws.terminate).toHaveBeenCalledOnce();
+});
+it('does not query account catalogs for vault-only subscribers',()=>{
+ const entry={token:'user',events:false},ws={readyState:1},snapshot=vi.fn();
+ createStateEvents({entries:new Map([[ws,entry]]),valid:()=>true,resolve:()=>null,snapshot}).reconcile();
+ expect(snapshot).not.toHaveBeenCalled();
 });

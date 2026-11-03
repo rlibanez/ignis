@@ -6,7 +6,7 @@ import path from "node:path";
 const require=createRequire(import.meta.url);
 const {openDatabase}=require("../platform/persistence/database");
 const {registerExistingVault:registerVault}=require("../features/vaults/adapters/vault-registration.js");
-const {createResourceSharesService}=require("./resource-shares");
+const {createResourceSharesService}=require("../features/sharing/adapters/resource-shares.js");
 const {writeCoalescer}=require("@ignis/server-core");
 const {createContentRuntime}=require('../features/content/adapters/runtime');
 let root,db,vault,service,active,content;
@@ -123,7 +123,7 @@ it("accepts the maximum binary file size without regex stack exhaustion",async()
  await service.mutate("recipient",{id,path:"large.bin",action:"write",etag:null,content});expect((await read(id,"large.bin")).content).toBe(content);
 });
 it.each([1,16])("applies the configured %i MiB limit to reads, writes and client metadata",async mib=>{
- service=createResourceSharesService(db,root,{resolve:token=>({user:{id:token,authVersion:1}})},require("./resource-share-limits").readResourceShareLimits({IGNIS_SHARED_RESOURCE_MAX_FILE_MIB:String(mib)}));
+ service=createResourceSharesService(db,root,{resolve:token=>({user:{id:token,authVersion:1}})},require("../features/sharing/adapters/limits.js").readResourceShareLimits({IGNIS_SHARED_RESOURCE_MAX_FILE_MIB:String(mib)}));
  const id=share("Project","editor"),size=mib*1024*1024;
  expect(service.catalog("recipient").limits).toEqual({maxFileMiB:mib,maxFileBytes:size});
  await service.mutate("recipient",{id,path:"limit.bin",action:"write",etag:null,content:Buffer.alloc(size,1).toString("base64")});

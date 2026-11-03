@@ -1,18 +1,18 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { randomUUID, createHash } = require("node:crypto");
-const { transaction } = require("../platform/persistence/database");
-const { resolveRegisteredVault } = require("../features/vaults/adapters/vault-catalog.js");
-const { classifyVaultPath } = require("../features/vaults/application/vault-policy.js");
-const { normalizeLogin } = require("../features/identity/adapters/store.js");
+const { transaction } = require("../../../platform/persistence/database");
+const { resolveRegisteredVault } = require("../../vaults/adapters/vault-catalog.js");
+const { classifyVaultPath } = require("../../vaults/application/vault-policy.js");
+const { normalizeLogin } = require("../../identity/adapters/store.js");
 const { writeCoalescer } = require("@ignis/server-core");
-const { readResourceShareLimits } = require("./resource-share-limits");
+const { readResourceShareLimits } = require("./limits.js");
 const MAX_ENTRIES = 1000;
 const fail = (code = "SHARE_UNAVAILABLE") => { throw Object.assign(new Error("Shared resource unavailable"), { code }); };
 const identity = stat => `${stat.ino}:${stat.birthtimeMs}`;
 const directoryTag = stat => "dir:" + createHash("sha256").update([stat.dev,identity(stat),stat.mtimeMs,stat.ctimeMs].join(":")).digest("hex");
 const digest = bytes => createHash("sha256").update(bytes).digest("hex");
-const {canonical,inspect}=require('../features/content/adapters/content-path');
+const {canonical,inspect}=require("../../content/adapters/content-path");
 function readFile(item, maxFileBytes) {
   if (!item.stat?.isFile() || item.stat.size > maxFileBytes) fail("SHARE_TOO_LARGE");
   const fd = fs.openSync(item.filename, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
@@ -28,10 +28,12 @@ function readFile(item, maxFileBytes) {
     return bytes;
   } finally { fs.closeSync(fd); }
 }
-function createResourceSharesService(db, root, sessions, limits = readResourceShareLimits({}), content = require('../features/content/adapters/runtime').createContentRuntime({db,root,sessions})) {
+function createResourceSharesService(db, root, sessions, limits = readResourceShareLimits({}), content = require("../../content/adapters/runtime").createContentRuntime({db,root,sessions})) {
   const { maxFileBytes } = limits;
-  function actor(token) {
+  function actor(credential) {
+    const token=typeof credential==='object'?credential.token:credential;
     const session = sessions.resolve(token, { withinTransaction:true });
+    if(credential?.context && !require('../../../../../../packages/contracts/src/session').matchesSession(credential.context,session))fail();
     if (!session) fail();
     const user = db.prepare("SELECT id,login,role,status,auth_version FROM users WHERE id=?").get(session.user.id);
     if (!user || user.status !== "active" || !["admin","user"].includes(user.role) || user.auth_version !== session.user.authVersion) fail();

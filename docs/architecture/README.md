@@ -8,6 +8,7 @@ La referencia de fase 0 es histórica; los avances posteriores se describen apar
 - [Fase 2: identidad, cuenta y controladores HTTP](phase2.md).
 - [Fase 3: bóvedas, autorización y configuración compartida](phase3.md).
 - [Fase 4: publicación de contenido y guardado del editor](phase4.md).
+- [Fase 5: comparticiones y eventos](phase5.md).
 
 - [Referencia fijada](reference.json): producto, upstream y versión de Obsidian.
 - [Auditoría y diseño completo](audit-2026-11-03.txt): evidencia, responsabilidades,

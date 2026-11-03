@@ -35,11 +35,11 @@ function createResourceSharesRouter(service) {
       const fn={validateGrant:"validateGrant",grants:"grants",copy:"copy",previewRemoval:"previewRemoval",removeConfirmed:"removeConfirmed",mounts:"mounts",destination:"destination",rename:"rename",create:"create",grant:"grant",revoke:"grant",browse:"browseOwner",read:"read",write:"mutate",mkdir:"mutate",remove:"mutate"}[operation];
       req.ignisLogOperation = `shares.${operation}`;
       const result = await service[fn](req.shareToken,input);
-      if (["create", "grant"].includes(operation)) req.ignisLogTargetUsername = require("../features/identity/adapters/store.js").normalizeLogin(input.login);
+      if (["create", "grant"].includes(operation)) req.ignisLogTargetUsername = require("../../../features/identity/adapters/store.js").normalizeLogin(input.login);
       res.json(result);
     } catch(error) {
       const [status,message]=messages[error.code] || (error.code==="ENOTEMPTY"?[409,"The folder must be empty before removing it."]:[404,"Shared resource unavailable"]);
-      res.status(status).json({error:message,code:messages[error.code]?error.code:"SHARE_UNAVAILABLE",...(req.body?.operation==="write"?{outcome:require("../../../../packages/contracts/src/content").writeOutcome(error)}:{})});
+      res.status(status).json({error:message,code:messages[error.code]?error.code:"SHARE_UNAVAILABLE",...(req.body?.operation==="write"?{outcome:require("../../../../../../packages/contracts/src/content").writeOutcome(error)}:{})});
     }
   });
   router.get("/api/shares/content",async(req,res)=>{

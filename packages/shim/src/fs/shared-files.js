@@ -8,9 +8,13 @@ function wire(input){const value={...input};delete value.role;return value;}
 const base64 = bytes => {let binary="";for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(binary);};
 const bytes = value => Uint8Array.from(atob(value),character=>character.charCodeAt(0));
 export function createSharedFiles({metadataCache,watch,currentContext,request=fetch,createXHR=()=>new XMLHttpRequest(),onFailure=()=>{},onNotice=()=>{},onRemoved=()=>{}}) {
-  let scope=null, enabled=false, outgoing=[], mounted=new Map(), tree=Object.create(null), listening=false, refreshing=false, refreshPending=false, retryTimer=null, retryDelay=2000, maxBytes=0;
+  let scope=null, enabled=false, outgoing=[], mounted=new Map(), tree=Object.create(null), listening=false, refreshing=false, refreshPending=false, retryTimer=null, retryDelay=2000, maxBytes=0,generation=0;
   const states=new Map(),reserved=new Set(),subscribers=new Set();
   function context(){const value=currentContext();if(!scope?.sessionId || value?.sessionId!==scope.sessionId || value?.vault!==scope.vault)fail("AUTH_CONTEXT_CHANGED","Session or vault changed");}
+  function fence(){const original=scope,epoch=generation;return ()=>{
+    if(original!==scope || epoch!==generation)fail('AUTH_CONTEXT_CHANGED','Session or vault changed');
+    context();
+  };}
   function owns(path){return enabled && [...reserved].some(root=>under(normalize(path),root));}
   function containsMount(path){return enabled && [...reserved].some(root=>root.startsWith(normalize(path)+"/"));}
   function selected(value){
@@ -28,8 +32,15 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
     return {id:mount.id,path:relative,role:mount.role};
   }
   function result(status,data){context();if(status<200||status>=300)fail((status===404?"ENOENT":status===403?"EACCES":data?.code || "SHARE_UNAVAILABLE"),data?.error || "Shared resource unavailable");return data;}
-  async function exchange(operation,input){context();let response;try{response=await request("/api/shares",{method:"POST",cache:"no-store",headers:{"Content-Type":"application/json","X-Ignis-Context":scope.sessionId},body:JSON.stringify({operation,input:wire(input)})});}catch{fail("SHARE_NETWORK_UNAVAILABLE","Shared resources connection temporarily unavailable");}return result(response.status,await response.json());}
-  function exchangeSync(operation,input){context();const xhr=createXHR();xhr.open("POST","/api/shares",false);xhr.setRequestHeader("Content-Type","application/json");xhr.send(JSON.stringify({operation,input:wire(input)}));return result(xhr.status,JSON.parse(xhr.responseText));}
+  async function exchange(operation,input){
+    const check=fence();check();let response;
+    try{response=await request('/api/shares',{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json','X-Ignis-Context':scope.sessionId},body:JSON.stringify({operation,input:wire(input)})});}
+    catch{check();fail('SHARE_NETWORK_UNAVAILABLE','Shared resources connection temporarily unavailable');}
+    check();const data=await response.json();check();return result(response.status,data);
+  }
+  function exchangeSync(operation,input){
+    const check=fence();check();const xhr=createXHR();xhr.open('POST','/api/shares',false);xhr.setRequestHeader('Content-Type','application/json');xhr.send(JSON.stringify({operation,input:wire(input)}));check();return result(xhr.status,JSON.parse(xhr.responseText));
+  }
   function mountName(mount){
     const value=mount.localPath;
     if(typeof value!=="string" || !value || normalize(value)!==value || value.split("/").some(part=>!part || part===".." || part.startsWith(".")))fail("SHARE_UNAVAILABLE");
@@ -66,6 +77,7 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
     tree=next;for(const subscriber of subscribers)subscriber();
   }
   function configure(ordinary){
+    if(scope)stop();generation++;
     scope={...currentContext()};
     enabled=true;
     try{accept(exchangeSync("mounts",{vault:scope.vault}),false);}catch(error){onNotice(error.message);throw error;}
@@ -77,35 +89,38 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
   async function refresh(){
     if(!enabled)return;
     if(refreshing){refreshPending=true;return;}
+    const epoch=generation,check=fence();
     clearTimeout(retryTimer);retryTimer=null;refreshing=true;
-    try{accept(await exchange("mounts",{vault:scope.vault}),true);retryDelay=2000;}
+    try{const snapshot=await exchange("mounts",{vault:scope.vault});check();accept(snapshot,true);retryDelay=2000;}
     catch(error){
+      if(epoch!==generation)return;try{check();}catch{return;}
       if(error.code!=="SHARE_NETWORK_UNAVAILABLE")onNotice(error.message);
       if(enabled && ["SHARE_NETWORK_UNAVAILABLE","SHARE_UNAVAILABLE"].includes(error.code)){
         retryTimer=setTimeout(()=>{retryTimer=null;void refresh();},retryDelay);retryTimer.unref?.();retryDelay=Math.min(30000,retryDelay*2);
       }
-    }finally{refreshing=false;if(refreshPending){refreshPending=false;void refresh();}}
+    }finally{if(epoch===generation){refreshing=false;if(refreshPending){refreshPending=false;void refresh();}}}
   }
   const changed=event=>{if(event.detail?.shares)void refresh();};
   function start(){if(enabled&&!listening){listening=true;globalThis.window?.addEventListener("ignis:state-changed",changed);void refresh();}}
-  function stop(){clearTimeout(retryTimer);retryTimer=null;retryDelay=2000;if(listening)globalThis.window?.removeEventListener("ignis:state-changed",changed);listening=false;refreshPending=false;for(const path of Object.keys(tree))metadataCache.delete(path);tree=Object.create(null);mounted.clear();outgoing=[];states.clear();reserved.clear();enabled=false;scope=null;}
+  function stop(){generation++;refreshing=false;clearTimeout(retryTimer);retryTimer=null;retryDelay=2000;if(listening)globalThis.window?.removeEventListener("ignis:state-changed",changed);listening=false;refreshPending=false;for(const path of Object.keys(tree))metadataCache.delete(path);tree=Object.create(null);mounted.clear();outgoing=[];states.clear();reserved.clear();enabled=false;scope=null;}
   function stat(path){context();const value=metadataCache.toStat(path);if(!value)fail("ENOENT");return value;}
   function readdir(path){if(!stat(path).isDirectory())fail("ENOTDIR");return metadataCache.readdir(path).map(entry=>entry.name);}
   function state(path){if(!states.has(path))states.set(path,{etag:undefined,blocked:false,busy:false});return states.get(path);}
   function decode(file,encoding){if(file.kind!=="file")fail("EISDIR");const format=typeof encoding==="object"?encoding?.encoding:encoding;const content=bytes(file.content);if(!format)return content;if(!["utf8","utf-8"].includes(format))fail("EINVAL","Unsupported shared file encoding");return new TextDecoder().decode(content);}
   function inputBytes(data,encoding){const format=typeof encoding==="object"?encoding?.encoding:encoding;if(format && !["utf8","utf-8"].includes(format))fail("EINVAL");const value=typeof data==="string"?new TextEncoder().encode(data):data;if(!(value instanceof Uint8Array) || value.length>maxBytes)fail("SHARE_TOO_LARGE");return value;}
   function readAccepted(path,file,encoding){const value=state(path);if(value.etag===undefined)value.etag=file.etag;return decode(file,encoding);}
-  async function read(path,encoding){return readAccepted(path,await exchange("read",target(path)),encoding);}
+  async function read(path,encoding){const check=fence(),file=await exchange("read",target(path));check();return readAccepted(path,file,encoding);}
   function readSync(path,encoding){return readAccepted(path,exchangeSync("read",target(path)),encoding);}
   function writeStart(path,data,encoding){context();const destination=target(path);if(destination.role!=="editor")fail("EACCES","This shared resource is read-only");const value=state(path);if(value.blocked)fail("SHARE_CONFLICT","Shared saves paused; preserve your changes and reload");if(value.busy)fail("EBUSY");value.busy=true;return {destination,value,content:base64(inputBytes(data,encoding))};}
-  function writeError(path,data,error){const value=state(path);if(error.code!=="EACCES")value.blocked=true;try{onFailure({path,content:typeof data==="string"?data:base64(data),binary:typeof data!=="string",code:error.code,...scope});}catch{}throw error;}
-  async function write(path,data,encoding,expected){let operation;try{
+  function writeError(path,data,error,check){check();const value=state(path);if(error.code!=="EACCES")value.blocked=true;try{onFailure({path,content:typeof data==="string"?data:base64(data),binary:typeof data!=="string",code:error.code,...scope});}catch{}throw error;}
+  async function write(path,data,encoding,expected){const check=fence();let operation;try{check();
     operation=writeStart(path,data,encoding);const {destination,value,content}=operation;
     value.etag=expected!==undefined?expected:metadataCache.has(path)?(await exchange("read",destination)).etag:null;
-    const response=await exchange("write",{...destination,role:undefined,action:"write",etag:value.etag,content});value.etag=response.etag;
+    check();const response=await exchange("write",{...destination,role:undefined,action:"write",etag:value.etag,content});check();value.etag=response.etag;
     await refresh();
-  }catch(error){writeError(path,data,error);}finally{if(operation)operation.value.busy=false;}}
+  }catch(error){writeError(path,data,error,check);}finally{if(operation)operation.value.busy=false;}}
   async function writeEditor(path,data,expectedHash) {
+    const check=fence();check();
     const selectedPath=selected(path);
     if(!selectedPath)fail("EACCES");
     const destination=target(selectedPath);
@@ -113,16 +128,16 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
     if(state(selectedPath).blocked)fail("SHARE_CONFLICT");
     if(typeof expectedHash!=="string" || !/^[a-f0-9]{64}$/.test(expectedHash))fail("SHARE_CONFLICT");
     const result=await exchange("write",{...destination,action:"write",etag:expectedHash,content:base64(inputBytes(data,"utf8"))});
-    await refresh();return result;
+    check();await refresh();check();return result;
   }
-  function writeSync(path,data,encoding,expected){let operation;try{
+  function writeSync(path,data,encoding,expected){const check=fence();let operation;try{check();
     operation=writeStart(path,data,encoding);const {destination,value,content}=operation;
     value.etag=expected!==undefined?expected:metadataCache.has(path)?exchangeSync("read",destination).etag:null;
     const response=exchangeSync("write",{...destination,role:undefined,action:"write",etag:value.etag,content});value.etag=response.etag;
     accept(exchangeSync("mounts",{vault:scope.vault}),true);
-  }catch(error){writeError(path,data,error);}finally{if(operation)operation.value.busy=false;}}
+  }catch(error){writeError(path,data,error,check);}finally{if(operation)operation.value.busy=false;}}
   function mutationInput(method,path){const destination=target(path);if(!destination.path || destination.role!=="editor")fail("EACCES","Shared resource roots and read-only resources cannot be changed");return {...destination,role:undefined,action:method,etag:method==="mkdir"?null:stat(path).isDirectory()?"directory":state(path).etag};}
-  async function mutate(method,path){const input=mutationInput(method,path);if(input.etag===undefined)input.etag=(await exchange("read",target(path))).etag;await exchange(method,input);states.delete(path);await refresh();}
+  async function mutate(method,path){const check=fence();check();const input=mutationInput(method,path);if(input.etag===undefined)input.etag=(await exchange("read",target(path))).etag;check();await exchange(method,input);check();states.delete(path);await refresh();}
   function mutateSync(method,path){const input=mutationInput(method,path);if(input.etag===undefined)input.etag=exchangeSync("read",target(path)).etag;exchangeSync(method,input);states.delete(path);accept(exchangeSync("mounts",{vault:scope.vault}),true);}
   function renameInput(path,newPath){
     context();const resolved=resolvePath(newPath),next=normalize(newPath);
@@ -145,9 +160,9 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
     if(mounted.has(path)){mounted.set(next,{...mounted.get(path),localPath:next});mounted.delete(path);reserved.add(next);}
   }
   async function rename(path,next){
-    const operation=renameInput(path,next);
+    const check=fence();check();const operation=renameInput(path,next);
     if(operation.operation==="rename" && operation.input.etag===undefined)operation.input.etag=(await exchange("read",target(path))).etag;
-    await exchange(operation.operation,operation.input);renamed(path,operation.next);await refresh();
+    check();await exchange(operation.operation,operation.input);check();renamed(path,operation.next);await refresh();
   }
   function renameSync(path,next){
     const operation=renameInput(path,next);
@@ -163,8 +178,8 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
     return {id:null,vault:scope.vault,path:value};
   }
   async function copyContent(from,to) {
-    const input={from:copySelector(from),to:copySelector(to)};
-    await exchange("copy",input);await refresh();
+    const check=fence();check();const input={from:copySelector(from),to:copySelector(to)};
+    await exchange("copy",input);check();await refresh();
   }
   function access(path,mode=0){stat(path);if(mode&1 || ((mode&2) && (target(path).role!=="editor")))fail("EACCES");}
   function wrap(original,sync=false){const methods=new Map();return new Proxy(original,{get(object,name){const fn=object[name];if(typeof fn!=="function")return fn;if(methods.has(name))return methods.get(name);const wrapped=(...args)=>{
@@ -172,7 +187,8 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
     if(["rename","renameSync","rmdir","rmdirSync","rm","rmSync"].includes(name) && containsMount(args[0]))fail("ENOTSUP","Move shared resources out of this folder before moving or deleting it");
     if(!path&&!second)return fn.apply(object,args);
     const method=String(name).replace(/Sync$/,"");
-    const run=()=>{
+    const check=fence();
+    const run=()=>{check();
       if(method==="rename"){if(!path)fail("ENOTSUP");return sync?renameSync(path,args[1]):rename(path,args[1]);}
       if(method==="copyFile"){
         if(sync){exchangeSync("copy",{from:copySelector(args[0]),to:copySelector(args[1])});accept(exchangeSync("mounts",{vault:scope.vault}),true);return;}
@@ -190,7 +206,7 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
         // Its precondition must describe the bytes used to assemble the result.
         const join=file=>{const current=decode(file),append=inputBytes(args[1],args[2]),joined=new Uint8Array(current.length+append.length);joined.set(current);joined.set(append,current.length);return joined;};
         if(sync){const file=exchangeSync("read",target(path));return writeSync(path,join(file),undefined,file.etag);}
-        return exchange("read",target(path)).then(file=>write(path,join(file),undefined,file.etag));
+        return exchange("read",target(path)).then(file=>{check();return write(path,join(file),undefined,file.etag);});
       }
       if(method==="mkdir") {if(args[1]?.recursive && metadataCache.get(path)?.type==="directory")return;return sync?mutateSync("mkdir",path):mutate("mkdir",path);}
       if(["unlink","rmdir","rm"].includes(method)){if(args[1]?.recursive){if(sync)fail("ENOTSUP","Use the file explorer to confirm recursive deletion");return removeReceived(path);}return sync?mutateSync("remove",path):mutate("remove",path);}
@@ -200,15 +216,15 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
   };methods.set(name,wrapped);return wrapped;}});}
   function resourceUrl(path){const selectedPath=selected(path);if(!selectedPath)return null;const destination=target(selectedPath);return "/api/shares/content?"+new URLSearchParams({id:destination.id,path:destination.path,context:scope.sessionId});}
   async function removeReceived(path) {
-    const destination=target(path);
+    const check=fence();check();const destination=target(path);
     if(!destination.path || destination.role!=="editor")fail("EACCES","A received root cannot be deleted. Remove its destination in Shared instead. Read-only resources cannot be deleted.");
     for(const [name,value] of states)if(under(name,path)&&(value.busy||value.blocked))fail("SHARE_CONFLICT","Save or download pending changes before deleting this resource.");
     const input={id:destination.id,path:destination.path};
     const preview=await exchange("previewRemoval",input);
-    if(!globalThis.confirm(`Permanently delete “${path}” and its contents (${preview.files} files, ${preview.folders} folders) for everyone? This deletes the original, bypasses the trash and cannot be undone.`))fail("ECANCELED","Deletion canceled");
-    context();
+    check();if(!globalThis.confirm(`Permanently delete “${path}” and its contents (${preview.files} files, ${preview.folders} folders) for everyone? This deletes the original, bypasses the trash and cannot be undone.`))fail("ECANCELED","Deletion canceled");
+    check();
     await exchange("removeConfirmed",{...input,confirm:true,revision:preview.revision});
-    for(const name of states.keys())if(under(name,path))states.delete(name);
+    check();for(const name of states.keys())if(under(name,path))states.delete(name);
     await refresh();
   }
   function installAdapter(app,obsidian){
@@ -222,7 +238,7 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
       adapter[method]=async(path,...args)=>{
         const sharedPath=selected(path);
         if(!sharedPath)return fallback(path,...args);
-        const run=async()=>{await removeReceived(sharedPath);if(adapter.reconcileInternalFile)await adapter.reconcileInternalFile(path);return method==="trashSystem"?true:undefined;};
+        const check=fence();const run=async()=>{check();await removeReceived(sharedPath);check();if(adapter.reconcileInternalFile)await adapter.reconcileInternalFile(path);return method==="trashSystem"?true:undefined;};
         return adapter.queue?adapter.queue(run):run();
       };
     }
@@ -230,16 +246,17 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
       const fallback=adapter.copy.bind(adapter);
       adapter.copy=async(from,to)=>{
         if(!selected(from)&&!selected(to))return fallback(from,to);
-        const run=async()=>{await copyContent(from,to);if(adapter.reconcileInternalFile)await adapter.reconcileInternalFile(to);};
+        const check=fence();const run=async()=>{check();await copyContent(from,to);check();if(adapter.reconcileInternalFile)await adapter.reconcileInternalFile(to);};
         return adapter.queue?adapter.queue(run):run();
       };
     }
     if(obsidian && app.workspace?.on)app.workspace.on("file-menu",(menu,file)=>{
       if(!file?.path || file.path.split("/").some(part=>part.startsWith(".")))return;
+      const menuCheck=fence();
       menu.addItem(item=>item.setTitle(globalThis.IgnisI18n?.t("Copy to…") ?? "Copy to…").setIcon("copy").onClick(()=>{
-        const sourceVault=scope.vault,sourceSession=scope.sessionId;
-        const checkSource=()=>{context();if(scope.vault!==sourceVault||scope.sessionId!==sourceSession)fail("AUTH_CONTEXT_CHANGED","Session or vault changed");};
-        const read=async url=>{checkSource();const response=await request(url,{cache:'no-store',headers:{'X-Ignis-Context':sourceSession}});checkSource();return result(response.status,await response.json());};
+        menuCheck();const sourceVault=scope.vault,sourceSession=scope.sessionId;
+        const checkSource=()=>{menuCheck();context();if(scope.vault!==sourceVault||scope.sessionId!==sourceSession)fail("AUTH_CONTEXT_CHANGED","Session or vault changed");};
+        const read=async url=>{checkSource();const response=await request(url,{cache:'no-store',headers:{'X-Ignis-Context':sourceSession}});checkSource();const data=await response.json();checkSource();return result(response.status,data);};
         openCopyDialog(obsidian,app,file,describe,async(from,to,destination)=>{
           checkSource();
           if(destination===sourceVault){await copyContent(from,to);if(adapter.reconcileInternalFile)await adapter.reconcileInternalFile(to);}
@@ -266,6 +283,7 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
     }
   }
   function describe(path){
+    if(!enabled)return null;try{context();}catch{return null;}
     const value=normalize(path),found=[...mounted].find(([root,mount])=>!mount.blocked&&under(value,root));
     if(found)return {direction:"incoming",role:found[1].role,owner:found[1].owner || "",root:found[0]};
     const sent=outgoing.find(item=>value===item.path);

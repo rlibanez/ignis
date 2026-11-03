@@ -3,8 +3,8 @@ import {createRequire} from "node:module";
 import {once} from "node:events";
 const require=createRequire(import.meta.url);
 const express=require("express");
-const {createResourceSharesRouter}=require("./resource-shares");
-const {readResourceShareLimits}=require("../auth/resource-share-limits");
+const {createResourceSharesRouter}=require("../transport/http/sharing/router.js");
+const {readResourceShareLimits}=require("../features/sharing/adapters/limits.js");
 it("sizes the JSON parser from the configured limit including Base64 overhead",async()=>{
  const limits=readResourceShareLimits({IGNIS_SHARED_RESOURCE_MAX_FILE_MIB:"1"});
  const app=express();app.use(createResourceSharesRouter({limits,mutate:()=>({ok:true}),read:()=>{throw Object.assign(new Error("too large"),{code:"SHARE_TOO_LARGE"});}}));

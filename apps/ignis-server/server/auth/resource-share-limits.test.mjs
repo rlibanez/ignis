@@ -1,7 +1,7 @@
 import {it,expect} from "vitest";
 import {createRequire} from "node:module";
 const require=createRequire(import.meta.url);
-const {readResourceShareLimits}=require("./resource-share-limits");
+const {readResourceShareLimits}=require("../features/sharing/adapters/limits.js");
 const {readAuthConfig}=require("./http-policy");
 it("defaults to 8 MiB and includes Base64 expansion plus JSON overhead",()=>{
  const limits=readResourceShareLimits({});expect(limits.maxFileMiB).toBe(8);expect(limits.maxFileBytes).toBe(8388608);expect(limits.maxRequestBytes).toBe(Math.ceil(8388608/3)*4+65536);

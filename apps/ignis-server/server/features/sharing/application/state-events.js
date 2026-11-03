@@ -5,7 +5,7 @@ function createStateEvents({resolve, snapshot, valid, entries}) {
   function reconcile() {
     for (const [ws,entry] of entries) {
       try {
-        if (!valid(ws)) continue;
+        if (!valid(ws) || !entry.events) continue;
         const next=capture(entry.token);
         if (next===entry.stateSnapshot) continue;
         const before=JSON.parse(entry.stateSnapshot),after=JSON.parse(next);
