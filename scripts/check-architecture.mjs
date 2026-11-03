@@ -46,6 +46,9 @@ export function checkArchitecture(root=repository){
       if(name.startsWith('apps/ignis-server/server/features/identity/application/') &&
         (!relative || !(target.startsWith('apps/ignis-server/server/features/identity/application/') || target.startsWith('packages/contracts/'))))
         errors.push(`Identity use case imports infrastructure: ${name} -> ${target}`);
+      if(name.startsWith('apps/ignis-server/server/features/vaults/application/') &&
+        (!relative || !(target.startsWith('apps/ignis-server/server/features/vaults/application/') || target.startsWith('packages/contracts/'))))
+        errors.push(`Vault use case imports infrastructure: ${name} -> ${target}`);
       if(name.startsWith('apps/ignis-server/server/transport/http/identity/') &&
         (target.includes('/features/identity/adapters/') || target.includes('/platform/persistence/') || specifier==='node:sqlite'))
         errors.push(`Identity HTTP imports persistence: ${name} -> ${target}`);
@@ -61,7 +64,7 @@ export function checkArchitecture(root=repository){
   }
   // New architectural modules must not participate in cycles, including indirect
   // paths through legacy adapters. Existing unrelated upstream cycles are out of scope.
-  const owned=name=>name.startsWith('packages/contracts/') || /^apps\/ignis-server\/server\/(app|platform|integration|features\/identity)\//.test(name);
+  const owned=name=>name.startsWith('packages/contracts/') || /^apps\/ignis-server\/server\/(app|platform|integration|features\/(identity|vaults))\//.test(name);
   for(const start of [...graph.keys()].filter(owned)){
     const seen=new Set();
     const visit=(node,chain)=>{

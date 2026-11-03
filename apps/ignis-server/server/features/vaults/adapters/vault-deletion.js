@@ -1,9 +1,9 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
-const { transaction } = require("../platform/persistence/database");
-const { resolveRegisteredVault } = require("./vault-catalog");
-const { rejectLegacyAliases } = require("./vault-rename");
+const { transaction } = require("../../../platform/persistence/database");
+const { resolveRegisteredVault } = require("./vault-catalog.js");
+const { rejectLegacyAliases } = require("./vault-rename.js");
 const fail = code => { throw Object.assign(new Error("Vault deletion failed"), { code }); };
 function audit(db, actor, action, id) {
   db.prepare("INSERT INTO audit_events VALUES (?, ?, ?, ?, ?)").run(randomUUID(), actor, action, id, Date.now());

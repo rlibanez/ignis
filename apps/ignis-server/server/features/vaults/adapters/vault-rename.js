@@ -1,9 +1,9 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
-const { transaction } = require("../platform/persistence/database");
-const { validVaultName } = require("./vault-creation");
-const { resolveRegisteredVault } = require("./vault-catalog");
+const { transaction } = require("../../../platform/persistence/database");
+const { validVaultName } = require("../application/vault-name");
+const { resolveRegisteredVault } = require("./vault-catalog.js");
 const fail = code => { throw Object.assign(new Error("Vault rename failed"), { code }); };
 function audit(db, actor, action, id) {
   db.prepare("INSERT INTO audit_events VALUES (?, ?, ?, ?, ?)").run(randomUUID(), actor, action, id, Date.now());

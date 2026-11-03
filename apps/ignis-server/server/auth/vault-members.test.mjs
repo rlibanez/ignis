@@ -5,8 +5,8 @@ import os from "node:os";
 import path from "node:path";
 const require=createRequire(import.meta.url);
 const {openDatabase}=require("../platform/persistence/database");
-const {registerVault}=require("../features/identity/adapters/store.js");
-const {createVaultMembersService}=require("./vault-members");
+const {registerExistingVault:registerVault}=require("../features/vaults/adapters/vault-registration.js");
+const {createVaultMembersService}=require("../features/vaults/adapters/vault-members.js");
 let root,db,vault,service,active;
 beforeEach(()=>{
  root=fs.mkdtempSync(path.join(os.tmpdir(),"ignis-members-"));fs.mkdirSync(path.join(root,"Notes"));

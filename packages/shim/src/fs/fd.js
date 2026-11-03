@@ -8,7 +8,7 @@ import { checkTimes, createUtimes } from "./utimes.js";
 let nextFd = 100;
 const openFiles = new Map();
 
-export function createFdOps(metadataCache, contentCache, transport, privateFiles = null) {
+export function createFdOps(metadataCache, contentCache, transport, filePolicy = null) {
   const commitUtimes = createUtimes(metadataCache, transport);
 
   function ensureData(path) {
@@ -68,7 +68,7 @@ export function createFdOps(metadataCache, contentCache, transport, privateFiles
   // --- Sync ---
 
   function openSync(path, flags, mode) {
-    privateFiles?.assertOrdinary(path, resolvePath(path));
+    filePolicy?.assertOrdinary(path, resolvePath(path));
     const hasInCache = isInputCachePath(path) && inputCacheGet(path) !== null;
     const resolved = resolvePath(path);
 

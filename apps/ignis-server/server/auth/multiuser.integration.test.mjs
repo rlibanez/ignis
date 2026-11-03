@@ -131,6 +131,15 @@ it('validates three independent real sessions across conflicts, downgrade, revok
   const a=(await success(alice.call('/api/vault/create',{name:'Alice'}))).uuid;
   const b=(await success(bob.call('/api/vault/create',{name:'Bob'}))).uuid;
   const c=(await success(carol.call('/api/vault/create',{name:'Carol'}))).uuid;
+  // Bootstrap must filter foreign catalog entries before resolving their UUIDs.
+  const initialBoot=await success(alice.call('/api/bootstrap?vault='+a));
+  expect(initialBoot.vault.uuid).toBe(a);
+  expect(initialBoot.vaultList.map(v=>v.uuid)).toEqual([a]);
+  // Ordinary owners can edit notes/preferences, but cannot install or activate code.
+  for(const file of ['community-plugins.json','core-plugins.json','appearance.json','unreviewed.json'])
+   expect((await alice.call('/api/fs/writeFile?vault='+a,{path:'.obsidian/'+file,content:'{}'})).status).toBe(404);
+  await success(alice.call('/api/fs/writeFile?vault='+a,{path:'.obsidian/app.json',content:'{}'}));
+  expect((await alice.call('/api/vault-config?vault='+a)).status).toBe(403);
   // Whole-vault memberships are independent from resource grants and admin role.
   const admin=await client('admin');
   expect((await admin.call('/api/fs/readFile?vault='+a+'&path=private.md')).status).toBe(404);

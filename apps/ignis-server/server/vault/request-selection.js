@@ -1,4 +1,4 @@
-const { selectVaultReference } = require("../auth/vault-selection");
+const { selectVaultReference } = require("../features/vaults/application/vault-selection.js");
 
 // UUID references have already been resolved by the authentication boundary.
 // Authenticated requests must always carry an authorized view.

@@ -2,7 +2,7 @@ import { it, expect } from "vitest";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { selectRequestVault } = require("./request-selection");
-const { createVaultView } = require("../auth/vault-view");
+const { createVaultView } = require("../features/vaults/adapters/vault-view.js");
 const config = { defaultVaultId: "Foreign", vaults: { Foreign: "/vaults/Foreign", Own: "/vaults/Own" } };
 function request(allowed = ["Own"]) {
   return { query: {}, auth: { user: { role: "user" } }, vaultView: createVaultView({

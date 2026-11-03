@@ -1,14 +1,9 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
-const { transaction } = require("../platform/persistence/database");
+const { transaction } = require("../../../platform/persistence/database");
 const fail = code => { throw Object.assign(new Error("Vault creation failed"), { code }); };
-function validVaultName(name) {
-  return typeof name === "string" && name.length > 0 && Buffer.byteLength(name) <= 255 &&
-    name === name.trim() && !name.startsWith(".") && !name.endsWith(".") &&
-    // eslint-disable-next-line no-control-regex
-    !/[/\\:*?"<>|\x00-\x1f\x7f]/.test(name) && !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(name);
-}
+const {validVaultName}=require('../application/vault-name');
 function audit(db, actor, action, id) {
   db.prepare("INSERT INTO audit_events VALUES (?, ?, ?, ?, ?)").run(randomUUID(), actor, action, id, Date.now());
 }
@@ -102,4 +97,4 @@ function directoryAvailable(db, directory, root) {
   }
   return true;
 }
-module.exports = { validVaultName, createRegisteredVault, quarantinePendingVaults, directoryAvailable };
+module.exports = { createRegisteredVault, quarantinePendingVaults, directoryAvailable };

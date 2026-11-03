@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 const require = createRequire(import.meta.url);
 const { permitSubtree, filterTree } = require("./resource-policy");
-const { vaultCapabilityAllowed } = require("../auth/vault-policy");
+const { vaultCapabilityAllowed } = require("../features/vaults/application/vault-policy.js");
 let root, req;
 beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "ignis-subtree-"));

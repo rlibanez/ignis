@@ -5,9 +5,9 @@ import path from "node:path";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { openDatabase } = require("../platform/persistence/database");
-const { registerVault } = require("../features/identity/adapters/store.js");
-const { resolveRegisteredVault, listRegisteredVaults } = require("./vault-catalog");
-const { selectVaultReference } = require("./vault-selection");
+const {registerExistingVault:registerVault}=require("../features/vaults/adapters/vault-registration.js");
+const { resolveRegisteredVault, listRegisteredVaults } = require("../features/vaults/adapters/vault-catalog.js");
+const { selectVaultReference } = require("../features/vaults/application/vault-selection.js");
 let root, vaultRoot, db, registered;
 beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "ignis-catalog-"));
@@ -64,10 +64,10 @@ it.each(["", null, [], ["Notes", "Notes"], {}, 7, "../Notes", "Notes/child", "No
   expect(() => selectVaultReference({}, { vault: value })).toThrow();
 });
 
-it("normalizes HTTP UUID/alias selectors without changing legacy names or choosing a default", () => {
-  const { resolveVaultRequest } = require("./vault-request");
+it("normalizes registered UUID/directory selectors and rejects unregistered names without a default", () => {
+  const { resolveVaultRequest } = require("../features/vaults/adapters/vault-request.js");
   expect(resolveVaultRequest(db, vaultRoot, { vault: registered.id }, { vault: "Notes" })).toBe("Notes");
-  expect(resolveVaultRequest(db, vaultRoot, { vault: "Legacy" }, null)).toBe("Legacy");
+  expect(() => resolveVaultRequest(db, vaultRoot, { vault: "Legacy" }, null)).toThrow();
   expect(resolveVaultRequest(db, vaultRoot, {}, {})).toBeNull();
   expect(() => resolveVaultRequest(db, vaultRoot, { vault: registered.id }, { vault: "Legacy" })).toThrow();
   db.prepare("UPDATE vaults SET status='quarantine'").run();

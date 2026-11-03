@@ -20,9 +20,9 @@ export function createWatcherClient(
   fsWatch,
   wsClient,
   transport,
-  privateFiles = null,
+  filePolicy = null,
 ) {
-  const sharedPath = path => !privateFiles || privateFiles.allowsSharedPrefetch(path);
+  const sharedPath = path => !filePolicy || filePolicy.allowsSharedPrefetch(path);
   function hasLocalChange(path) {
     return isRecentSentOp(path) || hasUnconfirmedWrite(path);
   }

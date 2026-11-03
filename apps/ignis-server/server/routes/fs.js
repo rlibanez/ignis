@@ -258,7 +258,7 @@ router.post("/writeFile", async (req, res) => {
 
   try {
     const rel = toRelative(req._vaultRoot, resolved);
-    const guarded = req.writeVaultContent && require("../auth/vault-policy").classifyVaultPath(rel) === "content";
+    const guarded = req.writeVaultContent && require("../features/vaults/application/vault-policy.js").classifyVaultPath(rel) === "content";
     if (guarded && req.body.expectedHash !== undefined && req.body.expectedHash !== null &&
         (typeof req.body.expectedHash !== "string" || !/^[a-f0-9]{64}$/.test(req.body.expectedHash)))
       return res.status(428).json({error:"Invalid content version precondition.",code:"CONTENT_VERSION_REQUIRED"});

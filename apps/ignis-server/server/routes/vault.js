@@ -1,39 +1,16 @@
 const express = require("express");
-const fs = require("fs");
 const config = require("../config");
-const path = require("path");
 const bootstrapCache = require("../cache");
 const settings = require("../settings");
 const treeReconcile = require("../cache/reconcile");
-const { withWatcherStopped, quiesceRegisteredVault } = require("../vault/lifecycle");
+const { quiesceRegisteredVault } = require("../vault/lifecycle");
 const { sanitizeError } = require("@ignis/server-core");
 
 const router = express.Router();
 
-// Vault names become directories under VAULT_ROOT; reject traversal, hidden, and reserved-device names.
-const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
-
-// skip a refresh shortly after the last refresh
+const {validVaultName:isValidVaultName}=require('../features/vaults/application/vault-name');
 const REFRESH_COOLDOWN_MS = 10 * 1000;
-
-// vaultId -> time of the last manual refresh
 const lastRefreshAt = new Map();
-
-function isValidVaultName(name) {
-  if (typeof name !== "string" || name.length === 0 || name.length > 255) {
-    return false;
-  }
-
-  if (/[/\\:*?"<>|]/.test(name)) {
-    return false;
-  }
-
-  if (name.startsWith(".")) {
-    return false;
-  }
-
-  return !WINDOWS_RESERVED.test(name);
-}
 
 // GET /api/vault/list - returns all discovered vaults (re-scans on each call)
 router.get("/list", (req, res) => {
@@ -42,7 +19,6 @@ router.get("/list", (req, res) => {
   const list = Object.entries(config.vaults).map(([id, vaultPath]) => ({
     id,
     name: id,
-    ...(req.vaultUUID?.(id) ? { uuid: req.vaultUUID(id) } : {}),
     path: vaultPath,
   }));
 
@@ -102,7 +78,7 @@ router.post("/register", (req, res) => {
   } catch (error) {
     const statuses = { INVALID_DIRECTORY: 400, INVALID_ROOT: 409, INVALID_VAULT: 409, VAULT_ALIAS: 409,
       VAULT_RESERVED: 409, OWNER_UNAVAILABLE: 409, SESSION_CHANGED: 401, DIRECTORY_CHANGED: 409 };
-    const messages = require("../auth/vault-registration").messages;
+    const messages = require("../features/vaults/application/registration-errors").messages;
     return res.status(statuses[error.code] || 503).json({ error: messages[error.code] || "Vault registration could not be completed" });
   }
 });
@@ -117,7 +93,7 @@ router.get("/info", async (req, res) => {
     // Only an unselected initial probe with no accessible default is expected.
     // A missing directory for a selected vault must remain a warning.
     if (!vaultId && req.vaultView &&
-        require("../auth/vault-selection").selectVaultReference(req.query, req.body) === null) {
+        require("../features/vaults/application/vault-selection.js").selectVaultReference(req.query, req.body) === null) {
       req.ignisExpectedLogOutcome = "no-initial-vault";
     }
     return res.status(404).json({ error: "Vault unavailable" });
@@ -183,7 +159,6 @@ router.post("/create", async (req, res) => {
 
 // POST /api/vault/rename { vault, name } - rename a vault
 router.post("/rename", async (req, res) => {
-  const vaultId = req.body?.vault;
   const newName = req.body?.name;
 
   if (!isValidVaultName(newName)) {
@@ -222,61 +197,11 @@ router.post("/rename", async (req, res) => {
     }
   }
 
-  const vaultPath = config.getVaultPath(vaultId);
-
-  if (!vaultPath) {
-    return res.status(404).json({ error: "Vault not found" });
-  }
-
-  if (
-    newName !== vaultId &&
-    Object.prototype.hasOwnProperty.call(config.vaults, newName)
-  ) {
-    return res
-      .status(409)
-      .json({ error: `A vault with name: ${newName} already exists` });
-  }
-
-  const newPath = path.join(config.vaultRoot, newName);
-
-  try {
-    await withWatcherStopped(vaultId, vaultPath, () =>
-      fs.promises.rename(vaultPath, newPath),
-    );
-
-    config.refreshVaults();
-
-    const trustedVaults = settings.get("trustedVaults");
-
-    if (trustedVaults.includes(vaultId)) {
-      settings.update({
-        trustedVaults: trustedVaults.map((id) =>
-          id === vaultId ? newName : id,
-        ),
-      });
-    }
-
-    treeReconcile.cancelVault(vaultId);
-    bootstrapCache.invalidateVault(vaultId);
-    bootstrapCache.invalidateVault(newName);
-
-    req.ignisLogVaultName = newName;
-    req.ignisLogPreviousVaultName = vaultId;
-    res.json({ ok: true, id: newName, path: newPath });
-  } catch (e) {
-    if (e.code === "ENOTEMPTY" || e.code === "EEXIST") {
-      return res
-        .status(409)
-        .json({ error: `A vault with name: ${newName} already exists` });
-    }
-
-    res.status(500).json(sanitizeError(e));
-  }
+  return res.status(503).json({error:"Vault lifecycle unavailable"});
 });
 
 // DELETE /api/vault/remove?vault=<id> - remove a vault from disk
 router.delete("/remove", async (req, res) => {
-  const vaultId = req.query.vault;
   if (req.deleteRegisteredVault) {
     if (Object.keys(req.query).some(key => key !== "vault") || (req.body && Object.keys(req.body).length))
       return res.status(400).json({ error: "Invalid deletion request" });
@@ -297,35 +222,7 @@ router.delete("/remove", async (req, res) => {
     }
   }
 
-  const vaultPath = config.getVaultPath(vaultId);
-
-  if (!vaultPath) {
-    return res.status(404).json({ error: "Vault not found" });
-  }
-
-  try {
-    await withWatcherStopped(vaultId, vaultPath, () =>
-      fs.promises.rm(vaultPath, { recursive: true, force: true }),
-    );
-
-    config.refreshVaults();
-
-    const trustedVaults = settings.get("trustedVaults");
-
-    if (trustedVaults.includes(vaultId)) {
-      settings.update({
-        trustedVaults: trustedVaults.filter((id) => id !== vaultId),
-      });
-    }
-
-    treeReconcile.cancelVault(vaultId);
-    bootstrapCache.invalidateVault(vaultId);
-
-    req.ignisLogVaultName = vaultId;
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json(sanitizeError(e));
-  }
+  return res.status(503).json({error:"Vault lifecycle unavailable"});
 });
 
 module.exports = router;

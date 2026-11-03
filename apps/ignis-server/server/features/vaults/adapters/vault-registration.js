@@ -1,20 +1,12 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { randomUUID, createHash } = require("node:crypto");
-const { transaction } = require("../platform/persistence/database");
-const { validVaultName, directoryAvailable } = require("./vault-creation");
-const { rejectLegacyAliases } = require("./vault-rename");
+const { transaction } = require("../../../platform/persistence/database");
+const {validVaultName}=require("../application/vault-name");
+const {directoryAvailable}=require("./vault-creation");
+const { rejectLegacyAliases } = require("./vault-rename.js");
 
-const messages = {
-  INVALID_DIRECTORY: "Vault directory must be one visible directory name",
-  INVALID_ROOT: "Vault root must be a real directory",
-  INVALID_VAULT: "Vault must be a real directory",
-  VAULT_ALIAS: "Remove legacy symlink aliases before registering this vault",
-  VAULT_RESERVED: "Vault directory or identity is already registered or reserved",
-  OWNER_UNAVAILABLE: "Owner must be an active user",
-  SESSION_CHANGED: "Administrator authentication required",
-  DIRECTORY_CHANGED: "The directory changed. Reload the vault list and try again",
-};
+const {messages}=require('../application/registration-errors');
 function fail(code) { throw Object.assign(new Error(messages[code]), { code }); }
 
 // This is a stale-selection check, not an authentication token. No file content
@@ -94,4 +86,4 @@ function registerExistingVault(db, root, directory, ownerId, {
     return { id, name: directory };
   });
 }
-module.exports = { registrationOptions, registerExistingVault, inspectDirectory, messages };
+module.exports = { registrationOptions, registerExistingVault, inspectDirectory };

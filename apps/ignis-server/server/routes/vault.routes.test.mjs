@@ -32,12 +32,24 @@ const vaultRouter = require("./vault");
 const { watcher } = require("@ignis/server-core");
 const express = require("express");
 
+const {openDatabase}=require('../platform/persistence/database');
+const {registerExistingVault}=require('../features/vaults/adapters/vault-registration');
+const {renameRegisteredVault}=require('../features/vaults/adapters/vault-rename');
+const {deleteRegisteredVault}=require('../features/vaults/adapters/vault-deletion');
+let db,registered;
 let server;
 let base;
 
 beforeAll(async () => {
   const app = express();
   app.use(express.json());
+  app.use((req,_res,next)=>{
+    if(req.headers['x-without-lifecycle']!=='true'){
+      req.renameRegisteredVault=(name,lifecycle)=>renameRegisteredVault(db,VAULT_ROOT,'owner',registered.id,name,{...lifecycle,isCurrent:()=>true});
+      req.deleteRegisteredVault=lifecycle=>deleteRegisteredVault(db,VAULT_ROOT,'owner',registered.id,{...lifecycle,isCurrent:()=>true});
+    }
+    next();
+  });
   app.use("/api/vault", vaultRouter);
 
   await new Promise((resolve) => {
@@ -66,12 +78,17 @@ beforeEach(() => {
   }
 
   fs.mkdirSync(path.join(VAULT_ROOT, VAULT_ID), { recursive: true });
+  fs.rmSync(path.join(DATA_ROOT,'auth'),{recursive:true,force:true});
+  db=openDatabase(DATA_ROOT);
+  db.prepare("INSERT INTO users(id,login,role,created_at) VALUES ('owner','owner','admin',0)").run();
+  registered=registerExistingVault(db,VAULT_ROOT,VAULT_ID,'owner');
   config.refreshVaults();
   settings.update({ trustedVaults: [] });
   fs.rmSync(SETTINGS_FILE, { force: true });
 });
 
 afterEach(() => {
+  db?.close();
   vi.restoreAllMocks();
 });
 
@@ -153,4 +170,12 @@ describe("trusted vaults through the vault routes", () => {
     expect(res.status).toBe(200);
     expect(fs.existsSync(SETTINGS_FILE)).toBe(false);
   });
+});
+
+it('never falls back to a raw filesystem rename or deletion without registered lifecycle',async()=>{
+ for(const [route,method,body]of [['rename','POST',{vault:VAULT_ID,name:RENAMED_ID}],['remove?vault='+VAULT_ID,'DELETE',null]]){
+  const response=await fetch(base+'/api/vault/'+route,{method,headers:{'content-type':'application/json','x-without-lifecycle':'true'},...(body?{body:JSON.stringify(body)}:{})});
+  expect(response.status).toBe(503);
+  expect(fs.existsSync(path.join(VAULT_ROOT,VAULT_ID))).toBe(true);
+ }
 });

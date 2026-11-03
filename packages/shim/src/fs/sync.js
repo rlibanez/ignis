@@ -10,22 +10,11 @@ import { hasVirtualFile, getVirtualFile } from "./virtual-files.js";
 import { cancelPending, enqueueWrite, hasPending } from "./write-coalescer.js";
 import { createUtimes } from "./utimes.js";
 
-export function createFsSync(metadataCache, contentCache, transport, privateFiles = null) {
+export function createFsSync(metadataCache, contentCache, transport, filePolicy = null) {
   const commitUtimes = createUtimes(metadataCache, transport);
 
   return {
     existsSync(path) {
-      const probe = privateFiles?.caseProbe?.("exists", path, resolvePath(path));
-      if (probe) return probe.value;
-      if (privateFiles) {
-        try {
-          const privatePath = privateFiles.select(path, resolvePath(path), true);
-          if (privatePath) { privateFiles.statSync(privatePath); return true; }
-        } catch (error) {
-          if (["UNSUPPORTED_CONFIGURATION", "ENOENT"].includes(error.code)) return false;
-          throw error;
-        }
-      }
       if (isInputCachePath(path) && inputCacheGet(path) !== null) {
         return true;
       }
@@ -35,8 +24,6 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
     },
 
     statSync(path) {
-      const privatePath = privateFiles?.select(path, resolvePath(path), true);
-      if (privatePath) return privateFiles.statSync(privatePath);
       if (isInputCachePath(path) && inputCacheGet(path) !== null) {
         const data = inputCacheGet(path);
         const size = data ? data.length || data.byteLength || 0 : 0;
@@ -66,8 +53,6 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
     },
 
     accessSync(path, mode) {
-      const privatePath = privateFiles?.select(path, resolvePath(path), true);
-      if (privatePath) return privateFiles.accessSync(privatePath, mode);
       if (isInputCachePath(path) && inputCacheGet(path) !== null) {
         return;
       }
@@ -90,8 +75,6 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
 
       const wantText = encoding === "utf8" || encoding === "utf-8";
       const { resolved, redirected } = resolvePathInfo(path);
-      const privatePath = privateFiles?.select(path, resolved, false, true);
-      if (privatePath) return privateFiles.readSync(privatePath, encoding);
 
       // Virtual plugin source overrides any cache or transport version.
       if (hasVirtualFile(resolved)) {
@@ -172,15 +155,11 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
     },
 
     writeFileSync(path, data, encoding) {
-      const probe = privateFiles?.caseProbe?.("write", path, resolvePath(path), data);
-      if (probe) return probe.value;
       if (typeof encoding === "object") {
         encoding = encoding?.encoding;
       }
 
       const resolved = resolvePath(path);
-      const privatePath = privateFiles?.select(path, resolved);
-      if (privatePath) return privateFiles.writeSync(privatePath, data, encoding);
       const transformed = applyWriteTransform(resolved, data);
 
       contentCache.set(resolved, transformed);
@@ -217,9 +196,7 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
     },
 
     unlinkSync(path) {
-      const probe = privateFiles?.caseProbe?.("unlink", path, resolvePath(path));
-      if (probe) return probe.value;
-      privateFiles?.assertOrdinary(path, resolvePath(path));
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       const resolved = resolvePath(path);
 
       markSentOp(resolved);
@@ -239,11 +216,8 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
     },
 
     readdirSync(path) {
-      const privatePath = privateFiles?.select(path, resolvePath(path), true);
-      if (privatePath) return privateFiles.readdirSync(privatePath);
       const entries = metadataCache.readdir(path);
       const names = entries.map((e) => e.name);
-      if (privateFiles && ["", "/", "."].includes(path)) return privateFiles.rootEntries(names);
       return names;
     },
 
@@ -253,8 +227,7 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
     },
 
     mkdirSync(path, options) {
-      if (privateFiles?.ensureDirectory?.(path, resolvePath(path))) return;
-      privateFiles?.assertOrdinary(path, resolvePath(path));
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       const recursive =
         typeof options === "object" ? !!options.recursive : !!options;
 
@@ -273,7 +246,7 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
     },
 
     rmdirSync(path) {
-      privateFiles?.assertOrdinary(path, resolvePath(path));
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       const resolved = resolvePath(path);
 
       markSentOp(resolved);
@@ -289,7 +262,7 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
     },
 
     rmSync(path, options) {
-      privateFiles?.assertOrdinary(path, resolvePath(path));
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       const recursive =
         typeof options === "object" ? !!options.recursive : false;
 
@@ -309,8 +282,8 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
     },
 
     renameSync(oldPath, newPath) {
-      privateFiles?.assertOrdinary(oldPath, resolvePath(oldPath));
-      privateFiles?.assertOrdinary(newPath, resolvePath(newPath));
+      filePolicy?.assertOrdinary(oldPath, resolvePath(oldPath));
+      filePolicy?.assertOrdinary(newPath, resolvePath(newPath));
       const resolvedOld = resolvePath(oldPath);
       const resolvedNew = resolvePath(newPath);
 
@@ -338,8 +311,8 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
     },
 
     copyFileSync(src, dest) {
-      privateFiles?.assertOrdinary(src, resolvePath(src));
-      privateFiles?.assertOrdinary(dest, resolvePath(dest));
+      filePolicy?.assertOrdinary(src, resolvePath(src));
+      filePolicy?.assertOrdinary(dest, resolvePath(dest));
       const resolvedSrc = resolvePath(src);
       const resolvedDest = resolvePath(dest);
 
@@ -372,7 +345,7 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
     },
 
     appendFileSync(path, data) {
-      privateFiles?.assertOrdinary(path, resolvePath(path));
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       const resolved = resolvePath(path);
 
       markSentOp(resolved);
@@ -392,17 +365,17 @@ export function createFsSync(metadataCache, contentCache, transport, privateFile
     },
 
     utimesSync(path, atime, mtime) {
-      privateFiles?.assertOrdinary(path, resolvePath(path));
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       commitUtimes(path, atime, mtime);
     },
 
     lutimesSync(path, atime, mtime) {
-      privateFiles?.assertOrdinary(path, resolvePath(path));
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       commitUtimes(path, atime, mtime);
     },
 
     chmodSync(path) {
-      privateFiles?.assertOrdinary(path, resolvePath(path));
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       // The vault FS does not model permission bits. No-op.
     },
   };

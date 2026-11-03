@@ -289,7 +289,7 @@ export function initialize() {
     applyVaultInfo(bootstrap.vault);
     window.__vaultList = bootstrap.vaultList;
     let tree;
-    try { tree = fsShim._configurePrivateFiles(bootstrap); }
+    try { tree = fsShim._configureFiles(bootstrap); }
     catch (error) { window.__ignisBootstrapFailed = true; throw error; }
     applyTree(tree);
     fsShim._watcherClient.setTreeEtag(bootstrap.etag);
@@ -304,7 +304,7 @@ export function initialize() {
       vaultService.getCurrentVaultReference(),
       tree,
       fsShim._contentCache,
-      { onProgress: updateBootProgress, privateFiles: fsShim._privateFiles },
+      { onProgress: updateBootProgress, filePolicy: fsShim._filePolicy },
     );
 
     window.__ignisBooting = true;

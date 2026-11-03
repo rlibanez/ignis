@@ -1,8 +1,6 @@
 import { contentHash } from "./content-versions.js";
 import { createSharedFiles } from "./shared-files.js";
 import { createSharedNotice } from "./shared-notice.js";
-import { createPrivateConflictNotice } from "./private-conflict-notice.js";
-import { createPrivateRuntime } from "./private-runtime.js";
 import { MetadataCache } from "./metadata-cache.js";
 import { ContentCache } from "./content-cache.js";
 import { transport } from "./transport.js";
@@ -22,16 +20,10 @@ import {
 import { enqueue, flushPending, hasUnconfirmedWrite } from "./write-coalescer.js";
 import { wsClient } from "../ws-client.js";
 
-const privateContext = () => ({
+const currentContext = () => ({
   sessionId: window.__ignisAuth?.blocked ? null : window.__ignisAuth?.sessionId,
   vault: window.__currentVaultUuid,
 });
-let privateNotice;
-const privateRuntime = createPrivateRuntime(privateContext, undefined, event => {
-  privateNotice ||= createPrivateConflictNotice(privateContext);
-  privateNotice(event);
-});
-const privateGateway = privateRuntime.gateway;
 const metadataCache = new MetadataCache();
 const contentCache = new ContentCache();
 
@@ -40,25 +32,24 @@ contentCache.retainWhile(hasUnconfirmedWrite);
 const fsWatch = createFsWatch(transport);
 let editorNotice;
 let sharedNotice;
-const notice=()=>sharedNotice ||= createSharedNotice(privateContext);
-const sharedFiles=createSharedFiles({metadataCache,watch:fsWatch,currentContext:privateContext,onFailure:event=>notice().failure(event),onNotice:message=>notice().show(message),onRemoved:(path,reason)=>notice().removed(path,reason)});
+const notice=()=>sharedNotice ||= createSharedNotice(currentContext);
+const sharedFiles=createSharedFiles({metadataCache,watch:fsWatch,currentContext:currentContext,onFailure:event=>notice().failure(event),onNotice:message=>notice().show(message),onRemoved:(path,reason)=>notice().removed(path,reason)});
 if(typeof window !== "undefined")window.addEventListener?.("ignis:auth-lost",()=>sharedFiles.stop());
-const privateFiles=new Proxy(privateGateway,{get(target,name){
-  if(name==="allowsSharedPrefetch")return path=>!sharedFiles.owns(path) && target.allowsSharedPrefetch(path);
-  if(name==="assertOrdinary")return (path,resolved)=>{sharedFiles.assertOrdinary(path,resolved);return target.assertOrdinary(path,resolved);};
-  return target[name];
-}});
-const fsPromises = sharedFiles.wrap(createFsPromises(metadataCache, contentCache, transport, privateFiles));
-const fsSync = sharedFiles.wrap(createFsSync(metadataCache, contentCache, transport, privateFiles),true);
+const filePolicy=Object.freeze({
+  allowsSharedPrefetch:path=>!sharedFiles.owns(path),
+  assertOrdinary:(path,resolved)=>sharedFiles.assertOrdinary(path,resolved),
+});
+const fsPromises = sharedFiles.wrap(createFsPromises(metadataCache, contentCache, transport, filePolicy));
+const fsSync = sharedFiles.wrap(createFsSync(metadataCache, contentCache, transport, filePolicy),true);
 const watcherClient = createWatcherClient(
   metadataCache,
   contentCache,
   fsWatch,
   wsClient,
   transport,
-  privateFiles,
+  filePolicy,
 );
-const fdOps = createFdOps(metadataCache, contentCache, transport, privateFiles);
+const fdOps = createFdOps(metadataCache, contentCache, transport, filePolicy);
 const fsCallbacks = createFsCallbacks(fsPromises);
 
 export const fsShim = {
@@ -105,10 +96,10 @@ export const fsShim = {
     contentCache.invalidate(resolvePath(path));
   },
 
-  _configurePrivateFiles: bootstrap => sharedFiles.configure(privateRuntime.configure(bootstrap)),
+  _configureFiles: bootstrap => sharedFiles.configure(bootstrap.tree),
   _sharedFiles: sharedFiles,
-  _editorContext: privateContext,
-  _recoverEditor: event => {editorNotice ||= createSharedNotice(privateContext,window,true);editorNotice.failure(event);},
+  _editorContext: currentContext,
+  _recoverEditor: event => {editorNotice ||= createSharedNotice(currentContext,window,true);editorNotice.failure(event);},
   async _writeEditorFile(path,content,expectedHash,check) {
     const resolved=resolvePath(path);
     // Do not silently redirect a versioned edit into configuration/private state.
@@ -131,7 +122,7 @@ export const fsShim = {
       } catch(error) {contentCache.invalidate(resolved);throw error;}
     });
   },
-  _privateFiles: privateFiles,
+  _filePolicy: filePolicy,
   _metadataCache: metadataCache,
   _contentCache: contentCache,
   _watcherClient: watcherClient,

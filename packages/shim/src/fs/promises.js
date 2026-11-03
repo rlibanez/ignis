@@ -23,7 +23,7 @@ import { createUtimes } from "./utimes.js";
 import { createReadAhead } from "./read-ahead.js";
 import { isTextPath } from "./indexer-prefetch.js";
 
-export function createFsPromises(metadataCache, contentCache, transport, privateFiles = null) {
+export function createFsPromises(metadataCache, contentCache, transport, filePolicy = null) {
   initWriteCoalescer(transport);
   initWriteDurability(transport, enqueue);
 
@@ -34,12 +34,10 @@ export function createFsPromises(metadataCache, contentCache, transport, private
   });
 
   const commitUtimes = createUtimes(metadataCache, transport);
-  const readAhead = createReadAhead(metadataCache, contentCache, privateFiles);
+  const readAhead = createReadAhead(metadataCache, contentCache, filePolicy);
 
   return {
     async stat(path) {
-      const privatePath = privateFiles?.select(path, resolvePath(path), true);
-      if (privatePath) return privateFiles.stat(privatePath);
       const resolved = resolvePath(path);
       const cached = metadataCache.toStat(resolved);
 
@@ -58,8 +56,6 @@ export function createFsPromises(metadataCache, contentCache, transport, private
     },
 
     async readdir(path) {
-      const privatePath = privateFiles?.select(path, resolvePath(path), true);
-      if (privatePath) return privateFiles.readdir(privatePath);
       const meta = metadataCache.get(path);
 
       if (meta && meta.type === "file") {
@@ -76,7 +72,6 @@ export function createFsPromises(metadataCache, contentCache, transport, private
       }
       const entries = metadataCache.readdir(path);
       const names = entries.map((e) => e.name);
-      if (privateFiles && ["", "/", "."].includes(path)) return privateFiles.rootEntriesAsync(names);
       return names;
     },
 
@@ -87,8 +82,6 @@ export function createFsPromises(metadataCache, contentCache, transport, private
 
       const wantText = encoding === "utf8" || encoding === "utf-8";
       const { resolved, redirected } = resolvePathInfo(path);
-      const privatePath = privateFiles?.select(path, resolved, false, true);
-      if (privatePath) return privateFiles.read(privatePath, encoding);
 
       // Virtual plugin source overrides any cache/transport version.
       if (hasVirtualFile(resolved)) {
@@ -185,8 +178,6 @@ export function createFsPromises(metadataCache, contentCache, transport, private
       }
 
       const resolved = resolvePath(path);
-      const privatePath = privateFiles?.select(path, resolved);
-      if (privatePath) return privateFiles.write(privatePath, data, encoding);
       const transformed = applyWriteTransform(resolved, data);
 
       contentCache.set(resolved, transformed);
@@ -231,7 +222,7 @@ export function createFsPromises(metadataCache, contentCache, transport, private
     },
 
     async appendFile(path, data, encoding) {
-      privateFiles?.assertOrdinary(path, resolvePath(path));
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       const resolved = resolvePath(path);
 
       markSentOp(resolved);
@@ -244,7 +235,7 @@ export function createFsPromises(metadataCache, contentCache, transport, private
     },
 
     async unlink(path) {
-      privateFiles?.assertOrdinary(path, resolvePath(path));
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       const resolved = resolvePath(path);
 
       markSentOp(resolved);
@@ -255,8 +246,8 @@ export function createFsPromises(metadataCache, contentCache, transport, private
     },
 
     async rename(oldPath, newPath) {
-      privateFiles?.assertOrdinary(oldPath, resolvePath(oldPath));
-      privateFiles?.assertOrdinary(newPath, resolvePath(newPath));
+      filePolicy?.assertOrdinary(oldPath, resolvePath(oldPath));
+      filePolicy?.assertOrdinary(newPath, resolvePath(newPath));
       const resolvedOld = resolvePath(oldPath);
       const resolvedNew = resolvePath(newPath);
 
@@ -278,8 +269,7 @@ export function createFsPromises(metadataCache, contentCache, transport, private
     },
 
     async mkdir(path, options) {
-      if (privateFiles?.ensureDirectory?.(path, resolvePath(path))) return;
-      privateFiles?.assertOrdinary(path, resolvePath(path));
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       const recursive =
         typeof options === "object" ? !!options.recursive : !!options;
 
@@ -292,7 +282,7 @@ export function createFsPromises(metadataCache, contentCache, transport, private
     },
 
     async rmdir(path) {
-      privateFiles?.assertOrdinary(path, resolvePath(path));
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       const resolved = resolvePath(path);
 
       markSentOp(resolved);
@@ -301,7 +291,7 @@ export function createFsPromises(metadataCache, contentCache, transport, private
     },
 
     async rm(path, options) {
-      privateFiles?.assertOrdinary(path, resolvePath(path));
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       const recursive =
         typeof options === "object" ? !!options.recursive : false;
 
@@ -315,8 +305,8 @@ export function createFsPromises(metadataCache, contentCache, transport, private
     },
 
     async copyFile(src, dest) {
-      privateFiles?.assertOrdinary(src, resolvePath(src));
-      privateFiles?.assertOrdinary(dest, resolvePath(dest));
+      filePolicy?.assertOrdinary(src, resolvePath(src));
+      filePolicy?.assertOrdinary(dest, resolvePath(dest));
       const resolvedDest = resolvePath(dest);
 
       markSentOp(resolvedDest);
@@ -327,8 +317,6 @@ export function createFsPromises(metadataCache, contentCache, transport, private
     },
 
     async access(path, mode) {
-      const privatePath = privateFiles?.select(path, resolvePath(path), true);
-      if (privatePath) return privateFiles.access(privatePath, mode);
       const resolved = resolvePath(path);
 
       if (metadataCache.has(resolved)) {
@@ -352,22 +340,22 @@ export function createFsPromises(metadataCache, contentCache, transport, private
     },
 
     async utimes(path, atime, mtime) {
-      privateFiles?.assertOrdinary(path, resolvePath(path));
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       await commitUtimes(path, atime, mtime);
     },
 
     async lutimes(path, atime, mtime) {
-      privateFiles?.assertOrdinary(path, resolvePath(path));
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       await commitUtimes(path, atime, mtime);
     },
 
     async chmod(path) {
-      privateFiles?.assertOrdinary(path, resolvePath(path));
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       // No permission bits in the vault FS. No-op.
     },
 
     async open(path, flags) {
-      privateFiles?.assertOrdinary(path, resolvePath(path));
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       const hasInCache = isInputCachePath(path) && inputCacheGet(path) !== null;
       const resolved = resolvePath(path);
 

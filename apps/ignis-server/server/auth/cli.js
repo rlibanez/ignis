@@ -5,7 +5,8 @@ const fs = require("node:fs");
 const readline = require("node:readline");
 const { Writable } = require("node:stream");
 const { openDatabase, backupDatabase, restoreDatabase } = require("../platform/persistence/database");
-const { bootstrapAdmin, normalizeLogin, registerVault } = require("../features/identity/adapters/store.js");
+const {bootstrapAdmin,normalizeLogin} = require("../features/identity/adapters/store.js");
+const {registerExistingVault:registerVault}=require("../features/vaults/adapters/vault-registration.js");
 const { readPasswordPolicy } = require("../features/identity/adapters/password-policy.js");
 const { setUserEmail } = require("../features/identity/adapters/email.js");
 const { hashPassword } = require("../features/identity/adapters/password.js");
@@ -127,9 +128,9 @@ async function main(args = process.argv.slice(2)) {
       console.log(`Temporary password (shown once): ${result.secret}`);
       console.log(`Expires: ${new Date(result.expiresAt).toISOString()}. Sign in with your username and this temporary password to choose a new password.`);
     } else if (command === "list-vaults") {
-      console.log(JSON.stringify(require("./vault-catalog").listRegisteredVaults(db), null, 2));
+      console.log(JSON.stringify(require("../features/vaults/adapters/vault-catalog.js").listRegisteredVaults(db), null, 2));
     } else if (command === "resolve-vault") {
-      const vault = require("./vault-catalog").resolveRegisteredVault(db, process.env.VAULT_ROOT || path.join(root, "vaults"), rest[0]);
+      const vault = require("../features/vaults/adapters/vault-catalog.js").resolveRegisteredVault(db, process.env.VAULT_ROOT || path.join(root, "vaults"), rest[0]);
       console.log(JSON.stringify({ id: vault.id, name: vault.name, directory: vault.directory, status: vault.status }, null, 2));
     } else if (command === "list-users") {
       console.log(JSON.stringify(listUsers(db, null), null, 2));

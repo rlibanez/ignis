@@ -2,7 +2,7 @@
 // from the authenticated session/database, never from request fields.
 const roles = new Set(["reader", "editor", "owner"]);
 const personalCandidates = new Set([
-  "app.json", "appearance.json", "hotkeys.json", "graph.json",
+  "app.json", "hotkeys.json", "graph.json",
   "workspace.json", "workspace-mobile.json", "workspaces.json",
 ]);
 const instanceCapabilities = new Set([
@@ -46,13 +46,17 @@ function vaultCapabilityAllowed({ status, instanceRole, membership, capability, 
   const kind = classifyVaultPath(path);
   if (["invalid", "reserved"].includes(kind)) return false;
   if (kind === "root") return capability === "content.list" && roles.has(membership);
-  // Shared Obsidian configuration includes community code and its settings.
-  // Trust is granted to vault editors; this is not a plugin sandbox.
+  // Only reviewed inert preferences are writable by ordinary editors.
+  // Everything else under .obsidian can install/configure/activate trusted code.
   const sharedConfiguration = typeof path === "string" &&
     (path === ".obsidian" || path.startsWith(".obsidian/") || path === ".OBSIDIANTEST");
   const trash = path === ".trash" || (typeof path === "string" && path.startsWith(".trash/") && classifyVaultPath(path.slice(7)) === "content");
   if (!roles.has(membership) || (kind !== "content" && !sharedConfiguration && !trash)) return false;
-  return capability !== "content.write" || ["editor", "owner"].includes(membership);
+  if (capability !== "content.write") return true;
+  if (!["editor", "owner"].includes(membership)) return false;
+  if (sharedConfiguration && path !== ".OBSIDIANTEST")
+    return kind === "personal-candidate" || admin;
+  return true;
 }
 
 module.exports = { classifyVaultPath, vaultCapabilityAllowed };

@@ -30,7 +30,7 @@ it("projects shared configuration without leaking other vaults or server code th
         let result;
         const headers = {};
         const req = {query:{vault:"Notes"},headers:{"accept-encoding":encoding},vaultUUID:()=>"uuid",privateVaultConfiguration:()=>({owner:user})};
-        req.vaultView = require("../auth/vault-view").createVaultView({
+        req.vaultView = require("../features/vaults/adapters/vault-view.js").createVaultView({
           administrator:user === "admin", authorize:id=>id === "Notes", uuid:()=>"uuid",
         });
         const res = {setHeader:(key,value)=>{headers[key]=value;},status:()=>res,json:value=>{result=value;},end:bytes=>{result=JSON.parse((encoding==="br"?brotliDecompressSync(bytes):gunzipSync(bytes)).toString());}};

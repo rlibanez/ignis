@@ -49,9 +49,4 @@ function bootstrapAdmin(db, login, passwordHash) {
   });
 }
 
-// Registration only: no filesystem mutation, implicit discovery or HTTP access grant.
-function registerVault(db, vaultRoot, directory, ownerId) {
-  return require("../../../auth/vault-registration").registerExistingVault(db, vaultRoot, directory, ownerId);
-}
-
-module.exports = { normalizeLogin, bootstrapAdmin, registerVault };
+module.exports = { normalizeLogin, bootstrapAdmin };

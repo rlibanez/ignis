@@ -24,9 +24,8 @@ la referencia de trabajo.
 ## D03. Configuración compartida y código de confianza
 
 El producto actual arranca con configuración compartida de `.obsidian`. Ese es
-el único modo inicial del diseño; la alternativa privada se retirará en fase 3
-tras inventariar sus consumidores. No se activará silenciosamente el antiguo
-perfil restringido.
+el único modo del diseño. La fase 3 retira la alternativa privada tras inventariar
+sus consumidores y aplica la política de código descrita en `phase3.md`. No se activa el antiguo perfil restringido.
 
 Objetivo aprobado en el diseño: separar editar notas de instalar o modificar
 código ejecutable. La recomendación de la auditoría queda adoptada como política

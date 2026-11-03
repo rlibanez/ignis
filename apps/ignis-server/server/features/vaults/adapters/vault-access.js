@@ -1,8 +1,9 @@
 const fs = require("node:fs");
 const nodePath = require("node:path");
-const { transaction } = require("../platform/persistence/database");
-const { resolveRegisteredVault } = require("./vault-catalog");
-const { vaultCapabilityAllowed } = require("./vault-policy");
+const { transaction } = require("../../../platform/persistence/database");
+const { resolveRegisteredVault } = require("./vault-catalog.js");
+const { vaultCapabilityAllowed } = require("../application/vault-policy.js");
+const {sessionContext}=require('../../../../../../packages/contracts/src/session');
 const denied = Object.freeze({ allowed: false });
 
 // Data routes use this service for live per-vault decisions.
@@ -37,6 +38,7 @@ function createVaultAccessService(db, vaultRoot, sessions) {
         }
         return Object.freeze({
           allowed: true,
+          context:sessionContext(session),
           sessionId: session.id,
           userId: user.id,
           vaultId: vault.id,

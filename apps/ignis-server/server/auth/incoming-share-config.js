@@ -29,7 +29,7 @@ function incomingBinaryParser(config) {
   return (req, res, next) => {
     if (req.method !== 'POST' || !['/api/fs/writeFile', '/api/fs/writeFile/'].includes(req.path) || !req.is('application/octet-stream')) return next();
     const version = req.headers['x-ignis-content-version'];
-    if (typeof req.query.path !== 'string' || require('./vault-policy').classifyVaultPath(req.query.path) !== 'content' ||
+    if (typeof req.query.path !== 'string' || require("../features/vaults/application/vault-policy.js").classifyVaultPath(req.query.path) !== 'content' ||
         (version !== 'new' && (typeof version !== 'string' || !/^[a-f0-9]{64}$/.test(version))))
       return res.status(400).json({error: 'Invalid binary upload destination or content version'});
     parse(req, res, error => {

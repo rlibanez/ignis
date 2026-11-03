@@ -1,6 +1,6 @@
 const { randomUUID, createHash } = require("node:crypto");
 const { transaction } = require("../platform/persistence/database");
-const { deleteRegisteredVault, purgeRetiredVault } = require("./vault-deletion");
+const { deleteRegisteredVault, purgeRetiredVault } = require("../features/vaults/adapters/vault-deletion.js");
 const busy = new WeakMap();
 const fail = code => { throw Object.assign(new Error("Account deletion rejected"), { code }); };
 

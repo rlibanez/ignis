@@ -1,6 +1,6 @@
 import {it,expect} from "vitest";
 import {createRequire} from "node:module";
-const {createVaultView}=createRequire(import.meta.url)("./vault-view");
+const {createVaultView}=createRequire(import.meta.url)("../features/vaults/adapters/vault-view");
 const vault={id:"Own",name:"Own",uuid:"own-id",path:"/vaults/Own",platform:"linux",version:"1.14.4",trustPlugins:true,secret:"internal"};
 const other={...vault,id:"Other",name:"Other",path:"/vaults/Other"};
 it("includes paths only for authorized catalog entries and strips unknown metadata",()=>{

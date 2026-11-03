@@ -60,7 +60,7 @@ function createAuthBoundary({
   const rememberCookies = createSessionCookies({ ...config, purpose: "remember" });
   const resetCookies = createSessionCookies({ ...config, purpose: "reset" });
   const publicUrl = new URL(config.publicOrigin);
-  const {db,sessions,sharesService,vaultConfig,vaultAccess,identity,effects} = services;
+  const {db,sessions,sharesService,vaultAccess,vaults,vaultStore,identity,effects} = services;
   const sharesRouter = sharesService ? require("../routes/resource-shares").createResourceSharesRouter(sharesService) : null;
   if (sharesRouter) require("../vault/lifecycle").trackRouterWork(sharesRouter);
   const pendingAuth = new Set();
@@ -110,11 +110,9 @@ function createAuthBoundary({
   }
   const socketVaults = new WeakMap();
   function socketVault(reference) {
-    const directory = vaultRoot
-      ? require("./vault-request").resolveVaultRequest(db, vaultRoot, { vault: reference }, null)
-      : require("./vault-selection").selectVaultReference({ vault: reference }, null);
-    const id = vaultRoot ? db.prepare("SELECT id FROM vaults WHERE directory=? AND status='active'").get(directory)?.id : null;
-    return { directory, id: id || null };
+    if(vaultStore){const vault=vaultStore.resolve(reference);return {directory:vault.directory,id:vault.id};}
+    const directory=require('../features/vaults/application/vault-selection').selectVaultReference({vault:reference},null);
+    return {directory,id:null};
   }
   function sameSocketVault(left, right) {
     return left.directory === right.directory && left.id === right.id;
@@ -468,17 +466,18 @@ function createAuthBoundary({
         return safe(res, 403, "Administrator access required");
       const pathname = canonicalRequestPath(req);
       if (!vaultRoot || ["/api/vault/rename", "/api/vault/remove"].includes(pathname)) {
-        try { require("./vault-selection").selectVaultReference(req.query, req.body); }
+        try { require("../features/vaults/application/vault-selection.js").selectVaultReference(req.query, req.body); }
         catch { return safe(res, 400, "Invalid or conflicting vault selection"); }
       }
       if (current.user.role !== "admin" && !vaultRoot) return safe(res, 403, "Vault access unavailable");
       if (vaultRoot) {
+        const scope=vaults.scope(cookies.read(req.headers.cookie));
         if (pathname?.startsWith("/vault-files/") &&
             !canReadVault(cookies.read(req.headers.cookie), pathname.split("/")[2])) return safe(res, 404, "Vault unavailable");
         if (pathname?.startsWith("/api/fs/") || pathname === "/api/bootstrap" ||
             ["/api/vault/info", "/api/vault/refresh"].includes(pathname)) {
           try {
-            const directory = require("./vault-request").resolveVaultRequest(db, vaultRoot, req.query, req.body);
+            const directory = scope.resolveRequest(req.query, req.body);
             if ((directory !== null ? !canReadVault(cookies.read(req.headers.cookie), directory) : pathname !== "/api/vault/info"))
               return safe(res, 404, "Vault unavailable");
             if (directory !== null) {
@@ -490,18 +489,12 @@ function createAuthBoundary({
               error.code === "INVALID_VAULT_SELECTION" ? "Invalid or conflicting vault selection" : "Vault unavailable");
           }
         }
-        if (pathname === "/api/vault-config") {
-          let reference;
-          try { reference = require("./vault-selection").selectVaultReference(req.query, req.body); }
-          catch { return safe(res, 400, "Invalid vault selection"); }
-          if (!canReadVault(cookies.read(req.headers.cookie), reference)) return safe(res, 404, "Vault unavailable");
-        }
         const pluginToggle = /^\/api\/plugins\/[^/]+\/(enable|disable)$/.test(pathname);
         const syncVault = /^\/api\/ext\/headless-sync\/(setup|config|start|stop|unlink|logs)$/.test(pathname);
         if (pluginToggle || syncVault) {
           const field = syncVault ? "vaultId" : "vault";
           try {
-            const directory = require("./vault-request").resolvePluginVaultRequest(db, vaultRoot, req.query, req.body, field);
+            const directory = scope.resolvePluginRequest(req.query, req.body, field);
             const capability = syncVault && pathname.endsWith("/logs") ? "content.list" : "vault.refresh";
             if (!vaultAccess.check(cookies.read(req.headers.cookie), { reference: directory, capability, path: "" }).allowed)
               return safe(res, 404, "Vault unavailable");
@@ -518,125 +511,53 @@ function createAuthBoundary({
         }).allowed) return safe(res, 404, "Vault unavailable");
         const fileChecks = new Map();
         req.authorizeVaultFile = (directory, capability, relativePath) => {
-          const identity = db.prepare("SELECT id FROM vaults WHERE directory=?").get(directory);
-          // No content access before registration and explicit membership.
-          if (!identity) return false;
-          const reference = identity.id;
-          const check = () => {
-            const decision = vaultAccess.check(cookies.read(req.headers.cookie), {
-              reference, capability, path: relativePath,
-            });
-            return decision.allowed && decision.sessionId === current.id;
-          };
-          if (!check()) return false;
+          const decision=scope.authorize(directory,capability,relativePath);
+          if(!decision.allowed)return false;
+          const reference=decision.vaultId;
           if (!fileChecks.has(reference)) fileChecks.set(reference, new Map());
           fileChecks.get(reference).set(JSON.stringify([capability, relativePath]), { capability, path: relativePath });
-          req.revalidateVaultFile = () => [...fileChecks].every(([id, operations]) => {
+          req.revalidateVaultFile = () => scope.revalidateView() && [...fileChecks].every(([id, operations]) => {
             const decision = vaultAccess.checkMany(cookies.read(req.headers.cookie), id, [...operations.values()]);
             return decision.allowed && decision.sessionId === current.id;
           });
           return true;
         };
         req.renameVaultResource = (directory,oldPath,newPath) => {
-          const reference=db.prepare("SELECT id FROM vaults WHERE directory=? AND status='active'").get(directory)?.id;
+          const reference=scope.resolve(directory).id;
           return sharesService.renameOriginal(cookies.read(req.headers.cookie),reference,oldPath,newPath);
-        };
-        req.vaultConfiguration = (operation, input) => {
-          const reference = require("./vault-selection").selectVaultReference(req.query, req.body);
-          if (!reference) throw Object.assign(new Error("Configuration unavailable"), {code:"INVALID_VAULT_SELECTION"});
-          const token = cookies.read(req.headers.cookie);
-          if (!canReadVault(token, reference)) throw new Error("Configuration unavailable");
-          const result = vaultConfig[operation](token, { reference, path: input.path,
-            content: input.content, expectedRevision: input.expectedRevision });
-          // Preserve a response-time authorization check as well as the service check.
-          req.revalidateVaultFile = () => {
-            try { vaultConfig.read(token, { reference, path: input.path }); return canReadVault(token, reference); }
-            catch { return false; }
-          };
-          return result;
-        };
-        req.privateVaultConfiguration = directory => {
-          const reference = db.prepare("SELECT id FROM vaults WHERE directory=? AND status='active'").get(directory)?.id;
-          // Unregistered administrator vaults retain their existing behavior.
-          if (!reference) return undefined;
-          if (!req.authorizeVaultFile(directory, "content.list", ""))
-            throw new Error("Configuration unavailable");
-          return vaultConfig.snapshot(cookies.read(req.headers.cookie), reference);
         };
         req.writeVaultContent = (reference, relative, bytes, expectedHash) =>
           sharesService.writeOriginal(cookies.read(req.headers.cookie), reference, relative, bytes, expectedHash);
         req.vaultMembers = (operation, input) => {
-          const service = require("./vault-members").createVaultMembersService(db, vaultRoot, sessions);
-          const token = cookies.read(req.headers.cookie);
-          const result = service[operation](token, input);
-          const reference = operation === "list" ? input : input.vault;
-          req.ignisLogVaultName = db.prepare("SELECT directory FROM vaults WHERE id=? OR directory=?").get(reference, reference)?.directory;
-          if (operation === "transfer") req.ignisLogTargetUsername = db.prepare("SELECT login FROM users WHERE id=?").get(input.userId)?.login;
-          if (operation === "update") req.ignisLogTargetUsername = normalizeLogin(input.login);
-          req.revalidateVaultFile = operation === "transfer"
-            ? () => canReadVault(token, reference)
-            : () => { service.list(token, reference); return true; };
-          if (operation !== "list") sweepSockets();
+          const result=scope.members(operation,input);
+          const details=scope.logDetails(operation,input);
+          req.ignisLogVaultName=details.directory;
+          if(details.username)req.ignisLogTargetUsername=normalizeLogin(details.username);
+          req.revalidateVaultFile=operation==='transfer'
+            ? ()=>scope.check(input.vault)
+            : ()=>{scope.members('list',operation==='list'?input:input.vault);return true;};
+          if(operation!=='list')sweepSockets();
           return result;
         };
-        req.vaultView = require("./vault-view").createVaultView({
-          administrator: current.user.role === "admin",
-          authorize: directory => req.authorizeVaultFile(directory, "content.list", ""),
-          uuid: directory => req.vaultUUID(directory),
-          membership: directory => db.prepare("SELECT m.role FROM memberships m JOIN vaults v ON v.id=m.vault_id WHERE v.directory=? AND m.user_id=?").get(directory,current.user.id)?.role,
-        });
-        req.canReadVault = directory => req.authorizeVaultFile(directory, "content.list", "");
-        req.vaultOwners = () => db.prepare("SELECT id,login FROM users WHERE status='active' ORDER BY login,id").all();
-        req.vaultRegistrationOptions = () => require("./vault-registration").registrationOptions(db, vaultRoot);
-        req.registerExistingVault = (directory, ownerId, expectedIdentity) => require("./vault-registration").registerExistingVault(db, vaultRoot, directory, ownerId, {
-          actorId: current.user.id, expectedIdentity,
-          isCurrent: withinTransaction => {
-            const session = sessions.resolve(cookies.read(req.headers.cookie), { withinTransaction });
-            return session?.id === current.id && session.user.role === "admin";
-          },
-        });
-        req.vaultUUID = directory => db.prepare("SELECT id FROM vaults WHERE directory=? AND status='active'").get(directory)?.id;
-        if (["/api/vault/rename", "/api/vault/remove"].includes(pathname)) {
-          const reference = require("./vault-selection").selectVaultReference(req.query, req.body);
-          const registered=db.prepare("SELECT id FROM vaults WHERE id=? OR directory=?").get(reference,reference);
-          if(registered && !db.prepare("SELECT 1 FROM memberships WHERE vault_id=? AND user_id=? AND role='owner'").get(registered.id,current.user.id))
-            return safe(res,404,"Vault unavailable");
-          if (!db.prepare("SELECT 1 FROM vaults WHERE id=? OR directory=?").get(reference, reference) &&
-              !db.prepare("SELECT 1 FROM vault_deletions WHERE vault_id=?").get(reference))
-            return safe(res, 409, "Register this vault before renaming or deleting it");
+        req.vaultView=scope.view;
+        req.canReadVault=directory=>req.authorizeVaultFile(directory,"content.list","");
+        req.vaultOwners=scope.owners;
+        req.vaultRegistrationOptions=scope.registrationOptions;
+        req.registerExistingVault=scope.register;
+        req.vaultUUID=scope.uuid;
+        if(['/api/vault/rename','/api/vault/remove'].includes(pathname)){
+          const reference=require('../features/vaults/application/vault-selection').selectVaultReference(req.query,req.body);
+          const state=scope.state(reference);
+          if(state.registered && !scope.check(state.registered,pathname.endsWith('/remove')?'vault.delete':'vault.rename'))
+            return safe(res,404,'Vault unavailable');
+          if(!state.registered && !state.deletion)return safe(res,409,'Register this vault before renaming or deleting it');
+          if(pathname.endsWith('/remove')){
+            if(state.deletion && state.deletion!=='pending')return safe(res,410,'Vault already removed');
+            if(state.registered)req.deleteRegisteredVault=lifecycle=>scope.delete(reference,lifecycle);
+          }else if(state.registered)req.renameRegisteredVault=(name,lifecycle)=>scope.rename(reference,name,lifecycle);
         }
-        if (pathname === "/api/vault/remove") {
-          const reference = require("./vault-selection").selectVaultReference(req.query, req.body);
-          if (db.prepare("SELECT 1 FROM vault_deletions WHERE vault_id=? AND state!='pending'").get(reference))
-            return safe(res, 410, "Vault already removed");
-          if (db.prepare("SELECT 1 FROM vaults WHERE id=? OR directory=?").get(reference, reference)) {
-            req.deleteRegisteredVault = lifecycle => require("./vault-deletion").deleteRegisteredVault(db, vaultRoot, current.user.id, reference, {
-              ...lifecycle,
-              isCurrent: withinTransaction => {
-                const session = sessions.resolve(cookies.read(req.headers.cookie), { withinTransaction });
-                return session?.id === current.id && session.user.id === current.user.id;
-              },
-            });
-          }
-        }
-        if (pathname === "/api/vault/rename") {
-          const reference = require("./vault-selection").selectVaultReference(req.query, req.body);
-          if (db.prepare("SELECT 1 FROM vaults WHERE id=? OR directory=?").get(reference, reference)) {
-            req.renameRegisteredVault = (name, lifecycle) => require("./vault-rename").renameRegisteredVault(db, vaultRoot, current.user.id, reference, name, {
-              ...lifecycle,
-              isCurrent: withinTransaction => {
-                const session = sessions.resolve(cookies.read(req.headers.cookie), { withinTransaction });
-                return session?.id === current.id && session.user.id === current.user.id;
-              },
-            });
-          }
-        }
-        req.createRegisteredVault = name => require("./vault-creation").createRegisteredVault(db, vaultRoot, current.user.id, name, {
-          isCurrent: withinTransaction => {
-            const session = sessions.resolve(cookies.read(req.headers.cookie), { withinTransaction });
-            return session?.id === current.id && session.user.id === current.user.id;
-          },
-        });
+        req.createRegisteredVault=scope.create;
+        req.revalidateVaultFile ||= scope.revalidateView;
       }
       req.auth = current;
       req.context = sessionContext(current);
@@ -739,10 +660,10 @@ function createAuthBoundary({
       contentTimer=setTimeout(()=>{contentTimer=null;const pending=new Set(contentUsers);contentUsers.clear();if(!closed)stateEvents.sharedContent(pending);},50);
       contentTimer.unref();
     },
-    resolveVaultDirectory: reference => require("./vault-request").resolveVaultRequest(db, vaultRoot, { vault: reference }, null),
+    resolveVaultDirectory: reference => vaultStore.resolve(reference).directory,
     close,
     staticRoots,
-    vaultDirectoryAvailable: directory => require("./vault-creation").directoryAvailable(db, directory, vaultRoot),
+    vaultDirectoryAvailable: directory => vaultStore.directoryAvailable(directory),
   };
 }
 

@@ -6,8 +6,8 @@ import { spawn, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { openDatabase } = require("../platform/persistence/database");
-const { registrationOptions, registerExistingVault, inspectDirectory } = require("./vault-registration");
-const { registerVault } = require("../features/identity/adapters/store.js");
+const { registrationOptions, registerExistingVault, inspectDirectory } = require("../features/vaults/adapters/vault-registration.js");
+const {registerExistingVault:registerVault}=require("../features/vaults/adapters/vault-registration.js");
 let root, vaultRoot, db;
 beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "ignis-register-"));
@@ -120,7 +120,7 @@ it("registers an automatically created My Vault only with an explicitly selected
 it("two concurrent processes cannot register different owners for the same directory", async () => {
   const run = owner => new Promise((resolve, reject) => {
     const script = `const {openDatabase}=require(${JSON.stringify(require.resolve("../platform/persistence/database"))});
-      const {registerExistingVault}=require(${JSON.stringify(require.resolve("./vault-registration"))});
+      const {registerExistingVault}=require(${JSON.stringify(require.resolve("../features/vaults/adapters/vault-registration.js"))});
       const db=openDatabase(${JSON.stringify(path.join(root, "data"))});
       try {registerExistingVault(db,${JSON.stringify(vaultRoot)},'Notes',${JSON.stringify(owner)});process.exit(0)}catch{process.exit(3)}`;
     const child = spawn(process.execPath, ["-e", script], { stdio: "ignore" });
@@ -132,7 +132,7 @@ it("two concurrent processes cannot register different owners for the same direc
 });
 it("process exit inside registration leaves no partial identity or owner", () => {
   const script = `const {openDatabase}=require(${JSON.stringify(require.resolve("../platform/persistence/database"))});
-    const {registerExistingVault}=require(${JSON.stringify(require.resolve("./vault-registration"))});
+    const {registerExistingVault}=require(${JSON.stringify(require.resolve("../features/vaults/adapters/vault-registration.js"))});
     const db=openDatabase(${JSON.stringify(path.join(root, "data"))});
     db.function('crash',()=>process.exit(17));
     db.exec("CREATE TEMP TRIGGER crash_register BEFORE INSERT ON audit_events BEGIN SELECT crash(); END");

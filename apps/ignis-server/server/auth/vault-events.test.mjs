@@ -2,7 +2,7 @@ import { it, expect } from "vitest";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { projectVaultEvent } = require("./vault-events");
-const { vaultCapabilityAllowed } = require("./vault-policy");
+const { vaultCapabilityAllowed } = require("../features/vaults/application/vault-policy.js");
 const policy = {
   canRead: path => vaultCapabilityAllowed({ status: "active", instanceRole: "user", membership: "reader", capability: "content.read", path }),
   canAdmin: () => false,

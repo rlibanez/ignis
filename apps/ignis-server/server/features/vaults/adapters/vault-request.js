@@ -1,17 +1,14 @@
-const { resolveRegisteredVault } = require("./vault-catalog");
-const { selectVaultReference } = require("./vault-selection");
+const { resolveRegisteredVault } = require("./vault-catalog.js");
+const { selectVaultReference } = require("../application/vault-selection.js");
 
-// Transitional adapter for administrator-only HTTP routes. Internal caches and
-// watchers still use directory names; registered references resolve before routing.
-// This does not authorize membership access or register legacy directories.
+// Resolve every explicit reference through the registered catalog. No physical-name fallback.
 function resolveVaultRequest(db, vaultRoot, query, body) {
   const resolved = new Map();
   const resolveIdentity = reference => {
     if (resolved.has(reference)) return resolved.get(reference);
     if (db.prepare("SELECT 1 FROM vault_deletions WHERE vault_id=?").get(reference))
       throw Object.assign(new Error("Vault unavailable"), { code: "VAULT_UNAVAILABLE" });
-    const registered = db.prepare("SELECT 1 FROM vaults WHERE id=? OR directory=?").get(reference, reference);
-    const directory = registered ? resolveRegisteredVault(db, vaultRoot, reference).directory : reference;
+    const directory = resolveRegisteredVault(db, vaultRoot, reference).directory;
     resolved.set(reference, directory);
     return directory;
   };

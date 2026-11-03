@@ -202,7 +202,7 @@ it("protects real server routes, persists auth and does not log request secrets"
     // Registration for someone else does not grant the administrator membership.
     expect((await request(port, "/api/fs/readFile?vault=Team&path=note.md", jar)).status).toBe(404);
     expect(JSON.parse((await request(port, "/api/vault/list", jar)).text)).toEqual([]);
-    for (const route of ["/api/vault/info?vault=Team", "/api/bootstrap?vault=Team", "/api/fs/tree?vault=Team", "/api/fs/batch-read?vault=Team", "/api/fs/download-zip?vault=Team&path=", "/api/vault-config?vault=Team&path=.obsidian/app.json", "/vault-files/Team/note.md"]) {
+    for (const route of ["/api/vault/info?vault=Team", "/api/bootstrap?vault=Team", "/api/fs/tree?vault=Team", "/api/fs/batch-read?vault=Team", "/api/fs/download-zip?vault=Team&path=", "/vault-files/Team/note.md"]) {
       const options = route.includes("batch-read") ? {method:"POST",headers:{"x-ignis-csrf":createCsrf},body:{paths:["note.md"]}} : {};
       expect((await request(port,route,jar,options)).status).toBe(404);
     }
@@ -280,22 +280,34 @@ it("protects real server routes, persists auth and does not log request secrets"
       method: "POST", headers: { "x-ignis-csrf": ownerCsrf }, body: { path: "implicit.md", content: "forbidden" },
     })).status).toBe(404);
     expect(JSON.parse(registered.text)).toMatchObject({ id: "Team", ok: true });
-    // A normal owner can install, enable, read and remove shared plugin files.
+    // Editing notes does not grant code administration; admin alone has no content access.
     const pluginHeaders = { "x-ignis-csrf": ownerCsrf };
-    expect((await request(port, `/api/fs/mkdir?vault=${ownUuid}`, ownerJar, {method:"POST",headers:pluginHeaders,body:{path:".obsidian/plugins/demo",recursive:true}})).status).toBe(200);
-    for (const [file,content] of [["plugins/demo/main.js","module.exports = class Demo {};"],["plugins/demo/manifest.json",'{"id":"demo","name":"Demo","version":"1.0.0"}'],["community-plugins.json",'["demo"]']]) {
-      expect((await request(port, `/api/fs/writeFile?vault=${ownUuid}`, ownerJar, {method:"POST",headers:pluginHeaders,body:{path:".obsidian/"+file,content}})).status).toBe(200);
-      expect((await request(port, `/api/fs/readFile?vault=${ownUuid}&path=.obsidian/${file}`, ownerJar)).text).toBe(content);
-    }
+    const adminHeaders = { "x-ignis-csrf": createCsrf };
+    const pluginDirectory={path:".obsidian/plugins/demo",recursive:true};
+    expect((await request(port, `/api/fs/mkdir?vault=${ownUuid}`, ownerJar, {method:"POST",headers:pluginHeaders,body:pluginDirectory})).status).toBe(404);
     const permissionsDb = openDatabase(path.join(root,"data"));
     try {
+      const adminId=permissionsDb.prepare("SELECT id FROM users WHERE role='admin'").get().id;
+      permissionsDb.prepare("DELETE FROM memberships WHERE vault_id=? AND user_id=?").run(ownUuid,adminId);
+      expect((await request(port, `/api/fs/mkdir?vault=${ownUuid}`, jar, {method:"POST",headers:adminHeaders,body:pluginDirectory})).status).toBe(404);
+      permissionsDb.prepare("INSERT INTO memberships VALUES (?,?,'editor')").run(ownUuid,adminId);
+      expect((await request(port, `/api/fs/mkdir?vault=${ownUuid}`, jar, {method:"POST",headers:adminHeaders,body:pluginDirectory})).status).toBe(200);
+      for (const [file,content] of [["plugins/demo/main.js","module.exports = class Demo {};"],["plugins/demo/manifest.json",'{"id":"demo","name":"Demo","version":"1.0.0"}'],["community-plugins.json",'["demo"]']]) {
+        expect((await request(port, `/api/fs/writeFile?vault=${ownUuid}`, ownerJar, {method:"POST",headers:pluginHeaders,body:{path:".obsidian/"+file,content}})).status).toBe(404);
+        expect((await request(port, `/api/fs/writeFile?vault=${ownUuid}`, jar, {method:"POST",headers:adminHeaders,body:{path:".obsidian/"+file,content}})).status).toBe(200);
+        expect((await request(port, `/api/fs/readFile?vault=${ownUuid}&path=.obsidian/${file}`, ownerJar)).text).toBe(content);
+      }
       permissionsDb.prepare("UPDATE memberships SET role='reader' WHERE vault_id=? AND user_id='normal-owner'").run(ownUuid);
       expect((await request(port, `/api/fs/readFile?vault=${ownUuid}&path=.obsidian/plugins/demo/main.js`, ownerJar)).status).toBe(200);
-      expect((await request(port, `/api/fs/writeFile?vault=${ownUuid}`, ownerJar, {method:"POST",headers:pluginHeaders,body:{path:".obsidian/plugins/demo/main.js",content:"forbidden"}})).status).toBe(404);
-      expect((await request(port, `/api/fs/rm?vault=${ownUuid}&path=.obsidian/plugins/demo&recursive=true`, ownerJar, {method:"DELETE",headers:pluginHeaders})).status).toBe(404);
-      permissionsDb.prepare("UPDATE memberships SET role='editor' WHERE vault_id=? AND user_id='normal-owner'").run(ownUuid);
-      expect((await request(port, `/api/fs/rm?vault=${ownUuid}&path=.obsidian/plugins/demo&recursive=true`, ownerJar, {method:"DELETE",headers:pluginHeaders})).status).toBe(200);
-      permissionsDb.prepare("UPDATE memberships SET role='owner' WHERE vault_id=? AND user_id='normal-owner'").run(ownUuid);
+      for(const role of ['reader','editor','owner']){
+        permissionsDb.prepare("UPDATE memberships SET role=? WHERE vault_id=? AND user_id='normal-owner'").run(role,ownUuid);
+        expect((await request(port, `/api/fs/rm?vault=${ownUuid}&path=.obsidian/plugins/demo&recursive=true`, ownerJar, {method:"DELETE",headers:pluginHeaders})).status).toBe(404);
+      }
+      permissionsDb.prepare("UPDATE memberships SET role='reader' WHERE vault_id=? AND user_id=?").run(ownUuid,adminId);
+      expect((await request(port, `/api/fs/writeFile?vault=${ownUuid}`, jar, {method:"POST",headers:adminHeaders,body:{path:".obsidian/plugins/demo/main.js",content:"forbidden"}})).status).toBe(404);
+      permissionsDb.prepare("UPDATE memberships SET role='editor' WHERE vault_id=? AND user_id=?").run(ownUuid,adminId);
+      expect((await request(port, `/api/fs/rm?vault=${ownUuid}&path=.obsidian/plugins/demo&recursive=true`, jar, {method:"DELETE",headers:adminHeaders})).status).toBe(200);
+
     } finally { permissionsDb.close(); }
     expect(fs.existsSync(path.join(root,"vaults","Team",".obsidian","plugins","demo"))).toBe(false);
     const registrationDb = openDatabase(path.join(root, "data"));

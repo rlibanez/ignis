@@ -94,3 +94,12 @@ dependencias de producción. Usa UID 1000, filesystem de imagen de solo lectura,
 tmpfs desechable y red aislada; comprueba arranque, autenticación pública y parada.
 No publica puertos, monta bóvedas del host ni descarga Obsidian. Los assets mínimos
 son sintéticos: tampoco este gate certifica el runtime completo de Obsidian.
+
+## Evidencia añadida en fase 3
+
+`features/vaults/application/vaults.test.mjs` cubre contexto fijado, cero bóvedas,
+registro administrativo y revocación. `routes/vault.routes.test.mjs` prueba que
+sin lifecycle registrado no hay renombrado/borrado directo. La suite real
+`auth/server.integration.test.mjs` verifica admin sin membresía, admin lector,
+propietario normal y admin editor al instalar/leer/borrar código. El detalle de
+archivos activos, preferencias y suites retiradas está en `phase3.md`.

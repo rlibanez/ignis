@@ -5,7 +5,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { openDatabase } = require("../platform/persistence/database");
-const { createRegisteredVault, quarantinePendingVaults, directoryAvailable } = require("./vault-creation");
+const { createRegisteredVault, quarantinePendingVaults, directoryAvailable } = require("../features/vaults/adapters/vault-creation.js");
 let root, vaultRoot, db;
 beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "ignis-create-vault-"));
@@ -109,7 +109,7 @@ it.each(["before-folder", "after-folder", "prepared"])("recovers a process inter
     }};
     createRegisteredVault(db, root, 'admin', 'Interrupted', { isCurrent: () => true, io });
   `;
-  const result = spawnSync(process.execPath, ["-e", script, require.resolve("../platform/persistence/database"), require.resolve("./vault-creation"), path.join(root, "data"), vaultRoot, phase], { encoding: "utf8", timeout: 10000 });
+  const result = spawnSync(process.execPath, ["-e", script, require.resolve("../platform/persistence/database"), require.resolve("../features/vaults/adapters/vault-creation.js"), path.join(root, "data"), vaultRoot, phase], { encoding: "utf8", timeout: 10000 });
   expect(result.status).toBe(17);
   expect(directoryAvailable(db, "Interrupted")).toBe(false);
   expect(quarantinePendingVaults(db)).toBe(1);

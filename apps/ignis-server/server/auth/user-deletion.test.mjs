@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 const require=createRequire(import.meta.url);
 const {openDatabase}=require('../platform/persistence/database');
-const {createRegisteredVault}=require('./vault-creation');
+const {createRegisteredVault}=require("../features/vaults/adapters/vault-creation.js");
 const {createUserDeletionService}=require('./user-deletion');
 let db,root,service,lifecycle,current;
 beforeEach(()=>{
@@ -146,7 +146,7 @@ it('rejects editing an account whose deletion is in progress',async()=>{
 });
 it('does not expand normal vault deletion to an administrator without a deletion job',async()=>{
  const v=vault('target','Owned');
- const {deleteRegisteredVault}=require('./vault-deletion');
+ const {deleteRegisteredVault}=require("../features/vaults/adapters/vault-deletion.js");
  await expect(deleteRegisteredVault(db,path.join(root,'vaults'),'admin',v.id,{...lifecycle,isCurrent:live})).rejects.toMatchObject({code:'VAULT_UNAVAILABLE'});
  await expect(deleteRegisteredVault(db,path.join(root,'vaults'),'admin',v.id,{...lifecycle,isCurrent:live,deletingUser:'target'})).rejects.toMatchObject({code:'SESSION_CHANGED'});
  expect(fs.existsSync(v.path)).toBe(true);

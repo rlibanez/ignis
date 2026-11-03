@@ -6,8 +6,8 @@ import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { openDatabase } = require("../platform/persistence/database");
-const { createRegisteredVault, quarantinePendingVaults, directoryAvailable } = require("./vault-creation");
-const { deleteRegisteredVault, purgeRetiredVault, purgeRetiredVaults } = require("./vault-deletion");
+const { createRegisteredVault, quarantinePendingVaults, directoryAvailable } = require("../features/vaults/adapters/vault-creation.js");
+const { deleteRegisteredVault, purgeRetiredVault, purgeRetiredVaults } = require("../features/vaults/adapters/vault-deletion.js");
 let root, vaultRoot, db, vault;
 beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "ignis-delete-"));
@@ -134,7 +134,7 @@ it("does not follow symlinks contained inside the vault during purge", async () 
 it.each(["reserved", "moved", "retired", "removed"])("recovers after a real process exit at %s", async stage => {
   const script = `const fs=require('node:fs');
     const {openDatabase}=require(${JSON.stringify(require.resolve("../platform/persistence/database"))});
-    const {deleteRegisteredVault}=require(${JSON.stringify(require.resolve("./vault-deletion"))});
+    const {deleteRegisteredVault}=require(${JSON.stringify(require.resolve("../features/vaults/adapters/vault-deletion.js"))});
     const db=openDatabase(${JSON.stringify(path.join(root, "data"))});
     const stage=${JSON.stringify(stage)};
     deleteRegisteredVault(db,${JSON.stringify(vaultRoot)},'admin',${JSON.stringify(vault.id)}, {

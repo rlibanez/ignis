@@ -16,8 +16,13 @@ function selectVaultReference(query, body, { defaultVault = null, resolveIdentit
     if (defaultVault === null) return null;
     return selectVaultReference({ vault: defaultVault }, null, { resolveIdentity });
   }
-  const selected = resolveIdentity(values[0]);
-  if (values.length === 2 && selected !== resolveIdentity(values[1])) invalid();
-  return selected;
+  try {
+    const selected = resolveIdentity(values[0]);
+    if (values.length === 2 && selected !== resolveIdentity(values[1])) invalid();
+    return selected;
+  } catch (error) {
+    if (error.code === "VAULT_UNAVAILABLE" && values.length === 2 && values[0] !== values[1]) invalid();
+    throw error;
+  }
 }
 module.exports = { selectVaultReference };

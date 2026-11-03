@@ -32,7 +32,7 @@ router.get("/", async (req, res) => {
     // The resource policy still enforces membership and read/write permissions.
     entry.response.configurationMode = "shared";
     entry.response.vault = { ...entry.response.vault, uuid: req.vaultUUID?.(vaultId) };
-    entry.response.vaultList = entry.response.vaultList.map(vault => ({ ...vault, uuid: req.vaultUUID?.(vault.id) }));
+    // The authorized view filters the catalog before resolving any UUID.
 
     if (req.vaultView) entry.response = req.vaultView.bootstrap(entry.response);
 

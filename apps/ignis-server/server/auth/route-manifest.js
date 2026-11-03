@@ -2,7 +2,6 @@
 // Owners may use the reviewed content surfaces; per-vault authorization is separate.
 const groups = [
   { mount: "", source: "routes/resource-shares.js", surface: "resource-sharing", routes: [["GET","/api/shares","read"],["POST","/api/shares","manage"],["GET","/api/shares/content","read"]] },
-  { mount: "/api/vault-config", source: "routes/vault-config.js", surface: "private-configuration", routes: [["GET", "/", "read"], ["POST", "/", "write"]] },
   { mount: "/api/fs", source: "routes/fs.js", surface: "vault-content", routes: [
     ...["stat", "readFile", "access", "tree", "download", "download-zip"].map(name => ["GET", `/${name}`, "read"]),
     ...["writeFile", "appendFile", "mkdir", "rename", "copyFile", "utimes"].map(name => ["POST", `/${name}`, "write"]),
@@ -33,7 +32,7 @@ const routes = Object.freeze(groups.flatMap(group => group.routes.map(([method, 
   method, path: group.mount + (suffix === "/" ? "" : suffix), mount: group.mount,
   source: group.source, sourcePath: sourcePath || suffix,
   surface: group.surface, operation, currentAccess:
-    ["vault-content", "private-configuration", "mixed-bootstrap", "resource-sharing"].includes(group.surface) ||
+    ["vault-content", "mixed-bootstrap", "resource-sharing"].includes(group.surface) ||
     (group.mount === "/api/vault" && ["/members", "/transfer-ownership", "/create", "/rename", "/remove"].includes(suffix)) ||
     (method === "GET" && ["/api/vault/list", "/api/vault/info", "/api/version"].includes(group.mount + (suffix === "/" ? "" : suffix)))
       ? "owner" : "admin",

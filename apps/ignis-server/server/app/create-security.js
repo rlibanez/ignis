@@ -23,19 +23,22 @@ function createSecurity(options) {
     });
     const store=createIdentityStore({db,config,now,deletion});
     const identity=createIdentity({store,sessions,getOidc:()=>oidc,config,now,verifyPassword:require('../features/identity/adapters/password').verifyPassword});
-    const services = {
+    const vaultAccess=vaultRoot ? require('../features/vaults/adapters/vault-access').createVaultAccessService(db,vaultRoot,sessions) : null;
+    const vaultStore=vaultRoot ? require('../features/vaults/adapters/vault-store').createVaultStore(db,vaultRoot,sessions) : null;
+    const vaults=vaultRoot ? require('../features/vaults/application/vaults').createVaults({
+      store:vaultStore,sessions,access:vaultAccess,createView:require('../features/vaults/adapters/vault-view').createVaultView,
+    }) : null;
+    const services = {vaults,vaultStore,vaultAccess,
       identity,effects,
       db, sessions, close,
       sharesService:vaultRoot ? require('../auth/resource-shares').createResourceSharesService(db,vaultRoot,sessions,config.sharedResourceLimits) : null,
-      vaultConfig:vaultRoot ? require('../auth/vault-config').createVaultConfigService(db,vaultRoot,sessions) : null,
-      vaultAccess:vaultRoot ? require('../auth/vault-access').createVaultAccessService(db,vaultRoot,sessions) : null,
       initialize() {
         if (closed) return Promise.reject(new Error('Security services are closed'));
         return initialization ||= Promise.resolve().then(async () => {
           if (closed) throw new Error("Security services are closed");
           if (vaultRoot) {
-            require('../auth/vault-creation').quarantinePendingVaults(db);
-            await require('../auth/vault-deletion').purgeRetiredVaults(db,vaultRoot);
+            require("../features/vaults/adapters/vault-creation.js").quarantinePendingVaults(db);
+            await require("../features/vaults/adapters/vault-deletion.js").purgeRetiredVaults(db,vaultRoot);
           }
           if (closed) throw new Error('Security services are closed');
           const provider = await require('../features/identity/adapters/oidc/runtime.js').createOidcRuntime(db,config,sessions,oidcEnv,oidcDependencies);

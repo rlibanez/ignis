@@ -6,8 +6,8 @@ import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { openDatabase } = require("../platform/persistence/database");
-const { createRegisteredVault, quarantinePendingVaults, directoryAvailable } = require("./vault-creation");
-const { renameRegisteredVault } = require("./vault-rename");
+const { createRegisteredVault, quarantinePendingVaults, directoryAvailable } = require("../features/vaults/adapters/vault-creation.js");
+const { renameRegisteredVault } = require("../features/vaults/adapters/vault-rename.js");
 let root, vaultRoot, db, vault;
 beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "ignis-rename-"));
@@ -90,7 +90,7 @@ it("keeps both aliases blocked after final audit failure", async () => {
 });
 it.each(["reserved", "moved"])("recovers conservatively after a real process exit at %s", stage => {
   const script = `const {openDatabase}=require(${JSON.stringify(require.resolve("../platform/persistence/database"))});
-    const {renameRegisteredVault}=require(${JSON.stringify(require.resolve("./vault-rename"))});
+    const {renameRegisteredVault}=require(${JSON.stringify(require.resolve("../features/vaults/adapters/vault-rename.js"))});
     const db=openDatabase(${JSON.stringify(path.join(root, "data"))});
     renameRegisteredVault(db,${JSON.stringify(vaultRoot)},'admin',${JSON.stringify(vault.id)},'Renamed', {
       isCurrent:()=>true,quiesce:async()=>{if(${JSON.stringify(stage)}==='reserved')process.exit(17)},

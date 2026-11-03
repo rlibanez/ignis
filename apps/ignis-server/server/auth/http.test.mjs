@@ -50,8 +50,7 @@ beforeEach(async () => {
     next();
   });
   app.use(boundary.revalidate);
-  app.use("/api/vault-config", require("../routes/vault-config"));
-  app.get("/api/bootstrap", (req, res) => res.json({ privateConfiguration: req.privateVaultConfiguration(req.query.vault) }));
+  app.get("/api/bootstrap", (req, res) => res.json({configurationMode:"shared"}));
   app.get("/api/vault/list", (req, res) => res.json(["private vault"]));
   app.use("/api/vault", require("../routes/vault"));
   app.post("/api/fs/rename", (req,res) => res.json(req.renameVaultResource("vault",req.body.oldPath,req.body.newPath)));
@@ -148,7 +147,7 @@ async function csrf(jar) {
 async function login(user = "admin", password = PASSWORD) {
   // Tests using the default admin exercise an explicitly owned fixture vault.
   if (user === "admin" && !db.prepare("SELECT 1 FROM vaults WHERE directory='vault'").get())
-    require("../features/identity/adapters/store.js").registerVault(db, root, "vault", db.prepare("SELECT id FROM users WHERE login='admin'").get().id);
+    require("../features/vaults/adapters/vault-registration.js").registerExistingVault(db, root, "vault", db.prepare("SELECT id FROM users WHERE login='admin'").get().id);
   const jar = {};
   const token = await csrf(jar);
   const result = await request("/api/auth/login", {
@@ -1085,7 +1084,7 @@ it("rejects duplicate, malformed and conflicting vault selectors after parsing a
 describe("registered WebSocket vault identity", () => {
   function register() {
     const owner = db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
-    return require("../features/identity/adapters/store.js").registerVault(db, root, "vault", owner);
+    return require("../features/vaults/adapters/vault-registration.js").registerExistingVault(db, root, "vault", owner);
   }
   it("routes UUID and alias connections through the same watcher and broadcast key", async () => {
     const vault = register();
@@ -1127,7 +1126,7 @@ describe("registered WebSocket vault identity", () => {
 
 it("resolves plugin and sync UUIDs before routing and keeps all operations administrator-only", async () => {
   const owner = db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
-  const vault = require("../features/identity/adapters/store.js").registerVault(db, root, "vault", owner);
+  const vault = require("../features/vaults/adapters/vault-registration.js").registerExistingVault(db, root, "vault", owner);
   const jar = await login();
   const normal = await login("normal");
   const token = await csrf(jar);
@@ -1160,7 +1159,7 @@ it("resolves plugin and sync UUIDs before routing and keeps all operations admin
 
 it("revalidates the pinned file decision before releasing response bytes", async () => {
   const owner = db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
-  const vault = require("../features/identity/adapters/store.js").registerVault(db, root, "vault", owner);
+  const vault = require("../features/vaults/adapters/vault-registration.js").registerExistingVault(db, root, "vault", owner);
   const jar = await login();
   const permitted = await request("/api/fs/readFile?vault=vault&path=note.md", { jar });
   expect(permitted.status).toBe(200);
@@ -1171,7 +1170,7 @@ it("revalidates the pinned file decision before releasing response bytes", async
 
 it("projects filesystem events for each real socket without exposing reserved paths or extra payload fields", async () => {
   const owner = db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
-  require("../features/identity/adapters/store.js").registerVault(db, root, "vault", owner);
+  require("../features/vaults/adapters/vault-registration.js").registerExistingVault(db, root, "vault", owner);
   const ws = connect(await login());
   await once(ws, "open");
   const received = [];
@@ -1193,43 +1192,9 @@ it("projects filesystem events for each real socket without exposing reserved pa
   const closed = once(ws, "close"); ws.close(); await closed;
 });
 
-it("binds bootstrap private configuration to the authenticated account and registered vault", async () => {
-  const owner = db.prepare("SELECT id FROM users WHERE role='admin'").get().id;
-  const vault = require("../features/identity/adapters/store.js").registerVault(db, root, "vault", owner);
-  db.prepare("INSERT INTO vault_preferences VALUES (?,?,?,?,?)").run(owner,vault.id,".obsidian/app.json",'{"spellcheck":true,"secret":"hidden"}',1);
-  const jar = await login();
-  const result = await request(`/api/bootstrap?vault=${vault.id}&userId=normal`, { jar });
-  expect(result.status).toBe(200);
-  const config = (await result.json()).privateConfiguration;
-  expect(config[".obsidian/app.json"]).toEqual({content:'{"spellcheck":true}',revision:1,writable:true});
-  expect(config[".obsidian/community-plugins.json"].content).toBe("[]");
-  expect((await request(`/api/bootstrap?vault=${vault.id}`, {jar:await login("normal")})).status).toBe(404);
-  expect((await request(`/api/bootstrap?vault=${vault.id}`)).status).toBe(401);
-});
-
-it("protects private configuration writes with CSRF, revision checks and a server-derived identity", async () => {
-  const owner = db.prepare("SELECT id FROM users WHERE role='admin'").get().id;
-  const vault = require("../features/identity/adapters/store.js").registerVault(db, root, "vault", owner);
-  const jar = await login();
-  const route = `/api/vault-config?vault=${vault.id}&path=.obsidian/app.json`;
-  expect((await request(route,{jar})).status).toBe(200);
-  const body = {vault:vault.id,path:".obsidian/app.json",content:'{"spellcheck":true}',expectedRevision:0,userId:"normal"};
-  expect((await request("/api/vault-config",{jar,method:"POST",body})).status).toBe(403);
-  const headers = {"x-ignis-csrf":await csrf(jar)};
-  const save = () => request("/api/vault-config",{jar,method:"POST",body,headers});
-  expect((await save()).status).toBe(200);
-  const conflict = await save();
-  expect(conflict.status).toBe(409);
-  expect((await conflict.json()).code).toBe("PREFERENCES_CONFLICT");
-  expect(db.prepare("SELECT user_id FROM vault_preferences").get().user_id).toBe(owner);
-  expect((await request(route,{jar})).headers.get("cache-control")).toBe("no-store");
-  expect((await request("/api/vault-config",{jar,method:"POST",body:{...body,path:".obsidian/community-plugins.json"},headers})).status).toBe(400);
-  expect((await request(route,{jar:await login("normal")})).status).toBe(404);
-});
-
 it("allows an owner socket and file reads, then stops both after membership revocation", async () => {
   const owner = db.prepare("SELECT id FROM users WHERE login='normal'").get().id;
-  const vault = require("../features/identity/adapters/store.js").registerVault(db, root, "vault", owner);
+  const vault = require("../features/vaults/adapters/vault-registration.js").registerExistingVault(db, root, "vault", owner);
   const jar = await login("normal");
   const response = await request(`/api/fs/readFile?vault=${vault.id}&path=note.md`, { jar });
   expect(response.status).toBe(200);
@@ -1247,12 +1212,11 @@ it("allows an owner socket and file reads, then stops both after membership revo
 
 it("allows reader and editor sessions to read their vault and subscribe to events", async () => {
   const owner = db.prepare("SELECT id FROM users WHERE login='normal'").get().id;
-  const vault = require("../features/identity/adapters/store.js").registerVault(db, root, "vault", owner);
+  const vault = require("../features/vaults/adapters/vault-registration.js").registerExistingVault(db, root, "vault", owner);
   const jar = await login("normal");
   for (const role of ["reader", "editor"]) {
     db.prepare("UPDATE memberships SET role=? WHERE vault_id=? AND user_id=?").run(role, vault.id, owner);
     expect((await request(`/api/fs/readFile?vault=${vault.id}&path=note.md`, { jar })).status).toBe(200);
-    expect((await request(`/api/vault-config?vault=${vault.id}&path=.obsidian/app.json`, { jar })).status).toBe(200);
     const ws = connect(jar, ORIGIN, vault.id);
     await once(ws, "open");
     ws.close();
@@ -1262,7 +1226,7 @@ it("allows reader and editor sessions to read their vault and subscribe to event
 
 it("requires admin membership on sockets and immediately observes its revocation",async()=>{
  const owner="normal";
- const vault=require("../features/identity/adapters/store.js").registerVault(db,root,"vault",owner);
+ const vault=require("../features/vaults/adapters/vault-registration.js").registerExistingVault(db,root,"vault",owner);
  const jar=await login();
  expect(await rejectedSocket(jar,ORIGIN)).toBe(401);
  expect((await request(`/api/fs/readFile?vault=${vault.id}&path=note.md`,{jar})).status).toBe(404);
@@ -1279,7 +1243,7 @@ it("requires admin membership on sockets and immediately observes its revocation
 });
 
 it("lets a normal owner share via HTTP, enforces CSRF and closes revoked member sockets",async()=>{
- const vault=require("../features/identity/adapters/store.js").registerVault(db,root,"vault","normal");
+ const vault=require("../features/vaults/adapters/vault-registration.js").registerExistingVault(db,root,"vault","normal");
  const owner=await login("normal"),admin=await login();
  const adminId=db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
  const url=`/api/vault/members?vault=${vault.id}`;
@@ -1344,7 +1308,7 @@ it.each(["admin", "normal"])("accepts Traefik secure WebSockets for an authorize
 });
 
 it("transfers ownership through the owner session without granting an admin bypass or losing the response",async()=>{
- const vault=require("../features/identity/adapters/store.js").registerVault(db,root,"vault","normal");
+ const vault=require("../features/vaults/adapters/vault-registration.js").registerExistingVault(db,root,"vault","normal");
  const owner=await login("normal"),admin=await login();
  const adminId=db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
  db.prepare("INSERT INTO memberships VALUES (?,?,'reader')").run(vault.id,adminId);
@@ -1365,7 +1329,7 @@ it("transfers ownership through the owner session without granting an admin bypa
 });
 
 it("enforces session context, CSRF and owner authority on resource sharing without granting vault access",async()=>{
- const {registerVault}=require("../features/identity/adapters/store.js");const adminId=db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
+ const {registerExistingVault:registerVault}=require("../features/vaults/adapters/vault-registration.js");const adminId=db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
  const vault=registerVault(db,root,"vault",adminId);
  const admin=await login("admin"),normal=await login("normal");
  const adminSession=await (await request("/api/auth/session",{jar:admin})).json();
@@ -1443,7 +1407,7 @@ it('lets normal owners rename and delete via HTTP but denies other members and m
  expect((await post('rename',{vault:uuid,name:'Renamed'},{headers:{}})).status).toBe(403);
  expect((await post('remove',{vault:uuid},{headers:{...headers,origin:'https://evil.example'}})).status).toBe(403);
  const rename=await post('rename',{vault:uuid,name:'Renamed'});expect(rename.status).toBe(200);expect((await rename.json()).uuid).toBe(uuid);
- const {registerVault}=require('../features/identity/adapters/store.js'),adminId=db.prepare("SELECT id FROM users WHERE login='admin'").get().id,foreign=registerVault(db,root,'vault',adminId);
+ const {registerExistingVault:registerVault}=require('../features/vaults/adapters/vault-registration.js'),adminId=db.prepare("SELECT id FROM users WHERE login='admin'").get().id,foreign=registerVault(db,root,'vault',adminId);
  db.prepare("INSERT INTO memberships VALUES (?,'normal','editor')").run(foreign.id);
  expect((await post('rename',{vault:foreign.id,name:'Stolen'})).status).toBe(404);
  expect((await post('remove',{vault:foreign.id})).status).toBe(404);
@@ -1485,7 +1449,7 @@ it('deletes an account via HTTP, invalidates its existing session and prevents r
 });
 
 it('requires context, CSRF and an exact explicit confirmation for shared subtree deletion',async()=>{
- const {registerVault}=require('../features/identity/adapters/store.js'),adminId=db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
+ const {registerExistingVault:registerVault}=require('../features/vaults/adapters/vault-registration.js'),adminId=db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
  const vault=registerVault(db,root,'vault',adminId);fs.mkdirSync(path.join(root,'vault','Project','sub'),{recursive:true});fs.writeFileSync(path.join(root,'vault','Project','sub','note.md'),'shared');
  const admin=await login('admin'),normal=await login('normal');
  const headersFor=async jar=>({'x-ignis-context':(await (await request('/api/auth/session',{jar})).json()).sessionId,'x-ignis-csrf':(await (await request('/api/auth/csrf',{jar})).json()).csrfToken});
@@ -1504,7 +1468,7 @@ it('requires context, CSRF and an exact explicit confirmation for shared subtree
 });
 
 it('lets a normal owner trash and restore private files and revoke shares when trashing shared folders',async()=>{
- const {registerVault}=require('../features/identity/adapters/store.js'),userId=db.prepare("SELECT id FROM users WHERE login='normal'").get().id;
+ const {registerExistingVault:registerVault}=require('../features/vaults/adapters/vault-registration.js'),userId=db.prepare("SELECT id FROM users WHERE login='normal'").get().id;
  const vault=registerVault(db,root,'vault',userId),jar=await login('normal');
  const session=await (await request('/api/auth/session',{jar})).json(),csrf=(await (await request('/api/auth/csrf',{jar})).json()).csrfToken;
  const headers={'x-ignis-context':session.sessionId,'x-ignis-csrf':csrf};

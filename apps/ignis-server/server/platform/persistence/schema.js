@@ -1,5 +1,5 @@
 // Initial schema for the modular application. Development migration histories are not supported.
-module.exports = Object.freeze({version: 1, sql: `
+module.exports = Object.freeze({version: 2, sql: `
 CREATE TABLE schema_info (
   singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
   version INTEGER NOT NULL,
@@ -200,15 +200,6 @@ CREATE TRIGGER reserve_deleted_identity_insert BEFORE INSERT ON vaults
 CREATE TRIGGER reserve_deleted_identity_update BEFORE UPDATE OF directory ON vaults
       WHEN EXISTS (SELECT 1 FROM vault_deletions WHERE vault_id=NEW.directory OR (state='pending' AND source=NEW.directory))
       BEGIN SELECT RAISE(ABORT, 'Vault identity reserved'); END;
-
-CREATE TABLE vault_preferences (
-        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
-        path TEXT NOT NULL,
-        content TEXT NOT NULL CHECK(length(CAST(content AS BLOB)) <= 1048576),
-        revision INTEGER NOT NULL CHECK(revision > 0),
-        PRIMARY KEY(user_id, vault_id, path)
-      ) STRICT;
 
 CREATE TABLE shared_resources (
         id TEXT PRIMARY KEY,

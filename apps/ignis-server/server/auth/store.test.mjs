@@ -14,7 +14,8 @@ const {
   backupDatabase,
   restoreDatabase,
 } = require("../platform/persistence/database");
-const { bootstrapAdmin, normalizeLogin, registerVault } = require("../features/identity/adapters/store.js");
+const {bootstrapAdmin,normalizeLogin} = require("../features/identity/adapters/store.js");
+const {registerExistingVault:registerVault}=require("../features/vaults/adapters/vault-registration.js");
 const { hashPassword } = require("../features/identity/adapters/password.js");
 const fixtureHash =
   "scrypt$131072$8$1$" + "ab".repeat(16) + "$" + "cd".repeat(64);
