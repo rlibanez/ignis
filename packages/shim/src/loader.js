@@ -1,7 +1,7 @@
 
 const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import { installVaultAccountMenu } from "./vault-account-menu.js";
-import { installEditorSaves } from "./editor-saves.js";
+import { installEditorSaves } from "./integration/obsidian/editor-saves.js";
 import { installSharedIcons } from "./shared-icons.js";
 import { installSharedPanel } from "./shared-panel.js";
 import { installAccountStorage } from "./account-storage.js";
@@ -112,7 +112,7 @@ extractObsidianModule()
     window.IgnisI18n?.fromObsidian(obsidian);
     // Fail closed if an upstream change prevents installation of editor guards.
     try {
-      editorSaves=installEditorSaves(obsidian,window.app,fsShim._writeEditorFile,fsShim._editorContext,fsShim._recoverEditor);
+      editorSaves=installEditorSaves(obsidian,window.app,fsShim._writeEditorFile,fsShim._editorContext,fsShim._recoverEditor,{version:window.__obsidianVersion});
     } catch(error) {
       const message=document.createElement("p");
       message.textContent=translateIgnis("Editor protection could not initialize. Reload or contact your administrator. Editing is unavailable.");

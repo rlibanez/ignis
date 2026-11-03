@@ -28,10 +28,11 @@ function createSecurity(options) {
     const vaults=vaultRoot ? require('../features/vaults/application/vaults').createVaults({
       store:vaultStore,sessions,access:vaultAccess,createView:require('../features/vaults/adapters/vault-view').createVaultView,
     }) : null;
-    const services = {vaults,vaultStore,vaultAccess,
+    const content=vaultRoot ? require('../features/content/adapters/runtime').createContentRuntime({db,root:vaultRoot,sessions}) : null;
+    const services = {vaults,vaultStore,vaultAccess,content,
       identity,effects,
       db, sessions, close,
-      sharesService:vaultRoot ? require('../auth/resource-shares').createResourceSharesService(db,vaultRoot,sessions,config.sharedResourceLimits) : null,
+      sharesService:vaultRoot ? require('../auth/resource-shares').createResourceSharesService(db,vaultRoot,sessions,config.sharedResourceLimits,content) : null,
       initialize() {
         if (closed) return Promise.reject(new Error('Security services are closed'));
         return initialization ||= Promise.resolve().then(async () => {

@@ -1,5 +1,9 @@
-// Always-on write durability: a failed writeFile is retried with backoff.
+// Write durability retries definite failures with backoff; uncertain, denied and
+// conflicted writes remain retained without replay.
 // A non-silent write drives the status-bar dirty signal and fires a failure event on give-up; a silent write retries without surfacing.
+
+import {writeOutcome} from "../../../contracts/src/content.js";
+const terminalFailure=error=>["uncertain","conflict","denied"].includes(writeOutcome(error)) || error?.code?.startsWith("CONTENT_");
 
 import { markSentOp } from "./echo-guard.js";
 
@@ -228,7 +232,7 @@ function attempt(path, gen) {
       if (!current || current.gen !== gen) {
         return;
       }
-      if(error?.code?.startsWith("CONTENT_")) {
+      if(terminalFailure(error)) {
         current.terminal=true;current.silent=false;current.status="failed";
         recompute();emitFailure(path);return;
       }
@@ -322,7 +326,7 @@ export function trackWrite(path, opts) {
       current.overThreshold = true;
       current.attempts = 1;
 
-      if(error?.code?.startsWith("CONTENT_")) {
+      if(terminalFailure(error)) {
         current.terminal=true;current.silent=false;current.status="failed";
         recompute();emitFailure(path);return;
       }

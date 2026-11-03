@@ -135,6 +135,10 @@ it('validates three independent real sessions across conflicts, downgrade, revok
   const initialBoot=await success(alice.call('/api/bootstrap?vault='+a));
   expect(initialBoot.vault.uuid).toBe(a);
   expect(initialBoot.vaultList.map(v=>v.uuid)).toEqual([a]);
+  await success(alice.call('/api/fs/appendFile?vault='+a,{path:'append.md',content:'first'}));
+  await success(alice.call('/api/fs/appendFile?vault='+a,{path:'append.md',content:' second'}));
+  await success(alice.call('/api/fs/copyFile?vault='+a,{src:'append.md',dest:'copy.md'}));
+  expect((await alice.call('/api/fs/readFile?vault='+a+'&path=copy.md&encoding=utf8')).text).toBe('first second');
   // Ordinary owners can edit notes/preferences, but cannot install or activate code.
   for(const file of ['community-plugins.json','core-plugins.json','appearance.json','unreviewed.json'])
    expect((await alice.call('/api/fs/writeFile?vault='+a,{path:'.obsidian/'+file,content:'{}'})).status).toBe(404);

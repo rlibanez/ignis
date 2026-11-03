@@ -29,6 +29,9 @@ it('rejects infrastructure in pure contracts, reverse platform imports and indir
     put('apps/ignis-server/server/features/vaults/application/use-case.js',"require('../adapters/vault-store');");
     expect(()=>checkArchitecture(root)).toThrow('Vault use case imports infrastructure');
     put('apps/ignis-server/server/features/vaults/application/use-case.js','module.exports={};');
+    put('apps/ignis-server/server/features/content/application/use-case.js',"require('node:fs');");
+    expect(()=>checkArchitecture(root)).toThrow('Content use case imports infrastructure');
+    put('apps/ignis-server/server/features/content/application/use-case.js','module.exports={};');
     put('packages/management/src/new.js',"import '../../../apps/ignis-server/server/auth/service.js';");
     expect(()=>checkArchitecture(root)).toThrow('New client-to-server');
   }finally{fs.rmSync(root,{recursive:true,force:true});}

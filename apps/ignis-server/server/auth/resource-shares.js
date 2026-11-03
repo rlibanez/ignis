@@ -12,24 +12,7 @@ const fail = (code = "SHARE_UNAVAILABLE") => { throw Object.assign(new Error("Sh
 const identity = stat => `${stat.ino}:${stat.birthtimeMs}`;
 const directoryTag = stat => "dir:" + createHash("sha256").update([stat.dev,identity(stat),stat.mtimeMs,stat.ctimeMs].join(":")).digest("hex");
 const digest = bytes => createHash("sha256").update(bytes).digest("hex");
-function canonical(value, empty = false) {
-  if (typeof value !== "string" || value.length > 1024 || (!value && !empty) || (value && classifyVaultPath(value) !== "content")) fail("INVALID_SHARE_PATH");
-  return value;
-}
-function inspect(root, relative, missing = false, trash = false) {
-  if(trash && relative.startsWith(".trash/"))canonical(relative.slice(7));else canonical(relative, true);
-  let filename = root, stat = fs.lstatSync(root);
-  if (!stat.isDirectory() || stat.isSymbolicLink()) fail();
-  const parts = relative.split("/").filter(Boolean);
-  for (let i = 0; i < parts.length; i++) {
-    filename = path.join(filename, parts[i]);
-    try { stat = fs.lstatSync(filename); }
-    catch (error) { if (missing && error.code === "ENOENT" && i === parts.length - 1) return { filename, stat:null }; throw error; }
-    if (stat.isSymbolicLink() || (!stat.isFile() && !stat.isDirectory()) || (stat.isFile() && stat.nlink !== 1) ||
-      (i < parts.length - 1 && !stat.isDirectory())) fail();
-  }
-  return { filename, stat };
-}
+const {canonical,inspect}=require('../features/content/adapters/content-path');
 function readFile(item, maxFileBytes) {
   if (!item.stat?.isFile() || item.stat.size > maxFileBytes) fail("SHARE_TOO_LARGE");
   const fd = fs.openSync(item.filename, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
@@ -45,7 +28,7 @@ function readFile(item, maxFileBytes) {
     return bytes;
   } finally { fs.closeSync(fd); }
 }
-function createResourceSharesService(db, root, sessions, limits = readResourceShareLimits({})) {
+function createResourceSharesService(db, root, sessions, limits = readResourceShareLimits({}), content = require('../features/content/adapters/runtime').createContentRuntime({db,root,sessions})) {
   const { maxFileBytes } = limits;
   function actor(token) {
     const session = sessions.resolve(token, { withinTransaction:true });
@@ -467,6 +450,17 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
       if(typeof input.content!=="string" || input.content.length>Math.ceil(maxFileBytes/3)*4 || (input.content.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(input.content))) fail("SHARE_TOO_LARGE");
       bytes=Buffer.from(input.content,"base64");if(bytes.length>maxFileBytes || bytes.toString("base64")!==input.content) fail("SHARE_TOO_LARGE");
     }
+    if(input.action==='write') {
+      if(input.etag===undefined)fail('SHARE_CONFLICT');
+      try {
+        const result=await content.replace({bytes,expectedHash:input.etag,conflictCode:'SHARE_CONFLICT',select:()=>{
+          const fresh=resource(token,input.id,relative,true),current=target(fresh,true);
+          if(current.stat?.size>maxFileBytes)fail("SHARE_TOO_LARGE");
+          return {item:current,vaultId:fresh.v.id,relative:fresh.row.kind==='file'?fresh.row.path:fresh.row.path+'/'+relative,actorId:fresh.user.id};
+        }});
+        return {ok:true,etag:result.etag,outcome:result.outcome};
+      }catch(error){if(error.code==='CONTENT_WRITE_UNCERTAIN')error.code='SHARE_WRITE_UNCERTAIN';throw error;}
+    }
     await writeCoalescer.flushPending(item.filename);
     return writeCoalescer.supersedePending(item.filename,()=>{
       const fresh=resource(token,input.id,relative,true),current=target(fresh,true);
@@ -477,76 +471,10 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
       else if(input.action==="remove") {
         if(!current.stat) fail();
         if(current.stat.isDirectory()) fs.rmdirSync(current.filename); else fs.unlinkSync(current.filename);
-      } else {
-        if(current.stat && !current.stat.isFile()) fail("INVALID_SHARE");
-        publish(current,bytes,fresh.v.id,fresh.row.kind==="file"?fresh.row.path:fresh.row.path+"/"+relative);
-
       }
       return {ok:true,...(bytes?{etag:digest(bytes)}:{})};
     });
   }
-  // Both ordinary vault edits and resource recipients publish through this path.
-  // There is no await between version validation, rename and identity update.
-  function publish(current, bytes, vaultId, relative) {
-    // Publish complete bytes atomically. A crash between disk publication and
-    // SQLite commit leaves file grants unavailable, never pointing at a replacement.
-    const temporary=path.join(path.dirname(current.filename),".ignis-share-"+randomUUID());
-    let published=false;
-    try {
-      const fd=fs.openSync(temporary,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,current.stat ? current.stat.mode & 0o777 : 0o600);
-      try {
-        let offset=0;
-        while(offset<bytes.length) {const count=fs.writeSync(fd,bytes,offset,bytes.length-offset,offset);if(!count) fail();offset+=count;}
-        fs.fsyncSync(fd);
-      } finally {fs.closeSync(fd);}
-      transaction(db,()=>{
-        const replacement=fs.lstatSync(temporary);
-        fs.renameSync(temporary,current.filename);published=true;
-        const directoryFd=fs.openSync(path.dirname(current.filename),fs.constants.O_RDONLY|fs.constants.O_DIRECTORY);
-        try {fs.fsyncSync(directoryFd);} finally {fs.closeSync(directoryFd);}
-        // Keep every explicit file grant to the same original resource usable.
-        if(current.stat) db.prepare("UPDATE shared_resources SET device=?,inode=? WHERE vault_id=? AND path=? AND device=? AND inode=?")
-          .run(String(replacement.dev),identity(replacement),vaultId, relative,String(current.stat.dev),identity(current.stat));
-      });
-    } catch(error) {if(published) fail("SHARE_WRITE_UNCERTAIN");throw error;}
-    finally {try{fs.unlinkSync(temporary);}catch{/* Preserve the original failure; reserved temporary files are never shareable. */}}
-  }
-  async function writeOriginal(token, reference, relative, bytes, expectedHash) {
-    if (expectedHash !== undefined && expectedHash !== null && (typeof expectedHash !== "string" || !/^[a-f0-9]{64}$/.test(expectedHash)))
-      fail("CONTENT_VERSION_REQUIRED");
-    function select() {
-      const user=actor(token),v=vault(reference);
-      canonical(relative);
-      const role=db.prepare("SELECT role FROM memberships WHERE vault_id=? AND user_id=?").get(v.id,user.id)?.role;
-      if (!["owner","editor"].includes(role)) fail();
-      return {v,item:inspect(v.path,relative,true)};
-    }
-    const first=select();
-    await writeCoalescer.flushPending(first.item.filename);
-    return writeCoalescer.supersedePending(first.item.filename,()=>{
-      const {v,item}=select();
-      if(writeCoalescer.getPending(item.filename)!==null) fail("CONTENT_CONFLICT");
-      let actual=null;
-      if(item.stat) {
-        if(!item.stat.isFile()) fail("CONTENT_CONFLICT");
-        const fd=fs.openSync(item.filename,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW);
-        try {
-          const before=fs.fstatSync(fd);
-          if(before.dev!==item.stat.dev || before.ino!==item.stat.ino || before.nlink!==1) fail();
-          const hash=createHash("sha256"),buffer=Buffer.alloc(65536);
-          let offset=0;
-          while(offset<before.size){const n=fs.readSync(fd,buffer,0,Math.min(buffer.length,before.size-offset),offset);if(!n)fail("CONTENT_CONFLICT");hash.update(buffer.subarray(0,n));offset+=n;}
-          const after=fs.fstatSync(fd);
-          if(after.size!==before.size || after.mtimeMs!==before.mtimeMs || after.ctimeMs!==before.ctimeMs)fail("CONTENT_CONFLICT");
-          actual=hash.digest("hex");
-        } finally {fs.closeSync(fd);}
-      }
-      if(expectedHash!==undefined && actual!==expectedHash)fail("CONTENT_CONFLICT");
-      publish(item,bytes,v.id,relative);
-      const stat=fs.lstatSync(item.filename);
-      return {ok:true,etag:digest(bytes),mtime:stat.mtimeMs,size:stat.size};
-    });
-  }
-  return {catalog,mounts,destination,create,grant,grants,validateGrant,browseOwner,read,rename,renameOriginal,writeOriginal,copy,previewRemoval,removeConfirmed,mutate,limits};
+  return {catalog,mounts,destination,create,grant,grants,validateGrant,browseOwner,read,rename,renameOriginal,copy,previewRemoval,removeConfirmed,mutate,limits};
 }
 module.exports={createResourceSharesService};

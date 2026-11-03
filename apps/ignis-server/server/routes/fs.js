@@ -279,7 +279,7 @@ router.post("/writeFile", async (req, res) => {
       : await writeCoalesced(resolved, data, encoding);
     const buffered = getPending(resolved) !== null;
 
-    res.json({ ok: true, mtime: result.mtime, size: result.size, ...(result.etag?{etag:result.etag}:{}) });
+    res.json({ ok: true, mtime: result.mtime, size: result.size, ...(result.etag?{etag:result.etag}:{}), ...(result.outcome?{outcome:result.outcome}:{}) });
 
     applyToTree(
       req,
@@ -288,10 +288,7 @@ router.post("/writeFile", async (req, res) => {
         : { type: "modified", path: rel },
     );
   } catch (e) {
-    if(e.code === "CONTENT_CONFLICT") return res.status(409).json({error:"The file changed since it was read. Download your changes before reloading.",code:e.code});
-    if(e.code === "SHARE_UNAVAILABLE") return res.status(404).json({error:"Resource unavailable",code:"CONTENT_UNAVAILABLE"});
-    if(e.code === "SHARE_WRITE_UNCERTAIN") return res.status(503).json({error:"The save could not be confirmed. Preserve your changes before reloading.",code:"CONTENT_WRITE_UNCERTAIN"});
-    res.status(500).json(sanitizeError(e));
+    require('../transport/http/content/write-result').sendWriteFailure(res,e);
   }
 });
 
@@ -307,7 +304,10 @@ router.post("/appendFile", async (req, res) => {
     await flushPending(resolved);
     if (req.revalidateVaultFile && !req.revalidateVaultFile()) { res.destroy(); return; }
     // No asynchronous disk write may outlive a version-checked publication.
-    checkedMutation(req,()=>fs.appendFileSync(resolved, req.body.content, "utf-8"));
+    const relative=toRelative(req._vaultRoot,resolved);
+    if(req.appendVaultContent && require('../features/vaults/application/vault-policy').classifyVaultPath(relative)==='content')
+      await req.appendVaultContent(req.vaultUUID(req._vaultId),relative,Buffer.from(req.body.content,'utf8'));
+    else checkedMutation(req,()=>fs.appendFileSync(resolved, req.body.content, "utf-8"));
 
     const rel = toRelative(req._vaultRoot, resolved);
 
@@ -315,7 +315,7 @@ router.post("/appendFile", async (req, res) => {
 
     applyToTree(req, { type: "modified", path: rel });
   } catch (e) {
-    res.status(500).json(sanitizeError(e));
+    require('../transport/http/content/write-result').sendWriteFailure(res,e);
   }
 });
 
@@ -418,9 +418,11 @@ router.post("/copyFile", async (req, res) => {
     if (!permit(req, vaultRoot, srcResolved, "content.read") || !permit(req, vaultRoot, destResolved, "content.write"))
       return res.status(404).json({ error: "Resource unavailable" });
     await flushPending(srcResolved);
-    await supersedePending(destResolved, () =>
-      checkedMutation(req, () => fs.promises.copyFile(srcResolved, destResolved)),
-    );
+    const source=toRelative(vaultRoot,srcResolved),destination=toRelative(vaultRoot,destResolved);
+    const classify=require('../features/vaults/application/vault-policy').classifyVaultPath;
+    if(req.copyVaultContent && classify(source)==='content' && classify(destination)==='content')
+      await req.copyVaultContent(req.vaultUUID(req._vaultId),source,destination);
+    else await supersedePending(destResolved, () => checkedMutation(req, () => fs.promises.copyFile(srcResolved, destResolved)));
 
     res.json({ ok: true });
 
@@ -429,7 +431,7 @@ router.post("/copyFile", async (req, res) => {
       path: toRelative(vaultRoot, destResolved),
     });
   } catch (e) {
-    res.status(500).json(sanitizeError(e));
+    require('../transport/http/content/write-result').sendWriteFailure(res,e);
   }
 });
 

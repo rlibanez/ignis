@@ -60,7 +60,7 @@ function createAuthBoundary({
   const rememberCookies = createSessionCookies({ ...config, purpose: "remember" });
   const resetCookies = createSessionCookies({ ...config, purpose: "reset" });
   const publicUrl = new URL(config.publicOrigin);
-  const {db,sessions,sharesService,vaultAccess,vaults,vaultStore,identity,effects} = services;
+  const {db,sessions,sharesService,vaultAccess,vaults,vaultStore,content,identity,effects} = services;
   const sharesRouter = sharesService ? require("../routes/resource-shares").createResourceSharesRouter(sharesService) : null;
   if (sharesRouter) require("../vault/lifecycle").trackRouterWork(sharesRouter);
   const pendingAuth = new Set();
@@ -526,8 +526,10 @@ function createAuthBoundary({
           const reference=scope.resolve(directory).id;
           return sharesService.renameOriginal(cookies.read(req.headers.cookie),reference,oldPath,newPath);
         };
+        req.appendVaultContent=(reference,relative,bytes)=>content.appendOriginal(cookies.read(req.headers.cookie),reference,relative,bytes);
+        req.copyVaultContent=(reference,source,destination)=>content.copyOriginal(cookies.read(req.headers.cookie),reference,source,destination);
         req.writeVaultContent = (reference, relative, bytes, expectedHash) =>
-          sharesService.writeOriginal(cookies.read(req.headers.cookie), reference, relative, bytes, expectedHash);
+          content.writeOriginal(cookies.read(req.headers.cookie), reference, relative, bytes, expectedHash);
         req.vaultMembers = (operation, input) => {
           const result=scope.members(operation,input);
           const details=scope.logDetails(operation,input);

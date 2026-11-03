@@ -8,7 +8,8 @@ const {openDatabase}=require("../platform/persistence/database");
 const {registerExistingVault:registerVault}=require("../features/vaults/adapters/vault-registration.js");
 const {createResourceSharesService}=require("./resource-shares");
 const {writeCoalescer}=require("@ignis/server-core");
-let root,db,vault,service,active;
+const {createContentRuntime}=require('../features/content/adapters/runtime');
+let root,db,vault,service,active,content;
 beforeEach(()=>{
  root=fs.mkdtempSync(path.join(os.tmpdir(),"ignis-shares-"));fs.mkdirSync(path.join(root,"Notes","Project"),{recursive:true});
  fs.writeFileSync(path.join(root,"Notes","Project","note.md"),"hello");fs.writeFileSync(path.join(root,"Notes","secret.md"),"private");
@@ -16,7 +17,9 @@ beforeEach(()=>{
  db=openDatabase(path.join(root,"data"));
  for(const id of ["owner","recipient","outsider","admin"])db.prepare("INSERT INTO users(id,login,role,created_at) VALUES (?,?,?,0)").run(id,id,id==="admin"?"admin":"user");
  vault=registerVault(db,root,"Notes","owner");active=true;
- service=createResourceSharesService(db,root,{resolve:token=>active && ["owner","recipient","outsider","admin"].includes(token)?{user:{id:token,authVersion:1}}:null});
+ const sessions={resolve:token=>active && ["owner","recipient","outsider","admin"].includes(token)?{id:'session-'+token,user:{id:token,role:token==='admin'?'admin':'user',authVersion:1}}:null};
+ content=createContentRuntime({db,root,sessions});
+ service=createResourceSharesService(db,root,sessions,undefined,content);
 });
 afterEach(async()=>{await writeCoalescer.flushAll();db.close();fs.rmSync(root,{recursive:true,force:true});});
 const share=(p="Project",role="reader")=>service.create("owner",{vault:vault.id,path:p,login:"recipient",role}).id;
@@ -286,7 +289,7 @@ it('exposes outgoing badges only to the current vault owner and only for live re
  expect(single).toBeTruthy();
 });
 
-const ordinary=(expected,content='owner update',p='Project/note.md',user='owner')=>service.writeOriginal(user,vault.id,p,Buffer.from(content),expected);
+const ordinary=(expected,text='owner update',p='Project/note.md',user='owner')=>content.writeOriginal(user,vault.id,p,Buffer.from(text),expected);
 it.each(['Project','Project/note.md'])('coordinates ordinary owner and recipient writes for %s in both orders',async p=>{
  const id=share(p,'editor'),relative=p==='Project'?'note.md':'';
  const initial=await read(id,relative);
@@ -333,7 +336,7 @@ it('does not damage the original when publication fails before the rename',async
 });
 it('preserves binary contents and file grants across an ordinary atomic save',async()=>{
  const id=share('Project/note.md','editor'),initial=await read(id),bytes=Buffer.from([0,255,128,13,10]);
- const result=await service.writeOriginal('owner',vault.id,'Project/note.md',bytes,initial.etag);
+ const result=await content.writeOriginal('owner',vault.id,'Project/note.md',bytes,initial.etag);
  expect(Buffer.from((await read(id)).content,'base64')).toEqual(bytes);expect((await read(id)).etag).toBe(result.etag);
 });
 
@@ -629,4 +632,12 @@ it("validates draft recipients without granting access or changing revisions",()
  expect(()=>service.validateGrant("owner",input)).toThrow();
  for(const token of ["recipient","admin","bad"])expect(()=>service.validateGrant(token,{...input,login:"recipient"})).toThrow();
  expect(()=>service.validateGrant("owner",{...input,revision:2})).toThrow();
+});
+
+it('keeps file grants bound to originals after atomic append and native copy',async()=>{
+ const id=share('Project/note.md','reader');
+ await content.appendOriginal('owner',vault.id,'Project/note.md',Buffer.from(' tail'));
+ expect(Buffer.from((await read(id)).content,'base64').toString()).toBe('hello tail');
+ await content.copyOriginal('owner',vault.id,'secret.md','Project/note.md');
+ expect(Buffer.from((await read(id)).content,'base64').toString()).toBe('private');
 });

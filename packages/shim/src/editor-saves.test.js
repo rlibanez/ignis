@@ -1,5 +1,5 @@
 import {it,expect,vi,afterEach} from 'vitest';
-import {installEditorSaves} from './editor-saves.js';
+import {installEditorSaves} from './integration/obsidian/editor-saves.js';
 import {contentHash} from './fs/content-versions.js';
 afterEach(()=>vi.useRealTimers());
 function fixture() {
@@ -10,7 +10,7 @@ function fixture() {
  class TextFileView {constructor(){this.app=app;this.file={path:'note.md'};this.lastSavedData='base';this.text='draft';this.dirty=true;this.saving=false;this.saveAgain=false;}getViewData(){return this.text;}setViewData(text){this.text=text;}clear(){this.text='';}register(){}onload(){}save(){}}
  const view=new TextFileView();
  const write=vi.fn(async(path,data,etag,check)=>{check();if(etag!==contentHash(stored))throw Object.assign(new Error('Conflict'),{code:'CONTENT_CONFLICT'});stored=data;});
- const controller=installEditorSaves({TextFileView},app,write,()=>scope,recover);
+ const controller=installEditorSaves({TextFileView},app,write,()=>scope,recover,{version:"1.14.4"});
  return {controller,view,app,adapter,write,pluginWrite,scope,recover,stored:()=>stored,TextFileView};
 }
 it('protects native editor saves while allowing plugin replacement without a preceding read',async()=>{
@@ -146,4 +146,34 @@ it('does not overwrite remote changes when write permission returns',async()=>{
  f.view.requestSave();await vi.advanceTimersByTimeAsync(2100);
  expect(f.stored()).toBe('remote change');expect(f.recover.mock.calls.at(-1)[0].code).toBe('CONTENT_CONFLICT');
  f.view.requestSave();await vi.advanceTimersByTimeAsync(2100);expect(f.write).toHaveBeenCalledTimes(2);
+});
+
+it.each([undefined,'1.14.3','1.14.5','unknown'])('rejects unsupported Obsidian %s before patching native methods',version=>{
+ class TextFileView{save(){}}
+ const before=TextFileView.prototype.save;
+ expect(()=>installEditorSaves({TextFileView},{},()=>{},()=>({}),()=>{},{version})).toThrow('Unsupported Obsidian');
+ expect(TextFileView.prototype.save).toBe(before);
+});
+
+it('captures dirty text before its debounce and the latest edits during an in-flight save',async()=>{
+ const f=fixture();
+ expect(f.controller.snapshotPending()).toEqual([{path:'note.md',data:'draft',encoding:'utf8'}]);
+ let release;f.adapter.queue=fn=>new Promise(r=>release=()=>r(Promise.resolve().then(fn)));
+ const saving=f.view.save();f.view.text='new text while waiting';f.view.dirty=true;
+ expect(f.controller.snapshotPending()).toEqual([{path:'note.md',data:'new text while waiting',encoding:'utf8'}]);
+ release();await saving;
+ expect(f.controller.snapshotPending()).toEqual([{path:'note.md',data:'new text while waiting',encoding:'utf8'}]);
+ f.scope.sessionId='other';expect(f.controller.snapshotPending()).toEqual([]);
+});
+it('keeps the retained draft instead of the restored baseline in logout recovery',async()=>{
+ const f=fixture();f.write.mockRejectedValueOnce(Object.assign(new Error('Read only'),{code:'EACCES'}));
+ await expect(f.view.save()).rejects.toThrow();f.recover.mock.calls.at(-1)[0].restoreOriginal();
+ expect(f.view.text).toBe('base');expect(f.controller.snapshotPending()[0].data).toBe('draft');
+});
+
+it('excludes views created without a session from locked-session recovery',()=>{
+ const f=fixture();f.scope.sessionId=null;
+ const unowned=new f.TextFileView();unowned.text='unowned';unowned.onload();
+ f.app.workspace.iterateAllLeaves=fn=>{fn({view:f.view});fn({view:unowned});};
+ expect(f.controller.snapshotPending()).toEqual([{path:'note.md',data:'draft',encoding:'utf8'}]);
 });

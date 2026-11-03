@@ -1,5 +1,5 @@
-import {openRecoveryCopy} from './recovery-copy.js';
-import { contentHash } from "./fs/content-versions.js";
+import {openRecoveryCopy} from '../../../recovery-copy.js';
+import { contentHash } from "../../../fs/content-versions.js";
 
 // A per-call token, never an ambient "currently saving" flag: an unrelated plugin
 // write must not inherit an editor's version while the adapter queue is waiting.
@@ -13,9 +13,26 @@ export function installEditorSaves(obsidian, app, write, context, recover) {
   if (installed.has(adapter)) return installed.get(adapter);
   const views = new WeakMap(), pending = new Map();
   const controller={snapshotPending:()=>{
-    const now=context();
-    return [...pending.values()].filter(item=>item.scope.vault===now.vault && (!now.sessionId || item.scope.sessionId===now.sessionId))
-      .map(({path,data})=>({path,data,encoding:"utf8"}));
+    const now=context(),result=[],included=new Set();
+    const visible=scope=>!!scope.sessionId && !!scope.vault && scope.vault===now.vault && (!now.sessionId || scope.sessionId===now.sessionId);
+    for(const [record,item] of pending){
+      if(!visible(item.scope))continue;
+      let data=item.data;
+      try{data=item.readDraft?.() ?? data;}catch{/* Retain the last captured draft. */}
+      result.push({path:item.path,data,encoding:'utf8'});included.add(record);
+    }
+    // A session can lock before the debounce or while another save is in flight.
+    // Capture current text, including edits that have not reached save() yet.
+    app.workspace.iterateAllLeaves(leaf=>{
+      const view=leaf.view,state=views.get(view),file=view?.file;
+      if(!state || !file || file.deleted || !view.dirty || !visible(state.scope))return;
+      const record=state.files.get(file);if(record && included.has(record))return;
+      try{
+        const data=view.getViewData();
+        if(typeof data==='string' && data!==view.lastSavedData)result.push({path:file.path,data,encoding:'utf8'});
+      }catch{/* A broken view must not discard other retained drafts. */}
+    });
+    return result;
   }};
   installed.set(adapter,controller);
   const originalWrite = adapter.write;
@@ -68,7 +85,7 @@ export function installEditorSaves(obsidian, app, write, context, recover) {
       check();
       if(typeof previous!=="string" || typeof data!=="string")throw fail("CONTENT_VERSION_REQUIRED");
       // Never clear the editor until the server has acknowledged this version.
-      pending.set(record,{path,data,scope:state.scope});
+      pending.set(record,{path,data,scope:state.scope,readDraft:()=>this.file===file && !file.deleted && file.path===path?this.getViewData():data});
       this.data=data;this.lastSavedData=data;
       await this.app.vault.modify(file,data,{[editorWrite]:{expectedHash:contentHash(previous),check}});
       check();
@@ -92,7 +109,7 @@ export function installEditorSaves(obsidian, app, write, context, recover) {
         return this.getViewData();
       };
       let retained=false;record.recoveryToken={};
-      try {sameScope(state);pending.set(record,{path,data,scope:state.scope});recover({path,recoveryToken:record.recoveryToken,content:data,currentContent,binary:false,...state.scope,code:error.code,
+      try {sameScope(state);pending.set(record,{path,data,scope:state.scope,readDraft:()=>detached || restored || this.file!==file || file.deleted || file.path!==path?data:this.getViewData()});recover({path,recoveryToken:record.recoveryToken,content:data,currentContent,binary:false,...state.scope,code:error.code,
         saveCopy:error.code==="EACCES" ? onSaved=>openRecoveryCopy(obsidian,app,{path,content:currentContent(),...state.scope},context,onSaved):undefined,
         restoreOriginal:error.code==="EACCES" && typeof this.setViewData==="function" ? ()=>{
           sameScope(state);

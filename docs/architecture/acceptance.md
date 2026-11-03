@@ -103,3 +103,17 @@ sin lifecycle registrado no hay renombrado/borrado directo. La suite real
 `auth/server.integration.test.mjs` verifica admin sin membresía, admin lector,
 propietario normal y admin editor al instalar/leer/borrar código. El detalle de
 archivos activos, preferencias y suites retiradas está en `phase3.md`.
+
+## Evidencia añadida en fase 4
+
+`features/content/adapters/publication.test.mjs` verifica fallos antes y después
+de publicar, cambios de permisos/sesión/fuente durante staging y versiones CAS.
+`features/content/application/replace.test.mjs` rechaza cambios mientras la
+operación espera su cola. La suite `auth/resource-shares-recovery.test.mjs` añade
+SIGKILL para notas originales/compartidas, append y copias.
+
+`npm run test:content-faults` ejecuta esa matriz también con ENOSPC real en un
+tmpfs de Docker dedicado de 1 MiB, sin red ni escritura sobre el repositorio.
+Las pruebas de transporte y write-durability comprueban que no se reenvían
+guardados inciertos; las de editor incluyen texto anterior al debounce, texto
+nuevo durante una escritura y aislamiento del borrador por contexto.

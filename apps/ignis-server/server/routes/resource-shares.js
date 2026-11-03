@@ -9,6 +9,7 @@ function createResourceSharesRouter(service) {
     SHARE_MOVE_BOUNDARY:[409,"Move within the same shared folder without crossing another shared folder boundary."],
     SHARE_PLACEMENT_CONFLICT:[409,"This location overlaps a local file or another shared resource. Choose another existing destination folder."],
     SHARE_RENAME_UNCERTAIN:[503,"The rename reached disk but its sharing metadata could not be confirmed. Ask the owner to check the resource before continuing."],
+    CONTENT_VERSION_REQUIRED:[400,"Invalid content version."],
     SHARE_WRITE_UNCERTAIN:[503,"The file was published, but its sharing metadata could not be confirmed. Ask the owner to check the file and share it again."],
     INVALID_SHARE:[400,"Invalid share or recipient."], INVALID_SHARE_PATH:[400,"Choose a content file or folder; configuration cannot be shared."],
     SHARE_CONFLICT:[409,"This resource changed. Reload before trying again; your edits have not been saved."],
@@ -38,7 +39,7 @@ function createResourceSharesRouter(service) {
       res.json(result);
     } catch(error) {
       const [status,message]=messages[error.code] || (error.code==="ENOTEMPTY"?[409,"The folder must be empty before removing it."]:[404,"Shared resource unavailable"]);
-      res.status(status).json({error:message,code:messages[error.code]?error.code:"SHARE_UNAVAILABLE"});
+      res.status(status).json({error:message,code:messages[error.code]?error.code:"SHARE_UNAVAILABLE",...(req.body?.operation==="write"?{outcome:require("../../../../packages/contracts/src/content").writeOutcome(error)}:{})});
     }
   });
   router.get("/api/shares/content",async(req,res)=>{

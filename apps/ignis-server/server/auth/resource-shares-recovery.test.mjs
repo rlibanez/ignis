@@ -13,6 +13,7 @@ function fixture(base=os.tmpdir()){
  const root=fs.mkdtempSync(path.join(base,'ignis-recovery-'));
  fs.mkdirSync(path.join(root,'Notes/Project'),{recursive:true});
  fs.writeFileSync(path.join(root,'Notes/Project/note.md'),'original bytes');
+ fs.writeFileSync(path.join(root,'Notes/source.md'),'complete replacement');
  const data=fs.mkdtempSync(path.join(os.tmpdir(),'ignis-recovery-db-'));
  const db=openDatabase(data);
  for(const id of ['owner','recipient'])db.prepare('INSERT INTO users(id,login,role,created_at) VALUES (?,?,?,0)').run(id,id,'user');
@@ -34,12 +35,21 @@ async function crash(f,operation,phase){
  function halt(){fs.writeSync(1,'publication\\n');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0);}
  fs.renameSync=function(a,b){if(f.phase==='before')halt();const result=rename(a,b);halt();return result;};
  (async()=>{
+ if(f.operation==='sharedWrite'){const r=await s.read('recipient',{id:f.folder,path:'note.md'});await s.mutate('recipient',{id:f.folder,path:'note.md',action:'write',etag:r.etag,content:Buffer.from('complete replacement').toString('base64')});}
+ if(['originalWrite','append','originalCopy'].includes(f.operation)){
+   const {createContentRuntime}=require('./apps/ignis-server/server/features/content/adapters/runtime');
+   const content=createContentRuntime({db,root:f.root,sessions:{resolve:()=>({id:'s',user:{id:'owner',role:'user',authVersion:1}})}});
+   const hash=require('node:crypto').createHash('sha256').update('original bytes').digest('hex');
+   if(f.operation==='originalWrite')await content.writeOriginal('owner',f.vault,'Project/note.md',Buffer.from('complete replacement'),hash);
+   if(f.operation==='append')await content.appendOriginal('owner',f.vault,'Project/note.md',Buffer.from(' tail'));
+   if(f.operation==='originalCopy')await content.copyOriginal('owner',f.vault,'source.md','Project/note.md');
+ }
  if(f.operation==='copy')await s.copy('recipient',{from:{id:f.folder,vault:null,path:'note.md'},to:{id:f.folder,vault:null,path:'Copy.md'}});
  if(f.operation==='rename'){const r=await s.read('recipient',{id:f.folder,path:'note.md'});await s.rename('recipient',{id:f.folder,path:'note.md',to:'Renamed.md',etag:r.etag});}
  if(f.operation==='delete'){const input={id:f.folder,path:'note.md'},p=await s.previewRemoval('recipient',input);await s.removeConfirmed('recipient',{...input,revision:p.revision,confirm:true});}
  })().catch(e=>{console.error(e);process.exit(1)});
  `;
- const child=spawn(process.execPath,['-e',script],{cwd:process.cwd(),env:{...process.env,RECOVERY_FIXTURE:JSON.stringify({root:f.root,data:f.data,folder:f.folder,operation,phase})},stdio:['ignore','pipe','pipe']});
+ const child=spawn(process.execPath,['-e',script],{cwd:process.cwd(),env:{...process.env,RECOVERY_FIXTURE:JSON.stringify({root:f.root,data:f.data,folder:f.folder,vault:f.vault.id,operation,phase})},stdio:['ignore','pipe','pipe']});
  let stderr='';child.stderr.on('data',x=>stderr+=x);
  try{await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('No publication checkpoint: '+stderr)),8000);child.stdout.once('data',()=>{clearTimeout(timer);resolve();});child.once('exit',()=>{clearTimeout(timer);reject(new Error('Unexpected exit: '+stderr));});});}
  finally{await new Promise(resolve=>{if(child.exitCode!==null)return resolve();child.once('exit',resolve);child.kill('SIGKILL');});}
@@ -108,3 +118,16 @@ it.skipIf(!process.env.IGNIS_TEST_FAULT_ROOT)('preserves originals and removes s
  expect(fs.readFileSync(path.join(f.root,'Notes/Project/note.md'),'utf8')).toBe('recovered');
  }finally{if(fd!==undefined)fs.closeSync(fd);f.db.close();fs.rmSync(f.root,{recursive:true,force:true});fs.rmSync(f.data,{recursive:true,force:true});}
 });
+
+it.each(['sharedWrite','originalWrite','append','originalCopy'].flatMap(operation=>['before','after'].map(phase=>({operation,phase}))))('preserves complete bytes and grant isolation after SIGKILL $phase $operation',async({operation,phase})=>{
+ const f=fixture();f.db.close();let reopened;
+ try{
+  await crash(f,operation,phase);reopened=openDatabase(f.data);
+  const service=createResourceSharesService(reopened,f.root,sessions);
+  expect(fs.readFileSync(path.join(f.root,'Notes/Project/note.md'),'utf8')).toBe(phase==='after'?(operation==='append'?'original bytes tail':'complete replacement'):'original bytes');
+  if(phase==='after')await expect(service.read('recipient',{id:f.file,path:''})).rejects.toThrow();
+  else expect(Buffer.from((await service.read('recipient',{id:f.file,path:''})).content,'base64').toString()).toBe('original bytes');
+  for(const name of fs.readdirSync(path.join(f.root,'Notes/Project')).filter(n=>n.startsWith('.ignis-content-')))
+   await expect(service.read('recipient',{id:f.folder,path:name})).rejects.toThrow();
+ }finally{reopened?.close();fs.rmSync(f.root,{recursive:true,force:true});fs.rmSync(f.data,{recursive:true,force:true});}
+},15000);

@@ -17,7 +17,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:load": "node scripts/check-load.mjs",
-    "test:image": "node scripts/check-image.mjs"
+    "test:image": "node scripts/check-image.mjs",
+    "test:content-faults": "node scripts/check-content-faults.mjs"
   },
   "dependencies": {
     "acorn": "^8.18.0",
