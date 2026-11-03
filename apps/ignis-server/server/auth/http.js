@@ -2,6 +2,11 @@ const {sessionContext,matchesSession} = require('../../../../packages/contracts/
 const express = require("express");
 const fs = require("node:fs");
 const path = require("node:path");
+// A fixed public asset manifest; no user-controlled paths or source-tree serving.
+const sharedBrowserAssets = new Map([
+  ["resource-tree.js", "resource-tree.cjs"], ["resource-tree.css", "resource-tree.css"],
+  ["password-visibility.js", "password-visibility.cjs"], ["oidc-start.js", "oidc-start.cjs"],
+]);
 const setupAssets = new Map(
   [
     ["/share-target", ["text/html", "share-target.html"]],
@@ -31,7 +36,9 @@ const setupAssets = new Map(
     ["/auth/setup.css", ["text/css", "setup.css"]],
   ].map(([url, [type, file]]) => [
     url,
-    { type, content: fs.readFileSync(path.join(__dirname, "web", file)) },
+    { type, content: fs.readFileSync(sharedBrowserAssets.has(file)
+      ? path.join(__dirname, "../../../../packages/management/src", sharedBrowserAssets.get(file))
+      : path.join(__dirname, "web", file)) },
   ]),
 );
 setupAssets.set("/favicon.png", {

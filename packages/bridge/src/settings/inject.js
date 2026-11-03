@@ -185,7 +185,7 @@ function patchSettingsModal(plugin) {
   window.__ignisOpenResourceSharing = options => { const modal = new ManagementModal(plugin.app, "shares", options); modal.open(); return modal; };
   window.__ignisOpenManagement = kind => {
     if(kind==='users' || kind==='shares')return new ManagementModal(plugin.app,kind).open();
-    if(kind==='password')return new ManagementModal(plugin.app,'login',{passwordSetup:true}).open();
+    if(kind==='password')return new ManagementModal(plugin.app,'password',{passwordSetup:true}).open();
     if(kind==='email'){
       const account=ignisTabs.find(tab=>tab.id==='ignis-account');
       if(account)account.pendingEmailEdit=true;

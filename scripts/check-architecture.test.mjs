@@ -37,5 +37,8 @@ it('rejects infrastructure in pure contracts, reverse platform imports and indir
     put('apps/ignis-server/server/features/sharing/application/use-case.js','module.exports={};');
     put('packages/management/src/new.js',"import '../../../apps/ignis-server/server/auth/service.js';");
     expect(()=>checkArchitecture(root)).toThrow('New client-to-server');
+    put('packages/management/src/new.js','export const value = 1;');
+    put('packages/management/src/legacy.cjs','const doc = new Proxy(document, {});');
+    expect(()=>checkArchitecture(root)).toThrow('legacy page adaptation');
   }finally{fs.rmSync(root,{recursive:true,force:true});}
 });

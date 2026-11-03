@@ -7,24 +7,30 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawn} from 'node:child_process';
 import {WebSocket} from 'ws';
+import {build} from 'esbuild';
+import sveltePlugin from 'esbuild-svelte';
 const repo=fileURLToPath(new URL('../',import.meta.url));
 const chrome=process.env.IGNIS_CHROME_PATH || '/opt/google/chrome/chrome';
 const mobile=process.argv.includes('--mobile');
 const screenshotDirectory=process.env.IGNIS_UI_SCREENSHOTS;
 const nativeCss=process.env.IGNIS_OBSIDIAN_CSS;
 (async()=>{
+ const harness=await build({stdin:{contents:`import {BrowserModal} from './packages/ui/src/management.js';import {createManagementModal} from './packages/management/src/management-modal.js';const ResourceModal=createManagementModal(BrowserModal,(target)=>{target.textContent='×';});window.testIndividualResource=()=>new ResourceModal(null,'shares',{initialResource:{id:'r',session:'s'}}).open();`,resolveDir:repo},bundle:true,write:false,format:'iife',platform:'browser',loader:{'.css':'text'},mainFields:['svelte','browser','module','main'],conditions:['svelte','browser'],plugins:[sveltePlugin({compilerOptions:{}})],logLevel:'silent'});
  const requests=[],errors=[];let hasLocalPassword=true;
  const server=http.createServer((req,res)=>{
   requests.push(req.url);res.setHeader('Content-Type','application/json');
   const json=value=>res.end(JSON.stringify(value));
   if(req.url==='/native.css' && nativeCss){res.setHeader('Content-Type','text/css');return res.end(fs.readFileSync(nativeCss));}
   if(req.url==='/overrides.css'){res.setHeader('Content-Type','text/css');return res.end(fs.readFileSync(repo+'/apps/ignis-server/server/assets/overrides.css'));}
+  if(req.url==='/test-harness.js'){res.setHeader('Content-Type','text/javascript');return res.end(harness.outputFiles[0].text);}
   if(req.url==='/bundle.js'){res.setHeader('Content-Type','text/javascript');return res.end(fs.readFileSync(repo+'/packages/ui/dist/ignis-ui.js'));}
-  if(req.url==='/'){res.setHeader('Content-Type','text/html');return res.end(`<!doctype html><head><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">${nativeCss?'<link rel="stylesheet" href="/native.css">':''}<link rel="stylesheet" href="/overrides.css"></head><body class="theme-dark"><script>window.__ignisAuth={role:'admin',logout(){}};window.__ignis_registerUI=()=>{};</script><script src="/bundle.js"></script></body>`);}
+  if(req.url==='/'){res.setHeader('Content-Type','text/html');return res.end(`<!doctype html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">${nativeCss?'<link rel="stylesheet" href="/native.css">':''}<link rel="stylesheet" href="/overrides.css"></head><body class="theme-dark"><script>window.__ignisAuth={role:'admin',logout(){}};window.__ignis_registerUI=()=>{};</script><script src="/bundle.js"></script><script src="/test-harness.js"></script></body>`);}
   if(req.url==='/api/auth/session')return json({sessionId:'s',user:{id:'a',login:'alice',role:'admin'},email:'a@example.com',emailTrust:'unverified',hasLocalPassword,oidcLinked:true,passwordPolicy:{minLength:8,minSpecialChars:0},recentAuthentication:true});
   if(req.url==='/api/auth/status')return json({initialized:true,oidcAvailable:true,oidcButtonText:'Provider',passwordPolicy:{minLength:8,minSpecialChars:0}});
-  if(req.url==='/api/auth/users')return json({users:[],hasLocalPassword,oidcAvailable:true,passwordPolicy:{minLength:8,minSpecialChars:0}});
-  if(req.url==='/api/shares')return json({resources:[],ownedVaults:[],destinationVaults:[]});
+  if(req.url==='/api/auth/users' && req.method==='POST'){res.statusCode=400;return json({error:'Invalid user'});}
+  if(req.url==='/api/auth/users')return json({users:[{id:'b',login:'bob',role:'user',status:'active',hasLocalPassword:true,email:null,email_trust:'unverified'}],hasLocalPassword,oidcAvailable:true,passwordPolicy:{minLength:8,minSpecialChars:0}});
+  if(req.url==='/api/shares' && req.method==='POST'){res.statusCode=400;return json({error:'Invalid shared resource or recipient.'});}
+  if(req.url==='/api/shares')return json({resources:[{id:'r',name:'Note.md',owned:true,available:true,kind:'file',vault:'v',path:'Note.md',revision:1,grants:[{login:'bob',role:'reader'}]}],ownedVaults:[{id:'v',name:'Main'}],destinationVaults:[{id:'v',name:'Main'}]});
   if(req.url==='/api/auth/csrf')return json({csrfToken:'csrf'});
   res.statusCode=404;json({error:'missing'});
  });
@@ -71,12 +77,39 @@ const nativeCss=process.env.IGNIS_OBSIDIAN_CSS;
   await run(`document.querySelectorAll('.ignis-shell-modal [data-ignis-close]')[1].click();document.querySelector('[data-ignis-close]').click();IgnisUI.openAccount('users');`);await new Promise(r=>setTimeout(r,250));
   await screenshot('users');
   if(!await run(`!document.querySelector('#administration').hidden`))throw Error('Users failed: '+await run('document.body.innerText'));
+  await run(`document.querySelector('#add-user').click()`);await new Promise(r=>setTimeout(r,150));
+  if(!await run(`document.querySelector('#create-dialog').open`))throw Error('Create user failed');
+  await screenshot('create-user');
+  await run(`[...document.querySelectorAll('#create-dialog .help-toggle')].at(-1).click()`);
+  if(!await run(`!!document.querySelector('#create-dialog .tooltip')`))throw Error('Help was rendered behind the dialog top layer: '+await run(`JSON.stringify({active:document.activeElement?.outerHTML,tips:[...document.querySelectorAll('.tooltip')].map(el=>el.outerHTML),helps:[...document.querySelectorAll('#create-dialog .help-toggle')].map(el=>el.outerHTML)})`));
+  if(!await run(`{const rect=document.querySelector('#create-dialog .tooltip').getBoundingClientRect();rect.top>=0 && rect.bottom<=innerHeight}`))throw Error('Help falls outside the viewport');
+  await run(`document.querySelector('#cancel-create').click();document.querySelector('#users button[aria-label="Edit bob"]').click()`);await new Promise(r=>setTimeout(r,150));
+  if(!await run(`document.querySelector('#edit-dialog').open`))throw Error('Edit user failed');
+  await run(`document.querySelector('#revoke-sessions').click()`);
+  if(await run(`document.querySelector('#revoke-warning').textContent`)!=='Close all sessions for bob?')throw Error('Session confirmation lost its target');
+  await screenshot('confirm-sessions');
+  await run(`document.querySelector('#cancel-revoke').click();document.querySelector('#edit-dialog .native-management-close').click()`);
+  if(await run(`document.querySelector('#edit-dialog').open`))throw Error('Edit close button failed');
+  await run(`document.querySelector('[data-ignis-close]').click();sessionStorage.setItem('ignis-admin-reauth',JSON.stringify({userId:'a',target:'b',deleting:false}));history.replaceState(null,'','/?manage=users&reauth=success');IgnisUI.openRequestedManagement()`);await new Promise(r=>setTimeout(r,250));
+  if(!await run(`document.querySelector('#edit-dialog').open && document.querySelector('#edit-user-name').textContent==='bob'`))throw Error('Reauthentication return intent was lost while cleaning the URL');
   await run(`document.querySelector('[data-ignis-close]').click();IgnisUI.openAccount('shares');`);await new Promise(r=>setTimeout(r,250));
   await screenshot('shares');
   if(!await run(`!document.querySelector('#workspace').hidden`))throw Error('Shares failed: '+await run('document.body.innerText'));
+  await run(`document.querySelector('#owned button[aria-label="Edit"]').click();document.querySelector('#add-access').click()`);
+  const before=await run(`JSON.stringify(document.querySelector('#grant-dialog').getBoundingClientRect().toJSON())`);
+  await run(`document.querySelector('#grant-login').value='missing';document.querySelector('#grant-form').requestSubmit()`);await new Promise(r=>setTimeout(r,150));
+  if(!await run(`!!document.querySelector('#grant-login').validationMessage`))throw Error('Grant validation was not anchored to the field');
+  if(before!==await run(`JSON.stringify(document.querySelector('#grant-dialog').getBoundingClientRect().toJSON())`))throw Error('Field error displaced the form');
+  await screenshot('grant-error');
+  await run(`document.querySelector('[data-close="grant-dialog"]').click();document.querySelector('[data-close="manage-dialog"]').click()`);
   await run(`document.querySelector('[data-ignis-close]').click()`);hasLocalPassword=false;
   await run(`IgnisUI.openAccount('password');`);await new Promise(r=>setTimeout(r,250));
   if(!await run(`document.querySelector('#password-dialog').open`))throw Error('Password return failed: '+await run('document.body.innerText'));
+  await run(`document.querySelector('#cancel-password').click();document.querySelector('[data-ignis-close]').click();testIndividualResource()`);await new Promise(r=>setTimeout(r,200));
+  if(!await run(`document.querySelector('#manage-dialog').open && getComputedStyle(document.querySelector('#workspace')).display==='none'`))throw Error('Individual resource exposed a catalog behind it');
+  await screenshot('individual-resource');
+  await run(`document.querySelector('[data-close="manage-dialog"]').click()`);await new Promise(r=>setTimeout(r,50));
+  if(await run(`document.querySelectorAll('.ignis-shell-modal').length`))throw Error('Individual resource did not dispose its host');
   if(requests.some(url=>['/account','/shares','/admin/users'].includes(url)))throw Error('Standalone page requested');
   if(errors.length)throw Error('Runtime errors: '+errors);
   console.log(`PASS (${mobile?'mobile':'desktop'}): zero-vault account, email, users, sharing and OIDC password setup; no standalone HTML fetches or runtime errors`);

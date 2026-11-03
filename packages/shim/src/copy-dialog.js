@@ -1,4 +1,4 @@
-import "../../../apps/ignis-server/server/auth/web/resource-tree.js";
+import resourceTree from "../../management/src/resource-tree.cjs";
 
 const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import {errorBlock} from "./shared-ui.js";
@@ -76,7 +76,7 @@ export function openCopyDialog(obsidian,app,file,describe,copy,options={}) {
         const rows=copyFolderTree(folders,expanded,search.value);
         const visible=rows.map((entry,index)=>({...entry,kind:'directory',depth:options.multipleVaults?entry.depth-1:entry.depth,index:index+1}));
         if(!options.multipleVaults)visible.unshift({path:'',name:translateIgnis("Vault root"),depth:0,kind:'directory',children:folders.length>0,open:!!search.value.trim()||expanded.has('')});
-        globalThis.IgnisResourceTree.render(list,visible,{selected:folder,disabled:busy||loading,translate:translateIgnis,
+        resourceTree.render(list,visible,{selected:folder,disabled:busy||loading,translate:translateIgnis,
           onSelect:entry=>{folder=entry.path;error.textContent='';render();},
           onToggle:entry=>{if(search.value.trim())return;if(expanded.has(entry.path))expanded.delete(entry.path);else expanded.add(entry.path);render();}});
         if(search.value.trim()&&!rows.length)list.append(create('div',translateIgnis("No matching folders")));

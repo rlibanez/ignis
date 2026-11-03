@@ -1,14 +1,11 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import vm from "node:vm";
 vi.mock("obsidian",()=>({Modal:class {},setIcon:vi.fn()}));
 import { ManagementModal } from "./management-modal.js";
 afterEach(()=>vi.unstubAllGlobals());
-it.each(["users","shares","login","password-visibility"])("registers %s without mounting into the vault document",name=>{
-  const document=new Proxy({}, {get(){throw new Error("Unexpected access to the vault document");}});
-  const context={window:{__ignisAuth:{role:"user"}},document};
-  vm.runInNewContext(readFileSync(new URL(`../../../../apps/ignis-server/server/auth/web/${name}.js`,import.meta.url),"utf8"),context);
-  expect(typeof context.IgnisManagementControllers[name]).toBe("function");
+it("does not expose page controllers or document proxies",()=>{
+  const source=readFileSync(new URL("../../../management/src/management-modal.js",import.meta.url),"utf8");
+  expect(source).not.toMatch(/IgnisManagementControllers|new Proxy|DOMParser|apps\/ignis-server/);
 });
 it("closes channels, aborts requests and erases sensitive fields when dismissed",()=>{
   const modal=new ManagementModal({},"users");

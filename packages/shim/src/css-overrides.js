@@ -1,4 +1,4 @@
-import resourceTreeCss from "../../../apps/ignis-server/server/auth/web/resource-tree.css";
+import resourceTreeCss from "../../management/src/resource-tree.css";
 import bridgeCss from "@ignis/bridge/styles.css";
 
 export function installCssOverrides() {

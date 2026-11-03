@@ -1,15 +1,14 @@
-function mountShares(scope = {}) {
-  const document = scope.document ?? globalThis.document;
-  const window = scope.window ?? globalThis.window;
-  const location = scope.location ?? globalThis.location;
-  const fetch = scope.fetch ?? globalThis.fetch;
-  const BroadcastChannel = scope.BroadcastChannel ?? globalThis.BroadcastChannel;
+import resourceTree from "./resource-tree.cjs";
+export function mountShares(scope) {
+  const {root, window, location, fetch, channel: openChannel, listen, onDispose, decorate} = scope;
+  const document = root.ownerDocument;
+  const byId = id => root.querySelector(`#${CSS.escape(id)}`);
 var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 
-  const $=id=>document.getElementById(id);
+  const $=id=>byId(id);
   let context, catalog, managed, draft, placed, busy=false, locked=false, selectedPath="", pickerGeneration=0;
   const node=(tag,text)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=text;return el;};
-  function lock(){locked=true;for(const dialog of document.querySelectorAll("dialog"))dialog.close();$("workspace").hidden=true;$("status").textContent=translateIgnis("Your session has ended or changed. Return to Account to sign in again.");}
+  function lock(){locked=true;for(const dialog of root.querySelectorAll("dialog"))dialog.close();$("workspace").hidden=true;$("status").textContent=translateIgnis("Your session has ended or changed. Return to Account to sign in again.");}
   async function api(operation,input){
     if(locked)throw new Error(translateIgnis("Session unavailable"));
     const headers={"X-Ignis-Context":context};
@@ -27,9 +26,9 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       cancel.className="account-button secondary";accept.className="account-button danger";
       const close=iconButton(translateIgnis("Close"),["M18 6 6 18","m6 6 12 12"],()=>dialog.close());
       close.className="share-dialog-close";
-      actions.append(cancel,accept);dialog.append(close,heading,description,actions);document.body.append(dialog);
+      actions.append(cancel,accept);dialog.append(close,heading,description,actions);root.append(dialog);
       dialog.addEventListener("close",()=>{const accepted=dialog.returnValue==="confirmed" && !locked;dialog.remove();resolve(accepted);},{once:true});
-      dialog.showModal();opened?.(dialog);cancel.focus();
+      decorate(dialog);dialog.showModal();opened?.(dialog);cancel.focus();
     });
   }
   async function run(fn,dialog){if(busy||locked)return;busy=true;const status=dialog?dialog.querySelector(".error"):$("status");status.textContent="";try{await fn();}catch(error){
@@ -39,7 +38,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   }finally{busy=false;if(externalRefresh)setTimeout(refreshExternal,0);}}
   const button=(text,action,secondary=true)=>{const el=node("button",text);el.type="button";if(secondary)el.className="secondary table-action";el.onclick=action;return el;};
   function iconButton(label,paths,action){
-    const el=button("",action);el.className="icon-button";el.title=label;el.setAttribute("aria-label",label);
+    const el=button("",action);el.className="icon-button ignis-resource-action";el.title=label;el.setAttribute("aria-label",label);
     const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");
     for(const [key,value] of Object.entries({viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"1.7","stroke-linecap":"round","stroke-linejoin":"round","aria-hidden":"true"}))svg.setAttribute(key,value);
     for(const d of paths){const path=document.createElementNS(svg.namespaceURI,"path");path.setAttribute("d",d);svg.append(path);}
@@ -96,7 +95,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   }
   function renderGrants(){
     const rows=draft.map(grant=>{
-      const select=node("select");select.setAttribute("aria-label",translateIgnis("Permission for ")+grant.login);
+      const select=node("select");select.className="dropdown";select.setAttribute("aria-label",translateIgnis("Permission for ")+grant.login);
       for(const [value,title] of [["reader",translateIgnis("Read")],["editor",translateIgnis("Read / Write")]]){const option=node("option",title);option.value=value;select.append(option);}
       select.value=grant.role;
       const actions=node("div");actions.className="toolbar";
@@ -108,8 +107,8 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     });
     $("grants").replaceChildren(rows.length?table([translateIgnis("User"),translateIgnis("Permission"),translateIgnis("Actions")],rows):node("p",translateIgnis("No direct recipients.")));
   }
-  for(const el of document.querySelectorAll("[data-close]"))el.onclick=()=>{if(!busy)$(el.dataset.close).close();};
-  for(const dialog of document.querySelectorAll("dialog"))dialog.addEventListener("cancel",event=>{if(busy)event.preventDefault();});
+  for(const el of root.querySelectorAll("[data-close]"))el.onclick=()=>{if(!busy)$(el.dataset.close).close();};
+  for(const dialog of root.querySelectorAll("dialog"))dialog.addEventListener("cancel",event=>{if(busy)event.preventDefault();});
   let locationFolder="",locationTree={},locationGeneration=0,locationReady=false;
   const locationExpanded=new Set();
   const parentPath=path=>path.includes("/")?path.slice(0,path.lastIndexOf("/")):"";
@@ -125,7 +124,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       rows.push({path,name:path.split("/").pop(),kind:"directory",depth,children:paths.some(p=>parentPath(p)===path),open});
       if(open)visit(path,depth+1);
     }}if(rootOpen)visit("",1);
-    globalThis.IgnisResourceTree.render($("location-tree"),rows,{selected:locationFolder,translate:translateIgnis,
+    resourceTree.render($("location-tree"),rows,{selected:locationFolder,translate:translateIgnis,
       onSelect:entry=>{locationFolder=entry.path;renderLocationTree();},
       onToggle:entry=>{if(query)return;if(locationExpanded.has(entry.path))locationExpanded.delete(entry.path);else locationExpanded.add(entry.path);renderLocationTree();}});
     $("location-selection").textContent=translateIgnis("Destination: ")+(locationFolder||translateIgnis("Vault root"));
@@ -151,7 +150,6 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   $("location-search").oninput=renderLocationTree;
   $("location-dialog").addEventListener("close",()=>{locationGeneration++;locationReady=false;});
 
-  $("back-to-account").onclick=()=>window.location.assign("/?manage=account");
   $("create-dialog").addEventListener("close",()=>{pickerGeneration++;});
   function selectResource(path){
     selectedPath=path;$("selection").textContent=translateIgnis("Selected: ")+path;$("create-submit").disabled=false;
@@ -174,7 +172,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       if(query||expanded.has(path))visit(path,depth+1);
     }}
     visit('',0);
-    globalThis.IgnisResourceTree.render(container,rows,{selected:selectedPath,translate:translateIgnis,
+    resourceTree.render(container,rows,{selected:selectedPath,translate:translateIgnis,
       onSelect:entry=>selectResource(entry.path),
       onToggle:async entry=>{
         if(query)return;
@@ -186,6 +184,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       }});
   }
   let searchTimer;
+  onDispose(()=>{locked=true;pickerGeneration++;locationGeneration++;clearTimeout(searchTimer);});
   let searchRun=0;
   $("share-search").oninput=()=>{
     clearTimeout(searchTimer);
@@ -261,12 +260,12 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   let externalRefresh=false;
   const refreshExternal=()=>{
     if(locked)return;
-    if(busy || [...document.querySelectorAll("dialog")].some(dialog=>dialog.open)){externalRefresh=true;return;}
+    if(busy || [...root.querySelectorAll("dialog")].some(dialog=>dialog.open)){externalRefresh=true;return;}
     externalRefresh=false;void run(reload);
   };
-  window.addEventListener("ignis:state-changed",event=>{if(event.detail?.shares)refreshExternal();});
-  document.addEventListener("close",()=>{if(externalRefresh)setTimeout(refreshExternal,0);},true);
-  if(typeof BroadcastChannel==="function"){const channel=new BroadcastChannel("ignis-auth");channel.onmessage=()=>lock();}
+  listen(window, "ignis:state-changed",event=>{if(event.detail?.shares)refreshExternal();});
+  listen(root, "close",()=>{if(externalRefresh)setTimeout(refreshExternal,0);},true);
+  {const channel=openChannel("ignis-auth");if(channel)channel.onmessage=()=>lock();}
   run(async()=>{const response=await fetch("/api/auth/session",{credentials:"same-origin",cache:"no-store"});if(!response.ok){location.replace("/login");return;}const session=await response.json();window.IgnisI18n?.useAccount(session.user.id);context=session.sessionId;if(!context){location.replace("/login");return;}if(scope.initialResource && context!==scope.initialResource.session)throw new Error(translateIgnis("Session unavailable"));await reload();$("workspace").hidden=false;}).then(async()=>{
     const initial=scope.initialResource;
     if(!initial || !catalog || locked)return;
@@ -300,6 +299,3 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     }catch(error){$("status").textContent=error.message;}
   });
 }
-globalThis.IgnisManagementControllers ??= {};
-globalThis.IgnisManagementControllers["shares"] = mountShares;
-if (globalThis.document && !globalThis.window?.__ignisAuth) mountShares();

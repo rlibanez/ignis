@@ -1,4 +1,4 @@
-import {resourceActionStyles} from "../../../apps/ignis-server/server/auth/web/resource-action-style.js";
+import {resourceActionStyles} from "../../management/src/resource-action-style.js";
 import {nativeTooltip} from './native-tooltip.js';
 
 const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);

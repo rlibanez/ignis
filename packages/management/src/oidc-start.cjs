@@ -31,5 +31,5 @@
     } finally { clearTimeout(timer); }
   }
   if (typeof module !== "undefined" && module.exports) module.exports = { start };
-  if (root) root.ignisOidcStart = start;
+  else if (root) root.ignisOidcStart = start;
 })(typeof window === "undefined" ? undefined : window);

@@ -1,3 +1,4 @@
+import {createManagementClient} from "./client.js";
 import accountStyles from "./account.css";
 const messageDefinition=text=>({searchable:false,render:setting=>{setting.settingEl.addClass("ignis-message");setting.setDesc(text);}});
 import { nativeTooltip } from "../../shim/src/native-tooltip.js";
@@ -8,13 +9,27 @@ export function createAccountSettings({Modal, Notice, setIcon, ManagementModal})
   if(doc?.head && !doc.getElementById('ignis-account-form-styles')){
     const style=doc.createElement('style');style.id='ignis-account-form-styles';style.textContent=accountStyles;doc.head.append(style);
   }
-class PasswordModal extends Modal {
+class AccountFormModal extends Modal {
+  constructor(app) {
+    super(app);
+    this.abort=new AbortController();
+    this.request=createManagementClient({signal:this.abort.signal});
+    window.addEventListener("ignis:auth-lost",()=>this.close(),{signal:this.abort.signal});
+  }
+  onClose() {
+    this.abort.abort();
+    this.contentEl.querySelectorAll("input").forEach(input=>{input.value="";});
+    this.contentEl.empty();
+  }
+}
+class PasswordModal extends AccountFormModal {
   constructor(app, session) { super(app); this.session = session; }
   open() {
     super.open();
     this.currentPasswordInput?.focus();
   }
   onOpen() {
+    const fetch=this.request;
     this.setTitle(t("Change password"));
     this.modalEl.addClass("ignis-password-modal");
     this.modalEl.addClass("mod-lg", "mod-form");
@@ -97,10 +112,9 @@ class PasswordModal extends Modal {
       finally { submit.disabled = false; fields.currentPassword.value = ""; }
     });
   }
-  onClose() { this.contentEl.querySelectorAll("input").forEach(input => { input.value = ""; }); this.contentEl.empty(); }
 }
 
-class EmailModal extends Modal {
+class EmailModal extends AccountFormModal {
   constructor(app, session, updated) { super(app); this.session=session; this.updated=updated; }
   open() {
     super.open();
@@ -109,6 +123,7 @@ class EmailModal extends Modal {
     this.emailInput?.focus();
   }
   onOpen() {
+    const fetch=this.request;
     this.setTitle(t("Change email"));
     this.modalEl.addClass("mod-lg","mod-form","ignis-password-modal");
     const form=this.contentEl.createEl("form");
@@ -183,12 +198,12 @@ class EmailModal extends Modal {
       finally{submit.disabled=false;password.value="";}
     });
   }
-  onClose(){this.contentEl.querySelectorAll("input").forEach(input=>{input.value="";});this.contentEl.empty();}
 }
 
-class UnlinkProviderModal extends Modal {
+class UnlinkProviderModal extends AccountFormModal {
   constructor(app, session, provider) { super(app); this.session = session; this.provider = provider || "OpenID Connect"; }
   onOpen() {
+    const fetch=this.request;
     this.setTitle(t("Unlink OpenID Connect account").replaceAll("OpenID Connect", () => this.provider));
     this.modalEl.addClass("mod-lg", "mod-form", "ignis-password-modal");
     this.contentEl.createEl("p", {text:t("Confirm your local password to unlink your identity provider. All your Ignis sessions will be closed.")});
@@ -237,7 +252,6 @@ class UnlinkProviderModal extends Modal {
       finally { submit.disabled=false; input.value=""; }
     });
   }
-  onClose() { this.contentEl.querySelectorAll("input").forEach(input => { input.value=""; }); this.contentEl.empty(); }
 }
 
 async function linkProvider(session, button) {
@@ -316,7 +330,7 @@ function settingDefinitions(tab) {
       {name: t("Username"), render: setting => setting.setDesc(session.user.login).addButton(button => button.setButtonText(t("Sign out")).setWarning().onClick(() => window.__ignisAuth?.logout()))},
       {name:t("Email"),render:setting=>setting.setDesc(session.email || t("Not set")).addButton(button=>button.setButtonText(t("Change")).onClick(()=>new EmailModal(tab.app,session,()=>tab.update()).open()))},
       ...(session.hasLocalPassword ? [action("Change password", () => new PasswordModal(tab.app, session).open())] : []),
-      ...(!session.hasLocalPassword && session.oidcLinked ? [action("Set local password", () => open("login"))] : []),
+      ...(!session.hasLocalPassword && session.oidcLinked ? [action("Set local password", () => open("password"))] : []),
       ...(state.oidc?.oidcAvailable && session.oidcLinked ? [{
         name:"OpenID Connect",
         render: setting => {

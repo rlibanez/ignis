@@ -1,8 +1,7 @@
 // Bundled internal form template. No standalone page or network fetch.
 export default String.raw`
     <main class="users-page">
-      <p class="brand" data-ignis-app-name>IGNIS</p>
-      <h1 data-i18n="Users">Users</h1>
+
       <p id="status" role="status" aria-live="polite" data-i18n="Checking access…">Checking access…</p>
       <section id="administration" hidden>
         <section class="panel" aria-labelledby="accounts-heading">
@@ -50,7 +49,6 @@ export default String.raw`
         </form>
         </dialog>
       </section>
-      <footer><button id="back-to-account" type="button" class="account-button secondary" data-i18n="Back to account">Back to account</button></footer>
       <dialog id="edit-dialog" aria-labelledby="edit-heading">
         <h2 id="edit-heading"><span data-i18n="Edit user ">Edit user </span><span id="edit-user-name"></span></h2>
         <form id="edit-user">
@@ -184,6 +182,5 @@ export default String.raw`
         <button id="cancel-reauth" type="button" class="account-button secondary" data-i18n="Cancel">Cancel</button>
         </div>
       </dialog>
-      <noscript data-i18n="JavaScript is required to manage users.">JavaScript is required to manage users.</noscript>
     </main>
   `;

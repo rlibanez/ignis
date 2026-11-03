@@ -94,7 +94,7 @@ it("preserves the new password after an incorrect current password and clears it
     };
   }
   modalHarness.element = element;
-  vi.stubGlobal("window", {});
+  vi.stubGlobal("window", new EventTarget());
   vi.stubGlobal("fetch", vi.fn(async url => ({
     ok: url !== "/api/auth/password",
     json: async () => url === "/api/auth/session"
@@ -130,7 +130,7 @@ it.each([true,false])('submits email safely or reports an incorrect password on 
  function element(tag='div',options={}){return {tag,...options,value:'',children:[],handlers:{},addClass(){},
   createEl(name,attrs){const child=element(name,attrs);this.children.push(child);return child;},createDiv(attrs){return this.createEl('div',attrs);},createSpan(attrs){return this.createEl('span',attrs);},setAttribute(){},focus:vi.fn(),setCustomValidity:vi.fn(),reportValidity:vi.fn(),
   addEventListener(name,fn){this.handlers[name]=fn;},querySelectorAll(name){return this.children.flatMap(child=>[...(child.tag===name?[child]:[]),...child.querySelectorAll(name)]);},empty(){this.children=[];}};}
- modalHarness.element=element;vi.stubGlobal('window',{});
+ modalHarness.element=element;vi.stubGlobal('window',new EventTarget());
  vi.stubGlobal('fetch',vi.fn(async url=>({ok:url!=='/api/auth/reauth',status:url==='/api/auth/reauth'?400:200,json:async()=>url==='/api/auth/session'
   ?{sessionId:'s',user:{login:'alice',role:'user'},hasLocalPassword:true,recentAuthentication,email:'old@example.com',emailTrust:'admin_confirmed'}
   :url==='/api/auth/csrf'?{csrfToken:'csrf'}:url==='/api/auth/email'?{email:'new@example.com',emailTrust:'unverified',signedOut:false}:{}})));

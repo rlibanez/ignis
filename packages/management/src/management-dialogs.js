@@ -1,6 +1,6 @@
 const t = text => globalThis.IgnisI18n?.t(text) ?? text;
 
-// Presentation only. Closing always goes through the controller's cancellation
+// Shared construction of native forms and confirmations. Closing goes through cancellation
 // handler so pending requests and confirmation state retain their original guards.
 export function installManagementDialogs(frame, host, modal, setIcon) {
   const style = document.createElement("style");
@@ -9,16 +9,16 @@ export function installManagementDialogs(frame, host, modal, setIcon) {
   const mobile = document.body.classList.contains("is-mobile");
   if (mobile) frame.classList.add("native-management-mobile");
   const align = () => host.style.setProperty("--management-sheet-top", `${Math.max(0, modal.getBoundingClientRect().top)}px`);
-  const adapt = () => {
+  const decorate = (fragment = frame) => {
     align();
     // DropdownComponent produces a select.dropdown; retain the existing nodes
     // and controller listeners while inheriting exactly those native styles.
-    for (const button of frame.querySelectorAll(".icon-button:not(.share-dialog-close)")) button.classList.add("ignis-resource-action");
-    for (const input of frame.querySelectorAll("input:not([type])")) input.type = "text";
-    for (const select of frame.querySelectorAll("select")) select.classList.add("dropdown");
-    for (const button of frame.querySelectorAll("button[type=submit],button.account-button:not(.secondary):not(.danger)")) button.classList.add("mod-cta");
-    for (const button of frame.querySelectorAll("button.danger,button.danger-button")) button.classList.add("mod-warning");
-    for (const dialog of frame.querySelectorAll("dialog")) {
+    for (const button of fragment.querySelectorAll(".icon-button:not(.share-dialog-close)")) button.classList.add("ignis-resource-action");
+    for (const input of fragment.querySelectorAll("input:not([type])")) input.type = "text";
+    for (const select of fragment.querySelectorAll("select")) select.classList.add("dropdown");
+    for (const button of fragment.querySelectorAll("button[type=submit],button.account-button:not(.secondary):not(.danger)")) button.classList.add("mod-cta");
+    for (const button of fragment.querySelectorAll("button.danger,button.danger-button")) button.classList.add("mod-warning");
+    for (const dialog of [ ...(fragment.matches?.("dialog") ? [fragment] : []), ...fragment.querySelectorAll("dialog") ]) {
       if (dialog.dataset.nativeDialog) continue;
       dialog.dataset.nativeDialog = "true";
       const confirmation = dialog.id === "delete-dialog" || dialog.classList.contains("ignis-confirm");
@@ -54,13 +54,11 @@ export function installManagementDialogs(frame, host, modal, setIcon) {
       }
     }
   };
-  adapt();
-  const observer = new MutationObserver(adapt);
-  observer.observe(frame, {childList:true,subtree:true,attributes:true,attributeFilter:["open"]});
+  decorate();
   const resized = new ResizeObserver(align);
   resized.observe(modal);
   window.addEventListener("resize", align);
-  return () => { observer.disconnect(); resized.disconnect(); window.removeEventListener("resize", align); };
+  return {decorate, dispose:() => { resized.disconnect(); window.removeEventListener("resize", align); }};
 }
 let headingSequence = 0;
 export const managementDialogStyles = `

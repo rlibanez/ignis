@@ -1,12 +1,10 @@
 // Bundled internal form template. No standalone page or network fetch.
-export default String.raw`<main>
-  <p class="brand" data-ignis-app-name>IGNIS</p><h1 data-i18n="Shared resources">Shared resources</h1><p id="status" role="alert"></p>
+export default String.raw`<main><p id="status" role="alert"></p>
   <section id="workspace" hidden>
     <div class="toolbar page-actions"><button id="new-share" class="account-button" data-i18n="Share a resource">Share a resource</button></div>
     <section class="share-panel" aria-labelledby="received-heading"><header><div><h2 id="received-heading" data-i18n="Shared with me">Shared with me</h2></div></header><div id="received"></div></section>
     <section class="share-panel" aria-labelledby="owned-heading"><header><div><h2 id="owned-heading" data-i18n="Shared by me">Shared by me</h2></div></header><div id="owned"></div></section>
   </section>
-  <footer><button id="back-to-account" class="account-button secondary" type="button" data-i18n="Back to account">Back to account</button></footer>
   <dialog id="create-dialog" aria-labelledby="create-heading">
     <h2 id="create-heading" data-i18n="Share a resource">Share a resource</h2>
     <form id="create-form">

@@ -130,3 +130,17 @@ y las del contexto de operación en `features/sharing/application/`.
 generación anterior. `auth/events-web.test.mjs` comprueba backoff acotado, respuesta
 de sesión obsoleta y ausencia de timers de sondeo mientras la conexión está sana.
 Las pruebas de editor/shared-notice de las fases anteriores se conservan.
+
+## Evidencia añadida en fase 6
+
+`packages/management/src/client.test.js` cubre cierre durante fetch/JSON, clones,
+contexto cambiado y listeners por montaje. `session-transition.test.js` cubre la
+limpieza antes de OIDC. La arquitectura prohíbe imports cliente → servidor sin
+excepciones y la adaptación de páginas por proxies/observadores en management.
+
+`check-management-ui.mjs` amplía escritorio/móvil con crear/editar usuarios, X,
+confirmación de sesiones, grants inválidos sin desplazar la ventana y apertura
+individual sin catálogo detrás. El harness importa los mismos componentes/host
+que producción, sin publicar una entrada de pruebas en el producto. El detalle
+está en `phase6.md`; sigue pendiente la aceptación manual con runtime 1.14.4,
+Android real y proveedor OIDC.

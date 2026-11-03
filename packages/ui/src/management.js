@@ -25,7 +25,7 @@ function setIcon(target,name){
   const Icon=({x:X,eye:Eye,'eye-off':EyeOff,user:User,'arrow-left':ArrowLeft})[name] || X;
   icons.set(target,new Icon({target,props:{size:18}}));
 }
-class BrowserModal {
+export class BrowserModal {
   constructor(){
     this.containerEl=element('div',{cls:'modal-container ignis-shell-modal'});
     this.containerEl.style.cssText='position:fixed;inset:0;z-index:100010;display:flex;align-items:center;justify-content:center';
@@ -50,7 +50,11 @@ class BrowserModal {
       this.tooltip=element('div',{cls:'tooltip',text:button.getAttribute('aria-label'),attr:{role:'tooltip'}});
       const rect=button.getBoundingClientRect();
       this.tooltip.style.cssText=`position:fixed;z-index:100011;max-width:min(320px,90vw);white-space:normal;left:${Math.max(8,Math.min(rect.left,window.innerWidth-328))}px;top:${rect.bottom+8}px`;
-      this.containerEl.append(this.tooltip);
+      // A dialog is in the browser top layer: help must belong to that layer too.
+      (button.closest('dialog[open]') || this.containerEl).append(this.tooltip);
+      const height=this.tooltip.getBoundingClientRect().height;
+      if(rect.bottom+8+height>window.innerHeight-8)this.tooltip.style.top=`${Math.max(8,rect.top-height-8)}px`;
+      this.tooltip.style.maxHeight='calc(100dvh - 16px)';
     });
     this.containerEl.addEventListener('pointerout',hideHelp);
     this.lost=()=>this.close();
@@ -162,7 +166,7 @@ class AccountModal extends BrowserModal {
 export function openAccount(kind='account') {
   if(window.__ignisOpenManagement && window.app?.workspace){window.__ignisOpenManagement(kind);return;}
   if(['users','shares'].includes(kind))new ManagementModal(null,kind).open();
-  else if(kind==='password')new ManagementModal(null,'login',{passwordSetup:true}).open();
+  else if(kind==='password')new ManagementModal(null,'password',{passwordSetup:true}).open();
   else new AccountModal(kind).open();
 }
 export function openRequestedManagement(){consumeManagementIntent(window,openAccount);}

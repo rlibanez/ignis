@@ -1,6 +1,6 @@
 import {it,expect,vi,afterEach} from 'vitest';
 import {createRequire} from 'node:module';
-const {start}=createRequire(import.meta.url)('./web/oidc-start');
+const {start}=createRequire(import.meta.url)('../../../../packages/management/src/oidc-start.cjs');
 afterEach(()=>vi.useRealTimers());
 it('waits for cleanup before requesting a redirect and decodes its response',async()=>{
  const order=[];

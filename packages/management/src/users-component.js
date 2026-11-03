@@ -1,60 +1,40 @@
-function mountUsers(scope = {}) {
-  const document = scope.document ?? globalThis.document;
-  const window = scope.window ?? globalThis.window;
-  const location = scope.location ?? globalThis.location;
-  const fetch = scope.fetch ?? globalThis.fetch;
-  const BroadcastChannel = scope.BroadcastChannel ?? globalThis.BroadcastChannel;
+import {refreshHelp} from "./help.js";
+export function mountUsers(scope) {
+  const {root, window, location, fetch, channel: openChannel, listen, onDispose} = scope;
+  const document = root.ownerDocument;
+  const byId = id => root.querySelector(`#${CSS.escape(id)}`);
 var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 
   let providerName = "OpenID Connect";
   function setProviderName(name) {
     providerName = name || "OpenID Connect";
-    for (const element of document.querySelectorAll("[data-provider-template]"))
+    for (const element of root.querySelectorAll("[data-provider-template]"))
       element.textContent = translateIgnis(element.dataset.providerTemplate).replaceAll("OpenID Connect", () => providerName);
   }
 
-  const status = document.getElementById("status");
-  const area = document.getElementById("administration");
-  const form = document.getElementById("create-user");
-  const list = document.getElementById("users");
+  const status = byId("status");
+  const area = byId("administration");
+  const form = byId("create-user");
+  const list = byId("users");
   const button = form.querySelector('button[type="submit"]');
-  const dialog = document.getElementById("create-dialog");
-  const addButton = document.getElementById("add-user");
-  document.getElementById("back-to-account").addEventListener("click", () => window.location.assign("/?manage=account"));
-  const cancelButton = document.getElementById("cancel-create");
-  const createStatus = document.getElementById("create-status");
-  const editDialog = document.getElementById("edit-dialog");
-  for (const toggle of document.querySelectorAll(".help-toggle")) {
-    const tip = document.getElementById(toggle.getAttribute("aria-controls"));
-    const region = toggle.parentElement;
-    const show = (open) => {
-      tip.hidden = !open;
-      toggle.setAttribute("aria-expanded", String(open));
-      if (open) toggle.setAttribute("aria-describedby", tip.id);
-      else toggle.removeAttribute("aria-describedby");
-    };
-    toggle.addEventListener("click", () => show(true));
-    region.addEventListener("mouseenter", () => show(true));
-    region.addEventListener("mouseleave", () => show(false));
-    region.addEventListener("focusout", event => { if (!region.contains(event.relatedTarget)) show(false); });
-    toggle.addEventListener("keydown", event => {
-      if (event.key === "Escape" && !tip.hidden) { event.preventDefault(); event.stopPropagation(); show(false); }
-    });
-    toggle.closest("dialog")?.addEventListener("close", () => show(false));
-  }
-  const editForm = document.getElementById("edit-user");
+  const dialog = byId("create-dialog");
+  const addButton = byId("add-user");
+  const cancelButton = byId("cancel-create");
+  const createStatus = byId("create-status");
+  const editDialog = byId("edit-dialog");
+  const editForm = byId("edit-user");
   for (const emailForm of [form, editForm])
     emailForm.elements.email.addEventListener("input", () => { emailForm.elements.emailVerified.checked = false; });
   const editButton = editForm.querySelector('button[type="submit"]');
-  const editCancel = document.getElementById("cancel-edit");
-  const editStatus = document.getElementById("edit-status");
-  const revokeButton = document.getElementById("revoke-sessions");
-  const revokeConfirmation = document.getElementById("revoke-confirmation");
-  const confirmRevoke = document.getElementById("confirm-revoke");
-  const cancelRevoke = document.getElementById("cancel-revoke");
+  const editCancel = byId("cancel-edit");
+  const editStatus = byId("edit-status");
+  const revokeButton = byId("revoke-sessions");
+  const revokeConfirmation = byId("revoke-confirmation");
+  const confirmRevoke = byId("confirm-revoke");
+  const cancelRevoke = byId("cancel-revoke");
   revokeButton.addEventListener("click", () => {
     if (locked || editBusy || !editing) return;
-    document.getElementById("revoke-warning").textContent = translateIgnis("Close all sessions for {p0}?", {p0: editing.login});
+    byId("revoke-warning").textContent = translateIgnis("Close all sessions for {p0}?", {p0: editing.login});
     unlinkConfirmation.hidden = true;
     revokeConfirmation.showModal();
     confirmRevoke.focus();
@@ -63,10 +43,10 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     revokeConfirmation.close();
     revokeButton.focus();
   });
-  const unlinkSection = document.getElementById("unlink-section");
-  const unlinkButton = document.getElementById("unlink-oidc");
-  const unlinkControl = document.getElementById("unlink-control");
-  const unlinkHelp = document.getElementById("unlink-help");
+  const unlinkSection = byId("unlink-section");
+  const unlinkButton = byId("unlink-oidc");
+  const unlinkControl = byId("unlink-control");
+  const unlinkHelp = byId("unlink-help");
   function updateUnlinkAvailability() {
     const needsPassword = !!editing && !editing.hasLocalPassword;
     unlinkButton.disabled = editBusy || needsPassword;
@@ -96,9 +76,9 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     }
   });
   editDialog.addEventListener("close", () => { unlinkHelp.hidden = true; });
-  const unlinkConfirmation = document.getElementById("unlink-confirmation");
-  const confirmUnlink = document.getElementById("confirm-unlink");
-  const cancelUnlink = document.getElementById("cancel-unlink");
+  const unlinkConfirmation = byId("unlink-confirmation");
+  const confirmUnlink = byId("confirm-unlink");
+  const cancelUnlink = byId("cancel-unlink");
   unlinkButton.addEventListener("click", () => {
     if (locked || editBusy || !editing?.hasLocalPassword) return;
     revokeConfirmation.close();
@@ -113,7 +93,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   let editing = null;
   let editBusy = false;
   let currentUserId;
-  const confirmAdminLabel = document.getElementById("confirm-admin-label");
+  const confirmAdminLabel = byId("confirm-admin-label");
   editForm.elements.role.addEventListener("change", () => {
     editForm.elements.confirmAdmin.checked = false;
     confirmAdminLabel.hidden = !editing || editing.role === "admin" || editForm.elements.role.value !== "admin";
@@ -124,18 +104,18 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     if (editBusy) event.preventDefault();
   });
   editDialog.addEventListener("close", () => { editing = null; revokeConfirmation.close(); unlinkConfirmation.hidden = true; });
-  const resetDialog = document.getElementById("reset-dialog");
-  const resetButton = document.getElementById("reset-password");
-  const generateReset = document.getElementById("generate-reset");
-  const closeReset = document.getElementById("close-reset");
-  const resetSecret = document.getElementById("generated-secret");
-  const resetStatus = document.getElementById("reset-status");
-  const copyResetPassword = document.getElementById("copy-reset-password");
+  const resetDialog = byId("reset-dialog");
+  const resetButton = byId("reset-password");
+  const generateReset = byId("generate-reset");
+  const closeReset = byId("close-reset");
+  const resetSecret = byId("generated-secret");
+  const resetStatus = byId("reset-status");
+  const copyResetPassword = byId("copy-reset-password");
   function showCopyFeedback(copied) {
     copyResetPassword.classList.toggle("copied", copied);
     copyResetPassword.title = copied ? translateIgnis("Copied!") : translateIgnis("Copy password");
     copyResetPassword.setAttribute("aria-label", copyResetPassword.title);
-    document.getElementById("copy-feedback").textContent = copied ? translateIgnis("Copied!") : "";
+    byId("copy-feedback").textContent = copied ? translateIgnis("Copied!") : "";
   }
   copyResetPassword.addEventListener("click", async () => {
     if (!resetDialog.open || !resetSecret.value || copyResetPassword.disabled) return;
@@ -170,9 +150,9 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     if (locked || editBusy || !editing?.hasLocalPassword) return;
     resetTarget = editing.id;
     resetSelf = false;
-    document.getElementById("reset-user").textContent = editing.login;
-    document.getElementById("reset-prompt").hidden = false;
-    document.getElementById("reset-result").hidden = true;
+    byId("reset-user").textContent = editing.login;
+    byId("reset-prompt").hidden = false;
+    byId("reset-result").hidden = true;
     resetStatus.textContent = resetSecret.value = "";
     showCopyFeedback(false);
     closeReset.textContent = translateIgnis("Cancel");
@@ -202,20 +182,20 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       resetSelf = result.signedOut;
       if (resetSelf) channel?.postMessage("lock");
       resetSecret.value = result.secret;
-      document.getElementById("reset-expiry").textContent = translateIgnis("Expires: {p0}. Single use.", {p0: (new Date(result.expiresAt).toLocaleString())});
-      document.getElementById("reset-prompt").hidden = true;
-      document.getElementById("reset-result").hidden = false;
+      byId("reset-expiry").textContent = translateIgnis("Expires: {p0}. Single use.", {p0: (new Date(result.expiresAt).toLocaleString())});
+      byId("reset-prompt").hidden = true;
+      byId("reset-result").hidden = false;
       closeReset.textContent = translateIgnis("Done");
       resetSecret.focus(); resetSecret.select();
       if (!resetSelf) await refresh();
     } catch { if (!locked && resetDialog.open) resetStatus.textContent = translateIgnis("The result could not be confirmed. Generate another temporary password to replace any previous one."); }
     finally { resetBusy = false; generateReset.disabled = closeReset.disabled = false; }
   });
-  const passwordDialog = document.getElementById("password-dialog");
-  const passwordForm = document.getElementById("set-password-form");
-  const setPasswordButton = document.getElementById("set-password");
+  const passwordDialog = byId("password-dialog");
+  const passwordForm = byId("set-password-form");
+  const setPasswordButton = byId("set-password");
   const passwordSubmit = passwordForm.querySelector('button[type="submit"]');
-  const passwordCancel = document.getElementById("cancel-password");
+  const passwordCancel = byId("cancel-password");
   let passwordTarget = null, passwordBusy = false;
   const passwordError = (message, field = passwordForm.elements.password) => {
     field.setCustomValidity(message);
@@ -229,7 +209,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   setPasswordButton.addEventListener("click", () => {
     if (locked || editBusy || !editing?.canSetLocalPassword) return;
     passwordTarget = editing.id;
-    document.getElementById("password-user").textContent = editing.login;
+    byId("password-user").textContent = editing.login;
     passwordForm.reset();
     passwordDialog.showModal();
     passwordForm.elements.password.focus();
@@ -292,11 +272,11 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       passwordSubmit.disabled = passwordCancel.disabled = false;
     }
   });
-  const deleteDialog = document.getElementById("delete-dialog");
-  const deleteForm = document.getElementById("delete-user-form");
-  const deleteStatus = document.getElementById("delete-status");
-  const deleteSubmit = document.getElementById("confirm-delete");
-  const deleteCancel = document.getElementById("cancel-delete");
+  const deleteDialog = byId("delete-dialog");
+  const deleteForm = byId("delete-user-form");
+  const deleteStatus = byId("delete-status");
+  const deleteSubmit = byId("confirm-delete");
+  const deleteCancel = byId("cancel-delete");
   let deletionPlan = null, deleteBusy = false;
   function deletionEnabled() {
     deleteSubmit.disabled = deleteBusy || !deletionPlan || deleteForm.elements.confirmLogin.value !== deletionPlan.login ||
@@ -317,8 +297,8 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     pendingUser = user.id; pendingDelete = true;
     if (!await checkRecentSession()) return;
     deletionPlan = null; deleteForm.reset(); deleteStatus.textContent = translateIgnis("Loading deletion preview…");
-    document.getElementById("delete-user-name").textContent = user.login;
-    document.getElementById("delete-vaults").replaceChildren();
+    byId("delete-user-name").textContent = user.login;
+    byId("delete-vaults").replaceChildren();
     deletionEnabled();
     if (!deleteDialog.open) deleteDialog.showModal();
     deleteBusy = true;
@@ -332,7 +312,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       for (const entry of entries) {
         const li = document.createElement("li");
         li.textContent = entry.name + (entry.state && entry.state !== "not-started" ? ` — ${entry.state}` : "");
-        document.getElementById("delete-vaults").append(li);
+        byId("delete-vaults").append(li);
       }
       deleteStatus.textContent = result.started ? translateIgnis("Deletion was started. The account remains disabled. Review the progress before retrying. Completed vault deletions cannot be undone.") : "";
     } catch { if (!locked) deleteStatus.textContent = translateIgnis("Unable to load deletion preview. Close and try again."); }
@@ -366,10 +346,10 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       deletionEnabled();
     }
   });
-  const reauthDialog = document.getElementById("reauth-dialog");
-  const reauthForm = document.getElementById("reauth-form");
-  const reauthOidc = document.getElementById("reauth-oidc");
-  const reauthStatus = document.getElementById("reauth-status");
+  const reauthDialog = byId("reauth-dialog");
+  const reauthForm = byId("reauth-form");
+  const reauthOidc = byId("reauth-oidc");
+  const reauthStatus = byId("reauth-status");
   let pendingUser = null, activeSession = null, reauthBusy = false;
   const editActions = new Map();
   const deleteActions = new Map();
@@ -386,14 +366,14 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     if (editDialog.open) editDialog.close();
     reauthForm.reset();
     reauthStatus.textContent = "";
-    document.getElementById("reauth-user").textContent = translateIgnis("Signed in as {p0}", {p0: (activeSession.user.login)});
+    byId("reauth-user").textContent = translateIgnis("Signed in as {p0}", {p0: (activeSession.user.login)});
     reauthForm.hidden = !activeSession.hasLocalPassword;
     reauthOidc.hidden = !activeSession.oidcLinked;
     reauthOidc.textContent = translateIgnis("Continue with {p0}", {p0: (providerName)});
     if (!reauthDialog.open) reauthDialog.showModal();
     if (!reauthForm.hidden) reauthForm.elements.password.focus();
   }
-  document.getElementById("cancel-reauth").addEventListener("click", () => {
+  byId("cancel-reauth").addEventListener("click", () => {
     if (!reauthBusy) { pendingUser = null; reauthDialog.close(); }
   });
   reauthDialog.addEventListener("cancel", event => {
@@ -494,8 +474,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     clearPasswords();
     status.textContent = translateIgnis("Session changed or expired. Return to Account and sign in again.");
   }
-  const channel = typeof BroadcastChannel === "function"
-    ? new BroadcastChannel("ignis-auth") : null;
+  const channel = openChannel("ignis-auth");
   if (channel) channel.onmessage = lock;
   async function request(path, options = {}) {
     const response = await fetch(path, {
@@ -532,7 +511,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     setProviderName(data.oidcButtonText);
     unlinkSection.setAttribute("aria-label", translateIgnis("{p0} linking", {p0: (providerName)}));
     const showOidc = data.oidcAvailable === true;
-    document.getElementById("oidc-column").hidden = !showOidc;
+    byId("oidc-column").hidden = !showOidc;
     for (const user of data.users) {
       const row = document.createElement("tr");
       const trustLabels = { unverified: translateIgnis("Unverified"), admin_confirmed: translateIgnis("Verified by admin"), oidc_verified: translateIgnis("Verified by {p0}", {p0: (providerName)}) };
@@ -557,7 +536,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       ]) {
         const action = document.createElement("button");
         action.type = "button";
-        action.className = "icon-button";
+        action.className = "icon-button ignis-resource-action";
         action.disabled = name === "Delete" && user.id === currentUserId;
         action.title = name === "Edit" ? translateIgnis("Edit account") : translateIgnis("Delete account");
         action.setAttribute("aria-label", `${translateIgnis(name)} ${user.login}`);
@@ -577,7 +556,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
           updateUnlinkAvailability();
           unlinkConfirmation.hidden = true;
           revokeConfirmation.close();
-          document.getElementById("edit-user-name").textContent = user.login;
+          byId("edit-user-name").textContent = user.login;
           editForm.elements.requirePasswordChange.checked = !!user.password_change_required;
           editForm.elements.requirePasswordChange.disabled = !user.hasLocalPassword;
           editForm.elements.status.value = user.status;
@@ -610,14 +589,17 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       row.append(actions);
       list.append(row);
     }
-    document.getElementById("password-policy").textContent = document.getElementById("policy").textContent =
+    byId("password-policy").textContent = byId("policy").textContent =
       translateIgnis("Password: at least {p0} characters and {p1} punctuation/symbol characters.", {p0: (data.passwordPolicy.minLength), p1: (data.passwordPolicy.minSpecialChars)});
+    refreshHelp(root);
   }
+  form.addEventListener("input",()=>{for(const field of form.querySelectorAll("input"))field.setCustomValidity("");});
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (locked || button.disabled) return;
     if (form.elements.password.value !== form.elements.confirmation.value) {
-      createStatus.textContent = translateIgnis("Passwords do not match.");
+      form.elements.confirmation.setCustomValidity(translateIgnis("Passwords do not match."));
+      form.elements.confirmation.reportValidity();
       clearPasswords();
       return;
     }
@@ -633,9 +615,10 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       });
       if (locked) return;
       if (!response.ok) {
-        createStatus.textContent = response.status === 429
+        const message = response.status === 429
           ? translateIgnis("Too many attempts. Wait before trying again.")
           : translateIgnis("Unable to create user. Check username/email availability, email confirmation and password policy.");
+        form.elements.login.setCustomValidity(message);form.elements.login.reportValidity();
         return;
       }
       created = true;
@@ -762,8 +745,8 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     revokeOrUnlink(false);
   });
   confirmUnlink.addEventListener("click", () => revokeOrUnlink(true));
-  window.addEventListener("pagehide", lock);
-  window.addEventListener("pageshow", (event) => {
+  listen(window, "pagehide", lock);
+  listen(window, "pageshow", (event) => {
     if (event.persisted) location.reload();
   });
   async function start() {
@@ -785,7 +768,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       status.textContent = "";
       const saved = sessionStorage.getItem("ignis-admin-reauth");
       sessionStorage.removeItem("ignis-admin-reauth");
-      if (new URL(location.href).searchParams.get("reauth") === "success") {
+      if (new URL(scope.returnUrl).searchParams.get("reauth") === "success") {
         if (saved) {
           const intent = JSON.parse(saved);
           if (intent.userId === currentUserId && session.recentAuthentication) {
@@ -799,8 +782,6 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       if (!locked) status.textContent = translateIgnis("Unable to load users. Reload to try again.");
     }
   }
+  onDispose(lock);
   start();
 }
-globalThis.IgnisManagementControllers ??= {};
-globalThis.IgnisManagementControllers["users"] = mountUsers;
-if (globalThis.document && !globalThis.window?.__ignisAuth) mountUsers();

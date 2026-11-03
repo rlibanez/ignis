@@ -51,6 +51,7 @@ COPY apps/ignis-server/scripts/ ./apps/ignis-server/scripts/
 COPY images/ ./images/
 COPY packages/server-core/src/ ./packages/server-core/src/
 COPY packages/contracts/src/ ./packages/contracts/src/
+COPY packages/management/src/ ./packages/management/src/
 
 # Built artifacts from the build stage.
 COPY --from=build /app/packages/shim/dist/shim-loader.js ./packages/shim/dist/shim-loader.js

@@ -23,5 +23,6 @@
     container.replaceChildren(...elements);
     if(focusPath!==undefined)[...container.querySelectorAll(focusToggle?'.resource-tree-toggle':'.resource-tree-select')].find(el=>el.dataset.path===focusPath)?.focus();
   }
-  globalThis.IgnisResourceTree={render};
+  if (typeof module !== "undefined" && module.exports) module.exports = {render};
+  else globalThis.IgnisResourceTree={render};
 })();

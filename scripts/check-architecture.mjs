@@ -3,13 +3,6 @@ import path from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {parse} from 'acorn';
 const repository=fileURLToPath(new URL('../',import.meta.url));
-const legacyClientEdges=new Set([
-  ...['resource-action-style.js','resource-tree.css','resource-tree.js','oidc-start.js','users.js','shares.js','login.js','password-visibility.js']
-    .map(file=>`packages/management/src/management-modal.js -> apps/ignis-server/server/auth/web/${file}`),
-  'packages/shim/src/copy-dialog.js -> apps/ignis-server/server/auth/web/resource-tree.js',
-  'packages/shim/src/css-overrides.js -> apps/ignis-server/server/auth/web/resource-tree.css',
-  'packages/shim/src/shared-panel.js -> apps/ignis-server/server/auth/web/resource-action-style.js',
-]);
 function imports(source){
   const result=[];
   function visit(node){
@@ -29,7 +22,7 @@ export function checkArchitecture(root=repository){
       if(['node_modules','dist','.git'].includes(item.name))continue;
       const file=path.join(directory,item.name);
       if(item.isDirectory())walk(file);
-      else if(/\.(js|mjs|svelte)$/.test(file) && !file.includes('.test.') &&
+      else if(/\.(js|mjs|cjs|svelte)$/.test(file) && !file.includes('.test.') &&
         (!file.startsWith(path.join(root,'packages')) || file.includes('/src/')))files.set(path.relative(root,file).split(path.sep).join('/'),file);
     }
   };
@@ -38,6 +31,8 @@ export function checkArchitecture(root=repository){
   for(const [name,file] of files){
     let source=fs.readFileSync(file,'utf8');
     if(name.endsWith('.svelte'))source=[...source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map(match=>match[1]).join('\n');
+    if(name.startsWith('packages/management/src/') && /IgnisManagementControllers|new\s+Proxy\s*\(|new\s+MutationObserver\s*\(|new\s+DOMParser\s*\(/.test(source))
+      errors.push(`Management component uses legacy page adaptation: ${name}`);
     const targets=[];
     for(const specifier of imports(source)){
       const relative=specifier.startsWith('.');
@@ -66,9 +61,9 @@ export function checkArchitecture(root=repository){
         errors.push(`Content HTTP imports persistence: ${name} -> ${target}`);
       if(name.startsWith('packages/contracts/') && (!relative || !target.startsWith('packages/contracts/')))errors.push(`Pure contract imports infrastructure: ${name} -> ${specifier}`);
       if(name.startsWith('apps/ignis-server/server/platform/') && relative && !target.startsWith('apps/ignis-server/server/platform/'))errors.push(`Platform imports an application layer: ${name} -> ${target}`);
-      if(name.startsWith('packages/') && relative && target.startsWith('apps/') && !legacyClientEdges.has(`${name} -> ${target}`))errors.push(`New client-to-server import: ${name} -> ${target}`);
+      if(name.startsWith('packages/') && relative && target.startsWith('apps/'))errors.push(`New client-to-server import: ${name} -> ${target}`);
       if(relative){
-        const linked=[target,target+'.js',target+'.mjs',target+'/index.js'].find(candidate=>files.has(candidate));
+        const linked=[target,target+'.js',target+'.mjs',target+'.cjs',target+'/index.js'].find(candidate=>files.has(candidate));
         if(linked)targets.push(linked);
       }
     }
@@ -76,7 +71,7 @@ export function checkArchitecture(root=repository){
   }
   // New architectural modules must not participate in cycles, including indirect
   // paths through legacy adapters. Existing unrelated upstream cycles are out of scope.
-  const owned=name=>name.startsWith('packages/contracts/') || /^apps\/ignis-server\/server\/(app|platform|integration|features\/(identity|vaults|content|sharing))\//.test(name);
+  const owned=name=>name.startsWith('packages/management/') || name.startsWith('packages/contracts/') || /^apps\/ignis-server\/server\/(app|platform|integration|features\/(identity|vaults|content|sharing))\//.test(name);
   for(const start of [...graph.keys()].filter(owned)){
     const seen=new Set();
     const visit=(node,chain)=>{
@@ -87,7 +82,7 @@ export function checkArchitecture(root=repository){
     visit(start,[]);
   }
   if(errors.length)throw new Error([...new Set(errors)].join('\n'));
-  return {files:files.size,legacyClientEdges:legacyClientEdges.size};
+  return {files:files.size,legacyClientEdges:0};
 }
 if(process.argv[1] && import.meta.url===pathToFileURL(path.resolve(process.argv[1])).href){
   try {console.log('Architecture check:',checkArchitecture());}

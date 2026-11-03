@@ -1,10 +1,9 @@
-function mountPasswordVisibility(scope = {}) {
-  const document = scope.document ?? globalThis.document;
-  const window = scope.window ?? globalThis.window;
+function mountPasswordVisibility({root, listen, onDispose}) {
+  const document = root.ownerDocument || root;
 var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 
   const hideAll = [];
-  for (const input of document.querySelectorAll('input[type="password"], input[data-masked-text]')) {
+  for (const input of root.querySelectorAll('input[type="password"], input[data-masked-text]')) {
     const maskedText = input.hasAttribute("data-masked-text");
     let revealed = false;
     let wrapper = input.parentElement;
@@ -42,15 +41,15 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       slash.style.display = visible ? "" : "none";
     }
     setVisible(false);
-    document.addEventListener("ignis:languagechange", () => setVisible(revealed));
+    listen(root, "ignis:languagechange", () => setVisible(revealed));
     button.addEventListener("click", () => setVisible(!revealed));
     const hide = () => setVisible(false);
     hideAll.push(hide);
     input.form?.addEventListener("reset", hide);
     input.closest("dialog")?.addEventListener("close", hide);
   }
-  window.addEventListener("pagehide", () => hideAll.forEach(hide => hide()));
+  onDispose(() => hideAll.forEach(hide => hide()));
 }
-globalThis.IgnisManagementControllers ??= {};
-globalThis.IgnisManagementControllers["password-visibility"] = mountPasswordVisibility;
-if (globalThis.document && !globalThis.window?.__ignisAuth) mountPasswordVisibility();
+
+if (typeof module !== "undefined" && module.exports) module.exports = mountPasswordVisibility;
+else mountPasswordVisibility({root:document,listen:(target,...args)=>target.addEventListener(...args),onDispose:fn=>window.addEventListener("pagehide",fn)});
