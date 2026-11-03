@@ -1,4 +1,4 @@
-const { transaction } = require("./database");
+const { transaction } = require("../platform/persistence/database");
 const { resolveRegisteredVault } = require("./vault-catalog");
 
 const files = new Set(["app.json", "appearance.json", "hotkeys.json", "graph.json", "workspace.json", "workspace-mobile.json", "workspaces.json"]);

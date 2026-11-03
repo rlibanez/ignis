@@ -26,7 +26,7 @@ if(!profiles[options.profile])throw Error('Invalid --profile: baseline or stress
 const runs=integer(options.runs,'runs',1,10),samples=integer(options.samples,'samples',5,30),warmup=integer(options.warmup,'warmup',1,5);
 if(options.output){fs.mkdirSync(path.dirname(path.resolve(options.output)),{recursive:true});fs.writeFileSync(options.output,'',{flag:'wx'});}
 const require=createRequire(import.meta.url);
-const {openDatabase}=require('../apps/ignis-server/server/auth/database');
+const {openDatabase}=require('../apps/ignis-server/server/platform/persistence/database');
 const {bootstrapAdmin,registerVault}=require('../apps/ignis-server/server/auth/store');
 const {hashPassword}=require('../apps/ignis-server/server/auth/password');
 const {createResourceSharesService}=require('../apps/ignis-server/server/auth/resource-shares');

@@ -1,6 +1,6 @@
 const fs = require("node:fs");
 const nodePath = require("node:path");
-const { transaction } = require("./database");
+const { transaction } = require("../platform/persistence/database");
 const { resolveRegisteredVault } = require("./vault-catalog");
 const { vaultCapabilityAllowed } = require("./vault-policy");
 const denied = Object.freeze({ allowed: false });

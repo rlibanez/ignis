@@ -46,7 +46,8 @@ it("classifies every router registration, including POST reads and concrete plug
   expect(dataRoutePolicy("POST", "/api/plugins/unreviewed/enable")).toBeNull();
 });
 it("detects new API mounts in the server entry point", () => {
-  const registrations = calls(fs.readFileSync(path.join(serverRoot, "index.js"), "utf8"), "app");
+  const registrations = ["integration/ignis/install-routes.js","app/compose-server.js","index.js"]
+    .flatMap(source => calls(fs.readFileSync(path.join(serverRoot, source), "utf8"), "app"));
   expect(registrations.filter(call => call.path.startsWith("/api/") && call.method !== "use")).toEqual([]);
   const mounts = registrations
     .filter(call => call.method === "use" && call.path.startsWith("/api/"))

@@ -1,5 +1,5 @@
 const { randomUUID } = require("node:crypto");
-const { transaction } = require("./database");
+const { transaction } = require("../platform/persistence/database");
 
 function normalizeLogin(login) {
   if (

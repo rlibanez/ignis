@@ -9,7 +9,7 @@ const require = createRequire(import.meta.url);
 it("prints the missing-admin error and exits before asking for credentials", () => {
   const root = mkdtempSync(join(tmpdir(), "ignis-cli-users-"));
   try {
-    const db = require("./database").openDatabase(root);
+    const db = require("../platform/persistence/database").openDatabase(root);
     db.close();
     const result = spawnSync(process.execPath, [
       new URL("./cli.js", import.meta.url).pathname, "create-user",
@@ -24,7 +24,7 @@ it("prints the missing-admin error and exits before asking for credentials", () 
     expect(result.stdout).not.toContain("User login:");
     expect(result.stdout).not.toContain("Password");
     expect(result.stdout).not.toContain("User created:");
-    const reopened = require("./database").openDatabase(root);
+    const reopened = require("../platform/persistence/database").openDatabase(root);
     try {
       expect(reopened.prepare("SELECT count(*) n FROM users").get().n).toBe(0);
     } finally {
@@ -38,7 +38,7 @@ it("prints the missing-admin error and exits before asking for credentials", () 
 it("refuses to print a reset secret to a non-interactive terminal", () => {
   const root = mkdtempSync(join(tmpdir(), "ignis-cli-reset-"));
   try {
-    const db = require("./database").openDatabase(root); db.close();
+    const db = require("../platform/persistence/database").openDatabase(root); db.close();
     const result = spawnSync(process.execPath, [new URL("./cli.js", import.meta.url).pathname, "reset-password", "admin"], {
       env: { ...process.env, DATA_ROOT: root }, encoding: "utf8", timeout: 10000,
     });

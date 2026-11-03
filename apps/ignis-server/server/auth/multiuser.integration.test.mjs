@@ -10,7 +10,7 @@ const hash=text=>createHash("sha256").update(text).digest("hex");
 import WebSocket from "ws";
 import { once } from "node:events";
 const require = createRequire(import.meta.url);
-const { openDatabase } = require("./database");
+const { openDatabase } = require("../platform/persistence/database");
 const { bootstrapAdmin } = require("./store");
 const { hashPassword } = require("./password");
 

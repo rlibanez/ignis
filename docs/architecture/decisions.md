@@ -45,7 +45,8 @@ pueden introducir código ejecutable. El almacenamiento por cuenta no es un sand
 
 No hay instalaciones que migrar. En fase 1 se puede consolidar el esquema y
 descartar compatibilidad de desarrollo. Debe rechazarse claramente una base
-incompatible; nunca borrarla silenciosamente al arrancar. Esta fase no toca datos.
+incompatible; nunca borrarla silenciosamente al arrancar. Fase 0 no tocó datos;
+fase 1 aplica este esquema únicamente a bases nuevas y rechaza las antiguas.
 Conservar invariantes, unicidad, último admin y revocación también en persistencia.
 
 ## D05. Autorización vigente y resultados de escritura

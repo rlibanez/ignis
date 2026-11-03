@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 const require = createRequire(import.meta.url);
-const { openDatabase, backupDatabase, restoreDatabase } = require("./database");
+const { openDatabase, backupDatabase, restoreDatabase } = require("../platform/persistence/database");
 const { hashPassword, verifyPassword } = require("./password");
 const { createSessionService } = require("./sessions");
 const PASSWORD = "a synthetic test passphrase";

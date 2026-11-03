@@ -2,7 +2,9 @@
 
 Fase 0 completada el 3 de noviembre de 2026. Este directorio guarda el contrato de
 trabajo para reconstruir nuestra implementación como un **monolito modular**.
-No cambia todavía la arquitectura ni los permisos del producto.
+La referencia de fase 0 es histórica; los avances posteriores se describen aparte.
+
+- [Fase 1: composición, contratos y persistencia](phase1.md).
 
 - [Referencia fijada](reference.json): producto, upstream y versión de Obsidian.
 - [Auditoría y diseño completo](audit-2026-11-03.txt): evidencia, responsabilidades,

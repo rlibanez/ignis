@@ -9,7 +9,7 @@ const password = "a-long-test-password!123";
 beforeEach(() => {
   db = new DatabaseSync(":memory:");
   db.exec("PRAGMA foreign_keys=ON");
-  for (const migration of require("./schema")) db.exec(migration.sql);
+  db.exec(require("../platform/persistence/schema").sql);
   db.exec("INSERT INTO users(id,login,role,created_at) VALUES ('admin','admin','admin',0),('other','other','admin',0),('normal','normal','user',0)");
 });
 afterEach(() => db.close());
@@ -51,7 +51,7 @@ it("enforces password policy and normalized uniqueness without partial writes", 
 it("does not let the CLI bypass first-administrator setup", async () => {
   db.close();
   db = new DatabaseSync(":memory:");
-  for (const migration of require("./schema")) db.exec(migration.sql);
+  db.exec(require("../platform/persistence/schema").sql);
   await expect(createLocalUser(db, null, "new-user", password)).rejects.toThrow("first administrator");
   expect(listUsers(db, null)).toEqual([]);
 });

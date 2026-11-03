@@ -1,5 +1,5 @@
 const { randomUUID } = require("node:crypto");
-const { transaction } = require("./database");
+const { transaction } = require("../platform/persistence/database");
 const { resolveRegisteredVault } = require("./vault-catalog");
 const { normalizeLogin } = require("./store");
 const fail = code => { throw Object.assign(new Error("Vault access management failed"), { code }); };

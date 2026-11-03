@@ -1,7 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { randomUUID, createHash } = require("node:crypto");
-const { transaction } = require("./database");
+const { transaction } = require("../platform/persistence/database");
 const { resolveRegisteredVault } = require("./vault-catalog");
 const { classifyVaultPath } = require("./vault-policy");
 const { normalizeLogin } = require("./store");

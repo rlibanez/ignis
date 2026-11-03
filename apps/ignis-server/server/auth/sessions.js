@@ -1,5 +1,5 @@
 const { randomBytes, randomUUID, createHash } = require("node:crypto");
-const { transaction } = require("./database");
+const { transaction } = require("../platform/persistence/database");
 const { normalizeLogin } = require("./store");
 const { verifyPassword } = require("./password");
 

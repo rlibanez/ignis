@@ -5,7 +5,7 @@ import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
-const {openDatabase}=require('./database');
+const {openDatabase}=require('../platform/persistence/database');
 const {registerVault}=require('./store');
 const {createResourceSharesService}=require('./resource-shares');
 const sessions={resolve:id=>({user:{id,authVersion:1}})};
@@ -26,7 +26,7 @@ function fixture(base=os.tmpdir()){
 async function crash(f,operation,phase){
  const script=`
  const fs=require('node:fs'),path=require('node:path');
- const {openDatabase}=require('./apps/ignis-server/server/auth/database');
+ const {openDatabase}=require('./apps/ignis-server/server/platform/persistence/database');
  const {createResourceSharesService}=require('./apps/ignis-server/server/auth/resource-shares');
  const f=JSON.parse(process.env.RECOVERY_FIXTURE),db=openDatabase(f.data);
  const s=createResourceSharesService(db,f.root,{resolve:id=>({user:{id,authVersion:1}})});

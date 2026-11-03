@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 const require = createRequire(import.meta.url);
-const { openDatabase } = require("./database");
+const { openDatabase } = require("../platform/persistence/database");
 const { registerVault } = require("./store");
 const { hashPassword } = require("./password");
 const { createSessionService } = require("./sessions");
@@ -82,12 +82,7 @@ it("enforces per-user quotas and cascades on user deletion", () => {
   db.prepare("DELETE FROM users WHERE id='alice'").run();
   expect(db.prepare("SELECT count(*) n FROM vault_preferences").get().n).toBe(1);
 });
-it("migrates a version-9 database and persists preferences after reopening", () => {
-  db.exec("DROP TABLE remembered_retired_tokens; DROP TABLE remembered_sessions; DROP TRIGGER revoke_on_password_requirement; ALTER TABLE users DROP COLUMN password_change_required; DROP TRIGGER prevent_reactivating_deleting_user; DROP TABLE user_deletions; DROP TABLE csrf_tokens; DROP TABLE resource_destinations; DROP TABLE resource_grants; DROP TABLE shared_resources; DROP TABLE vault_preferences; DELETE FROM schema_migrations WHERE version>=10");
-  db.close(); db = openDatabase(path.join(root,"data"));
-  sessions = createSessionService(db);
-  preferences = createVaultPreferencesService(db,vaultRoot,sessions);
-  expect(db.prepare("SELECT max(version) v FROM schema_migrations").get().v).toBe(19);
+it("persists preferences after reopening the initial schema", () => {
   save(alice,'{"value":42}');
   db.close(); db = openDatabase(path.join(root,"data"));
   preferences = createVaultPreferencesService(db,vaultRoot,createSessionService(db));

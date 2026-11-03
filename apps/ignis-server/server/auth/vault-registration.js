@@ -1,7 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { randomUUID, createHash } = require("node:crypto");
-const { transaction } = require("./database");
+const { transaction } = require("../platform/persistence/database");
 const { validVaultName, directoryAvailable } = require("./vault-creation");
 const { rejectLegacyAliases } = require("./vault-rename");
 

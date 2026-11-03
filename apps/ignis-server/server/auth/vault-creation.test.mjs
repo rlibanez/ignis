@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { openDatabase } = require("./database");
+const { openDatabase } = require("../platform/persistence/database");
 const { createRegisteredVault, quarantinePendingVaults, directoryAvailable } = require("./vault-creation");
 let root, vaultRoot, db;
 beforeEach(() => {
@@ -75,6 +75,7 @@ it("retains pending state if audit storage fails and recovers idempotently witho
   expect(db.prepare("SELECT count(*) n FROM vaults WHERE status='active'").get().n).toBe(0);
   db.exec("INSERT INTO vaults(id,name,directory,status,created_at) VALUES ('interrupted','Interrupted','Interrupted','pending',0)");
   fs.mkdirSync(path.join(vaultRoot, "Interrupted")); fs.writeFileSync(path.join(vaultRoot, "Interrupted", "keep"), "saved");
+  db.exec("DROP TRIGGER fail_final_audit"); // Remove the fault injection before reopening a verified schema.
   db.close(); db = openDatabase(path.join(root, "data"));
   expect(quarantinePendingVaults(db)).toBe(1); expect(quarantinePendingVaults(db)).toBe(0);
   expect(directoryAvailable(db, "Interrupted")).toBe(false);
@@ -108,7 +109,7 @@ it.each(["before-folder", "after-folder", "prepared"])("recovers a process inter
     }};
     createRegisteredVault(db, root, 'admin', 'Interrupted', { isCurrent: () => true, io });
   `;
-  const result = spawnSync(process.execPath, ["-e", script, require.resolve("./database"), require.resolve("./vault-creation"), path.join(root, "data"), vaultRoot, phase], { encoding: "utf8", timeout: 10000 });
+  const result = spawnSync(process.execPath, ["-e", script, require.resolve("../platform/persistence/database"), require.resolve("./vault-creation"), path.join(root, "data"), vaultRoot, phase], { encoding: "utf8", timeout: 10000 });
   expect(result.status).toBe(17);
   expect(directoryAvailable(db, "Interrupted")).toBe(false);
   expect(quarantinePendingVaults(db)).toBe(1);

@@ -13,7 +13,7 @@
     "dev": "npm run build && npm run dev:server",
     "auth": "node apps/ignis-server/server/auth/cli.js",
     "docker:build": "node apps/ignis-server/scripts/build-image.js",
-    "lint": "oxlint packages apps/ignis-server/server --max-warnings 0 && node scripts/check-error-leaks.mjs",
+    "lint": "oxlint packages apps/ignis-server/server scripts --max-warnings 0 && node scripts/check-error-leaks.mjs && node scripts/check-architecture.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:load": "node scripts/check-load.mjs"

@@ -9,9 +9,9 @@ const require = createRequire(import.meta.url);
 const express = require("express");
 const { WebSocket } = require("ws");
 const { setupWebSocket, watcher } = require("@ignis/server-core");
-const { createAuthBoundary } = require("./http");
+const { createSecurity } = require("../app/create-security");
 const { readAuthConfig, permittedResource } = require("./http-policy");
-const { openDatabase } = require("./database");
+const { openDatabase } = require("../platform/persistence/database");
 const { bootstrapAdmin } = require("./store");
 const { hashPassword } = require("./password");
 const ORIGIN = "http://localhost:8080";
@@ -32,7 +32,7 @@ beforeEach(async () => {
   db.prepare("INSERT INTO local_credentials VALUES ('normal',?,1)").run(hash);
   clock = Date.now();
   const app = express();
-  boundary = createAuthBoundary({
+  boundary = createSecurity({
     dataRoot: path.join(root, "data"),
     vaultRoot: root,
     config: readAuthConfig({
@@ -466,7 +466,7 @@ it("requires an explicit origin and narrow proxy configuration", () => {
 describe("startup and proxy policy", () => {
   it("blocks uninitialized installations and invalid bootstrap state", async () => {
     const emptyRoot = path.join(root, "empty");
-    const pending = createAuthBoundary({
+    const pending = createSecurity({
       dataRoot: emptyRoot,
       config: readAuthConfig({
         IGNIS_PUBLIC_ORIGIN: ORIGIN,
@@ -497,7 +497,7 @@ describe("startup and proxy policy", () => {
     );
     inconsistent.close();
     expect(() =>
-      createAuthBoundary({
+      createSecurity({
         dataRoot: emptyRoot,
         config: readAuthConfig({
           IGNIS_PUBLIC_ORIGIN: ORIGIN,
@@ -508,7 +508,7 @@ describe("startup and proxy policy", () => {
   });
   it("only trusts TLS forwarding from an explicitly trusted peer", async () => {
     for (const trusted of [[], ["127.0.0.1/32"]]) {
-      const b = createAuthBoundary({
+      const b = createSecurity({
         dataRoot: path.join(root, "data"),
         config: readAuthConfig({
           IGNIS_PUBLIC_ORIGIN: "https://ignis.example",
@@ -847,7 +847,7 @@ it("requires a session, CSRF, same origin and an exact password change payload",
 
 it("supports opted-in LAN login while enforcing exact Host, Origin and CSRF", async () => {
   const origin = "http://192.168.2.9:8080";
-  const lan = createAuthBoundary({
+  const lan = createSecurity({
     dataRoot: path.join(root, "data"),
     config: readAuthConfig({ IGNIS_PUBLIC_ORIGIN: origin, IGNIS_ALLOW_HTTP_PRIVATE_NETWORK: "true" }),
     oidcEnv: {},
@@ -1308,7 +1308,7 @@ it.each(["admin", "normal"])("accepts Traefik secure WebSockets for an authorize
  if(user==="normal") db.prepare("INSERT INTO memberships VALUES (?,'normal','reader')").run(vault.id);
  const jar=user==="admin"?adminJar:await login("normal");
  const session=await (await request("/api/auth/session",{jar})).json();
- const b=createAuthBoundary({dataRoot:path.join(root,"data"),vaultRoot:root,config:readAuthConfig({
+ const b=createSecurity({dataRoot:path.join(root,"data"),vaultRoot:root,config:readAuthConfig({
   IGNIS_PUBLIC_ORIGIN:"https://ignis.example",IGNIS_TRUSTED_PROXIES:'["127.0.0.1/32"]',
  })});
  const app=express();b.install(app);

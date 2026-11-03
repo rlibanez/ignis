@@ -71,14 +71,17 @@ function notifyStaleEntryServed(vaultId) {
 
 function onEntrySwapped(fn) {
   swapListeners.add(fn);
+  return () => swapListeners.delete(fn);
 }
 
 function onVaultInvalidated(fn) {
   invalidateListeners.add(fn);
+  return () => invalidateListeners.delete(fn);
 }
 
 function onStaleEntryServed(fn) {
   staleListeners.add(fn);
+  return () => staleListeners.delete(fn);
 }
 
 function lastCrawlAt(vaultId) {

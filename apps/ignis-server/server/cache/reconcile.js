@@ -17,6 +17,7 @@ const timers = new Map();
 const queuedVaults = new Set();
 let runningReconcile = null;
 let reconcilingVault = null;
+let stopped = false;
 
 function runReconcile(vaultId) {
   let timer = null;
@@ -44,7 +45,7 @@ function runReconcile(vaultId) {
 
 function pump() {
   // one crawl at a time, conserves memory
-  if (runningReconcile || queuedVaults.size === 0) {
+  if (stopped || runningReconcile || queuedVaults.size === 0) {
     return;
   }
 
@@ -61,7 +62,7 @@ function pump() {
 }
 
 function scheduleReconcile(vaultId) {
-  if (queuedVaults.has(vaultId) || reconcilingVault === vaultId) {
+  if (stopped || queuedVaults.has(vaultId) || reconcilingVault === vaultId) {
     return;
   }
 
@@ -88,6 +89,7 @@ function tick(vaultId) {
 }
 
 function startSchedule(vaultId) {
+  if (stopped) return;
   scheduleUnlessRecent(vaultId);
 
   if (timers.has(vaultId)) {
@@ -108,6 +110,7 @@ function cancelVault(vaultId) {
 
 // Test-only.
 function _reset() {
+  stopped = false;
   for (const timer of timers.values()) {
     clearInterval(timer);
   }
@@ -126,7 +129,17 @@ async function _drain() {
   }
 }
 
+function stop() {
+  stopped=true;
+  for (const id of timers.keys()) cancelVault(id);
+  queuedVaults.clear();
+  return runningReconcile;
+}
+function resume() {stopped=false;}
+
 module.exports = {
+  stop,
+  resume,
   startSchedule,
   scheduleReconcile,
   cancelVault,

@@ -6,15 +6,15 @@ function registerCacheListeners({
   watcher,
   writeCoalescer,
 }) {
-  bootstrapCache.onEntrySwapped((vaultId, revision) =>
+  const offSwap = bootstrapCache.onEntrySwapped((vaultId, revision) =>
     metadataChannel.reportReplacement(vaultId, revision),
   );
 
-  bootstrapCache.onVaultInvalidated((vaultId) =>
+  const offInvalidated = bootstrapCache.onVaultInvalidated((vaultId) =>
     metadataChannel.forgetVault(vaultId),
   );
 
-  watcher.addGlobalListener((vaultId, event) => {
+  const changed = (vaultId, event) => {
     bootstrapCache.applyMutation(vaultId, event).then(
       (revision) => {
         try {
@@ -26,9 +26,10 @@ function registerCacheListeners({
       (e) =>
         require("@ignis/server-core/src/logger").emit("warn", "server.cache.listeners.event_failed"),
     );
-  });
+  };
+  watcher.addGlobalListener(changed);
 
-  writeCoalescer.onFlushSuccess((absPath) => {
+  const offFlush = writeCoalescer.onFlushSuccess((absPath) => {
     const match = config.vaultForPath(absPath);
 
     if (!match) {
@@ -42,6 +43,7 @@ function registerCacheListeners({
         require("@ignis/server-core/src/logger").emit("warn", "server.cache.listeners.flush_failed"),
       );
   });
+  return () => {offSwap();offInvalidated();offFlush();watcher.removeGlobalListener(changed);};
 }
 
 module.exports = { registerCacheListeners };

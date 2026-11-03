@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 const require=createRequire(import.meta.url);
-const {openDatabase}=require('./database');
+const {openDatabase}=require('../platform/persistence/database');
 const {createRegisteredVault}=require('./vault-creation');
 const {createUserDeletionService}=require('./user-deletion');
 let db,root,service,lifecycle,current;

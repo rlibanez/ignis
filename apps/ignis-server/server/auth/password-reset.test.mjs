@@ -12,7 +12,7 @@ let db, time, sessions, originalHash;
 const options = { isCurrent: () => true, now: () => time };
 beforeEach(async () => {
   db = new DatabaseSync(":memory:"); db.exec("PRAGMA foreign_keys=ON");
-  for (const migration of require("./schema")) db.exec(migration.sql);
+  db.exec(require("../platform/persistence/schema").sql);
   db.exec("INSERT INTO users(id,login,role,created_at) VALUES ('admin','admin','admin',0),('target','target','user',0)");
   originalHash = await hashPassword(oldPassword, policy);
   db.prepare("INSERT INTO local_credentials VALUES ('target',?,0)").run(originalHash);
@@ -104,7 +104,7 @@ it("supports privileged CLI regeneration after an administrator loses its secret
 
 it("persists the reset requirement across database reopen and consumes a persisted secret", async () => {
   const fs = require("node:fs"), os = require("node:os"), path = require("node:path");
-  const { openDatabase } = require("./database");
+  const { openDatabase } = require("../platform/persistence/database");
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "ignis-reset-restart-"));
   let disk;
   try {

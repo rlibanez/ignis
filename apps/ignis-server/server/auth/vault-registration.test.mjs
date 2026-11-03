@@ -5,7 +5,7 @@ import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { openDatabase } = require("./database");
+const { openDatabase } = require("../platform/persistence/database");
 const { registrationOptions, registerExistingVault, inspectDirectory } = require("./vault-registration");
 const { registerVault } = require("./store");
 let root, vaultRoot, db;
@@ -119,7 +119,7 @@ it("registers an automatically created My Vault only with an explicitly selected
 });
 it("two concurrent processes cannot register different owners for the same directory", async () => {
   const run = owner => new Promise((resolve, reject) => {
-    const script = `const {openDatabase}=require(${JSON.stringify(require.resolve("./database"))});
+    const script = `const {openDatabase}=require(${JSON.stringify(require.resolve("../platform/persistence/database"))});
       const {registerExistingVault}=require(${JSON.stringify(require.resolve("./vault-registration"))});
       const db=openDatabase(${JSON.stringify(path.join(root, "data"))});
       try {registerExistingVault(db,${JSON.stringify(vaultRoot)},'Notes',${JSON.stringify(owner)});process.exit(0)}catch{process.exit(3)}`;
@@ -131,7 +131,7 @@ it("two concurrent processes cannot register different owners for the same direc
   expect(db.prepare("SELECT count(*) n FROM memberships").get().n).toBe(1);
 });
 it("process exit inside registration leaves no partial identity or owner", () => {
-  const script = `const {openDatabase}=require(${JSON.stringify(require.resolve("./database"))});
+  const script = `const {openDatabase}=require(${JSON.stringify(require.resolve("../platform/persistence/database"))});
     const {registerExistingVault}=require(${JSON.stringify(require.resolve("./vault-registration"))});
     const db=openDatabase(${JSON.stringify(path.join(root, "data"))});
     db.function('crash',()=>process.exit(17));

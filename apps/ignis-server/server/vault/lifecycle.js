@@ -3,6 +3,7 @@ const { watcher, writeCoalescer } = require("@ignis/server-core");
 
 let wss = null;
 const activeWork = new Set();
+const trackedHandlers = new WeakSet();
 
 // Track completion of the handlers themselves, including after a client disconnect.
 // Response close alone does not mean an asynchronous file write has completed.
@@ -10,6 +11,7 @@ function trackRouterWork(router) {
   for (const layer of router.stack) {
     for (const entry of layer.route?.stack || []) {
       const handler = entry.handle;
+      if (trackedHandlers.has(handler)) continue;
       entry.handle = function (req, res, next) {
         let done;
         const completion = new Promise(resolve => { done = resolve; });
@@ -19,6 +21,7 @@ function trackRouterWork(router) {
           return Promise.resolve(handler(req, res, next)).then(finish, error => { finish(); next(error); });
         } catch (error) { finish(); next(error); }
       };
+      trackedHandlers.add(entry.handle);
     }
   }
 }
@@ -73,4 +76,4 @@ async function quiesceRegisteredVault(vaultId, vaultPath) {
   await writeCoalescer.flushPendingSubtree(vaultPath);
 }
 
-module.exports = { setWss, withWatcherStopped, quiesceRegisteredVault, trackRouterWork };
+module.exports = { setWss, withWatcherStopped, quiesceRegisteredVault, trackRouterWork, drainRouterWork };

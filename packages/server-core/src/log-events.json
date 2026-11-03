@@ -99,5 +99,6 @@
   "oidc.transport_failed": "OIDC HTTPS request failed; check permitted error code, TLS, response limits and provider availability.",
   "oidc.timeout": "OIDC HTTPS request exceeded its time limit.",
   "oidc.address_rejected": "OIDC endpoint DNS results or IP address rejected by network policy.",
-  "oidc.dns_failed": "OIDC endpoint DNS resolution failed."
+  "oidc.dns_failed": "OIDC endpoint DNS resolution failed.",
+  "server.schema_incompatible": "Identity database schema is incompatible. Keep the old data and configure a new DATA_ROOT for this development version; no automatic migration or reset is performed."
 }

@@ -5,7 +5,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { openDatabase } = require("./database");
+const { openDatabase } = require("../platform/persistence/database");
 const { createRegisteredVault, quarantinePendingVaults, directoryAvailable } = require("./vault-creation");
 const { deleteRegisteredVault, purgeRetiredVault, purgeRetiredVaults } = require("./vault-deletion");
 let root, vaultRoot, db, vault;
@@ -133,7 +133,7 @@ it("does not follow symlinks contained inside the vault during purge", async () 
 });
 it.each(["reserved", "moved", "retired", "removed"])("recovers after a real process exit at %s", async stage => {
   const script = `const fs=require('node:fs');
-    const {openDatabase}=require(${JSON.stringify(require.resolve("./database"))});
+    const {openDatabase}=require(${JSON.stringify(require.resolve("../platform/persistence/database"))});
     const {deleteRegisteredVault}=require(${JSON.stringify(require.resolve("./vault-deletion"))});
     const db=openDatabase(${JSON.stringify(path.join(root, "data"))});
     const stage=${JSON.stringify(stage)};

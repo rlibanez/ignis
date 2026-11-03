@@ -5,7 +5,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { openDatabase } = require("./database");
+const { openDatabase } = require("../platform/persistence/database");
 const { createRegisteredVault, quarantinePendingVaults, directoryAvailable } = require("./vault-creation");
 const { renameRegisteredVault } = require("./vault-rename");
 let root, vaultRoot, db, vault;
@@ -89,7 +89,7 @@ it("keeps both aliases blocked after final audit failure", async () => {
   for (const name of ["Notes", "Renamed", "Alias"]) expect(directoryAvailable(db, name, vaultRoot)).toBe(false);
 });
 it.each(["reserved", "moved"])("recovers conservatively after a real process exit at %s", stage => {
-  const script = `const {openDatabase}=require(${JSON.stringify(require.resolve("./database"))});
+  const script = `const {openDatabase}=require(${JSON.stringify(require.resolve("../platform/persistence/database"))});
     const {renameRegisteredVault}=require(${JSON.stringify(require.resolve("./vault-rename"))});
     const db=openDatabase(${JSON.stringify(path.join(root, "data"))});
     renameRegisteredVault(db,${JSON.stringify(vaultRoot)},'admin',${JSON.stringify(vault.id)},'Renamed', {

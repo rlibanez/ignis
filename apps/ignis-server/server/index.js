@@ -1,305 +1,41 @@
-const logging = require("@ignis/server-core/src/logger");
+const logging = require('@ignis/server-core/src/logger');
+const {createApplication} = require('./app/create-application');
+
 function logStartupFailure(error) {
-  const known = require("./auth/oidc/startup-error").startupLogEvent(error);
-  logging.emit("error", known);
+  const event = error?.code === 'SCHEMA_INCOMPATIBLE'
+    ? 'server.schema_incompatible'
+    : require('./auth/oidc/startup-error').startupLogEvent(error);
+  logging.emit('error',event);
 }
-function boot() {
-const express = require("express");
-const path = require("path");
-const compression = require("compression");
-const http = require("node:http");
-const { createAuthBoundary } = require("./auth/http");
-const { readAuthConfig } = require("./auth/http-policy");
-const config = require("./config");
-const settings = require("./settings");
-const { cacheControlFor } = require("./static/cache-headers");
-const { buildIndexHtml } = require("./static/index-html");
-const { getObsidianTerms } = require("./static/obsidian-terms");
-const {
-  setupWebSocket,
-  watcher,
-  writeCoalescer,
-  resolveVaultPath,
-} = require("@ignis/server-core");
-const {
-  BRIDGE_PLUGIN_ID,
-  migratePluginsFromAllVaults,
-} = require("./plugin-system/migrate-bridge");
-const {
-  initPlugins,
-  shutdownPlugins,
-  getBundledPluginDirs,
-  getPluginDataDir,
-} = require("./plugin-system/manager");
-const obCli = require("./obsidian-account/ob-cli");
-const pluginRoutes = require("./routes/plugins");
-const { flushAll } = writeCoalescer;
 
-writeCoalescer.configure({ writeCoalesceMs: settings.get("writeCoalesceMs") });
-watcher.configure({ ignoredPaths: settings.resolveIgnoreLines() });
-obCli.init({
-  obHome: path.join(
-    getPluginDataDir(config.dataRoot, "headless-sync"),
-    "ob-home",
-  ),
-});
-
-const REPO_ROOT = path.join(__dirname, "..", "..", "..");
-
-const app = express();
-const authConfig = readAuthConfig();
-const auth = createAuthBoundary({
-  dataRoot: config.dataRoot,
-  vaultRoot: config.vaultRoot,
-  config: authConfig,
-  staticRoots: [
-    { root: path.join(__dirname, "assets"), mount: "/assets/" },
-    path.join(REPO_ROOT, "packages", "ui", "dist"),
-    path.join(REPO_ROOT, "packages", "shim", "dist"),
-    config.obsidianAssetsPath,
-  ],
-});
-config.setVaultDirectoryAvailability(auth.vaultDirectoryAvailable);
-config.refreshVaults();
-auth.install(app);
-
-// Reject oversized requests by Content-Length before parsing.
-app.use((req, res, next) => {
-  const declared = Number(req.headers["content-length"]);
-
-  if (Number.isFinite(declared) && declared > require("./auth/incoming-share-config").incomingWriteBodyLimit(settings.get("maxBodyBytes"), authConfig.incomingShare, req.path)) {
-    return res.status(413).json({ error: "Request body too large" });
-  }
-
-  next();
-});
-
-app.use(require("./auth/incoming-share-config").incomingBinaryParser(authConfig.incomingShare));
-app.use(express.json({ limit: settings.MAX_BODY_BACKSTOP }));
-app.use(auth.revalidate);
-app.use(compression());
-
-const fsRoutes = require("./routes/fs");
-const vaultRoutes = require("./routes/vault");
-const proxyRoutes = require("./routes/proxy");
-const versionRoutes = require("./routes/version");
-const settingsRoutes = require("./routes/settings");
-const bootstrapRoutes = require("./routes/bootstrap");
-const bootstrapCache = require("./cache");
-const treeReconcile = require("./cache/reconcile");
-const { createMetadataChannel } = require("./cache/metadata-channel");
-const { registerCacheListeners } = require("./cache/listeners");
-const vaultLifecycle = require("./vault/lifecycle");
-
-app.use("/assets", express.static(path.join(__dirname, "assets")));
-
-// Wait for in-flight file/plugin/bootstrap handlers before a registered rename.
-for (const router of [fsRoutes, pluginRoutes, bootstrapRoutes]) {
-  require("./vault/lifecycle").trackRouterWork(router);
-}
-app.use("/api/fs", fsRoutes);
-app.use("/api/vault", vaultRoutes);
-app.use("/api/vault-config", require("./routes/vault-config"));
-app.use("/api/proxy", proxyRoutes);
-app.use("/api/version", versionRoutes);
-app.use("/api/settings", settingsRoutes);
-app.use("/api/plugins", pluginRoutes);
-app.use("/api/bootstrap", bootstrapRoutes);
-
-// Serve vault files for resource URLs (images, attachments, etc.)
-// Vault ID is the first path segment: /vault-files/<vault-id>/path/to/file
-app.use("/vault-files", (req, res, next) => {
-  // Extract vault ID from the first path segment
-  const parts = req.path.split("/").filter(Boolean);
-
-  if (parts.length === 0) {
-    return res.status(400).json({ error: "Missing vault ID" });
-  }
-
-  let vaultId;
-  try { vaultId = auth.resolveVaultDirectory(decodeURIComponent(parts[0])); }
-  catch { return res.status(404).json({ error: "Vault unavailable" }); }
-  const vaultPath = config.getVaultPath(vaultId);
-
-  if (!vaultPath) {
-    return res.status(404).json({ error: "Vault not found" });
-  }
-
-  let resolved = null;
-
+async function main() {
+  logging.configure({dataRoot:process.env.DATA_ROOT || require('node:path').join(__dirname,'../../..','data'),...logging.readLogConfig()});
+  const application = createApplication();
+  let stopping;
+  const stop = () => stopping ||= (async () => {
+    logging.emit('info','server.stopping');
+    const timeout = setTimeout(() => {
+      logging.emit('error','server.shutdown_timeout');logging.close();process.exit(1);
+    },10000);
+    try {await application.stop();logging.emit('info','server.stopped');}
+    catch {logging.emit('error','server.fatal');process.exitCode=1;}
+    finally {clearTimeout(timeout);logging.close();}
+  })();
+  const signal = () => {void stop();};
+  process.on('SIGTERM',signal);process.on('SIGINT',signal);
+  const fatal = () => {logging.emit('error','server.fatal');process.exitCode=1;void stop();};
+  process.on('uncaughtException',fatal);process.on('unhandledRejection',fatal);
   try {
-    const relPath = parts.slice(1).map(decodeURIComponent).join("/");
-    resolved = relPath ? resolveVaultPath(vaultPath, relPath) : null;
-  } catch {
-    // Invalid paths must not fall through to a different static-file resolver.
+    const address = await application.start();
+    if (!stopping) logging.emit('info','server.started',{version:require('./version').getSemver(),obsidianVersion:require('./config').obsidianVersion,port:address.port});
+  } catch (error) {
+    logStartupFailure(error);process.exitCode=1;await stop();
   }
-
-  if (!resolved) return res.status(404).json({ error: "Resource unavailable" });
-  if (req.authorizeVaultFile && !req.authorizeVaultFile(vaultId, "content.read", path.relative(vaultPath, resolved).split(path.sep).join("/")))
-    return res.status(404).json({ error: "Resource unavailable" });
-  require("./vault/attachment-policy").applyAttachmentPolicy(res, resolved);
-  const buffered = writeCoalescer.getPending(resolved);
-
-  // Serve buffered content if exists.
-  if (buffered) {
-    const body = writeCoalescer.pendingBuffer(buffered.data, buffered.encoding);
-
-    return res.send(body);
-  }
-
-  // Rewrite req.url to strip the vault ID prefix, then serve statically
-  req.url = "/" + parts.slice(1).join("/");
-  express.static(vaultPath, { index: false, redirect: false })(req, res, error => {
-    if (error) return next(error);
-    // A missing attachment must not fall through to application assets.
-    res.status(404).end();
-  });
-});
-
-app.get(["/", "/index.html"], (req, res) => {
-  res.set("Content-Type", "text/html; charset=utf-8");
-  res.set("Cache-Control", "no-cache");
-  res.send(buildIndexHtml());
-});
-
-app.get("/favicon.png", (req, res) => {
-  res.sendFile(path.join(REPO_ROOT, "images", "favicon.png"));
-});
-
-// Cache headers for static assets, by version query.
-// Set before express.static, which only fills Cache-Control when it is not already present.
-app.use((req, res, next) => {
-  const cacheControl = cacheControlFor(req.path, !!req.query.v);
-
-  if (cacheControl) {
-    res.setHeader("Cache-Control", cacheControl);
-  }
-
-  next();
-});
-
-app.use(express.static(path.join(REPO_ROOT, "packages", "ui", "dist")));
-app.use(express.static(path.join(REPO_ROOT, "packages", "shim", "dist")));
-
-app.use(express.static(config.obsidianAssetsPath));
-
-const server = http.createServer(app);
-
-async function start() {
-  await auth.initialize();
-  getObsidianTerms();
-  await initPlugins({ app, config, wss, watcher });
-  const bundledPluginDirs = getBundledPluginDirs();
-  for (const { distDir } of bundledPluginDirs) {
-    auth.staticRoots.push(distDir);
-    app.use(express.static(distDir));
-  }
-  app.use(auth.errorHandler);
-  await migratePluginsFromAllVaults(config.vaultRoot, [
-    BRIDGE_PLUGIN_ID,
-    ...bundledPluginDirs.map((d) => d.bundledPluginId),
-  ], auth.vaultDirectoryAvailable);
-  server.listen(config.port, () =>
-    logging.emit("info", "server.started", { version: require("./version").getSemver(), obsidianVersion: config.obsidianVersion, port: server.address().port }),
-  );
-  bootstrapCache
-    .warmUp()
-    .catch(() => logging.emit("warn", "server.cache.crawl.warmup_failed"));
 }
 
-const wss = setupWebSocket(server, {
-  getVaultPath: config.getVaultPath,
-  originAllowlist: settings.get("wsOrigins"),
-  security: auth.wsSecurity,
-});
-vaultLifecycle.setWss(wss);
-auth.observeSharedSources(watcher,config.getVaultPath);
-watcher.addGlobalListener((vaultId,event)=>auth.sharedContentChanged(vaultId,event));
-
-const metadataChannel = createMetadataChannel(wss);
-
-registerCacheListeners({
-  bootstrapCache,
-  metadataChannel,
-  watcher,
-  writeCoalescer,
-});
-
-watcher.onWatcherStart((vaultId) => {
-  bootstrapCache.markForRevalidation(vaultId);
-  treeReconcile.startSchedule(vaultId);
-});
-
-bootstrapCache.onStaleEntryServed((vaultId) =>
-  treeReconcile.scheduleReconcile(vaultId),
-);
-
-// Per-client listeners die along with their watcher.
-watcher.onWatcherRebuild((vaultId) => {
-  // force revalidation to ensure any missed changes are picked up
-  bootstrapCache.invalidateVault(vaultId);
-  wss.closeVaultSockets(vaultId);
-});
-
-writeCoalescer.onFlushGiveUp((absPath) => {
-  const match = config.vaultForPath(absPath);
-
-  if (!match) {
-    return;
-  }
-
-  wss.broadcastToVault(match.vaultId, {
-    type: "write-giveup",
-    path: match.relPath,
-  });
-});
-
-async function gracefulShutdown(signal) {
-  logging.emit("info", "server.stopping");
-
-  await flushAll();
-  await shutdownPlugins();
-  auth.close();
-  wss.close();
-
-  server.close(() => {
-    logging.emit("info", "server.stopped");
-    logging.close();
-    process.exit(0);
-  });
-
-  setTimeout(() => {
-    logging.emit("error", "server.shutdown_timeout");
-    logging.close();
-    process.exit(1);
-  }, 10000);
-}
-
-process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-process.on("SIGINT", () => gracefulShutdown("SIGINT"));
-
-start().catch((error) => {
-  logStartupFailure(error);
-  logging.close();
-  process.exit(1);
-});
-
-}
-try {
-  logging.configure({ dataRoot: process.env.DATA_ROOT || require("node:path").join(__dirname, "../../..", "data"), ...logging.readLogConfig() });
-  const fatal = () => {
-    logging.emit("error", "server.fatal");
-    logging.close();
-    process.exit(1);
-  };
-  process.on("uncaughtException", fatal);
-  process.on("unhandledRejection", fatal);
-  boot();
-} catch (error) {
-  // Configuration is validated before logger creation. No raw exception output.
-  const configured = (() => { try { logging.readLogConfig(); return true; } catch { return false; } })();
-  if (!configured) process.stderr.write(JSON.stringify({ time: new Date().toISOString(), level: "error", event: "logging.invalid_config", message: "Invalid logging configuration; check IGNIS_LOG_FORMAT, IGNIS_LOG_LEVEL, IGNIS_LOG_FILE_ENABLED, IGNIS_LOG_MAX_SIZE_MIB and IGNIS_LOG_MAX_FILES." }) + "\n");
+main().catch(error => {
+  const configured = (() => {try {logging.readLogConfig();return true;}catch {return false;}})();
+  if (!configured) process.stderr.write(JSON.stringify({time:new Date().toISOString(),level:'error',event:'logging.invalid_config',message:'Invalid logging configuration; check IGNIS_LOG_FORMAT, IGNIS_LOG_LEVEL, IGNIS_LOG_FILE_ENABLED, IGNIS_LOG_MAX_SIZE_MIB and IGNIS_LOG_MAX_FILES.'})+'\n');
   else logStartupFailure(error);
-  logging.close();
-  process.exit(1);
-}
+  logging.close();process.exitCode=1;
+});

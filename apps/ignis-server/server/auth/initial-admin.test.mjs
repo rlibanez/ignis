@@ -13,8 +13,8 @@ const {
   readInitialAdminKey,
   createInitialAdminSetup,
 } = require("./initial-admin");
-const { createAuthBoundary } = require("./http");
-const { openDatabase } = require("./database");
+const { createSecurity } = require("../app/create-security");
+const { openDatabase } = require("../platform/persistence/database");
 const { bootstrapAdmin } = require("./store");
 const { hashPassword } = require("./password");
 const KEY = randomBytes(16).toString("hex");
@@ -52,7 +52,7 @@ function count(table) {
   return db.prepare(`SELECT count(*) n FROM ${table}`).get().n;
 }
 async function start(key = KEY, policyEnv = {}) {
-  boundary = createAuthBoundary({
+  boundary = createSecurity({
     dataRoot: root,
     config: readAuthConfig({
       IGNIS_PUBLIC_ORIGIN: "http://localhost:8080",

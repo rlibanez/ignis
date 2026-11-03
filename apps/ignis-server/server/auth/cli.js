@@ -4,7 +4,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 const readline = require("node:readline");
 const { Writable } = require("node:stream");
-const { openDatabase, backupDatabase, restoreDatabase } = require("./database");
+const { openDatabase, backupDatabase, restoreDatabase } = require("../platform/persistence/database");
 const { bootstrapAdmin, normalizeLogin, registerVault } = require("./store");
 const { readPasswordPolicy } = require("./password-policy");
 const { setUserEmail } = require("./email");
@@ -161,7 +161,7 @@ async function main(args = process.argv.slice(2)) {
       console.log(
         JSON.stringify({
           schema: db
-            .prepare("SELECT max(version) AS version FROM schema_migrations")
+            .prepare("SELECT version FROM schema_info WHERE singleton=1")
             .get().version,
           users: db.prepare("SELECT count(*) AS count FROM users").get().count,
           vaults: db.prepare("SELECT count(*) AS count FROM vaults").get()

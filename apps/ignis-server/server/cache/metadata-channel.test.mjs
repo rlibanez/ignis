@@ -394,3 +394,14 @@ describe("against the cache", () => {
     expect(sent).toEqual([]);
   });
 });
+
+it("disposes pending announcements and ignores late asynchronous results after close", async () => {
+  vi.useFakeTimers();
+  const published=vi.fn();
+  const channel=createMetadataChannel({channel:()=>({broadcastToVault:published})});
+  channel.reportReplacement("closing","v1");published.mockClear();
+  channel.reportRevision("closing","v2");channel.close();channel.close();
+  channel.reportReplacement("closing","v3");channel.reportRevision("closing","v4");
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(published).not.toHaveBeenCalled();
+});

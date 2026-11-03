@@ -1,5 +1,5 @@
 const { randomBytes, randomUUID, createHash } = require("node:crypto");
-const { transaction } = require("./database");
+const { transaction } = require("../platform/persistence/database");
 const { hashPassword, verifyPassword } = require("./password");
 const { meetsPasswordPolicy } = require("./password-policy");
 const digest = secret => createHash("sha256").update(secret).digest("hex");

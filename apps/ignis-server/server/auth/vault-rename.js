@@ -1,7 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
-const { transaction } = require("./database");
+const { transaction } = require("../platform/persistence/database");
 const { validVaultName } = require("./vault-creation");
 const { resolveRegisteredVault } = require("./vault-catalog");
 const fail = code => { throw Object.assign(new Error("Vault rename failed"), { code }); };

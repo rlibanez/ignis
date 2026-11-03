@@ -10,7 +10,7 @@ const old = "old-test-password", next = "new-test-password";
 let db;
 beforeEach(async () => {
   db = new DatabaseSync(":memory:");
-  for (const migration of require("./schema")) db.exec(migration.sql);
+  db.exec(require("../platform/persistence/schema").sql);
   db.exec("INSERT INTO users(id,login,role,created_at) VALUES ('u','user','user',0)");
   db.prepare("INSERT INTO local_credentials VALUES ('u',?,0)").run(await hashPassword(old));
 });

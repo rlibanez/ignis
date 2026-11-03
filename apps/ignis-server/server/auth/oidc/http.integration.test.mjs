@@ -9,9 +9,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { generateKeyPair, exportJWK, SignJWT } from "jose";
 const require = createRequire(import.meta.url);
 const express = require("express");
-const { createAuthBoundary } = require("../http");
+const { createSecurity } = require("../../app/create-security");
 const { readAuthConfig } = require("../http-policy");
-const { openDatabase } = require("../database");
+const { openDatabase } = require("../../platform/persistence/database");
 const { bootstrapAdmin } = require("../store");
 const { hashPassword } = require("../password");
 const ORIGIN = "http://localhost:8080";
@@ -142,7 +142,7 @@ beforeEach(async () => {
   discoveryRequests = 0;
   callbackClaims = {};
   codes.clear();
-  boundary = createAuthBoundary({
+  boundary = createSecurity({
     dataRoot: root,
     config: readAuthConfig({
       IGNIS_PUBLIC_ORIGIN: ORIGIN,
@@ -382,7 +382,7 @@ it("serves account UI and fixed public assets without exposing provider secrets"
   }
 });
 it("rejects invalid enabled startup configuration", async () => {
-  const other = createAuthBoundary({
+  const other = createSecurity({
     dataRoot: root,
     config: readAuthConfig({
       IGNIS_PUBLIC_ORIGIN: ORIGIN,

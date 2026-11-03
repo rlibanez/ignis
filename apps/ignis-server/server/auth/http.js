@@ -1,3 +1,4 @@
+const {sessionContext,matchesSession,recentlyAuthenticated} = require('../../../../packages/contracts/src/session');
 const express = require("express");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -39,8 +40,6 @@ setupAssets.set("/favicon.png", {
   content: fs.readFileSync(path.join(__dirname, "../../../../images/favicon.png")),
 });
 setupAssets.set("/pwa/icon-512.png", {type:"image/png",content:fs.readFileSync(path.join(__dirname,"../../../../images/ignis.png"))});
-const { openDatabase } = require("./database");
-const { createSessionService } = require("./sessions");
 const { createSessionCookies } = require("./session-cookies");
 const { createCsrf } = require("./csrf");
 const { createRequestLimits } = require("./request-limits");
@@ -53,10 +52,8 @@ function createAuthBoundary({
   config,
   staticRoots = [],
   now = Date.now,
-  sessionOptions = {},
   vaultRoot,
-  oidcEnv = process.env,
-  oidcDependencies,
+  services,
 }) {
   const presentationAssets = require("./app-name").brandedAssets(setupAssets, config.appName);
   require('./incoming-share-config').configureIncomingShareAsset(presentationAssets,
@@ -65,27 +62,14 @@ function createAuthBoundary({
   const rememberCookies = createSessionCookies({ ...config, purpose: "remember" });
   const resetCookies = createSessionCookies({ ...config, purpose: "reset" });
   const publicUrl = new URL(config.publicOrigin);
-  const db = openDatabase(dataRoot);
-  const sessions = createSessionService(db, { rememberDays: config.rememberDays, ...sessionOptions, now });
-  const sharesService = vaultRoot ? require("./resource-shares").createResourceSharesService(db, vaultRoot, sessions, config.sharedResourceLimits) : null;
+  const {db,sessions,sharesService,vaultConfig,vaultAccess} = services;
   const sharesRouter = sharesService ? require("../routes/resource-shares").createResourceSharesRouter(sharesService) : null;
-  const vaultConfig = vaultRoot ? require("./vault-config").createVaultConfigService(db, vaultRoot, sessions) : null;
-  const vaultAccess = vaultRoot ? require("./vault-access").createVaultAccessService(db, vaultRoot, sessions) : null;
-  const csrf = createCsrf(config, { now, db });
+  if (sharesRouter) require("../vault/lifecycle").trackRouterWork(sharesRouter);
+  const pendingAuth = new Set();
+  const csrf = createCsrf(config, {now,db});
   let oidc = null;
-  let initialization;
   function initialize() {
-    initialization ||= Promise.resolve().then(async () => {
-      if (vaultRoot) {
-        require("./vault-creation").quarantinePendingVaults(db);
-        await require("./vault-deletion").purgeRetiredVaults(db, vaultRoot);
-      }
-      return require("./oidc/runtime").createOidcRuntime(db, config, sessions, oidcEnv, oidcDependencies);
-    })
-      .then((value) => {
-        oidc = value;
-      });
-    return initialization;
+    return services.initialize().then(value => {oidc = value;});
   }
   const limits = createRequestLimits({ now });
   const socketEntries = new Map();
@@ -111,12 +95,7 @@ function createAuthBoundary({
       throw new Error("Invalid initialization state");
     return marked;
   }
-  try {
-    initialized();
-  } catch (error) {
-    db.close();
-    throw error;
-  }
+  initialized();
 
   const setup = createInitialAdminSetup(db, {
     keyDigest: config.initialAdminKeyDigest,
@@ -413,8 +392,7 @@ function createAuthBoundary({
         });
         return current?.id === session.id &&
           current.user.role === "admin" &&
-          now() >= current.authenticatedAt &&
-          now() - current.authenticatedAt < 300000;
+          recentlyAuthenticated(current,now());
       };
       if (!isCurrent()) return res.status(403).json({
         error: "Sign in again before managing users", code: "REAUTH_REQUIRED",
@@ -632,12 +610,11 @@ function createAuthBoundary({
             sessionId: session.id,
             expiresAt: session.expiresAt,
             oidcLinked: !!oidc?.linked(session.user.id),
-            recentAuthentication: now() >= session.authenticatedAt &&
-              now() - session.authenticatedAt < 300000,
+            recentAuthentication: recentlyAuthenticated(session,now()),
             canLinkOidc:
               !!oidc &&
               !oidc.linked(session.user.id) &&
-              now() - session.authenticatedAt < 300000,
+              recentlyAuthenticated(session,now()),
           })
         : safe(res, 401, "Authentication required");
     }
@@ -705,7 +682,7 @@ function createAuthBoundary({
       const token=cookies.read(req.headers.cookie);
       const isCurrent=(withinTransaction=false)=>{
         const current=sessions.resolve(token,{withinTransaction});
-        return current?.id===session.id && current.user.id===session.user.id && now()>=current.authenticatedAt && now()-current.authenticatedAt<300000;
+        return current?.id===session.id && current.user.id===session.user.id && recentlyAuthenticated(current,now());
       };
       if(!isCurrent())return res.status(403).json({error:"Confirm your identity before changing your email",code:"REAUTH_REQUIRED"});
       try{
@@ -852,7 +829,7 @@ function createAuthBoundary({
         return safe(res, 403, "Reauthentication unavailable");
       if (kind === "link" && (!session || oidc.linked(session.user.id)))
         return safe(res, 403, "Account linking unavailable");
-      if (kind === "link" && now() - session.authenticatedAt >= 300000)
+      if (kind === "link" && !recentlyAuthenticated(session,now()))
         return res.status(403).json({
           error: "Sign in again before linking an account", code: "REAUTH_REQUIRED",
         });
@@ -1016,13 +993,15 @@ function createAuthBoundary({
               error.status === 413 ? 413 : 400,
               "Invalid request body",
             );
-          authEndpoint(req, res, pathname).catch((failure) => {
+          const operation = authEndpoint(req, res, pathname).catch((failure) => {
             safe(
               res,
               failure.code === "AUTH_BUSY" ? 429 : 503,
               "Authentication unavailable",
             );
           });
+          pendingAuth.add(operation);
+          void operation.then(() => pendingAuth.delete(operation),() => pendingAuth.delete(operation));
         });
       }
       if (!initialized())
@@ -1260,6 +1239,8 @@ function createAuthBoundary({
         });
       }
       req.auth = current;
+      req.context = sessionContext(current);
+      const context = req.context;
       // A download may outlive its session. Do not emit further chunks after revocation.
       for (const method of ["write", "end"]) {
         const original = res[method].bind(res);
@@ -1267,7 +1248,7 @@ function createAuthBoundary({
           try {
             const active = getSession(req);
             if (
-              active?.id === current.id &&
+              matchesSession(context,active) &&
               (active.user.role === "admin" || require("./member-routes").memberResource(req.method, pathname)) &&
               initialized() &&
               (!req.revalidateVaultFile || req.revalidateVaultFile())
@@ -1311,13 +1292,14 @@ function createAuthBoundary({
     );
   }
   function close() {
+    if (closed) return;
     closed=true;clearTimeout(stateTimer);clearTimeout(contentTimer);contentUsers.clear();identityWatch.close();stopSharedWatchers();
     clearInterval(cleanup);
     for (const ws of socketEntries.keys()) ws.terminate();
-    oidc?.clear();
-    db.close();
+    services.close();
   }
   return {
+    drain: () => Promise.all(pendingAuth),
     initialize,
     install,
     revalidate,

@@ -1,7 +1,7 @@
 import {it,expect} from 'vitest';
 import {createRequire} from 'node:module';
 import fs from 'node:fs';import os from 'node:os';import path from 'node:path';
-const require=createRequire(import.meta.url),{openDatabase}=require('./database'),{createCsrf}=require('./csrf');
+const require=createRequire(import.meta.url),{openDatabase}=require('../platform/persistence/database'),{createCsrf}=require('./csrf');
 it('persists only hashes and retains expiry, browser/session binding, capacity and consumption after reopen',()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'ignis-csrf-restart-'));let db=openDatabase(root),now=1000;
  const config={publicOrigin:'http://localhost:8080',allowHttpLoopback:true};

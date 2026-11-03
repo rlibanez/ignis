@@ -2,7 +2,7 @@ import { it, expect, beforeEach, afterEach } from "vitest";
 import { DatabaseSync } from "node:sqlite";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const migrations = require("../schema");
+const schema = require("../../platform/persistence/schema");
 const { setUserEmail, normalizeEmail } = require("../email");
 const { resolveOidcAccount, linkOidcAccount } = require("./accounts");
 const { readOidcConfig } = require("./config");
@@ -10,7 +10,7 @@ let db;
 beforeEach(() => {
   db = new DatabaseSync(":memory:");
   db.exec("PRAGMA foreign_keys=ON");
-  for (const m of migrations) db.exec(m.sql);
+  db.exec(schema.sql);
 });
 afterEach(() => db.close());
 function user(id = "u01", role = "user") {
@@ -32,10 +32,10 @@ const identity = (patch) => ({
   emailVerified: true,
   ...patch,
 });
-it("adds nullable emails to existing accounts without changing IDs or credentials", () => {
+it("starts nullable emails separately from credentials and stable IDs", () => {
   const old = new DatabaseSync(":memory:");
   try {
-    for (const m of migrations.slice(0, 3)) old.exec(m.sql);
+    old.exec(schema.sql);
     old
       .prepare(
         "INSERT INTO users(id,login,role,created_at) VALUES ('old','old','admin',0)",
@@ -44,7 +44,6 @@ it("adds nullable emails to existing accounts without changing IDs or credential
     old
       .prepare("INSERT INTO local_credentials VALUES ('old','synthetic',0)")
       .run();
-    old.exec(migrations[3].sql);
     expect(
       old.prepare("SELECT id,email,email_trust FROM users").get(),
     ).toMatchObject({ id: "old", email: null, email_trust: "unverified" });
@@ -255,7 +254,7 @@ it("updates and clears email through the CLI using an isolated database", async 
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "ignis-email-cli-"));
   let database;
   try {
-    const { openDatabase } = require("../database");
+    const { openDatabase } = require("../../platform/persistence/database");
     database = openDatabase(directory);
     database
       .prepare(

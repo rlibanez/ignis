@@ -1,7 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
-const { transaction } = require("./database");
+const { transaction } = require("../platform/persistence/database");
 const fail = code => { throw Object.assign(new Error("Vault creation failed"), { code }); };
 function validVaultName(name) {
   return typeof name === "string" && name.length > 0 && Buffer.byteLength(name) <= 255 &&

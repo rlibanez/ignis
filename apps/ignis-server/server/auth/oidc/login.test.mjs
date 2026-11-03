@@ -429,7 +429,7 @@ it("returns only requested matching claims and requires boolean email verificati
 async function manualFixture() {
   await flow();
   const db = new DatabaseSync(":memory:");
-  for (const migration of require("../schema")) db.exec(migration.sql);
+  db.exec(require("../../platform/persistence/schema").sql);
   db.prepare(
     "INSERT INTO users(id,login,role,created_at) VALUES ('local','local','admin',0)",
   ).run();
@@ -538,7 +538,7 @@ it("provisions from verified claims and issues an opaque normal-user session", a
   await flow();
   const db = new DatabaseSync(":memory:");
   try {
-    for (const m of require("../schema")) db.exec(m.sql);
+    db.exec(require("../../platform/persistence/schema").sql);
     db.prepare(
       "INSERT INTO users(id,login,role,created_at) VALUES ('setup-admin','setup-admin','admin',0)",
     ).run();

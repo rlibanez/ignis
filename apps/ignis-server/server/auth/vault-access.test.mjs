@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 const require = createRequire(import.meta.url);
-const { openDatabase } = require("./database");
+const { openDatabase } = require("../platform/persistence/database");
 const { registerVault } = require("./store");
 const { hashPassword } = require("./password");
 const { createSessionService } = require("./sessions");

@@ -13,7 +13,7 @@ const {
   transaction,
   backupDatabase,
   restoreDatabase,
-} = require("./database");
+} = require("../platform/persistence/database");
 const { bootstrapAdmin, normalizeLogin, registerVault } = require("./store");
 const { hashPassword } = require("./password");
 const fixtureHash =
@@ -43,7 +43,7 @@ function child(code) {
 }
 
 describe("identity persistence", () => {
-  it("migrates idempotently, retains stable identities and uses private files", () => {
+  it("initializes idempotently, retains stable identities and uses private files", () => {
     const user = bootstrapAdmin(db, "Admin", fixtureHash);
     fs.mkdirSync(path.join(root, "Team"));
     const vault = registerVault(db, root, "Team", user.id);
@@ -58,8 +58,8 @@ describe("identity persistence", () => {
     expect(db.prepare("SELECT id FROM users").get().id).toBe(user.id);
     expect(db.prepare("SELECT id FROM vaults").get().id).toBe(vault.id);
     expect(
-      db.prepare("SELECT count(*) AS n FROM schema_migrations").get().n,
-    ).toBe(19);
+      db.prepare("SELECT count(*) AS n FROM schema_info").get().n,
+    ).toBe(1);
     if (process.platform !== "win32") {
       expect(fs.statSync(path.join(root, "data/auth")).mode & 0o777).toBe(
         0o700,
@@ -101,8 +101,14 @@ describe("identity persistence", () => {
     );
   });
 
-  it("rejects future or modified migration history without bootstrapping over it", () => {
-    db.prepare("UPDATE schema_migrations SET checksum = 'tampered'").run();
+  it("rejects an async transaction callback before it can run", () => {
+    let entered=false;
+    expect(() => transaction(db,async () => {entered=true;await Promise.resolve();})).toThrow(/synchronous/);
+    expect(entered).toBe(false);
+  });
+
+  it("rejects a modified schema marker without bootstrapping over it", () => {
+    db.prepare("UPDATE schema_info SET checksum = 'tampered'").run();
     db.close();
     db = null;
     expect(() => openDatabase(path.join(root, "data"))).toThrow(/schema/);
@@ -172,9 +178,9 @@ describe("identity persistence", () => {
     expect(() => openDatabase(path.join(root, "data"))).toThrow(/Unsafe/);
   });
 
-  it("serializes fresh migrations and administrator bootstrap across processes", async () => {
+  it("serializes schema creation and administrator bootstrap across processes", async () => {
     const location = path.join(root, "concurrent");
-    const code = `const {openDatabase}=require(${JSON.stringify(require.resolve("./database"))});
+    const code = `const {openDatabase}=require(${JSON.stringify(require.resolve("../platform/persistence/database"))});
       const {bootstrapAdmin}=require(${JSON.stringify(require.resolve("./store"))});
       const db=openDatabase(${JSON.stringify(location)});
       try {bootstrapAdmin(db,'admin',${JSON.stringify(fixtureHash)});}
@@ -214,8 +220,8 @@ describe("identity persistence", () => {
     backupDatabase(db, file);
     const future = new DatabaseSync(file);
     future
-      .prepare("INSERT INTO schema_migrations VALUES (99, ?, 0)")
-      .run("future");
+      .prepare("UPDATE schema_info SET version = ?")
+      .run(99);
     future.close();
     expect(() =>
       restoreDatabase(file, path.join(root, "future-target")),
@@ -223,34 +229,19 @@ describe("identity persistence", () => {
   });
 });
 
-describe("migration and crash recovery", () => {
-  it("rolls back every statement of a failed migration", () => {
-    const migrations = require("./schema");
-    migrations.push({
-      version: 8,
-      sql: "CREATE TABLE incomplete(id TEXT); INVALID SQL;",
-    });
-    db.close();
-    db = null;
-    try {
-      expect(() => openDatabase(path.join(root, "data"))).toThrow();
-    } finally {
-      migrations.pop();
-    }
-    db = openDatabase(path.join(root, "data"));
-    expect(
-      db
-        .prepare("SELECT name FROM sqlite_schema WHERE name = 'incomplete'")
-        .get(),
-    ).toBeUndefined();
-    expect(
-      db.prepare("SELECT count(*) AS n FROM schema_migrations").get().n,
-    ).toBe(19);
+describe("schema validation and crash recovery", () => {
+  it("rejects removal of a security trigger without repairing the database", () => {
+    db.exec("DROP TRIGGER protect_last_admin_delete");
+    db.close(); db=null;
+    expect(() => openDatabase(path.join(root,"data"))).toThrow(/schema/);
+    const check = new DatabaseSync(path.join(root,"data/auth/identity.sqlite"),{readOnly:true});
+    try {expect(check.prepare("SELECT name FROM sqlite_schema WHERE name='protect_last_admin_delete'").get()).toBeUndefined();}
+    finally {check.close();}
   });
 
   it("recovers after a process exits in an uncommitted write transaction", async () => {
     bootstrapAdmin(db, "Admin", fixtureHash);
-    const code = `const {openDatabase}=require(${JSON.stringify(require.resolve("./database"))});
+    const code = `const {openDatabase}=require(${JSON.stringify(require.resolve("../platform/persistence/database"))});
       const db=openDatabase(${JSON.stringify(path.join(root, "data"))});
       db.exec("BEGIN IMMEDIATE; UPDATE users SET login = 'uncommitted'");
       process.exit(7);`;
@@ -311,50 +302,15 @@ describe("bootstrap credentials and CLI", () => {
 });
 
 describe("authentication methods independent of users", () => {
-  it("migrates v1 credentials and memberships while revoking legacy sessions", () => {
-    const filename = path.join(root, "legacy/auth/identity.sqlite");
-    fs.mkdirSync(path.dirname(filename), { recursive: true });
-    const legacy = new DatabaseSync(filename);
-    const migration = require("./schema")[0];
-    legacy.exec(
-      "CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, checksum TEXT NOT NULL, applied_at INTEGER NOT NULL) STRICT",
-    );
-    legacy.exec(migration.sql);
-    legacy
-      .prepare("INSERT INTO schema_migrations VALUES (1, ?, 1)")
-      .run(createHash("sha256").update(migration.sql).digest("hex"));
-    legacy
-      .prepare(
-        "INSERT INTO users(id, login, password_hash, role, created_at) VALUES ('existing', 'admin', ?, 'admin', 1)",
-      )
-      .run(fixtureHash);
-    legacy.exec(
-      "INSERT INTO bootstrap_state VALUES (1, 1); INSERT INTO vaults(id,name,directory,status,created_at) VALUES ('vault','Team','Team','active',1); INSERT INTO memberships VALUES ('vault','existing','owner')",
-    );
-    legacy
-      .prepare("INSERT INTO sessions VALUES (?, 'existing', 1, 1, 1, 100)")
-      .run("a".repeat(64));
+  it("rejects a legacy development database without migrating or replacing its bytes", () => {
+    const filename=path.join(root,"legacy/auth/identity.sqlite");
+    fs.mkdirSync(path.dirname(filename),{recursive:true});
+    const legacy=new DatabaseSync(filename);
+    legacy.exec("CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY,checksum TEXT,applied_at INTEGER); INSERT INTO schema_migrations VALUES (19,'old',0); CREATE TABLE sentinel(value TEXT); INSERT INTO sentinel VALUES ('keep me')");
     legacy.close();
-    const upgraded = openDatabase(path.join(root, "legacy"));
-    try {
-      expect(upgraded.prepare("SELECT * FROM users").get()).not.toHaveProperty(
-        "password_hash",
-      );
-      expect(
-        upgraded.prepare("SELECT * FROM local_credentials").get(),
-      ).toMatchObject({ user_id: "existing", password_hash: fixtureHash });
-      expect(
-        upgraded.prepare("SELECT user_id FROM memberships").get().user_id,
-      ).toBe("existing");
-      expect(
-        upgraded.prepare("SELECT user_id FROM sessions").get(),
-      ).toBeUndefined();
-      expect(() => bootstrapAdmin(upgraded, "second", fixtureHash)).toThrow(
-        /already/,
-      );
-    } finally {
-      upgraded.close();
-    }
+    const before=createHash("sha256").update(fs.readFileSync(filename)).digest('hex');
+    expect(() => openDatabase(path.join(root,"legacy"))).toThrow(expect.objectContaining({code:"SCHEMA_INCOMPATIBLE"}));
+    expect(createHash("sha256").update(fs.readFileSync(filename)).digest('hex')).toBe(before);
   });
 
   it("supports external-only users and keys identities by exact issuer and subject", () => {

@@ -2,13 +2,15 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { createHash } = require("node:crypto");
 const { DatabaseSync } = require("node:sqlite");
-const migrations = require("./schema");
+const schema = require("./schema");
 
 function checksum(sql) {
   return createHash("sha256").update(sql).digest("hex");
 }
 
 function transaction(db, fn) {
+  if (Object.prototype.toString.call(fn) === "[object AsyncFunction]")
+    throw new Error("Database transactions must be synchronous");
   db.exec("BEGIN IMMEDIATE");
   try {
     const result = fn();
@@ -34,37 +36,29 @@ function checkIntegrity(db) {
   }
 }
 
-function validateMigrations(db) {
-  const applied = db
-    .prepare("SELECT version, checksum FROM schema_migrations ORDER BY version")
-    .all();
-  for (let i = 0; i < applied.length; i++) {
-    const expected = migrations[i];
-    if (
-      !expected ||
-      applied[i].version !== expected.version ||
-      applied[i].checksum !== checksum(expected.sql)
-    ) {
-      throw new Error("Unsupported or modified identity database schema");
-    }
-  }
-  return applied.length;
+// Compare the actual schema as well as its marker: removing a security trigger
+// must not silently turn an otherwise valid database into an accepted schema.
+const schemaObjects = db => db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT GLOB 'sqlite_*' ORDER BY type,name").all();
+const reference = new DatabaseSync(":memory:");
+let expectedFingerprint;
+try { reference.exec(schema.sql); expectedFingerprint = checksum(JSON.stringify(schemaObjects(reference))); }
+finally { reference.close(); }
+function incompatible() {
+  return Object.assign(new Error("Unsupported identity database schema; preserve the old data and use a new DATA_ROOT for this development version"), {code:"SCHEMA_INCOMPATIBLE"});
 }
-
-function migrate(db) {
+function validateSchema(db, allowEmpty = false) {
+  const objects = schemaObjects(db);
+  if (!objects.length && allowEmpty) return false;
+  if (checksum(JSON.stringify(objects)) !== expectedFingerprint) throw incompatible();
+  const rows = db.prepare("SELECT version,checksum FROM schema_info").all();
+  if (rows.length !== 1 || rows[0].version !== schema.version || rows[0].checksum !== checksum(schema.sql)) throw incompatible();
+  return true;
+}
+function initializeSchema(db) {
   transaction(db, () => {
-    db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
-      version INTEGER PRIMARY KEY, checksum TEXT NOT NULL, applied_at INTEGER NOT NULL
-    ) STRICT`);
-    const count = validateMigrations(db);
-    for (const migration of migrations.slice(count)) {
-      db.exec(migration.sql);
-      db.prepare("INSERT INTO schema_migrations VALUES (?, ?, ?)").run(
-        migration.version,
-        checksum(migration.sql),
-        Date.now(),
-      );
-    }
+    if (validateSchema(db, true)) return;
+    db.exec(schema.sql);
+    db.prepare("INSERT INTO schema_info VALUES (1,?,?)").run(schema.version,checksum(schema.sql));
   });
 }
 
@@ -132,9 +126,11 @@ function openDatabase(dataRoot) {
       enableForeignKeyConstraints: true,
     });
     db.exec("PRAGMA trusted_schema = OFF");
+    // Reject incompatible data before changing its journal mode or schema.
+    validateSchema(db, true);
     enableWal(db);
     db.exec("PRAGMA synchronous = FULL");
-    migrate(db);
+    initializeSchema(db);
     checkIntegrity(db);
     return db;
   } catch (error) {
@@ -156,7 +152,7 @@ function backupDatabase(db, destination) {
     const check = new DatabaseSync(snapshot, { readOnly: true });
     try {
       checkIntegrity(check);
-      validateMigrations(check);
+      validateSchema(check);
     } finally {
       check.close();
     }
@@ -186,8 +182,7 @@ function restoreDatabase(source, dataRoot) {
   try {
     db = new DatabaseSync(source, { readOnly: true });
     checkIntegrity(db);
-    if (validateMigrations(db) !== migrations.length)
-      throw new Error("Backup schema is not current");
+    validateSchema(db);
     const destination = path.join(directory, "identity.sqlite");
     backupDatabase(db, destination);
     // Restoring an older snapshot must not resurrect browser sessions revoked since backup.
