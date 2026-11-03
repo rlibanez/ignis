@@ -1,7 +1,7 @@
 import { it, expect } from "vitest";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { createJwksFetch } = require("./jwks");
+const { createJwksFetch } = require("../../features/identity/adapters/oidc/jwks.js");
 const valid = () => Response.json({ keys: [{ kty: "EC", kid: "synthetic" }] });
 it("coalesces concurrent refreshes without sharing a consumed response body", async () => {
   let release,

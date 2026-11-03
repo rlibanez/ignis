@@ -2,10 +2,10 @@ import { it, expect, beforeEach, afterEach } from "vitest";
 import { DatabaseSync } from "node:sqlite";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { issuePasswordReset, completePasswordReset } = require("./password-reset");
-const { hashPassword, verifyPassword } = require("./password");
-const { createSessionService } = require("./sessions");
-const policy = require("./password-policy").readPasswordPolicy();
+const { issuePasswordReset, completePasswordReset } = require("../features/identity/adapters/password-reset.js");
+const { hashPassword, verifyPassword } = require("../features/identity/adapters/password.js");
+const { createSessionService } = require("../features/identity/adapters/sessions.js");
+const policy = require("../features/identity/adapters/password-policy.js").readPasswordPolicy();
 const oldPassword = "previous-password!123";
 const newPassword = "replacement-password!123";
 let db, time, sessions, originalHash;
@@ -120,7 +120,7 @@ it("persists the reset requirement across database reopen and consumes a persist
   } finally { disk?.close(); fs.rmSync(root, { recursive: true, force: true }); }
 });
 
-const { beginPasswordReset, readPasswordResetGrant, completePasswordResetGrant } = require("./password-reset");
+const { beginPasswordReset, readPasswordResetGrant, completePasswordResetGrant } = require("../features/identity/adapters/password-reset.js");
 it("binds temporary login to username, consumes it once and grants only password reset", async () => {
   const { secret } = issue();
   expect(beginPasswordReset(db, "admin", secret, options)).toBeNull();
@@ -158,7 +158,7 @@ it("rolls back exchange on audit failure and rejects simultaneous grant redempti
 });
 
 it("requires the existing password, revokes sessions and prevents OIDC bypass until a different password is chosen", async () => {
-  const { changeUserStatus } = require("./users");
+  const { changeUserStatus } = require("../features/identity/adapters/users.js");
   const session = await sessions.loginLocal("target", oldPassword);
   changeUserStatus(db, "admin", "target", "active", "active", { ...options,
     passwordUpdate: { requirePasswordChange: true, expectedPasswordChangeRequired: false } });
@@ -168,7 +168,7 @@ it("requires the existing password, revokes sessions and prevents OIDC bypass un
   const result = await sessions.loginLocal("target", oldPassword);
   expect(result.session).toBeUndefined();
   expect(db.prepare("SELECT count(*) n FROM sessions").get().n).toBe(0);
-  const { readPasswordResetGrant, completePasswordResetGrant } = require("./password-reset");
+  const { readPasswordResetGrant, completePasswordResetGrant } = require("../features/identity/adapters/password-reset.js");
   const grant = readPasswordResetGrant(db, result.passwordChange.token, options);
   await expect(completePasswordResetGrant(db, result.passwordChange.token, grant.context, oldPassword, policy, options)).rejects.toMatchObject({ code: "PASSWORD_UNCHANGED" });
   await completePasswordResetGrant(db, result.passwordChange.token, grant.context, newPassword, policy, options);
@@ -178,12 +178,12 @@ it("requires the existing password, revokes sessions and prevents OIDC bypass un
   expect((await sessions.loginLocal("target", newPassword)).session.user.id).toBe("target");
 });
 it("keeps the requirement after grant expiry and invalidates grants on cancellation or a newer login", async () => {
-  const { changeUserStatus } = require("./users");
+  const { changeUserStatus } = require("../features/identity/adapters/users.js");
   const update = value => changeUserStatus(db, "admin", "target", "active", "active", { ...options, passwordUpdate: { requirePasswordChange: value, expectedPasswordChangeRequired: !value } });
   update(true);
   const first = (await sessions.loginLocal("target", oldPassword)).passwordChange;
   time += 3600001;
-  const { readPasswordResetGrant } = require("./password-reset");
+  const { readPasswordResetGrant } = require("../features/identity/adapters/password-reset.js");
   expect(readPasswordResetGrant(db, first.token, options)).toBeNull();
   const next = (await sessions.loginLocal("target", oldPassword)).passwordChange;
   expect(readPasswordResetGrant(db, next.token, options)).not.toBeNull();
@@ -194,7 +194,7 @@ it("keeps the requirement after grant expiry and invalidates grants on cancellat
   expect((await sessions.loginLocal("target", oldPassword)).session).toBeTruthy();
 });
 it("restricts changes to administrators and local-password accounts and rejects stale updates", async () => {
-  const { changeUserStatus, createLocalUser } = require("./users");
+  const { changeUserStatus, createLocalUser } = require("../features/identity/adapters/users.js");
   const passwordUpdate = { requirePasswordChange: true, expectedPasswordChangeRequired: false };
   expect(() => changeUserStatus(db, "target", "target", "active", "active", { ...options, passwordUpdate })).toThrow();
   expect(() => changeUserStatus(db, "admin", "admin", "active", "active", { ...options, passwordUpdate })).toThrow();

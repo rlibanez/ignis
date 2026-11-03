@@ -1,6 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { createSessionCookies } = require("../session-cookies");
+const { createSessionCookies } = require("../../../../auth/session-cookies");
 
 // Confidential-client policy shared by HTTP login, linking and reauthentication.
 function readOidcConfig(env = process.env, transport) {

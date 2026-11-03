@@ -5,8 +5,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 const require = createRequire(import.meta.url);
-const { readOidcConfig } = require("./config");
-const { createOidcTransactions } = require("./transactions");
+const { readOidcConfig } = require("../../features/identity/adapters/oidc/config.js");
+const { createOidcTransactions } = require("../../features/identity/adapters/oidc/transactions.js");
 const transport = {
   publicOrigin: "https://ignis.example",
   allowHttpLoopback: false,

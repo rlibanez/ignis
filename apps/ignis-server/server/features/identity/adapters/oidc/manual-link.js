@@ -1,5 +1,5 @@
-const { createOidcLogin } = require("./login");
-const { linkOidcAccount } = require("./accounts");
+const { createOidcLogin } = require("./login.js");
+const { linkOidcAccount } = require("./accounts.js");
 
 // Own transaction store separates linking attempts from normal login attempts.
 // HTTP integration must enforce CSRF/origin on begin and obtain tokens from cookies.

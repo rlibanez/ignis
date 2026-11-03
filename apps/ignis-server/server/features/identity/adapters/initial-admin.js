@@ -3,9 +3,9 @@ const { createHash, timingSafeEqual } = require("node:crypto");
 const {
   readPasswordPolicy,
   meetsPasswordPolicy,
-} = require("./password-policy");
-const { hashPassword } = require("./password");
-const { bootstrapAdmin, normalizeLogin } = require("./store");
+} = require("./password-policy.js");
+const { hashPassword } = require("./password.js");
+const { bootstrapAdmin, normalizeLogin } = require("./store.js");
 const digest = (value) => createHash("sha256").update(value).digest();
 
 function readInitialAdminKey(env) {

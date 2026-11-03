@@ -7,7 +7,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { openDatabase } = require("../platform/persistence/database");
 const { registrationOptions, registerExistingVault, inspectDirectory } = require("./vault-registration");
-const { registerVault } = require("./store");
+const { registerVault } = require("../features/identity/adapters/store.js");
 let root, vaultRoot, db;
 beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "ignis-register-"));

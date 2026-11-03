@@ -1,10 +1,10 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { createHash } = require("node:crypto");
-const { readOidcConfig } = require("./config");
-const { initializeOidcClient } = require("./discovery");
-const { createOidcAccountLogin } = require("./account-login");
-const { createManualOidcLink } = require("./manual-link");
+const { readOidcConfig } = require("./config.js");
+const { initializeOidcClient } = require("./discovery.js");
+const { createOidcAccountLogin } = require("./account-login.js");
+const { createManualOidcLink } = require("./manual-link.js");
 function readNetworkOptions(env) {
   try {
     const parse = (name, fallback) => {
@@ -57,7 +57,7 @@ async function createOidcRuntime(
   if (!config) return null;
   const network = readNetworkOptions(env);
   // Validate local policy now, without contacting the provider.
-  require("./transport").createOidcTransport({
+  require("./transport.js").createOidcTransport({
     ...network,
     origins: [new URL(config.issuer).origin, ...network.allowedOrigins],
   }, dependencies);
@@ -70,7 +70,7 @@ async function createOidcRuntime(
         const configuration = await initializeOidcClient(config, network, dependencies);
         const nextLogin = await createOidcAccountLogin(db, config, configuration, cookiePolicy, sessions);
         const nextManual = await createManualOidcLink(db, config, configuration, cookiePolicy, sessions);
-        const nextReauth = await require("./login").createOidcLogin(config, configuration, cookiePolicy, { freshAuthentication: true });
+        const nextReauth = await require("./login.js").createOidcLogin(config, configuration, cookiePolicy, { freshAuthentication: true });
         if (closed) {
           nextReauth.clear();
           nextLogin.clear();
@@ -90,7 +90,7 @@ async function createOidcRuntime(
     }
     await initializing;
   };
-  const bindingCookie = require("../session-cookies").createSessionCookies({
+  const bindingCookie = require("../../../../auth/session-cookies").createSessionCookies({
     ...cookiePolicy,
     purpose: "oidc",
   });
@@ -108,7 +108,7 @@ async function createOidcRuntime(
       return !closed && passwordAuthorizations.get(sessionId)?.userId === userId;
     },
     unlink(actorId, userId, options) {
-      return require("../users").unlinkUserOidc(db, actorId, userId, config.issuer, options);
+      return require("../users.js").unlinkUserOidc(db, actorId, userId, config.issuer, options);
     },
     linked(userId) {
       return !!db

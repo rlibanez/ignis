@@ -20,6 +20,12 @@ it('rejects infrastructure in pure contracts, reverse platform imports and indir
     put('apps/ignis-server/server/auth/service.js',"require('../app/service');");
     expect(()=>checkArchitecture(root)).toThrow('Architecture cycle');
     put('apps/ignis-server/server/auth/service.js','module.exports={};');
+    put('apps/ignis-server/server/features/identity/application/use-case.js',"require('node:fs');");
+    expect(()=>checkArchitecture(root)).toThrow('Identity use case imports infrastructure');
+    put('apps/ignis-server/server/features/identity/application/use-case.js','module.exports={};');
+    put('apps/ignis-server/server/transport/http/identity/route.js',"require('../../../features/identity/adapters/store');");
+    expect(()=>checkArchitecture(root)).toThrow('Identity HTTP imports persistence');
+    put('apps/ignis-server/server/transport/http/identity/route.js','module.exports={};');
     put('packages/management/src/new.js',"import '../../../apps/ignis-server/server/auth/service.js';");
     expect(()=>checkArchitecture(root)).toThrow('New client-to-server');
   }finally{fs.rmSync(root,{recursive:true,force:true});}

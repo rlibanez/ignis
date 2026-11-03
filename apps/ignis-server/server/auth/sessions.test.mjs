@@ -6,8 +6,8 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 const require = createRequire(import.meta.url);
 const { openDatabase, backupDatabase, restoreDatabase } = require("../platform/persistence/database");
-const { hashPassword, verifyPassword } = require("./password");
-const { createSessionService } = require("./sessions");
+const { hashPassword, verifyPassword } = require("../features/identity/adapters/password.js");
+const { createSessionService } = require("../features/identity/adapters/sessions.js");
 const PASSWORD = "a synthetic test passphrase";
 let encoded, root, db, clock, service;
 

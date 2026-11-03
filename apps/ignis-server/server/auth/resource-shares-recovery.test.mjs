@@ -6,7 +6,7 @@ import {spawn} from 'node:child_process';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
 const {openDatabase}=require('../platform/persistence/database');
-const {registerVault}=require('./store');
+const {registerVault}=require('../features/identity/adapters/store.js');
 const {createResourceSharesService}=require('./resource-shares');
 const sessions={resolve:id=>({user:{id,authVersion:1}})};
 function fixture(base=os.tmpdir()){

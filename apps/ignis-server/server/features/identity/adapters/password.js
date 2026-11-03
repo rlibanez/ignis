@@ -1,7 +1,7 @@
 const {
   readPasswordPolicy,
   meetsPasswordPolicy,
-} = require("./password-policy");
+} = require("./password-policy.js");
 const { randomBytes, scrypt, timingSafeEqual } = require("node:crypto");
 const { promisify } = require("node:util");
 const derive = promisify(scrypt);

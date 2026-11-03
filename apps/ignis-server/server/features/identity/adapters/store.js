@@ -1,5 +1,5 @@
 const { randomUUID } = require("node:crypto");
-const { transaction } = require("../platform/persistence/database");
+const { transaction } = require("../../../platform/persistence/database");
 
 function normalizeLogin(login) {
   if (
@@ -51,7 +51,7 @@ function bootstrapAdmin(db, login, passwordHash) {
 
 // Registration only: no filesystem mutation, implicit discovery or HTTP access grant.
 function registerVault(db, vaultRoot, directory, ownerId) {
-  return require("./vault-registration").registerExistingVault(db, vaultRoot, directory, ownerId);
+  return require("../../../auth/vault-registration").registerExistingVault(db, vaultRoot, directory, ownerId);
 }
 
 module.exports = { normalizeLogin, bootstrapAdmin, registerVault };

@@ -1,6 +1,6 @@
 const { isIP } = require("node:net");
 const dns = require("node:dns");
-const { isPublicAddress } = require("../../auth/oidc/transport");
+const { isPublicAddress } = require("../../features/identity/adapters/oidc/transport.js");
 // Normal accounts never inherit private-network exceptions intended for admins.
 function publicLookup(hostname, options, callback) {
   dns.lookup(hostname, { ...options, all: true }, (error, addresses) => {

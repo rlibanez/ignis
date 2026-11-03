@@ -4,7 +4,7 @@ const {createApplication} = require('./app/create-application');
 function logStartupFailure(error) {
   const event = error?.code === 'SCHEMA_INCOMPATIBLE'
     ? 'server.schema_incompatible'
-    : require('./auth/oidc/startup-error').startupLogEvent(error);
+    : require('./features/identity/adapters/oidc/startup-error.js').startupLogEvent(error);
   logging.emit('error',event);
 }
 

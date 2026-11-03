@@ -1,7 +1,7 @@
-const { transaction } = require("../platform/persistence/database");
+const { transaction } = require("../../../platform/persistence/database");
 const { randomUUID } = require("node:crypto");
-const { hashPassword, verifyPassword } = require("./password");
-const { meetsPasswordPolicy } = require("./password-policy");
+const { hashPassword, verifyPassword } = require("./password.js");
+const { meetsPasswordPolicy } = require("./password-policy.js");
 
 async function changePassword(db, userId, currentPassword, newPassword, policy, { isCurrent } = {}) {
   const fail = (code) => { throw Object.assign(new Error("Password change rejected"), { code }); };

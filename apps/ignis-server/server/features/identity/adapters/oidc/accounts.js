@@ -1,7 +1,7 @@
 const { randomUUID } = require("node:crypto");
-const { transaction } = require("../../platform/persistence/database");
-const { normalizeLogin } = require("../store");
-const { normalizeEmail } = require("../email");
+const { transaction } = require("../../../../platform/persistence/database");
+const { normalizeLogin } = require("../store.js");
+const { normalizeEmail } = require("../email.js");
 const modes = [
   "disabled",
   "preferred_username",

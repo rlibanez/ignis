@@ -27,8 +27,8 @@ const runs=integer(options.runs,'runs',1,10),samples=integer(options.samples,'sa
 if(options.output){fs.mkdirSync(path.dirname(path.resolve(options.output)),{recursive:true});fs.writeFileSync(options.output,'',{flag:'wx'});}
 const require=createRequire(import.meta.url);
 const {openDatabase}=require('../apps/ignis-server/server/platform/persistence/database');
-const {bootstrapAdmin,registerVault}=require('../apps/ignis-server/server/auth/store');
-const {hashPassword}=require('../apps/ignis-server/server/auth/password');
+const {bootstrapAdmin,registerVault}=require('../apps/ignis-server/server/features/identity/adapters/store.js');
+const {hashPassword}=require('../apps/ignis-server/server/features/identity/adapters/password.js');
 const {createResourceSharesService}=require('../apps/ignis-server/server/auth/resource-shares');
 function launch(root, env = {}) {
   const child = spawn(

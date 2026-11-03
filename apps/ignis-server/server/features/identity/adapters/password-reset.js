@@ -1,7 +1,7 @@
 const { randomBytes, randomUUID, createHash } = require("node:crypto");
-const { transaction } = require("../platform/persistence/database");
-const { hashPassword, verifyPassword } = require("./password");
-const { meetsPasswordPolicy } = require("./password-policy");
+const { transaction } = require("../../../platform/persistence/database");
+const { hashPassword, verifyPassword } = require("./password.js");
+const { meetsPasswordPolicy } = require("./password-policy.js");
 const digest = secret => createHash("sha256").update(secret).digest("hex");
 const fail = code => { throw Object.assign(new Error("Password reset rejected"), { code }); };
 

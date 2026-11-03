@@ -2,9 +2,9 @@ import { it, expect, beforeEach, afterEach } from "vitest";
 import { DatabaseSync } from "node:sqlite";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { changePassword } = require("./change-password");
-const { hashPassword, verifyPassword } = require("./password");
-const { readPasswordPolicy } = require("./password-policy");
+const { changePassword } = require("../features/identity/adapters/change-password.js");
+const { hashPassword, verifyPassword } = require("../features/identity/adapters/password.js");
+const { readPasswordPolicy } = require("../features/identity/adapters/password-policy.js");
 const policy = readPasswordPolicy({});
 const old = "old-test-password", next = "new-test-password";
 let db;
@@ -18,7 +18,7 @@ afterEach(() => db.close());
 const credential = () => db.prepare("SELECT password_hash FROM local_credentials WHERE user_id='u'").get().password_hash;
 it("updates the hash, revokes sessions and preserves OIDC identity", async () => {
   db.exec("INSERT INTO oidc_identities VALUES ('https://idp.example','sub','u',0)");
-  const sessions = require("./sessions").createSessionService(db);
+  const sessions = require("../features/identity/adapters/sessions.js").createSessionService(db);
   const local = await sessions.loginLocal("user", old);
   const oidc = sessions.issueForVerifiedOidcIdentity({ issuer: "https://idp.example", subject: "sub", authenticatedAt: Date.now() });
   await changePassword(db, "u", old, next, policy, { isCurrent: () => true });
@@ -59,7 +59,7 @@ it("does not create credentials for an OIDC-only account", async () => {
   expect(db.prepare("SELECT count(*) n FROM local_credentials").get().n).toBe(0);
 });
 
-const { setOwnLocalPassword } = require('./change-password');
+const { setOwnLocalPassword } = require('../features/identity/adapters/change-password.js');
 async function externalAccount() {
   db.exec("DELETE FROM local_credentials WHERE user_id='u'; INSERT INTO oidc_identities VALUES ('https://idp.example','sub','u',0)");
   return {user:{id:'u'},method:'oidc',issuer:'https://idp.example',subject:'sub',authenticatedAt:1000000};

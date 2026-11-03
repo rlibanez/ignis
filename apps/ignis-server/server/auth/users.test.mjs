@@ -2,8 +2,8 @@ import { it, expect, beforeEach, afterEach } from "vitest";
 import { DatabaseSync } from "node:sqlite";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { createLocalUser, listUsers } = require("./users");
-const { verifyPassword } = require("./password");
+const { createLocalUser, listUsers } = require("../features/identity/adapters/users.js");
+const { verifyPassword } = require("../features/identity/adapters/password.js");
 let db;
 const password = "a-long-test-password!123";
 beforeEach(() => {
@@ -74,11 +74,11 @@ it("rejects a session revoked while password hashing is in flight", async () => 
   expect(db.prepare("SELECT count(*) n FROM audit_events").get().n).toBe(0);
 });
 
-const { changeUserStatus } = require("./users");
+const { changeUserStatus } = require("../features/identity/adapters/users.js");
 it("changes status atomically, revokes sessions and retains credentials and OIDC bindings", async () => {
   const user = await createLocalUser(db, "admin", "target", password);
   db.prepare("INSERT INTO oidc_identities VALUES ('https://provider.example','subject',?,0)").run(user.id);
-  const sessions = require("./sessions").createSessionService(db);
+  const sessions = require("../features/identity/adapters/sessions.js").createSessionService(db);
   const local = await sessions.loginLocal("target", password);
   const external = sessions.issueForVerifiedOidcIdentity({
     issuer: "https://provider.example", subject: "subject", authenticatedAt: Date.now(),
@@ -111,11 +111,11 @@ it("rejects stale status snapshots and rolls back on audit failure", () => {
   expect(db.prepare("SELECT status,auth_version FROM users WHERE id='normal'").get()).toEqual({ status: "active", auth_version: before });
 });
 
-const { revokeUserSessions } = require("./users");
+const { revokeUserSessions } = require("../features/identity/adapters/users.js");
 it("revokes all local and OIDC sessions without changing account status or credentials", async () => {
   const user = await createLocalUser(db, "admin", "revoke-target", password);
   db.prepare("INSERT INTO oidc_identities VALUES ('https://provider.example','revoke-sub',?,0)").run(user.id);
-  const sessions = require("./sessions").createSessionService(db);
+  const sessions = require("../features/identity/adapters/sessions.js").createSessionService(db);
   const local = await sessions.loginLocal(user.login, password);
   const oidc = sessions.issueForVerifiedOidcIdentity({
     issuer: "https://provider.example", subject: "revoke-sub", authenticatedAt: Date.now(),
@@ -148,12 +148,12 @@ it("rejects unauthorized revocation and rolls back if auditing fails", () => {
   expect(db.prepare("SELECT auth_version FROM users WHERE id='normal'").get().auth_version).toBe(before);
 });
 
-const { unlinkUserOidc } = require("./users");
+const { unlinkUserOidc } = require("../features/identity/adapters/users.js");
 it("unlinks only the configured issuer, revokes sessions and retains local access", async () => {
   const user = await createLocalUser(db, "admin", "unlink-target", password);
   for (const issuer of ["https://current.example", "https://other.example"])
     db.prepare("INSERT INTO oidc_identities VALUES (?, 'subject', ?, 0)").run(issuer, user.id);
-  const sessions = require("./sessions").createSessionService(db);
+  const sessions = require("../features/identity/adapters/sessions.js").createSessionService(db);
   const local = await sessions.loginLocal(user.login, password);
   const external = sessions.issueForVerifiedOidcIdentity({
     issuer: "https://current.example", subject: "subject", authenticatedAt: Date.now(),
@@ -176,7 +176,7 @@ it("rejects removing the only login method and unauthorized or stale actors", ()
 it("rolls back unlink and session revocation if the audit write fails", async () => {
   const user = await createLocalUser(db, "admin", "rollback-target", password);
   db.prepare("INSERT INTO oidc_identities VALUES ('https://current.example','subject',?,0)").run(user.id);
-  const sessions = require("./sessions").createSessionService(db);
+  const sessions = require("../features/identity/adapters/sessions.js").createSessionService(db);
   const local = await sessions.loginLocal(user.login, password);
   db.exec("CREATE TRIGGER fail_unlink_audit BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END");
   expect(() => unlinkUserOidc(db, "admin", user.id, "https://current.example")).toThrow();
@@ -194,7 +194,7 @@ it("creates optional emails atomically with explicit admin confirmation", async 
 it("resets email trust on change, rejects stale edits and rolls back status on duplicate email", async () => {
   const user = await createLocalUser(db, "admin", "edit-email", password, undefined, { email: "old@example.com", emailVerified: true });
   const options = { emailUpdate: { email: "new@example.com", emailVerified: false, expectedEmail: "old@example.com", expectedEmailTrust: "admin_confirmed" } };
-  const sessions = require("./sessions").createSessionService(db);
+  const sessions = require("../features/identity/adapters/sessions.js").createSessionService(db);
   const session = await sessions.loginLocal(user.login, password);
   changeUserStatus(db, "admin", user.id, "active", "active", options);
   expect(sessions.resolve(session.token)).toBeNull();
@@ -205,12 +205,12 @@ it("resets email trust on change, rejects stale edits and rolls back status on d
   expect(db.prepare("SELECT status FROM users WHERE id=?").get(user.id).status).toBe("active");
 });
 
-const { setInitialLocalPassword } = require("./users");
-const setupPolicy = require("./password-policy").readPasswordPolicy();
+const { setInitialLocalPassword } = require("../features/identity/adapters/users.js");
+const setupPolicy = require("../features/identity/adapters/password-policy.js").readPasswordPolicy();
 const currentAdmin = { isCurrent: () => true };
 function oidcOnly() {
   db.exec("INSERT INTO oidc_identities VALUES ('https://provider.example','initial-sub','normal',0)");
-  const sessions = require("./sessions").createSessionService(db);
+  const sessions = require("../features/identity/adapters/sessions.js").createSessionService(db);
   const session = sessions.issueForVerifiedOidcIdentity({ issuer: "https://provider.example", subject: "initial-sub", authenticatedAt: Date.now() });
   return { sessions, session };
 }
@@ -220,7 +220,7 @@ it("sets a first password, revokes sessions, preserves OIDC and allows subsequen
   expect(sessions.resolve(session.token)).toBeNull();
   expect(db.prepare("SELECT count(*) n FROM oidc_identities").get().n).toBe(1);
   expect(db.prepare("SELECT actor_id,action,resource_id FROM audit_events").get()).toEqual({ actor_id: "admin", action: "set-initial-local-password", resource_id: "normal" });
-  require("./users").unlinkUserOidc(db, "admin", "normal", "https://provider.example");
+  require("../features/identity/adapters/users.js").unlinkUserOidc(db, "admin", "normal", "https://provider.example");
   expect(await sessions.loginLocal("normal", password)).not.toBeNull();
   await expect(setInitialLocalPassword(db, "admin", "normal", password, setupPolicy, currentAdmin)).rejects.toMatchObject({ code: "LOCAL_PASSWORD_EXISTS" });
 });
@@ -258,7 +258,7 @@ it("does not overwrite a password when two setup requests race", async () => {
 
 it("requires explicit promotion confirmation and revokes sessions on promotion and demotion", async () => {
   const user = await createLocalUser(db, "admin", "role-target", password);
-  const sessions = require("./sessions").createSessionService(db);
+  const sessions = require("../features/identity/adapters/sessions.js").createSessionService(db);
   const original = await sessions.loginLocal(user.login, password);
   const roleUpdate = { role: "admin", expectedRole: "user", confirmAdmin: false };
   expect(() => changeUserStatus(db, "admin", user.id, "active", "active", { roleUpdate })).toThrow();
@@ -298,7 +298,7 @@ it("protects the last administrator and rolls back combined email/status/role ed
 it("allows normal users to unlink only themselves with a current session and local password", async () => {
   const user = await createLocalUser(db, "admin", "self-unlink", password);
   db.prepare("INSERT INTO oidc_identities VALUES ('https://current.example','self-sub',?,0)").run(user.id);
-  const sessions = require("./sessions").createSessionService(db);
+  const sessions = require("../features/identity/adapters/sessions.js").createSessionService(db);
   const login = await sessions.loginLocal(user.login, password);
   const second = await sessions.loginLocal(user.login, password);
   expect(() => unlinkUserOidc(db, user.id, user.id, "https://current.example", {self:true})).toThrow();

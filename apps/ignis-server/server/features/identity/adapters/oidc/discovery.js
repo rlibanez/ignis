@@ -1,6 +1,6 @@
-const { createJwksFetch } = require("./jwks");
-const { createOidcTransport } = require("./transport");
-const { validateOidcMetadata } = require("./metadata");
+const { createJwksFetch } = require("./jwks.js");
+const { createOidcTransport } = require("./transport.js");
+const { validateOidcMetadata } = require("./metadata.js");
 
 // Backend initialization only. No HTTP route or session issuance in this module.
 async function initializeOidcClient(

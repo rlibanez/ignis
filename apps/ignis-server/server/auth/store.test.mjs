@@ -14,8 +14,8 @@ const {
   backupDatabase,
   restoreDatabase,
 } = require("../platform/persistence/database");
-const { bootstrapAdmin, normalizeLogin, registerVault } = require("./store");
-const { hashPassword } = require("./password");
+const { bootstrapAdmin, normalizeLogin, registerVault } = require("../features/identity/adapters/store.js");
+const { hashPassword } = require("../features/identity/adapters/password.js");
 const fixtureHash =
   "scrypt$131072$8$1$" + "ab".repeat(16) + "$" + "cd".repeat(64);
 let root, db;
@@ -181,7 +181,7 @@ describe("identity persistence", () => {
   it("serializes schema creation and administrator bootstrap across processes", async () => {
     const location = path.join(root, "concurrent");
     const code = `const {openDatabase}=require(${JSON.stringify(require.resolve("../platform/persistence/database"))});
-      const {bootstrapAdmin}=require(${JSON.stringify(require.resolve("./store"))});
+      const {bootstrapAdmin}=require(${JSON.stringify(require.resolve("../features/identity/adapters/store.js"))});
       const db=openDatabase(${JSON.stringify(location)});
       try {bootstrapAdmin(db,'admin',${JSON.stringify(fixtureHash)});}
       catch(e) {if(e.message.includes('already')) process.exitCode=3; else throw e;}

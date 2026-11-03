@@ -3,8 +3,8 @@ import https from "node:https";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { initializeOidcClient } = require("./discovery");
-const { readOidcConfig } = require("./config");
+const { initializeOidcClient } = require("../../features/identity/adapters/oidc/discovery.js");
+const { readOidcConfig } = require("../../features/identity/adapters/oidc/config.js");
 const cert = fs.readFileSync(
   new URL("./fixtures/localhost-cert.pem", import.meta.url),
 );

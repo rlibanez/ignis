@@ -43,6 +43,12 @@ export function checkArchitecture(root=repository){
       const relative=specifier.startsWith('.');
       const resolved=relative?path.resolve(path.dirname(file),specifier):null;
       const target=resolved?path.relative(root,resolved).split(path.sep).join('/'):specifier;
+      if(name.startsWith('apps/ignis-server/server/features/identity/application/') &&
+        (!relative || !(target.startsWith('apps/ignis-server/server/features/identity/application/') || target.startsWith('packages/contracts/'))))
+        errors.push(`Identity use case imports infrastructure: ${name} -> ${target}`);
+      if(name.startsWith('apps/ignis-server/server/transport/http/identity/') &&
+        (target.includes('/features/identity/adapters/') || target.includes('/platform/persistence/') || specifier==='node:sqlite'))
+        errors.push(`Identity HTTP imports persistence: ${name} -> ${target}`);
       if(name.startsWith('packages/contracts/') && (!relative || !target.startsWith('packages/contracts/')))errors.push(`Pure contract imports infrastructure: ${name} -> ${specifier}`);
       if(name.startsWith('apps/ignis-server/server/platform/') && relative && !target.startsWith('apps/ignis-server/server/platform/'))errors.push(`Platform imports an application layer: ${name} -> ${target}`);
       if(name.startsWith('packages/') && relative && target.startsWith('apps/') && !legacyClientEdges.has(`${name} -> ${target}`))errors.push(`New client-to-server import: ${name} -> ${target}`);
@@ -55,7 +61,7 @@ export function checkArchitecture(root=repository){
   }
   // New architectural modules must not participate in cycles, including indirect
   // paths through legacy adapters. Existing unrelated upstream cycles are out of scope.
-  const owned=name=>name.startsWith('packages/contracts/') || /^apps\/ignis-server\/server\/(app|platform|integration)\//.test(name);
+  const owned=name=>name.startsWith('packages/contracts/') || /^apps\/ignis-server\/server\/(app|platform|integration|features\/identity)\//.test(name);
   for(const start of [...graph.keys()].filter(owned)){
     const seen=new Set();
     const visit=(node,chain)=>{

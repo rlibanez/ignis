@@ -3,7 +3,7 @@ import https from "node:https";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { createOidcTransport, isPublicAddress } = require("./transport");
+const { createOidcTransport, isPublicAddress } = require("../../features/identity/adapters/oidc/transport.js");
 const cert = fs.readFileSync(
   new URL("./fixtures/localhost-cert.pem", import.meta.url),
 );

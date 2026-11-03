@@ -5,7 +5,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { openDatabase } = require("../platform/persistence/database");
-const { registerVault } = require("./store");
+const { registerVault } = require("../features/identity/adapters/store.js");
 const { resolveRegisteredVault, listRegisteredVaults } = require("./vault-catalog");
 const { selectVaultReference } = require("./vault-selection");
 let root, vaultRoot, db, registered;

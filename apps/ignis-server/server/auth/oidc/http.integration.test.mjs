@@ -12,8 +12,8 @@ const express = require("express");
 const { createSecurity } = require("../../app/create-security");
 const { readAuthConfig } = require("../http-policy");
 const { openDatabase } = require("../../platform/persistence/database");
-const { bootstrapAdmin } = require("../store");
-const { hashPassword } = require("../password");
+const { bootstrapAdmin } = require("../../features/identity/adapters/store.js");
+const { hashPassword } = require("../../features/identity/adapters/password.js");
 const ORIGIN = "http://localhost:8080";
 const certPath = new URL("./fixtures/localhost-cert.pem", import.meta.url);
 let idp,
@@ -401,7 +401,7 @@ it("bounds repeated OIDC starts and validates network configuration without expo
   const jar = {};
   for (let i = 0; i < 10; i++) await post("/api/auth/oidc/start", jar);
   expect((await post("/api/auth/oidc/start", jar)).status).toBe(429);
-  const { readNetworkOptions } = require("./runtime");
+  const { readNetworkOptions } = require("../../features/identity/adapters/oidc/runtime.js");
   for (const env of [
     { IGNIS_OIDC_ALLOWED_ORIGINS: "{}" },
     { IGNIS_OIDC_PRIVATE_ADDRESSES: "[]" },

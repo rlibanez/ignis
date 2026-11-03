@@ -1,5 +1,5 @@
-const { createOidcLogin } = require("./login");
-const { resolveOidcAccount } = require("./accounts");
+const { createOidcLogin } = require("./login.js");
+const { resolveOidcAccount } = require("./accounts.js");
 
 // Trusted HTTP adapter receives a new opaque session; provider tokens never escape login.
 async function createOidcAccountLogin(

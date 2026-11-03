@@ -1,8 +1,8 @@
-const { readPasswordPolicy } = require("./password-policy");
+const { readPasswordPolicy } = require("../features/identity/adapters/password-policy.js");
 const fs = require("node:fs");
 const path = require("node:path");
 const net = require("node:net");
-const { readInitialAdminKey } = require("./initial-admin");
+const { readInitialAdminKey } = require("../features/identity/adapters/initial-admin.js");
 
 const { dataRoutePolicy } = require("./route-manifest");
 

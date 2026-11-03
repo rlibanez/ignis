@@ -1,7 +1,7 @@
 import { it, expect } from "vitest";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { validateOidcMetadata: validate } = require("./metadata");
+const { validateOidcMetadata: validate } = require("../../features/identity/adapters/oidc/metadata.js");
 const config = { issuer: "https://idp.example/realm/demo" };
 const base = () => ({
   issuer: config.issuer,

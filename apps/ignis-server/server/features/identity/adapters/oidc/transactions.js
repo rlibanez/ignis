@@ -1,5 +1,5 @@
 const { createHash, randomBytes, timingSafeEqual } = require("node:crypto");
-const { createSessionCookies } = require("../session-cookies");
+const { createSessionCookies } = require("../../../../auth/session-cookies");
 const hash = (value) => createHash("sha256").update(value).digest();
 const browserFormat = /^[a-f0-9]{64}$/;
 const stateFormat = /^[A-Za-z0-9_-]{43}$/;

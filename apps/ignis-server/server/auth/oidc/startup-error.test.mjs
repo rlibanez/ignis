@@ -1,8 +1,8 @@
 import { it, expect } from "vitest";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { startupErrorMessage } = require("./startup-error");
-const { readOidcConfig } = require("./config");
+const { startupErrorMessage } = require("../../features/identity/adapters/oidc/startup-error.js");
+const { readOidcConfig } = require("../../features/identity/adapters/oidc/config.js");
 const policy = {
   publicOrigin: "https://ignis.example",
   allowHttpLoopback: false,

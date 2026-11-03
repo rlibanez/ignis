@@ -4,8 +4,8 @@ const require = createRequire(import.meta.url);
 const {
   readPasswordPolicy,
   meetsPasswordPolicy,
-} = require("./password-policy");
-const { hashPassword, verifyPassword } = require("./password");
+} = require("../features/identity/adapters/password-policy.js");
+const { hashPassword, verifyPassword } = require("../features/identity/adapters/password.js");
 it("defaults to eight Unicode characters without composition requirements", () => {
   const policy = readPasswordPolicy({});
   expect(policy).toEqual({ minLength: 8, minSpecialChars: 0, maxBytes: 1024 });

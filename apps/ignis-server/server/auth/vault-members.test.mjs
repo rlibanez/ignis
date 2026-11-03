@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 const require=createRequire(import.meta.url);
 const {openDatabase}=require("../platform/persistence/database");
-const {registerVault}=require("./store");
+const {registerVault}=require("../features/identity/adapters/store.js");
 const {createVaultMembersService}=require("./vault-members");
 let root,db,vault,service,active;
 beforeEach(()=>{

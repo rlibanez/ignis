@@ -6,9 +6,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { generateKeyPair, exportJWK, SignJWT } from "jose";
 const require = createRequire(import.meta.url);
-const { readOidcConfig } = require("./config");
-const { initializeOidcClient } = require("./discovery");
-const { createOidcLogin } = require("./login");
+const { readOidcConfig } = require("../../features/identity/adapters/oidc/config.js");
+const { initializeOidcClient } = require("../../features/identity/adapters/oidc/discovery.js");
+const { createOidcLogin } = require("../../features/identity/adapters/oidc/login.js");
 const cert = fs.readFileSync(
   new URL("./fixtures/localhost-cert.pem", import.meta.url),
 );
@@ -436,7 +436,7 @@ async function manualFixture() {
   db.prepare(
     "INSERT INTO oidc_identities VALUES ('https://previous.example','old','local',0)",
   ).run();
-  const sessions = require("../sessions").createSessionService(db);
+  const sessions = require("../../features/identity/adapters/sessions.js").createSessionService(db);
   const issued = sessions.issueForVerifiedOidcIdentity({
     issuer: "https://previous.example",
     subject: "old",
@@ -447,7 +447,7 @@ async function manualFixture() {
     { ca: cert, privateAddresses: { [origin]: ["127.0.0.1"] } },
     { lookup: (_h, _o, cb) => cb(null, [{ address: "127.0.0.1", family: 4 }]) },
   );
-  const manual = await require("./manual-link").createManualOidcLink(
+  const manual = await require("../../features/identity/adapters/oidc/manual-link.js").createManualOidcLink(
     db,
     config,
     instance,
@@ -556,8 +556,8 @@ it("provisions from verified claims and issues an opaque normal-user session", a
         lookup: (_h, _o, cb) => cb(null, [{ address: "127.0.0.1", family: 4 }]),
       },
     );
-    const sessions = require("../sessions").createSessionService(db);
-    const login = await require("./account-login").createOidcAccountLogin(
+    const sessions = require("../../features/identity/adapters/sessions.js").createSessionService(db);
+    const login = await require("../../features/identity/adapters/oidc/account-login.js").createOidcAccountLogin(
       db,
       scoped,
       instance,
@@ -600,7 +600,7 @@ it("email changes invalidate existing sessions and stale sessions cannot start m
       authenticatedAt: Date.now() - 300001,
     });
     await expect(f.manual.begin(old.token)).rejects.toThrow();
-    require("../email").setUserEmail(
+    require("../../features/identity/adapters/email.js").setUserEmail(
       f.db,
       "local",
       "admin@example.com",

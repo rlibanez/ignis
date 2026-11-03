@@ -113,9 +113,9 @@ it('can delete another administrator but neither the operator nor the last admin
  expect(()=>service.plan('admin','admin',live)).toThrow();
 });
 it('invalidates real sessions, CSRF tokens, reset secrets and recipient placements',async()=>{
- const {createSessionService}=require('./sessions');
- const {hashPassword}=require('./password');
- const {issuePasswordReset}=require('./password-reset');
+ const {createSessionService}=require('../features/identity/adapters/sessions.js');
+ const {hashPassword}=require('../features/identity/adapters/password.js');
+ const {issuePasswordReset}=require('../features/identity/adapters/password-reset.js');
  db.prepare("INSERT INTO local_credentials VALUES ('target',?,0)").run(await hashPassword('synthetic-local-password'));
  const sessions=createSessionService(db);
  const login=await sessions.loginLocal('target','synthetic-local-password');
@@ -141,7 +141,7 @@ it('invalidates real sessions, CSRF tokens, reset secrets and recipient placemen
 });
 it('rejects editing an account whose deletion is in progress',async()=>{
  db.exec("INSERT INTO user_deletions VALUES ('target','[]',0); UPDATE users SET status='disabled' WHERE id='target'");
- expect(()=>require('./users').changeUserStatus(db,'admin','target','active','disabled',{isCurrent:()=>true}))
+ expect(()=>require('../features/identity/adapters/users.js').changeUserStatus(db,'admin','target','active','disabled',{isCurrent:()=>true}))
   .toThrowError(expect.objectContaining({code:'USER_DELETION_IN_PROGRESS'}));
 });
 it('does not expand normal vault deletion to an administrator without a deletion job',async()=>{

@@ -12,11 +12,11 @@ const { readAuthConfig } = require("./http-policy");
 const {
   readInitialAdminKey,
   createInitialAdminSetup,
-} = require("./initial-admin");
+} = require("../features/identity/adapters/initial-admin.js");
 const { createSecurity } = require("../app/create-security");
 const { openDatabase } = require("../platform/persistence/database");
-const { bootstrapAdmin } = require("./store");
-const { hashPassword } = require("./password");
+const { bootstrapAdmin } = require("../features/identity/adapters/store.js");
+const { hashPassword } = require("../features/identity/adapters/password.js");
 const KEY = randomBytes(16).toString("hex");
 const OTHER = randomBytes(16).toString("hex");
 const PASSWORD = "synthetic setup test password";

@@ -1,7 +1,7 @@
 const { randomBytes, randomUUID, createHash } = require("node:crypto");
-const { transaction } = require("../platform/persistence/database");
-const { normalizeLogin } = require("./store");
-const { verifyPassword } = require("./password");
+const { transaction } = require("../../../platform/persistence/database");
+const { normalizeLogin } = require("./store.js");
+const { verifyPassword } = require("./password.js");
 
 function tokenHash(token) {
   if (typeof token !== "string" || !/^[a-f0-9]{64}$/.test(token)) return null;
@@ -155,7 +155,7 @@ function createSessionService(
       )
         return null;
       const at = time();
-      if (current.password_change_required) return { passwordChange: require("./password-reset").beginRequiredPasswordChange(db, current, at) };
+      if (current.password_change_required) return { passwordChange: require("./password-reset.js").beginRequiredPasswordChange(db, current, at) };
       return insert(current, "local", null, null, at, at);
     });
   }

@@ -7,8 +7,8 @@ import path from "node:path";
 import http from "node:http";
 const require = createRequire(import.meta.url);
 const { openDatabase } = require("../platform/persistence/database");
-const { bootstrapAdmin } = require("./store");
-const { hashPassword } = require("./password");
+const { bootstrapAdmin } = require("../features/identity/adapters/store.js");
+const { hashPassword } = require("../features/identity/adapters/password.js");
 
 async function launch(root, env = {}) {
   const child = spawn(

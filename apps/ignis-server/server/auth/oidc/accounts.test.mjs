@@ -3,9 +3,9 @@ import { DatabaseSync } from "node:sqlite";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const schema = require("../../platform/persistence/schema");
-const { setUserEmail, normalizeEmail } = require("../email");
-const { resolveOidcAccount, linkOidcAccount } = require("./accounts");
-const { readOidcConfig } = require("./config");
+const { setUserEmail, normalizeEmail } = require("../../features/identity/adapters/email.js");
+const { resolveOidcAccount, linkOidcAccount } = require("../../features/identity/adapters/oidc/accounts.js");
+const { readOidcConfig } = require("../../features/identity/adapters/oidc/config.js");
 let db;
 beforeEach(() => {
   db = new DatabaseSync(":memory:");

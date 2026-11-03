@@ -5,6 +5,7 @@ trabajo para reconstruir nuestra implementación como un **monolito modular**.
 La referencia de fase 0 es histórica; los avances posteriores se describen aparte.
 
 - [Fase 1: composición, contratos y persistencia](phase1.md).
+- [Fase 2: identidad, cuenta y controladores HTTP](phase2.md).
 
 - [Referencia fijada](reference.json): producto, upstream y versión de Obsidian.
 - [Auditoría y diseño completo](audit-2026-11-03.txt): evidencia, responsabilidades,

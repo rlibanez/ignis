@@ -5,11 +5,11 @@ const fs = require("node:fs");
 const readline = require("node:readline");
 const { Writable } = require("node:stream");
 const { openDatabase, backupDatabase, restoreDatabase } = require("../platform/persistence/database");
-const { bootstrapAdmin, normalizeLogin, registerVault } = require("./store");
-const { readPasswordPolicy } = require("./password-policy");
-const { setUserEmail } = require("./email");
-const { hashPassword } = require("./password");
-const { createLocalUser, listUsers } = require("./users");
+const { bootstrapAdmin, normalizeLogin, registerVault } = require("../features/identity/adapters/store.js");
+const { readPasswordPolicy } = require("../features/identity/adapters/password-policy.js");
+const { setUserEmail } = require("../features/identity/adapters/email.js");
+const { hashPassword } = require("../features/identity/adapters/password.js");
+const { createLocalUser, listUsers } = require("../features/identity/adapters/users.js");
 
 function question(prompt, hidden = false) {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
@@ -123,7 +123,7 @@ async function main(args = process.argv.slice(2)) {
       const user = db.prepare("SELECT id FROM users WHERE login=?").get(normalizeLogin(rest[0]));
       if (!user) throw new Error("User not found");
       if (await question("Close all sessions and require a new password? Type yes: ") !== "yes") throw new Error("Cancelled");
-      const result = require("./password-reset").issuePasswordReset(db, null, user.id);
+      const result = require("../features/identity/adapters/password-reset.js").issuePasswordReset(db, null, user.id);
       console.log(`Temporary password (shown once): ${result.secret}`);
       console.log(`Expires: ${new Date(result.expiresAt).toISOString()}. Sign in with your username and this temporary password to choose a new password.`);
     } else if (command === "list-vaults") {

@@ -1,9 +1,9 @@
 const { randomUUID } = require("node:crypto");
-const { transaction } = require("../platform/persistence/database");
-const { normalizeLogin } = require("./store");
-const { normalizeEmail } = require("./email");
-const { hashPassword } = require("./password");
-const { readPasswordPolicy } = require("./password-policy");
+const { transaction } = require("../../../platform/persistence/database");
+const { normalizeLogin } = require("./store.js");
+const { normalizeEmail } = require("./email.js");
+const { hashPassword } = require("./password.js");
+const { readPasswordPolicy } = require("./password-policy.js");
 
 // null explicitly identifies the privileged local CLI, never an anonymous request.
 function authorize(db, actorId) {
@@ -163,7 +163,7 @@ async function setInitialLocalPassword(db, actorId, userId, password, policy, { 
     return user.auth_version;
   };
   const version = check();
-  if (!require("./password-policy").meetsPasswordPolicy(password, policy)) fail("PASSWORD_POLICY");
+  if (!require("./password-policy.js").meetsPasswordPolicy(password, policy)) fail("PASSWORD_POLICY");
   const hash = await hashPassword(password, policy);
   return transaction(db, () => {
     if (check(true) !== version) fail("USER_STATE_CHANGED");

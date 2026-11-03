@@ -1,5 +1,5 @@
 const { createHash } = require("node:crypto");
-const { createOidcTransactions } = require("./transactions");
+const { createOidcTransactions } = require("./transactions.js");
 
 // Returns a verified external identity only: no provisioning, roles or session issuance.
 async function createOidcLogin(

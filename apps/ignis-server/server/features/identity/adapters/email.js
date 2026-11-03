@@ -1,5 +1,5 @@
 const { randomUUID } = require("node:crypto");
-const { transaction } = require("../platform/persistence/database");
+const { transaction } = require("../../../platform/persistence/database");
 
 // Deliberate application policy: ASCII dot-atom addresses, case-insensitive matching.
 // Do not strip dots, plus tags, or apply provider-specific aliases.
