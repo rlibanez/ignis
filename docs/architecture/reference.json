@@ -1,0 +1,11 @@
+{
+  "sourceCommit": "4b896055df511a6837a532c60318ac5e647cdd67",
+  "sourceTree": "61bcdb852040972802bff5a5239bb3ace81640f7",
+  "upstreamBase": "aa19cc59e9e33a337055daa915453da3dc0d98fb",
+  "referenceTag": "architecture-phase0-baseline",
+  "tagPublished": false,
+  "obsidianTarget": "1.14.4",
+  "applicationVersion": "0.8.18",
+  "scope": "Functional reference before phase 0; no product changes in this phase. The synthetic HTTP fixture does not load Obsidian assets.",
+  "schemaMigrations": 19
+}
