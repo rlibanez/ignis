@@ -77,3 +77,20 @@ proporcionar `IGNIS_OBSIDIAN_CSS` desde una instalación legítima y registrar v
 y entorno. Las instrucciones del ensayo de rendimiento están en `performance.md`.
 Las pruebas reales y de fallos se incorporan como gates en las fases que sustituyan
 esos componentes; no se marca un escenario aceptado solo porque exista un test.
+
+## Aceptación del artefacto Docker
+
+Las pruebas desde el repositorio no detectan fuentes omitidas por el Dockerfile.
+Después de cambiar módulos requeridos por el servidor, construir y comprobar
+también la imagen de producción:
+
+```sh
+docker build -f apps/ignis-server/Dockerfile -t ignis:architecture-smoke .
+npm run test:image
+```
+
+El smoke ejecuta el runtime que contiene la imagen, con su versión de Node y
+dependencias de producción. Usa UID 1000, filesystem de imagen de solo lectura,
+tmpfs desechable y red aislada; comprueba arranque, autenticación pública y parada.
+No publica puertos, monta bóvedas del host ni descarga Obsidian. Los assets mínimos
+son sintéticos: tampoco este gate certifica el runtime completo de Obsidian.

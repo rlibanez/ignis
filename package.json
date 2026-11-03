@@ -16,7 +16,8 @@
     "lint": "oxlint packages apps/ignis-server/server scripts --max-warnings 0 && node scripts/check-error-leaks.mjs && node scripts/check-architecture.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:load": "node scripts/check-load.mjs"
+    "test:load": "node scripts/check-load.mjs",
+    "test:image": "node scripts/check-image.mjs"
   },
   "dependencies": {
     "acorn": "^8.18.0",

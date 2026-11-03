@@ -45,11 +45,12 @@ COPY apps/ignis-server/package.json ./apps/ignis-server/
 
 RUN npm ci --omit=dev --ignore-scripts
 
-# Runtime sources: the server, entrypoint script, repo-rooted images, and the server-core JS that gets required from the server at runtime.
+# Runtime sources, including the shared contracts required directly by the server.
 COPY apps/ignis-server/server/ ./apps/ignis-server/server/
 COPY apps/ignis-server/scripts/ ./apps/ignis-server/scripts/
 COPY images/ ./images/
 COPY packages/server-core/src/ ./packages/server-core/src/
+COPY packages/contracts/src/ ./packages/contracts/src/
 
 # Built artifacts from the build stage.
 COPY --from=build /app/packages/shim/dist/shim-loader.js ./packages/shim/dist/shim-loader.js
