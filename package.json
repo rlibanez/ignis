@@ -20,7 +20,8 @@
     "test:content-faults": "node scripts/check-content-faults.mjs",
     "test:management": "node scripts/check-management-ui.mjs && node scripts/check-management-ui.mjs --mobile && node scripts/check-management-ui.mjs --mobile --compact && node scripts/check-management-ui.mjs --mobile --landscape",
     "test:runtime": "node scripts/check-obsidian-runtime.mjs && node scripts/check-obsidian-runtime.mjs --mobile",
-    "test:management-parity": "node scripts/check-obsidian-runtime.mjs --management-parity && node scripts/check-obsidian-runtime.mjs --management-parity --wide && node scripts/check-obsidian-runtime.mjs --management-parity --mobile && node scripts/check-obsidian-runtime.mjs --management-parity --mobile --compact && node scripts/check-obsidian-runtime.mjs --management-parity --mobile --landscape"
+    "test:management-parity": "node scripts/check-obsidian-runtime.mjs --management-parity && node scripts/check-obsidian-runtime.mjs --management-parity --wide && node scripts/check-obsidian-runtime.mjs --management-parity --mobile && node scripts/check-obsidian-runtime.mjs --management-parity --mobile --compact && node scripts/check-obsidian-runtime.mjs --management-parity --mobile --landscape",
+    "test:vault-transfers": "node scripts/check-obsidian-runtime.mjs --vault-transfers && node scripts/check-obsidian-runtime.mjs --vault-transfers --mobile"
   },
   "dependencies": {
     "acorn": "^8.18.0",

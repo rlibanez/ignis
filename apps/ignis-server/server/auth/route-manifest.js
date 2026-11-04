@@ -1,6 +1,7 @@
 // Inventory of data APIs. This classifies surfaces; it does NOT grant vault access.
 // Owners may use the reviewed content surfaces; per-vault authorization is separate.
 const groups = [
+  {mount:"",source:"transport/http/vault-import.js",surface:"vault-import",routes:["start","zip","file","commit","cancel","select"].map(name=>["POST",`/api/vault/import/${name}`,"manage"])},
   { mount: "", source: "transport/http/sharing/router.js", surface: "resource-sharing", routes: [["GET","/api/shares","read"],["POST","/api/shares","manage"],["GET","/api/shares/content","read"]] },
   { mount: "/api/fs", source: "routes/fs.js", surface: "vault-content", routes: [
     ...["stat", "readFile", "access", "tree", "download", "download-zip"].map(name => ["GET", `/${name}`, "read"]),
@@ -9,7 +10,7 @@ const groups = [
     ...["unlink", "rmdir", "rm"].map(name => ["DELETE", `/${name}`, "write"]),
   ] },
   { mount: "/api/vault", source: "routes/vault.js", surface: "vault-lifecycle", routes: [
-    ["GET", "/list", "list"], ["GET", "/info", "read"],
+    ["POST", "/export", "read"], ["GET", "/list", "list"], ["GET", "/info", "read"],
     ["GET", "/members", "read"], ["POST", "/members", "manage"], ["POST", "/transfer-ownership", "manage"],
     ["POST", "/refresh", "manage"], ["POST", "/create", "manage"],
     ["POST", "/rename", "manage"], ["DELETE", "/remove", "manage"],
@@ -32,8 +33,8 @@ const routes = Object.freeze(groups.flatMap(group => group.routes.map(([method, 
   method, path: group.mount + (suffix === "/" ? "" : suffix), mount: group.mount,
   source: group.source, sourcePath: sourcePath || suffix,
   surface: group.surface, operation, currentAccess:
-    ["vault-content", "mixed-bootstrap", "resource-sharing"].includes(group.surface) ||
-    (group.mount === "/api/vault" && (["/members", "/transfer-ownership", "/create", "/rename", "/remove"].includes(suffix))) ||
+    ["vault-content", "mixed-bootstrap", "resource-sharing", "vault-import"].includes(group.surface) ||
+    (group.mount === "/api/vault" && (["/export", "/members", "/transfer-ownership", "/create", "/rename", "/remove"].includes(suffix))) ||
     (method === "GET" && ["/api/vault/list", "/api/vault/info", "/api/version"].includes(group.mount + (suffix === "/" ? "" : suffix)))
       ? "owner" : "admin",
 }))));

@@ -21,7 +21,7 @@ it.each(["admin", "user"])("renders separate native rows and role-dependent acti
   const groups = settingDefinitions(tab);
   expect(groups).toHaveLength(1);
   expect(groups[0].heading).toBeUndefined();
-  expect(groups[0].items.map(i=>i.name)).toEqual(["Username", "Email", "Change password", "OpenID Connect", ...(role === "admin" ? ["Manage users"] : []), "Shared resources"]);
+  expect(groups[0].items.map(i=>i.name)).toEqual(["Username", "Email", "Change password", "OpenID Connect", ...(role === "admin" ? ["Manage users"] : []), "Shared resources", "Import vault"]);
   const button = {setButtonText:vi.fn().mockReturnThis(),onClick:vi.fn().mockReturnThis()};
   const row = {setDesc:vi.fn().mockReturnThis(),addButton:fn=>fn(button)};
   groups[0].items.find(item=>item.name==="Shared resources").render(row);

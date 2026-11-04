@@ -2,7 +2,7 @@
 const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 
   import { onMount, tick } from "svelte";
-  import {openAccount} from "../management.js";
+  import {openAccount,openVaultExport,openVaultImport} from "../management.js";
   import {
     Vault,
     Folder,
@@ -49,6 +49,7 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
 
   const menuItems = [
     { id: "access", label: translateIgnis("Manage access") },
+    { id: "export", label: translateIgnis("Export vault") },
     { id: "rename", label: translateIgnis("Rename") },
     { id: "delete", label: translateIgnis("Delete"), danger: true },
   ];
@@ -110,6 +111,8 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
       targetVault = vault; activeDialog = "access";
     } else if (item.id === "register") {
       showRegistrationDialog(vault);
+    } else if (item.id === "export") {
+      openVaultExport(vault);
     } else if (item.id === "rename") {
       showRenameDialog(vault);
     } else if (item.id === "delete") {
@@ -268,6 +271,8 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
   onMount(() => {
     refreshVaults();
     fetchVersion();
+    window.addEventListener('ignis:vaults-changed',refreshVaults);
+    return ()=>window.removeEventListener('ignis:vaults-changed',refreshVaults);
   });
 </script>
 
@@ -349,6 +354,9 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
     <div class="footer-right">
       {#if window.__ignisAuth && (!currentVaultId || !hasAccountSwitcher)}
         <Button variant="ghost" on:click={() => openAccount()}>{translateIgnis("Settings")}</Button>
+      {/if}
+      {#if window.__ignisAuth?.sessionId && !window.__ignisAuth?.blocked}
+        <Button variant="ghost" on:click={openVaultImport}>{translateIgnis("Import vault")}</Button>
       {/if}
       <Button variant="ghost" on:click={showCreateDialog}>
         <svelte:fragment slot="icon">
@@ -573,6 +581,8 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
 
   .footer-right {
     display: flex;
+    gap:0.5rem;
+    flex-wrap:wrap;
     justify-content: flex-end;
   }
 
@@ -581,4 +591,6 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
     color: var(--text-muted);
     user-select: none;
   }
+  :global(.is-mobile) .footer-right { flex-direction:column-reverse; width:100%; }
+  :global(.is-mobile) .footer-right :global(.btn) { width:100%; justify-content:center; }
 </style>

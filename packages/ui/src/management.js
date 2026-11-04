@@ -1,6 +1,8 @@
 import {X, Eye, EyeOff, User, ArrowLeft} from 'lucide-svelte';
 import settingsShellStyles from './settings-shell.css';
 import {createManagementModal} from '../../management/src/management-modal.js';
+import {createImportModal} from '../../management/src/import-vault.js';
+import {createExportModal} from '../../management/src/export-vault.js';
 import {createAccountSettings} from '../../management/src/account-settings.js';
 import {consumeManagementIntent} from '../../management/src/intent.js';
 const t=text=>globalThis.IgnisI18n?.t(text) ?? text;
@@ -183,3 +185,13 @@ export function openAccount(kind='account') {
   else new AccountModal(kind).open();
 }
 export function openRequestedManagement(){consumeManagementIntent(window,openAccount);}
+
+const ExportModal=createExportModal(BrowserModal,Notice);
+export function openVaultExport(vault){new ExportModal(null,vault).open();}
+
+const ImportModal=createImportModal(BrowserModal,Notice);
+export function openVaultImport(){
+ const sessionId=window.__ignisAuth?.sessionId;
+ if(!sessionId||window.__ignisAuth?.blocked){new Notice(t('Session unavailable'));return;}
+ if(!document.querySelector('.ignis-import-wizard'))new ImportModal(null,{sessionId}).open();
+}

@@ -68,6 +68,8 @@ function createAuthBoundary({
   const resetCookies = createSessionCookies({ ...config, purpose: "reset" });
   const publicUrl = new URL(config.publicOrigin);
   const {db,sessions,sharesService,vaultAccess,vaults,vaultStore,content,sharingEventStore,identity,effects} = services;
+  const importRouter=services.vaultImport ? require('../transport/http/vault-import').createImportRouter(services.vaultImport,{refresh:()=>require('../config').refreshVaults()}) : null;
+  if(importRouter)require('../vault/lifecycle').trackRouterWork(importRouter);
   const sharesRouter = sharesService ? require("../transport/http/sharing/router.js").createResourceSharesRouter(sharesService) : null;
   if (sharesRouter) require("../vault/lifecycle").trackRouterWork(sharesRouter);
   const pendingAuth = new Set();
@@ -426,13 +428,18 @@ function createAuthBoundary({
       }
       if (pathname === "/api/proxy" && session.user.role === "user" && !limits.publicRequest(req.ip))
         return safe(res, 429, "Too many network requests");
-      if (["/api/vault/members", "/api/vault/transfer-ownership", "/api/vault/rename", "/api/vault/remove"].includes(pathname) && !limits.vaultMembers(session.user.id))
+      if (["/api/vault/import/select", "/api/vault/export", "/api/vault/members", "/api/vault/transfer-ownership", "/api/vault/rename", "/api/vault/remove"].includes(pathname) && !limits.vaultMembers(session.user.id))
         return safe(res, 429, "Too many access requests; try again in a minute.");
-      if (["/api/vault/create"].includes(pathname) && !limits.vaultCreation(session.user.id))
+      if (["/api/vault/create","/api/vault/import/start","/api/vault/import/zip"].includes(pathname) && !limits.vaultCreation(session.user.id))
         return safe(res,429,"Too many vault creation requests; try again in a minute.");
       // Authorized resource requests extend inactivity; session/status polling and WS do not.
       req.auth = getSession(req, true);
       if (!req.auth) return safe(res, 401, "Authentication required");
+      if(pathname.startsWith('/api/vault/import/')){
+        if(!importRouter)return safe(res,503,'Import unavailable');
+        req.importToken=cookies.read(req.headers.cookie);
+        return importRouter(req,res,next);
+      }
       next();
     } catch {
       return safe(res, 503, "Authentication unavailable");
@@ -533,6 +540,7 @@ function createAuthBoundary({
           if(operation!=='list')sweepSockets();
           return result;
         };
+        req.exportVault=(reference,configuration,signal)=>services.vaultExport.prepare(cookies.read(req.headers.cookie),reference,configuration,signal);
         req.vaultView=scope.view;
         req.canReadVault=directory=>req.authorizeVaultFile(directory,"content.list","");
         req.vaultOwners=scope.owners;

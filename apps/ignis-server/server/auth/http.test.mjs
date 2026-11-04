@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
 import { createRequire } from "node:module";
 import fs from "node:fs";
 import os from "node:os";
@@ -1688,11 +1688,65 @@ it('keeps verification for an unchanged email and accepts changes just before fi
 });
 
 
+it("imports from a normal account with no existing vault membership, enforcing CSRF and stage ownership",async()=>{
+ const user=await login("normal"),admin=await login();
+ const body={name:"Imported",configuration:false,files:[{path:"Note.md",size:5},{path:".obsidian/workspace.json",size:2}]};
+ expect((await request("/api/vault/import/start",{method:"POST",body})).status).toBe(401);
+ expect((await request("/api/vault/import/start",{jar:user,method:"POST",body})).status).toBe(403);
+ const headers={"x-ignis-csrf":await csrf(user)};
+ expect((await request("/api/vault/import/start",{jar:user,method:"POST",headers,body:{...body,ownerId:"admin"}})).status).toBe(400);
+ const started=await request("/api/vault/import/start/",{jar:user,method:"POST",headers,body});expect(started.status).toBe(200);const {id}=await started.json();
+ expect((await request('/api/vault/import/select?id='+id,{jar:user,method:'POST',body:{selected:[]}})).status).toBe(403);
+ expect((await request('/api/vault/import/select?id='+id,{jar:admin,method:'POST',headers:{'x-ignis-csrf':await csrf(admin)},body:{selected:[]}})).status).toBe(404);
+ expect((await request('/api/vault/import/select?id='+id,{jar:user,method:'POST',headers,body:{selected:['.obsidian/plugins/evil/main.js']}})).status).toBe(400);
+ for(const selected of [['.obsidian/workspace.json'],[],['.obsidian/workspace.json'],[]]){
+  const selection=await request('/api/vault/import/select?id='+id,{jar:user,method:'POST',headers,body:{selected}});expect(selection.status,await selection.text()).toBe(200);expect((await selection.json()).id).toBe(id);
+ }
 
+ expect((await request("/api/vault/import/file?id="+id+"&index=0",{jar:admin,method:"POST",headers:{"x-ignis-csrf":await csrf(admin),"content-type":"application/octet-stream"},body:"hello"})).status).toBe(404);
+ expect((await request("/api/vault/import/file/?id="+id+"&index=0",{jar:user,method:"POST",headers:{...headers,"content-type":"application/octet-stream"},body:"hello"})).status).toBe(200);
+ expect((await request("/api/vault/import/commit/?id="+id,{jar:user,method:"POST",headers,body:{padding:"x".repeat(9000)}})).status).toBe(413);
+ expect((await request("/api/vault/import/commit/?id="+id,{jar:user,method:"POST",headers,body:[]})).status).toBe(400);
+ const completed=await request("/api/vault/import/commit/?id="+id,{jar:user,method:"POST",headers,body:{}});expect(completed.status,await completed.text()).toBe(200);
+ const replayed=await request("/api/vault/import/commit/?id="+id,{jar:user,method:"POST",headers,body:{}});expect(replayed.status).toBe(200);expect(await replayed.json()).toEqual(await completed.json());
+ const result=await completed.json();expect(fs.readFileSync(path.join(root,"Imported","Note.md"),"utf8")).toBe("hello");
+ expect(db.prepare("SELECT user_id FROM memberships WHERE vault_id=?").get(result.id).user_id).toBe("normal");
+});
 
+it("exports a normal owner's vault with CSRF, without granting export to readers or instance admins",async()=>{
+ const vault=require("../features/vaults/adapters/vault-registration").registerExistingVault(db,root,"vault","normal");
+ const user=await login("normal"),admin=await login();
+ const body={vault:vault.id,configuration:false};
+ expect((await request("/api/vault/export",{method:"POST",body})).status).toBe(401);
+ expect((await request("/api/vault/export",{jar:user,method:"POST",body})).status).toBe(403);
+ const headers={"x-ignis-csrf":await csrf(user)};
+ expect((await request("/api/vault/export",{jar:user,method:"POST",headers,body:{...body,ownerId:"normal"}})).status).toBe(400);
+ expect((await request("/api/vault/export?vault=elsewhere",{jar:user,method:"POST",headers,body})).status).toBe(400);
+ expect((await request("/api/vault/export",{jar:admin,method:"POST",headers:{"x-ignis-csrf":await csrf(admin)},body})).status).toBe(404);
+ const reply=await request("/api/vault/export/",{jar:user,method:"POST",headers,body});expect(reply.status,await reply.text()).toBe(200);
+ expect(reply.headers.get('content-type')).toBe('application/zip');expect(reply.headers.get('cache-control')).toBe('no-store');expect(reply.headers.get('content-disposition')).toContain('vault.zip');
+ const {readZip,zipFile}=require('../features/vaults/adapters/import-zip');const entries=readZip(reply.bytes);expect(entries.map(e=>e.path)).toEqual(['note.md']);expect((await zipFile(reply.bytes,entries[0])).toString()).toBe('private note');
+ db.prepare("UPDATE memberships SET role='reader' WHERE vault_id=? AND user_id='normal'").run(vault.id);
+ expect((await request("/api/vault/export",{jar:user,method:"POST",headers,body})).status).toBe(404);
+});
 
-
-
+it("acknowledges cancellation during an import file write and removes the draft when it settles",async()=>{
+ const user=await login("normal"),headers={"x-ignis-csrf":await csrf(user)};
+ const start=await request('/api/vault/import/start',{jar:user,method:'POST',headers,body:{name:'Cancelled',configuration:false,files:[{path:'Note.md',size:5}]}});
+ const {id}=await start.json();
+ let resume,entered;const waiting=new Promise(resolve=>{resume=resolve;}),started=new Promise(resolve=>{entered=resolve;});
+ const write=fs.promises.writeFile;
+ const spy=vi.spyOn(fs.promises,'writeFile').mockImplementation(async(...args)=>{await write(...args);if(args[0]===path.join(root,'data','vault-imports',id,'0')){entered();await waiting;}});
+ let draining,drained=false;
+ const uploading=request('/api/vault/import/file?id='+id+'&index=0',{jar:user,method:'POST',headers:{...headers,'content-type':'application/octet-stream'},body:'hello'});
+ try{
+  await started;
+  draining=require('../vault/lifecycle').drainRouterWork().then(()=>{drained=true;});
+  await new Promise(resolve=>setImmediate(resolve));expect(drained).toBe(false);
+  const cancel=await request('/api/vault/import/cancel?id='+id,{jar:user,method:'POST',headers,body:{}});expect(cancel.status).toBe(200);
+ }finally{resume();spy.mockRestore();}
+ expect((await uploading).status).toBe(404);await draining;expect(drained).toBe(true);expect(fs.readdirSync(path.join(root,'data','vault-imports'))).toEqual([]);
+});
 
 it('returns the real shared login cooldown when reauthentication is rate limited',async()=>{
  const jar=await login('normal'),context=await (await request('/api/auth/session',{jar})).json();

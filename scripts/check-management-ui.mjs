@@ -68,7 +68,7 @@ const nativeCss=process.env.IGNIS_OBSIDIAN_CSS;
     await call('Emulation.clearDeviceMetricsOverride');
   }
   const rows=await run(`Array.from(document.querySelectorAll('.setting-item-name'),e=>e.textContent)`);
-  if(rows.join('|')!=='Username|Email|Change password|OpenID Connect|Manage users|Shared resources')throw Error('Account rows: '+rows);
+  if(rows.join('|')!=='Username|Email|Change password|OpenID Connect|Manage users|Shared resources|Import vault')throw Error('Account rows: '+rows);
   const accountTabs=await run(`Array.from(document.querySelectorAll('.ignis-shell-settings [role=tab]'),el=>el.textContent)`);
   if(accountTabs.join('|')!=='Account')throw Error('Only the Account settings entry should exist: '+accountTabs);
   await run(`{const search=document.querySelector('.ignis-shell-settings input[type=search]');search.value='email';search.dispatchEvent(new Event('input'));}`);
