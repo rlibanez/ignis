@@ -1,7 +1,11 @@
 node_modules/
 dist/
 investigation/
-vaults/
+/vaults/
 packages/*/dist/
 apps/ignis-server/server/build-info.json
 data/
+.env
+.env.*
+!.env.example
+docker-compose.override.yml

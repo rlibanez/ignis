@@ -1,0 +1,120 @@
+const { readPasswordPolicy } = require("../features/identity/adapters/password-policy.js");
+const fs = require("node:fs");
+const path = require("node:path");
+const net = require("node:net");
+const { readInitialAdminKey } = require("../features/identity/adapters/initial-admin.js");
+
+const { dataRoutePolicy } = require("./route-manifest");
+
+function readAuthConfig(env = process.env) {
+  if (!env.IGNIS_PUBLIC_ORIGIN)
+    throw new Error("IGNIS_PUBLIC_ORIGIN is required");
+  const origin = new URL(env.IGNIS_PUBLIC_ORIGIN);
+  if (
+    origin.username ||
+    origin.password ||
+    origin.pathname !== "/" ||
+    origin.search ||
+    origin.hash ||
+    !["http:", "https:"].includes(origin.protocol)
+  )
+    throw new Error("Invalid public origin");
+  if (
+    env.IGNIS_ALLOW_HTTP_LOOPBACK &&
+    !["true", "false"].includes(env.IGNIS_ALLOW_HTTP_LOOPBACK)
+  ) {
+    throw new Error("Invalid HTTP loopback setting");
+  }
+  if (env.IGNIS_ALLOW_HTTP_PRIVATE_NETWORK !== undefined &&
+      !["true", "false"].includes(env.IGNIS_ALLOW_HTTP_PRIVATE_NETWORK))
+    throw new Error("Invalid IGNIS_ALLOW_HTTP_PRIVATE_NETWORK; expected true or false");
+  const trustedProxies = JSON.parse(env.IGNIS_TRUSTED_PROXIES || "[]");
+  if (
+    !Array.isArray(trustedProxies) ||
+    trustedProxies.length > 32 ||
+    trustedProxies.some((value) => {
+      if (typeof value !== "string") return true;
+      const parts = value.split("/");
+      const family = net.isIP(parts[0]);
+      return (
+        !family ||
+        parts.length > 2 ||
+        (parts.length === 2 &&
+          (!/^\d+$/.test(parts[1]) ||
+            Number(parts[1]) > (family === 4 ? 32 : 128)))
+      );
+    })
+  )
+    throw new Error("Trusted proxies must be explicit IP addresses or CIDRs");
+  const oidcButtonText = (env.IGNIS_OIDC_BUTTON_TEXT || "").trim() || "OpenID Connect";
+  if ([...oidcButtonText].length > 80 || /[\p{Cc}\p{Cf}]/u.test(oidcButtonText))
+    throw new Error("Invalid IGNIS_OIDC_BUTTON_TEXT; use at most 80 printable characters");
+  const rememberDays = env.IGNIS_REMEMBER_ME_DAYS ?? "90";
+  if (!/^[1-9][0-9]{0,2}$/.test(rememberDays) || Number(rememberDays) > 365)
+    throw new Error("Invalid IGNIS_REMEMBER_ME_DAYS; expected an integer from 1 to 365");
+  return {
+    appName: require("./app-name").readAppName(env),
+    rememberDays: Number(rememberDays),
+    incomingShare: require("./incoming-share-config").readIncomingShareConfig(env),
+    oidcButtonText,
+    publicOrigin: origin.origin,
+    allowHttpLoopback: env.IGNIS_ALLOW_HTTP_LOOPBACK === "true",
+    allowHttpPrivateNetwork: env.IGNIS_ALLOW_HTTP_PRIVATE_NETWORK === "true",
+    trustedProxies,
+    sharedResourceLimits: require("../features/sharing/adapters/limits.js").readResourceShareLimits(env),
+    passwordPolicy: readPasswordPolicy(env),
+    initialAdminKeyDigest: readInitialAdminKey(env),
+  };
+}
+
+function canonicalRequestPath(req) {
+  const raw = req.url.split("?")[0];
+  // No percent-encoded API aliases, separators or dot-segment routing differences.
+  // eslint-disable-next-line no-control-regex
+  if (!raw.startsWith("/") || raw.includes("\\") || /[\x00-\x20]/.test(raw))
+    return null;
+  let decoded;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    return null;
+  }
+  if (
+    decoded.includes("\\") ||
+    decoded.includes("\0") ||
+    decoded.split("/").some((s) => s === "." || s === "..")
+  )
+    return null;
+  if (decoded.startsWith("/api/") && raw !== decoded) return null;
+  return decoded.length > 1 ? decoded.replace(/\/$/, "") : decoded;
+}
+
+function permittedResource(method, pathname, staticRoots) {
+  const verb = method === "HEAD" ? "GET" : method;
+  if (dataRoutePolicy(verb, pathname)) return true;
+  if (pathname.startsWith("/api/")) return false;
+  if (verb !== "GET") return false;
+  if (["/", "/index.html", "/favicon.png"].includes(pathname)) return true;
+  if (pathname.startsWith("/vault-files/") && pathname.split("/").length >= 4)
+    return true;
+  for (const entry of staticRoots) {
+    const root = typeof entry === "string" ? entry : entry.root;
+    const mount = typeof entry === "string" ? "/" : entry.mount;
+    if (!pathname.startsWith(mount)) continue;
+    const file = path.resolve(root, pathname.slice(mount.length));
+    if (!file.startsWith(path.resolve(root) + path.sep)) continue;
+    try {
+      const real = fs.realpathSync(file);
+      if (
+        real.startsWith(fs.realpathSync(root) + path.sep) &&
+        fs.statSync(real).isFile()
+      )
+        return true;
+    } catch {
+      /* A missing static file is not an allowed route. */
+    }
+  }
+  return false;
+}
+
+module.exports = { readAuthConfig, canonicalRequestPath, permittedResource };

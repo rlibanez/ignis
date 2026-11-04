@@ -11,3 +11,8 @@ data
 tmp
 **/dist
 apps/ignis-server/server/build-info.json
+.env
+.env.*
+
+# Synthetic TLS material used only by OIDC transport tests.
+apps/ignis-server/server/auth/oidc/fixtures
