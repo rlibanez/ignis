@@ -35,7 +35,10 @@ router.post("/export", async (req,res) => {
     const status={VAULT_UNAVAILABLE:404,EXPORT_BUSY:429,EXPORT_LIMIT:413,EXPORT_CHANGED:409,EXPORT_PATH:409}[error.code]||503;
     const message={VAULT_UNAVAILABLE:'Vault unavailable or you are no longer its owner.',EXPORT_BUSY:'Another export is in progress. Try again later.',EXPORT_LIMIT:'Export limit exceeded (10000 entries, 32 MiB per file, 256 MiB total or 64 MiB ZIP).',EXPORT_CHANGED:'The vault changed during export. Try again.',EXPORT_PATH:'The vault contains an unsupported file path.'}[error.code]||'Export could not be completed.';
     res.status(status).json({error:message});
-  }finally{if(result)await result.dispose();}
+  }finally{
+    if(result)try{await result.dispose();}
+    catch(error){require('@ignis/server-core/src/logger').emit('warn','server.vault.export_cleanup_failed',{errorCode:error?.code});}
+  }
 });
 
 // GET /api/vault/list - returns all discovered vaults (re-scans on each call)

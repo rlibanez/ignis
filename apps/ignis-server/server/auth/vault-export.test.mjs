@@ -110,3 +110,25 @@ it('round-trips a vault containing only one top-level folder without flattening 
   expect(fs.existsSync(path.join(root,'Restored','Note.md'))).toBe(false);expect(fs.statSync(path.join(root,'Restored','Folder','Empty')).isDirectory()).toBe(true);expect(fs.readdirSync(path.join(root,'Restored','Folder','Empty'))).toEqual([]);
  }finally{importer.close();await result.dispose();}
 });
+it('retains cleanup failures for startup recovery without rejecting or blocking later exports',async()=>{
+ const first=await service.prepare('alice','Own',false,signal());
+ const original=fs.promises.rm;
+ const remove=vi.spyOn(fs.promises,'rm').mockRejectedValue(Object.assign(Error('private path'),{code:'EIO'}));
+ await expect(first.dispose()).resolves.toBeUndefined();
+ await expect(service.cleanup()).rejects.toMatchObject({code:"EIO"});
+ remove.mockRestore();
+ expect(fs.existsSync(first.file)).toBe(true);
+ const second=await service.prepare('alice','Own',false,signal());await second.dispose();
+ await service.cleanup();
+ expect(fs.existsSync(first.file)).toBe(false);
+ expect(fs.promises.rm).toBe(original);
+});
+it('preserves the preparation error if removing its temporary files also fails',async()=>{
+ const original=fs.promises.open;
+ vi.spyOn(fs.promises,'open').mockImplementation(async(...args)=>{
+   if(String(args[0]).endsWith('Note.md'))throw Object.assign(Error('read failed'),{code:'EACCES'});
+   return original.apply(fs.promises,args);
+ });
+ vi.spyOn(fs.promises,'rm').mockRejectedValue(Object.assign(Error('cleanup failed'),{code:'EIO'}));
+ await expect(service.prepare('alice','Own',false,signal())).rejects.toMatchObject({code:'EACCES'});
+});

@@ -100,5 +100,6 @@
   "oidc.timeout": "OIDC HTTPS request exceeded its time limit.",
   "oidc.address_rejected": "OIDC endpoint DNS results or IP address rejected by network policy.",
   "oidc.dns_failed": "OIDC endpoint DNS resolution failed.",
-  "server.schema_incompatible": "Identity database schema is incompatible. Keep the old data and configure a new DATA_ROOT for this development version; no automatic migration or reset is performed."
+  "server.schema_incompatible": "Identity database schema is incompatible. Keep the old data and configure a new DATA_ROOT for this development version; no automatic migration or reset is performed.",
+  "server.vault.export_cleanup_failed": "Export temporary files could not be removed; cleanup will be retried on startup."
 }

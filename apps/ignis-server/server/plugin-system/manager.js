@@ -112,6 +112,7 @@ async function loadPlugin(pluginId) {
   };
 
   await plugin.register(pluginCtx);
+  require("../transport/http/protect-router").protectRouter(router);
 
   pluginRouters.set(pluginId, router);
 

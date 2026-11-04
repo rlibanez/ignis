@@ -25,7 +25,9 @@ function createVaultExport({vaults, dataRoot, flush = async () => {}}) {
     if(active.has(actor) || active.size>=limits.concurrent) fail('EXPORT_BUSY');
     active.add(actor);
     let temporary,disposed=false;
-    const dispose=async()=>{if(disposed)return;disposed=true;try{if(temporary)await fs.promises.rm(temporary,{recursive:true,force:true});}finally{active.delete(actor);}};
+    const dispose=async()=>{if(disposed)return;disposed=true;try{if(temporary)await fs.promises.rm(temporary,{recursive:true,force:true});}
+      catch(error){require('@ignis/server-core/src/logger').emit('warn','server.vault.export_cleanup_failed',{errorCode:error?.code});}
+      finally{active.delete(actor);}};
     try {
       const rootIdentity=await fs.promises.lstat(authority.path);
       const validate=()=>{signal.throwIfAborted();authority.validate();const st=fs.lstatSync(authority.path);if(st.dev!==rootIdentity.dev || st.ino!==rootIdentity.ino || st.isSymbolicLink())fail('EXPORT_CHANGED');};

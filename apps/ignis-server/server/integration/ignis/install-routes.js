@@ -21,6 +21,9 @@ const bootstrapRoutes = require("../../routes/bootstrap");
 
 app.use("/assets", express.static(path.join(__dirname, "../../assets")));
 
+for(const router of [fsRoutes,pluginRoutes,bootstrapRoutes,vaultRoutes,proxyRoutes,versionRoutes,settingsRoutes])
+  require('../../transport/http/protect-router').protectRouter(router);
+
 // Wait for in-flight file/plugin/bootstrap handlers before a registered rename.
 for (const router of [fsRoutes, pluginRoutes, bootstrapRoutes]) {
   require("../../vault/lifecycle").trackRouterWork(router);

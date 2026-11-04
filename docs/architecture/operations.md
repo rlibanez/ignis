@@ -79,6 +79,17 @@ reservas manualmente mientras el servidor está abierto. Para datos desechables 
 esta fase de desarrollo, usar un DATA_ROOT y VAULT_ROOT nuevos; conservar el anterior
 para inspección si importa recuperar su contenido.
 
+Si falla la eliminación de un ZIP temporal de exportación, se registra
+`server.vault.export_cleanup_failed` con un código de error permitido, sin rutas
+ni detalles privados. No se invalida una descarga ya completada ni se detiene el
+servidor. La reserva de exportación se libera; los restos privados se vuelven a
+limpiar al arrancar. Si el almacenamiento sigue fallando durante ese arranque,
+el servicio no declara estar listo hasta resolver el fallo.
+
+Las rutas de datos y de plugins del servidor propagan sus rechazos asíncronos al
+middleware de errores de Express 4. Esta protección no añade seguimiento de
+operaciones a las rutas de ciclo de vida, evitando esperas sobre sí mismas.
+
 ## Eventos, límites y observabilidad
 
 Los avisos de compartición usan WebSockets e invalidaciones sin nombres/rutas.
