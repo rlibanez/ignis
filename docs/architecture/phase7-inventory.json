@@ -1,0 +1,2296 @@
+{
+  "integration": {
+    "upstreamBase": "aa19cc59e9e33a337055daa915453da3dc0d98fb",
+    "changes": [
+      {
+        "status": "M",
+        "file": ".dockerignore"
+      },
+      {
+        "status": "A",
+        "file": ".env.example"
+      },
+      {
+        "status": "M",
+        "file": ".gitignore"
+      },
+      {
+        "status": "M",
+        "file": "README.md"
+      },
+      {
+        "status": "M",
+        "file": "apps/docs/package.json"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/Dockerfile"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/docker-compose.yml"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/examples/traefik/docker-compose.yml"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/scripts/entrypoint.sh"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/app/application.integration.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/app/compose-server.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/app/create-application.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/app/create-application.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/app/create-security.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/app/dispose.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/assets/index.html"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/assets/overrides.css"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/app-name.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/app-name.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/change-password.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/cli-users.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/cli.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/client.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/csrf-persistence.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/csrf.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/events-web.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/http-policy.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/http.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/http.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/i18n.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/incoming-share-config.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/incoming-share-config.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/initial-admin.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/member-routes.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/member-routes.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/multiuser.integration.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/oidc-button-text.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/oidc-start-web.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/oidc/accounts.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/oidc/discovery.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/oidc/fixtures/localhost-cert.pem"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/oidc/fixtures/localhost-key.pem"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/oidc/http.integration.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/oidc/identity-uniqueness.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/oidc/jwks.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/oidc/login.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/oidc/metadata.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/oidc/oidc.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/oidc/startup-error.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/oidc/transport.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/password-policy.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/password-reset.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/proxy-trust.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/pwa.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/request-limits.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/request-limits.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/resource-share-limits.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/resource-shares-recovery.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/resource-shares.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/route-manifest.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/route-manifest.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/server.integration.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/session-cookies.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/session-cookies.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/sessions.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/share-target-ui.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/share-target.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/state-events.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/store.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/user-deletion.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/user-deletion.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/users.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/vault-access.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/vault-catalog.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/vault-creation.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/vault-deletion.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/vault-events.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/vault-members.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/vault-policy.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/vault-registration.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/vault-rename.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/vault-view.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/web/account.css"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/web/client.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/web/components.css"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/web/events.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/web/i18n.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/web/icon-192.svg"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/web/icon-maskable.svg"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/web/login.html"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/web/login.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/web/manifest.webmanifest"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/web/pwa.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/web/reset-password.html"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/web/reset-password.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/web/setup.css"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/web/setup.html"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/web/setup.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/web/share-store.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/web/share-target.css"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/web/share-target.html"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/web/share-target.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/auth/web/share-worker.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/cache/apply.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/cache/cache.apply.test.mjs"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/cache/cache.ignore.test.mjs"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/cache/cache.reconcile.test.mjs"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/cache/cache.test.mjs"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/cache/compress.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/cache/crawl.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/cache/listeners.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/cache/metadata-channel.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/cache/metadata-channel.test.mjs"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/cache/reconcile.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/cache/reconcile.test.mjs"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/cache/state.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/config.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/content/adapters/content-path.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/content/adapters/publication.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/content/adapters/publication.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/content/adapters/runtime.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/content/application/replace.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/content/application/replace.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/identity/adapters/change-password.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/identity/adapters/email.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/identity/adapters/identity-store.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/identity/adapters/initial-admin.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/identity/adapters/oidc/account-login.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/identity/adapters/oidc/accounts.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/identity/adapters/oidc/config.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/identity/adapters/oidc/discovery.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/identity/adapters/oidc/jwks.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/identity/adapters/oidc/login.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/identity/adapters/oidc/manual-link.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/identity/adapters/oidc/metadata.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/identity/adapters/oidc/runtime.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/identity/adapters/oidc/startup-error.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/identity/adapters/oidc/transactions.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/identity/adapters/oidc/transport.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/identity/adapters/password-policy.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/identity/adapters/password-reset.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/identity/adapters/password.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/identity/adapters/sessions.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/identity/adapters/store.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/identity/adapters/users.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/identity/application/identity.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/identity/application/identity.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/sharing/adapters/database-watch.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/sharing/adapters/database-watch.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/sharing/adapters/event-store.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/sharing/adapters/events.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/sharing/adapters/events.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/sharing/adapters/limits.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/sharing/adapters/resource-shares.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/sharing/application/sharing.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/sharing/application/sharing.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/sharing/application/state-events.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/vaults/adapters/vault-access.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/vaults/adapters/vault-catalog.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/vaults/adapters/vault-creation.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/vaults/adapters/vault-deletion.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/vaults/adapters/vault-members.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/vaults/adapters/vault-registration.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/vaults/adapters/vault-rename.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/vaults/adapters/vault-request.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/vaults/adapters/vault-store.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/vaults/adapters/vault-view.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/vaults/application/events.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/vaults/application/registration-errors.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/vaults/application/vault-name.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/vaults/application/vault-policy.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/vaults/application/vault-selection.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/vaults/application/vaults.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/features/vaults/application/vaults.test.mjs"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/index.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/integration/ignis/connect-events.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/integration/ignis/install-routes.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/obsidian-account/signin.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/obsidian-account/signin.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/platform/persistence/database.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/platform/persistence/schema.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/plugin-system/discovery.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/plugin-system/manager.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/plugin-system/migrate-bridge.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/plugins/headless-sync/obsidian/src/api.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/plugins/headless-sync/obsidian/src/api.test.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/plugins/headless-sync/obsidian/src/auth-section.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/plugins/headless-sync/obsidian/src/core-sync-guard.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/plugins/headless-sync/obsidian/src/main.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/plugins/headless-sync/obsidian/src/settings-tab.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/plugins/headless-sync/obsidian/src/sync-log-kinds.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/plugins/headless-sync/obsidian/src/sync-log-modal.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/plugins/headless-sync/obsidian/src/sync-status-bar.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/plugins/headless-sync/routes.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/routes/bootstrap.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/routes/bootstrap.private.test.mjs"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/routes/fs.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/routes/fs.routes.test.mjs"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/routes/plugins.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/routes/proxy/index.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/routes/proxy/index.routes.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/routes/proxy/member-network.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/routes/proxy/member-network.test.mjs"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/routes/proxy/relay.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/routes/proxy/ssrf-guard.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/routes/resource-shares.test.mjs"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/routes/vault.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/routes/vault.routes.test.mjs"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/static/index-html.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/static/obsidian-terms.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/static/obsidian-terms.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/transport/http/content/write-result.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/transport/http/identity/access-routes.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/transport/http/identity/account-routes.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/transport/http/identity/oidc-routes.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/transport/http/identity/router.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/transport/http/identity/router.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/transport/http/identity/users-routes.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/transport/http/sharing/router.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/vault/attachment-policy.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/vault/attachment-policy.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/vault/deletion-lifecycle.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/vault/lifecycle.js"
+      },
+      {
+        "status": "M",
+        "file": "apps/ignis-server/server/vault/lifecycle.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/vault/request-selection.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/vault/request-selection.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/vault/resource-policy.js"
+      },
+      {
+        "status": "A",
+        "file": "apps/ignis-server/server/vault/resource-policy.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "docker-compose.yml"
+      },
+      {
+        "status": "M",
+        "file": "docs/ARCHITECTURE.md"
+      },
+      {
+        "status": "A",
+        "file": "docs/architecture/README.md"
+      },
+      {
+        "status": "A",
+        "file": "docs/architecture/acceptance.md"
+      },
+      {
+        "status": "A",
+        "file": "docs/architecture/audit-2026-11-03.txt"
+      },
+      {
+        "status": "A",
+        "file": "docs/architecture/baselines/phase0.json"
+      },
+      {
+        "status": "A",
+        "file": "docs/architecture/decisions.md"
+      },
+      {
+        "status": "A",
+        "file": "docs/architecture/performance.md"
+      },
+      {
+        "status": "A",
+        "file": "docs/architecture/phase1.md"
+      },
+      {
+        "status": "A",
+        "file": "docs/architecture/phase2.md"
+      },
+      {
+        "status": "A",
+        "file": "docs/architecture/phase3.md"
+      },
+      {
+        "status": "A",
+        "file": "docs/architecture/phase4.md"
+      },
+      {
+        "status": "A",
+        "file": "docs/architecture/phase5.md"
+      },
+      {
+        "status": "A",
+        "file": "docs/architecture/phase6.md"
+      },
+      {
+        "status": "A",
+        "file": "docs/architecture/reference.json"
+      },
+      {
+        "status": "A",
+        "file": "docs/architecture/surfaces.json"
+      },
+      {
+        "status": "A",
+        "file": "docs/architecture/verification.json"
+      },
+      {
+        "status": "M",
+        "file": "package-lock.json"
+      },
+      {
+        "status": "M",
+        "file": "package.json"
+      },
+      {
+        "status": "M",
+        "file": "packages/bridge/src/commands/index.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/bridge/src/commands/open-workspace.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/bridge/src/commands/refresh-vault.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/bridge/src/commands/workspace-picker.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/bridge/src/file-actions.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/bridge/src/main.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/bridge/src/notices/insecure-api-notice.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/bridge/src/notices/proxy-block-notice.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/bridge/src/notices/save-notice.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/bridge/src/notices/write-giveup-notice.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/bridge/src/rename-keyboard.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/bridge/src/rename-keyboard.test.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/bridge/src/settings/account-tab.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/bridge/src/settings/account-tab.test.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/bridge/src/settings/general-tab.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/bridge/src/settings/inject.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/bridge/src/settings/list-editor-modal.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/bridge/src/settings/management-modal.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/bridge/src/settings/management-modal.test.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/bridge/src/settings/server-plugins-tab.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/bridge/src/settings/server-setting-fields.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/bridge/src/settings/server-settings.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/bridge/src/settings/vault-tab.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/bridge/src/status-bar.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/contracts/src/content.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/contracts/src/content.test.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/contracts/src/session.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/contracts/src/session.test.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/management/src/account-security-component.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/management/src/account-security-template.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/management/src/account-settings.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/management/src/account.css"
+      },
+      {
+        "status": "A",
+        "file": "packages/management/src/client.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/management/src/client.test.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/management/src/help.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/management/src/intent.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/management/src/intent.test.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/management/src/management-dialogs.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/management/src/management-modal.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/management/src/management-view.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/management/src/oidc-start.cjs"
+      },
+      {
+        "status": "A",
+        "file": "packages/management/src/password-visibility.cjs"
+      },
+      {
+        "status": "A",
+        "file": "packages/management/src/resource-action-style.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/management/src/resource-tree.cjs"
+      },
+      {
+        "status": "A",
+        "file": "packages/management/src/resource-tree.css"
+      },
+      {
+        "status": "A",
+        "file": "packages/management/src/session-transition.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/management/src/session-transition.test.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/management/src/shared-management-view.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/management/src/shares-component.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/management/src/shares-template.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/management/src/users-component.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/management/src/users-template.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/server-core/src/log-events.json"
+      },
+      {
+        "status": "A",
+        "file": "packages/server-core/src/log-test-helper.mjs"
+      },
+      {
+        "status": "A",
+        "file": "packages/server-core/src/logger.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/server-core/src/logger.test.mjs"
+      },
+      {
+        "status": "M",
+        "file": "packages/server-core/src/watcher.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/server-core/src/watcher.test.mjs"
+      },
+      {
+        "status": "M",
+        "file": "packages/server-core/src/write-coalescer.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/server-core/src/ws.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/services/src/vault-service.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/services/src/vault-service.test.mjs"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/package.json"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/account-storage.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/account-storage.test.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/copy-dialog.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/copy-dialog.test.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/css-overrides.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/editor-saves.test.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/electron/ipc-renderer.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/electron/ipc-renderer.test.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/electron/remote/dialog.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/fs/auth-suspension.test.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/fs/content-versions.integration.test.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/fs/content-versions.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/fs/content-versions.test.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/fs/fd.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/fs/index.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/fs/indexer-prefetch.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/fs/promises.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/fs/read-ahead.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/fs/shared-files.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/fs/shared-files.test.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/fs/shared-notice.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/fs/shared-notice.test.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/fs/sync.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/fs/transport.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/fs/transport.test.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/fs/watcher-client.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/fs/watcher-client.test.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/fs/write-coalescer.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/fs/write-durability.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/fs/write-durability.test.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/fs/write-durability.unload.test.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/fullscreen-menu.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/guards/external-files-guard.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/guards/popout-guard.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/guards/spellcheck-guard.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/ignis-api.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/init.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/init.test.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/integration/obsidian/1.14.4/editor-saves.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/integration/obsidian/editor-saves.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/loader.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/mobile-vault-switcher.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/native-tooltip.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/native-tooltip.test.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/recovery-copy.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/recovery-copy.test.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/share-dialog.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/share-dialog.test.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/shared-icons.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/shared-icons.test.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/shared-panel.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/shared-panel.test.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/shared-ui.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/shared-ui.test.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/shim/src/vault-account-menu.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/ws-client.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/shim/src/ws-client.test.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/ui/build.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/ui/compiler-options.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/ui/package.json"
+      },
+      {
+        "status": "M",
+        "file": "packages/ui/src/bootstrap.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/ui/src/components/input/SearchInput.svelte"
+      },
+      {
+        "status": "M",
+        "file": "packages/ui/src/components/layout/ConfirmDialog.svelte"
+      },
+      {
+        "status": "M",
+        "file": "packages/ui/src/components/layout/InsecureContextModal.svelte"
+      },
+      {
+        "status": "M",
+        "file": "packages/ui/src/components/layout/MessageDialog.svelte"
+      },
+      {
+        "status": "M",
+        "file": "packages/ui/src/components/layout/Modal.svelte"
+      },
+      {
+        "status": "M",
+        "file": "packages/ui/src/components/layout/PromptDialog.svelte"
+      },
+      {
+        "status": "M",
+        "file": "packages/ui/src/components/menu/PopoverMenu.svelte"
+      },
+      {
+        "status": "M",
+        "file": "packages/ui/src/components/settings/ExcludedFoldersEditor.svelte"
+      },
+      {
+        "status": "M",
+        "file": "packages/ui/src/components/settings/IgnoreRulesEditor.svelte"
+      },
+      {
+        "status": "M",
+        "file": "packages/ui/src/components/settings/RecordEditor.svelte"
+      },
+      {
+        "status": "M",
+        "file": "packages/ui/src/components/settings/RuleSetCard.svelte"
+      },
+      {
+        "status": "M",
+        "file": "packages/ui/src/components/settings/SuggestionRow.svelte"
+      },
+      {
+        "status": "M",
+        "file": "packages/ui/src/components/settings/ignore-suggestions.js"
+      },
+      {
+        "status": "M",
+        "file": "packages/ui/src/index.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/ui/src/management.js"
+      },
+      {
+        "status": "A",
+        "file": "packages/ui/src/settings-shell.css"
+      },
+      {
+        "status": "M",
+        "file": "packages/ui/src/views/SyncSetupModal.svelte"
+      },
+      {
+        "status": "A",
+        "file": "packages/ui/src/views/VaultAccessDialog.svelte"
+      },
+      {
+        "status": "M",
+        "file": "packages/ui/src/views/VaultManager.svelte"
+      },
+      {
+        "status": "M",
+        "file": "packages/ui/src/views/sync/CreateVaultForm.svelte"
+      },
+      {
+        "status": "M",
+        "file": "packages/ui/src/views/sync/VaultList.svelte"
+      },
+      {
+        "status": "M",
+        "file": "packages/ui/src/views/sync/VaultRow.svelte"
+      },
+      {
+        "status": "A",
+        "file": "packages/ui/svelte-security.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "scripts/architecture-inventory.mjs"
+      },
+      {
+        "status": "A",
+        "file": "scripts/check-architecture.mjs"
+      },
+      {
+        "status": "A",
+        "file": "scripts/check-architecture.test.mjs"
+      },
+      {
+        "status": "A",
+        "file": "scripts/check-content-faults.mjs"
+      },
+      {
+        "status": "A",
+        "file": "scripts/check-image.mjs"
+      },
+      {
+        "status": "A",
+        "file": "scripts/check-load.mjs"
+      },
+      {
+        "status": "A",
+        "file": "scripts/check-management-ui.mjs"
+      },
+      {
+        "status": "A",
+        "file": "scripts/lib/server-readiness.mjs"
+      },
+      {
+        "status": "A",
+        "file": "scripts/lib/server-readiness.test.mjs"
+      }
+    ],
+    "newUntrackedFiles": [
+      ".github/workflows/architecture.yml",
+      "docs/architecture/baselines/phase7-budget.json",
+      "docs/architecture/baselines/phase7-candidate.json",
+      "docs/architecture/baselines/phase7-events.json",
+      "docs/architecture/baselines/phase7-initial-candidate.json",
+      "docs/architecture/baselines/phase7-initial-reference.json",
+      "docs/architecture/baselines/phase7-intermediate-candidate.json",
+      "docs/architecture/baselines/phase7-reference.json",
+      "docs/architecture/baselines/phase7-stress.json",
+      "docs/architecture/operations.md",
+      "docs/architecture/phase7-inventory.json",
+      "docs/architecture/phase7-verification.json",
+      "docs/architecture/phase7.md",
+      "scripts/check-obsidian-runtime.mjs",
+      "scripts/compare-load.mjs",
+      "scripts/compare-load.test.mjs",
+      "scripts/lib/chrome.mjs",
+      "scripts/lib/load-probe.cjs"
+    ]
+  },
+  "sourceCommit": "5729923f9faf9178716707d69b1e22fa464f9f17",
+  "scope": "Data APIs from the reviewed manifest; authentication method/path registrations (not an input-schema registry).",
+  "publicDocuments": [
+    "/login",
+    "/setup",
+    "/reset-password",
+    "/share-target"
+  ],
+  "removedManagementDocuments": [
+    "/account",
+    "/shares",
+    "/admin/users"
+  ],
+  "authenticationRoutes": [
+    {
+      "method": "GET",
+      "path": "/api/auth/status",
+      "group": "access"
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/csrf",
+      "group": "access"
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/session",
+      "group": "access"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "group": "access"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "group": "access"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/setup",
+      "group": "access"
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/reset-password",
+      "group": "account"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/reset-password",
+      "group": "account"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/email",
+      "group": "account"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/reauth",
+      "group": "account"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/password",
+      "group": "account"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/oidc/unlink",
+      "group": "account"
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/users",
+      "group": "users"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/users",
+      "group": "users"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/users/status",
+      "group": "users"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/users/revoke-sessions",
+      "group": "users"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/users/unlink-oidc",
+      "group": "users"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/users/set-password",
+      "group": "users"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/users/reset-password",
+      "group": "users"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/users/delete",
+      "group": "users"
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/oidc/callback",
+      "group": "oidc"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/oidc/start",
+      "group": "oidc"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/oidc/link",
+      "group": "oidc"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/oidc/reauth",
+      "group": "oidc"
+    }
+  ],
+  "dataRoutes": [
+    {
+      "method": "GET",
+      "path": "/api/shares",
+      "mount": "",
+      "source": "transport/http/sharing/router.js",
+      "sourcePath": "/api/shares",
+      "surface": "resource-sharing",
+      "operation": "read",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "POST",
+      "path": "/api/shares",
+      "mount": "",
+      "source": "transport/http/sharing/router.js",
+      "sourcePath": "/api/shares",
+      "surface": "resource-sharing",
+      "operation": "manage",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/shares/content",
+      "mount": "",
+      "source": "transport/http/sharing/router.js",
+      "sourcePath": "/api/shares/content",
+      "surface": "resource-sharing",
+      "operation": "read",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fs/stat",
+      "mount": "/api/fs",
+      "source": "routes/fs.js",
+      "sourcePath": "/stat",
+      "surface": "vault-content",
+      "operation": "read",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fs/readFile",
+      "mount": "/api/fs",
+      "source": "routes/fs.js",
+      "sourcePath": "/readFile",
+      "surface": "vault-content",
+      "operation": "read",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fs/access",
+      "mount": "/api/fs",
+      "source": "routes/fs.js",
+      "sourcePath": "/access",
+      "surface": "vault-content",
+      "operation": "read",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fs/tree",
+      "mount": "/api/fs",
+      "source": "routes/fs.js",
+      "sourcePath": "/tree",
+      "surface": "vault-content",
+      "operation": "read",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fs/download",
+      "mount": "/api/fs",
+      "source": "routes/fs.js",
+      "sourcePath": "/download",
+      "surface": "vault-content",
+      "operation": "read",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fs/download-zip",
+      "mount": "/api/fs",
+      "source": "routes/fs.js",
+      "sourcePath": "/download-zip",
+      "surface": "vault-content",
+      "operation": "read",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "POST",
+      "path": "/api/fs/writeFile",
+      "mount": "/api/fs",
+      "source": "routes/fs.js",
+      "sourcePath": "/writeFile",
+      "surface": "vault-content",
+      "operation": "write",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "POST",
+      "path": "/api/fs/appendFile",
+      "mount": "/api/fs",
+      "source": "routes/fs.js",
+      "sourcePath": "/appendFile",
+      "surface": "vault-content",
+      "operation": "write",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "POST",
+      "path": "/api/fs/mkdir",
+      "mount": "/api/fs",
+      "source": "routes/fs.js",
+      "sourcePath": "/mkdir",
+      "surface": "vault-content",
+      "operation": "write",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "POST",
+      "path": "/api/fs/rename",
+      "mount": "/api/fs",
+      "source": "routes/fs.js",
+      "sourcePath": "/rename",
+      "surface": "vault-content",
+      "operation": "write",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "POST",
+      "path": "/api/fs/copyFile",
+      "mount": "/api/fs",
+      "source": "routes/fs.js",
+      "sourcePath": "/copyFile",
+      "surface": "vault-content",
+      "operation": "write",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "POST",
+      "path": "/api/fs/utimes",
+      "mount": "/api/fs",
+      "source": "routes/fs.js",
+      "sourcePath": "/utimes",
+      "surface": "vault-content",
+      "operation": "write",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "POST",
+      "path": "/api/fs/batch-read",
+      "mount": "/api/fs",
+      "source": "routes/fs.js",
+      "sourcePath": "/batch-read",
+      "surface": "vault-content",
+      "operation": "read",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/fs/unlink",
+      "mount": "/api/fs",
+      "source": "routes/fs.js",
+      "sourcePath": "/unlink",
+      "surface": "vault-content",
+      "operation": "write",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/fs/rmdir",
+      "mount": "/api/fs",
+      "source": "routes/fs.js",
+      "sourcePath": "/rmdir",
+      "surface": "vault-content",
+      "operation": "write",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/fs/rm",
+      "mount": "/api/fs",
+      "source": "routes/fs.js",
+      "sourcePath": "/rm",
+      "surface": "vault-content",
+      "operation": "write",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/vault/list",
+      "mount": "/api/vault",
+      "source": "routes/vault.js",
+      "sourcePath": "/list",
+      "surface": "vault-lifecycle",
+      "operation": "list",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/vault/info",
+      "mount": "/api/vault",
+      "source": "routes/vault.js",
+      "sourcePath": "/info",
+      "surface": "vault-lifecycle",
+      "operation": "read",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/vault/members",
+      "mount": "/api/vault",
+      "source": "routes/vault.js",
+      "sourcePath": "/members",
+      "surface": "vault-lifecycle",
+      "operation": "read",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "POST",
+      "path": "/api/vault/members",
+      "mount": "/api/vault",
+      "source": "routes/vault.js",
+      "sourcePath": "/members",
+      "surface": "vault-lifecycle",
+      "operation": "manage",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "POST",
+      "path": "/api/vault/transfer-ownership",
+      "mount": "/api/vault",
+      "source": "routes/vault.js",
+      "sourcePath": "/transfer-ownership",
+      "surface": "vault-lifecycle",
+      "operation": "manage",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "POST",
+      "path": "/api/vault/refresh",
+      "mount": "/api/vault",
+      "source": "routes/vault.js",
+      "sourcePath": "/refresh",
+      "surface": "vault-lifecycle",
+      "operation": "manage",
+      "currentAccess": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/vault/create",
+      "mount": "/api/vault",
+      "source": "routes/vault.js",
+      "sourcePath": "/create",
+      "surface": "vault-lifecycle",
+      "operation": "manage",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "POST",
+      "path": "/api/vault/rename",
+      "mount": "/api/vault",
+      "source": "routes/vault.js",
+      "sourcePath": "/rename",
+      "surface": "vault-lifecycle",
+      "operation": "manage",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/vault/remove",
+      "mount": "/api/vault",
+      "source": "routes/vault.js",
+      "sourcePath": "/remove",
+      "surface": "vault-lifecycle",
+      "operation": "manage",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/vault/owners",
+      "mount": "/api/vault",
+      "source": "routes/vault.js",
+      "sourcePath": "/owners",
+      "surface": "vault-lifecycle",
+      "operation": "read",
+      "currentAccess": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/vault/registration",
+      "mount": "/api/vault",
+      "source": "routes/vault.js",
+      "sourcePath": "/registration",
+      "surface": "vault-lifecycle",
+      "operation": "read",
+      "currentAccess": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/vault/register",
+      "mount": "/api/vault",
+      "source": "routes/vault.js",
+      "sourcePath": "/register",
+      "surface": "vault-lifecycle",
+      "operation": "manage",
+      "currentAccess": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/bootstrap",
+      "mount": "/api/bootstrap",
+      "source": "routes/bootstrap.js",
+      "sourcePath": "/",
+      "surface": "mixed-bootstrap",
+      "operation": "read",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "POST",
+      "path": "/api/proxy",
+      "mount": "/api/proxy",
+      "source": "routes/proxy/index.js",
+      "sourcePath": "/",
+      "surface": "external-network",
+      "operation": "network",
+      "currentAccess": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/version",
+      "mount": "/api/version",
+      "source": "routes/version.js",
+      "sourcePath": "/",
+      "surface": "instance",
+      "operation": "read",
+      "currentAccess": "owner"
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings",
+      "mount": "/api/settings",
+      "source": "routes/settings.js",
+      "sourcePath": "/",
+      "surface": "instance",
+      "operation": "read",
+      "currentAccess": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/settings",
+      "mount": "/api/settings",
+      "source": "routes/settings.js",
+      "sourcePath": "/",
+      "surface": "instance",
+      "operation": "manage",
+      "currentAccess": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/plugins",
+      "mount": "/api/plugins",
+      "source": "routes/plugins.js",
+      "sourcePath": "/",
+      "surface": "shared-code",
+      "operation": "read",
+      "currentAccess": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/headless-sync/enable",
+      "mount": "/api/plugins",
+      "source": "routes/plugins.js",
+      "sourcePath": "/:pluginId/enable",
+      "surface": "shared-code",
+      "operation": "manage",
+      "currentAccess": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/plugins/headless-sync/disable",
+      "mount": "/api/plugins",
+      "source": "routes/plugins.js",
+      "sourcePath": "/:pluginId/disable",
+      "surface": "shared-code",
+      "operation": "manage",
+      "currentAccess": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/ext/headless-sync/status",
+      "mount": "/api/ext/headless-sync",
+      "source": "plugins/headless-sync/routes.js",
+      "sourcePath": "/status",
+      "surface": "sync",
+      "operation": "read",
+      "currentAccess": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/ext/headless-sync/logs",
+      "mount": "/api/ext/headless-sync",
+      "source": "plugins/headless-sync/routes.js",
+      "sourcePath": "/logs",
+      "surface": "sync",
+      "operation": "read",
+      "currentAccess": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/ext/headless-sync/vaults",
+      "mount": "/api/ext/headless-sync",
+      "source": "plugins/headless-sync/routes.js",
+      "sourcePath": "/vaults",
+      "surface": "sync",
+      "operation": "read",
+      "currentAccess": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/ext/headless-sync/remote-vaults",
+      "mount": "/api/ext/headless-sync",
+      "source": "plugins/headless-sync/routes.js",
+      "sourcePath": "/remote-vaults",
+      "surface": "sync",
+      "operation": "read",
+      "currentAccess": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ext/headless-sync/login",
+      "mount": "/api/ext/headless-sync",
+      "source": "plugins/headless-sync/routes.js",
+      "sourcePath": "/login",
+      "surface": "sync",
+      "operation": "manage",
+      "currentAccess": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ext/headless-sync/logout",
+      "mount": "/api/ext/headless-sync",
+      "source": "plugins/headless-sync/routes.js",
+      "sourcePath": "/logout",
+      "surface": "sync",
+      "operation": "manage",
+      "currentAccess": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ext/headless-sync/setup",
+      "mount": "/api/ext/headless-sync",
+      "source": "plugins/headless-sync/routes.js",
+      "sourcePath": "/setup",
+      "surface": "sync",
+      "operation": "manage",
+      "currentAccess": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ext/headless-sync/config",
+      "mount": "/api/ext/headless-sync",
+      "source": "plugins/headless-sync/routes.js",
+      "sourcePath": "/config",
+      "surface": "sync",
+      "operation": "manage",
+      "currentAccess": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ext/headless-sync/start",
+      "mount": "/api/ext/headless-sync",
+      "source": "plugins/headless-sync/routes.js",
+      "sourcePath": "/start",
+      "surface": "sync",
+      "operation": "manage",
+      "currentAccess": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ext/headless-sync/stop",
+      "mount": "/api/ext/headless-sync",
+      "source": "plugins/headless-sync/routes.js",
+      "sourcePath": "/stop",
+      "surface": "sync",
+      "operation": "manage",
+      "currentAccess": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ext/headless-sync/unlink",
+      "mount": "/api/ext/headless-sync",
+      "source": "plugins/headless-sync/routes.js",
+      "sourcePath": "/unlink",
+      "surface": "sync",
+      "operation": "manage",
+      "currentAccess": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ext/headless-sync/create-remote-vault",
+      "mount": "/api/ext/headless-sync",
+      "source": "plugins/headless-sync/routes.js",
+      "sourcePath": "/create-remote-vault",
+      "surface": "sync",
+      "operation": "manage",
+      "currentAccess": "admin"
+    }
+  ],
+  "websocketChannels": [
+    {
+      "path": "/ws?events=1&context=<session>",
+      "purpose": "account invalidations"
+    },
+    {
+      "path": "/ws?vault=<uuid>&context=<session>",
+      "purpose": "authorized vault file events"
+    }
+  ]
+}

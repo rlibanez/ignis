@@ -1,0 +1,1749 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": 1,
+  "profile": "baseline",
+  "runs": 5,
+  "samples": 10,
+  "warmup": 2,
+  "sourceCommit": "5729923f9faf9178716707d69b1e22fa464f9f17",
+  "upstreamBase": "aa19cc59e9e33a337055daa915453da3dc0d98fb",
+  "productDiffSha256": null,
+  "harnessSha256": "7258f839c1d29063484c47811040459367e6824ef9744670fae03f0e695a972d",
+  "applicationVersion": "0.8.18",
+  "obsidianAssets": "synthetic; no Obsidian runtime loaded",
+  "cpuModel": "13th Gen Intel(R) Core(TM) i7-13700K",
+  "arch": "x64",
+  "kernel": "7.2.11-arch1-1",
+  "totalMemoryBytes": 33344876544,
+  "fixture": {
+    "notePayloadBytes": 1017,
+    "copyFiles": 1200,
+    "copyPayloadBytes": 1007,
+    "transport": "HTTP localhost, no compression, sequential samples",
+    "crypto": "scrypt login excluded from operation samples"
+  },
+  "cpuMax": null,
+  "memoryMax": null,
+  "node": "v24.22.1",
+  "platform": "linux",
+  "cpus": 24,
+  "date": "2026-11-03T13:00:06.305Z",
+  "scenarios": [
+    {
+      "run": 1,
+      "fileCount": 1000,
+      "shareCount": 10,
+      "startupMs": 128.4,
+      "tree": {
+        "samples": 10,
+        "p50Ms": 126,
+        "p95Ms": 136.6,
+        "maxMs": 136.6,
+        "rawMs": [
+          136.538,
+          136.597,
+          128.386,
+          128.973,
+          131.97,
+          125.979,
+          122.279,
+          124.185,
+          118.862,
+          125.91
+        ],
+        "responseBytes": 224337
+      },
+      "catalog": {
+        "samples": 10,
+        "p50Ms": 1.4,
+        "p95Ms": 1.6,
+        "maxMs": 1.6,
+        "rawMs": [
+          1.627,
+          1.501,
+          1.526,
+          1.436,
+          1.459,
+          1.326,
+          1.422,
+          1.589,
+          1.423,
+          1.337
+        ],
+        "responseBytes": 2700
+      },
+      "mounts": {
+        "samples": 10,
+        "p50Ms": 2,
+        "p95Ms": 4.9,
+        "maxMs": 4.9,
+        "rawMs": [
+          1.995,
+          2.017,
+          2.551,
+          4.871,
+          2.114,
+          2,
+          1.938,
+          1.867,
+          2.517,
+          2.274
+        ],
+        "responseBytes": 3275
+      },
+      "bootstrap": {
+        "samples": 10,
+        "p50Ms": 126.9,
+        "p95Ms": 153,
+        "maxMs": 153,
+        "rawMs": [
+          152.961,
+          125.084,
+          121.853,
+          143.516,
+          143.119,
+          119.896,
+          133.947,
+          126.791,
+          126.932,
+          138.622
+        ],
+        "responseBytes": 224993
+      },
+      "read": {
+        "samples": 10,
+        "p50Ms": 1.3,
+        "p95Ms": 1.4,
+        "maxMs": 1.4,
+        "rawMs": [
+          1.366,
+          1.346,
+          1.258,
+          1.352,
+          1.439,
+          1.347,
+          1.363,
+          1.259,
+          1.279,
+          1.363
+        ],
+        "responseBytes": 1017
+      },
+      "write": {
+        "samples": 10,
+        "p50Ms": 2,
+        "p95Ms": 2.1,
+        "maxMs": 2.1,
+        "rawMs": [
+          2.12,
+          1.892,
+          2.131,
+          2.091,
+          2.054,
+          1.878,
+          1.886,
+          1.994,
+          2.111,
+          1.821
+        ],
+        "responseBytes": 144
+      },
+      "sessionDuringTree": {
+        "samples": 5,
+        "p50Ms": 0.5,
+        "p95Ms": 126.1,
+        "maxMs": 126.1
+      },
+      "concurrentCopies": {
+        "requested": 6,
+        "totalMs": 409.8,
+        "statuses": [
+          200,
+          200,
+          503,
+          503,
+          503,
+          503
+        ],
+        "sessionResponse": {
+          "samples": 12,
+          "p50Ms": 0.8,
+          "p95Ms": 27.4,
+          "maxMs": 27.4
+        }
+      },
+      "postLoadRead": {
+        "samples": 10,
+        "p50Ms": 1.4,
+        "p95Ms": 10,
+        "maxMs": 10,
+        "rawMs": [
+          1.348,
+          1.203,
+          1.351,
+          10.032,
+          1.63,
+          1.512,
+          1.433,
+          1.442,
+          1.326,
+          1.34
+        ],
+        "responseBytes": 27
+      },
+      "peakServerRssMiB": 252.2
+    },
+    {
+      "run": 1,
+      "fileCount": 10000,
+      "shareCount": 100,
+      "startupMs": 122.9,
+      "tree": {
+        "samples": 10,
+        "p50Ms": 636.9,
+        "p95Ms": 675.9,
+        "maxMs": 675.9,
+        "rawMs": [
+          662.682,
+          624.954,
+          627.188,
+          634.586,
+          636.878,
+          675.871,
+          637.365,
+          637.457,
+          655.458,
+          627.87
+        ],
+        "responseBytes": 1179025
+      },
+      "catalog": {
+        "samples": 10,
+        "p50Ms": 7.8,
+        "p95Ms": 11.5,
+        "maxMs": 11.5,
+        "rawMs": [
+          8.533,
+          8.55,
+          11.503,
+          8.202,
+          7.749,
+          8.924,
+          7.66,
+          7.587,
+          7.418,
+          7.775
+        ],
+        "responseBytes": 25110
+      },
+      "mounts": {
+        "samples": 10,
+        "p50Ms": 11.6,
+        "p95Ms": 32.4,
+        "maxMs": 32.4,
+        "rawMs": [
+          11.596,
+          11.635,
+          32.389,
+          12.446,
+          12.056,
+          11.611,
+          11.664,
+          11.332,
+          11.06,
+          11.629
+        ],
+        "responseBytes": 32655
+      },
+      "bootstrap": {
+        "samples": 10,
+        "p50Ms": 646.8,
+        "p95Ms": 689.5,
+        "maxMs": 689.5,
+        "rawMs": [
+          646.826,
+          689.53,
+          639.603,
+          641.447,
+          648.079,
+          642.244,
+          664.306,
+          635.844,
+          672.817,
+          651.512
+        ],
+        "responseBytes": 1179681
+      },
+      "read": {
+        "samples": 10,
+        "p50Ms": 1.3,
+        "p95Ms": 1.7,
+        "maxMs": 1.7,
+        "rawMs": [
+          1.654,
+          1.538,
+          1.532,
+          1.408,
+          1.485,
+          1.279,
+          1.143,
+          1.333,
+          1.281,
+          1.222
+        ],
+        "responseBytes": 1017
+      },
+      "write": {
+        "samples": 10,
+        "p50Ms": 1.9,
+        "p95Ms": 2,
+        "maxMs": 2,
+        "rawMs": [
+          2.03,
+          1.875,
+          1.896,
+          1.964,
+          1.846,
+          1.807,
+          1.734,
+          1.98,
+          1.967,
+          1.922
+        ],
+        "responseBytes": 143
+      },
+      "sessionDuringTree": {
+        "samples": 5,
+        "p50Ms": 0.6,
+        "p95Ms": 632.4,
+        "maxMs": 632.4
+      },
+      "concurrentCopies": {
+        "requested": 6,
+        "totalMs": 396.8,
+        "statuses": [
+          200,
+          200,
+          503,
+          503,
+          503,
+          503
+        ],
+        "sessionResponse": {
+          "samples": 12,
+          "p50Ms": 0.7,
+          "p95Ms": 19.2,
+          "maxMs": 19.2
+        }
+      },
+      "postLoadRead": {
+        "samples": 10,
+        "p50Ms": 1.2,
+        "p95Ms": 1.4,
+        "maxMs": 1.4,
+        "rawMs": [
+          1.213,
+          1.156,
+          1.056,
+          1.196,
+          1.151,
+          1.157,
+          1.163,
+          1.117,
+          1.43,
+          1.37
+        ],
+        "responseBytes": 27
+      },
+      "peakServerRssMiB": 474.4
+    },
+    {
+      "run": 2,
+      "fileCount": 1000,
+      "shareCount": 10,
+      "startupMs": 130.4,
+      "tree": {
+        "samples": 10,
+        "p50Ms": 120.4,
+        "p95Ms": 132.7,
+        "maxMs": 132.7,
+        "rawMs": [
+          131.138,
+          132.665,
+          129.509,
+          122.833,
+          120.059,
+          120.725,
+          118.05,
+          120.38,
+          118.905,
+          118.675
+        ],
+        "responseBytes": 226503
+      },
+      "catalog": {
+        "samples": 10,
+        "p50Ms": 1.3,
+        "p95Ms": 1.6,
+        "maxMs": 1.6,
+        "rawMs": [
+          1.618,
+          1.562,
+          1.455,
+          1.397,
+          1.469,
+          1.308,
+          1.313,
+          1.304,
+          1.242,
+          1.318
+        ],
+        "responseBytes": 2700
+      },
+      "mounts": {
+        "samples": 10,
+        "p50Ms": 1.8,
+        "p95Ms": 4.4,
+        "maxMs": 4.4,
+        "rawMs": [
+          4.369,
+          2.036,
+          1.82,
+          1.882,
+          2.028,
+          1.88,
+          1.797,
+          1.812,
+          1.805,
+          1.846
+        ],
+        "responseBytes": 3315
+      },
+      "bootstrap": {
+        "samples": 10,
+        "p50Ms": 127.8,
+        "p95Ms": 147.7,
+        "maxMs": 147.7,
+        "rawMs": [
+          147.657,
+          128.322,
+          120.116,
+          131.294,
+          129.33,
+          116.739,
+          118.026,
+          139.255,
+          118.218,
+          127.829
+        ],
+        "responseBytes": 227159
+      },
+      "read": {
+        "samples": 10,
+        "p50Ms": 1.3,
+        "p95Ms": 1.6,
+        "maxMs": 1.6,
+        "rawMs": [
+          1.612,
+          1.37,
+          1.319,
+          1.177,
+          1.267,
+          1.235,
+          1.275,
+          1.27,
+          1.349,
+          1.059
+        ],
+        "responseBytes": 1017
+      },
+      "write": {
+        "samples": 10,
+        "p50Ms": 2.1,
+        "p95Ms": 3.4,
+        "maxMs": 3.4,
+        "rawMs": [
+          1.713,
+          1.643,
+          1.803,
+          1.826,
+          2.736,
+          2.812,
+          3.357,
+          3.21,
+          2.115,
+          2.512
+        ],
+        "responseBytes": 144
+      },
+      "sessionDuringTree": {
+        "samples": 5,
+        "p50Ms": 0.4,
+        "p95Ms": 123.8,
+        "maxMs": 123.8
+      },
+      "concurrentCopies": {
+        "requested": 6,
+        "totalMs": 395.9,
+        "statuses": [
+          200,
+          200,
+          503,
+          503,
+          503,
+          503
+        ],
+        "sessionResponse": {
+          "samples": 12,
+          "p50Ms": 0.7,
+          "p95Ms": 16.4,
+          "maxMs": 16.4
+        }
+      },
+      "postLoadRead": {
+        "samples": 10,
+        "p50Ms": 1.1,
+        "p95Ms": 1.2,
+        "maxMs": 1.2,
+        "rawMs": [
+          1.168,
+          1.035,
+          1.122,
+          1.092,
+          1.125,
+          1.108,
+          1.022,
+          1.056,
+          1.042,
+          1.097
+        ],
+        "responseBytes": 27
+      },
+      "peakServerRssMiB": 246.1
+    },
+    {
+      "run": 2,
+      "fileCount": 10000,
+      "shareCount": 100,
+      "startupMs": 109.4,
+      "tree": {
+        "samples": 10,
+        "p50Ms": 648.6,
+        "p95Ms": 698.6,
+        "maxMs": 698.6,
+        "rawMs": [
+          698.598,
+          648.638,
+          643.206,
+          666.352,
+          670.729,
+          656.636,
+          657.964,
+          631.982,
+          627.644,
+          637.461
+        ],
+        "responseBytes": 1181027
+      },
+      "catalog": {
+        "samples": 10,
+        "p50Ms": 7.9,
+        "p95Ms": 8.7,
+        "maxMs": 8.7,
+        "rawMs": [
+          7.971,
+          7.8,
+          7.86,
+          8.036,
+          7.585,
+          8.693,
+          8.503,
+          7.694,
+          7.684,
+          7.952
+        ],
+        "responseBytes": 25110
+      },
+      "mounts": {
+        "samples": 10,
+        "p50Ms": 11.9,
+        "p95Ms": 30.1,
+        "maxMs": 30.1,
+        "rawMs": [
+          12.056,
+          14.314,
+          12.06,
+          11.903,
+          11.684,
+          11.282,
+          30.113,
+          12.046,
+          11.44,
+          11.075
+        ],
+        "responseBytes": 32655
+      },
+      "bootstrap": {
+        "samples": 10,
+        "p50Ms": 652.9,
+        "p95Ms": 695.6,
+        "maxMs": 695.6,
+        "rawMs": [
+          632.868,
+          692.155,
+          656.612,
+          652.938,
+          642.314,
+          628.798,
+          676.621,
+          651.724,
+          695.616,
+          670.463
+        ],
+        "responseBytes": 1181683
+      },
+      "read": {
+        "samples": 10,
+        "p50Ms": 2.1,
+        "p95Ms": 5,
+        "maxMs": 5,
+        "rawMs": [
+          2.897,
+          2.35,
+          3.219,
+          1.976,
+          2.079,
+          2.84,
+          4.962,
+          2.114,
+          1.472,
+          1.508
+        ],
+        "responseBytes": 1017
+      },
+      "write": {
+        "samples": 10,
+        "p50Ms": 2.1,
+        "p95Ms": 11.3,
+        "maxMs": 11.3,
+        "rawMs": [
+          2.492,
+          2.101,
+          2.426,
+          2.253,
+          11.343,
+          2.415,
+          2.138,
+          2.054,
+          1.825,
+          1.861
+        ],
+        "responseBytes": 144
+      },
+      "sessionDuringTree": {
+        "samples": 5,
+        "p50Ms": 0.4,
+        "p95Ms": 651.4,
+        "maxMs": 651.4
+      },
+      "concurrentCopies": {
+        "requested": 6,
+        "totalMs": 405.7,
+        "statuses": [
+          200,
+          200,
+          503,
+          503,
+          503,
+          503
+        ],
+        "sessionResponse": {
+          "samples": 12,
+          "p50Ms": 0.8,
+          "p95Ms": 24.6,
+          "maxMs": 24.6
+        }
+      },
+      "postLoadRead": {
+        "samples": 10,
+        "p50Ms": 1.2,
+        "p95Ms": 1.4,
+        "maxMs": 1.4,
+        "rawMs": [
+          1.362,
+          1.233,
+          1.196,
+          1.233,
+          1.179,
+          1.15,
+          1.104,
+          1.098,
+          1.108,
+          1.137
+        ],
+        "responseBytes": 27
+      },
+      "peakServerRssMiB": 459.9
+    },
+    {
+      "run": 3,
+      "fileCount": 1000,
+      "shareCount": 10,
+      "startupMs": 134.3,
+      "tree": {
+        "samples": 10,
+        "p50Ms": 128.1,
+        "p95Ms": 134.6,
+        "maxMs": 134.6,
+        "rawMs": [
+          134.635,
+          134.061,
+          130.347,
+          123.217,
+          128.661,
+          127.857,
+          125.122,
+          129.285,
+          126.691,
+          128.068
+        ],
+        "responseBytes": 225995
+      },
+      "catalog": {
+        "samples": 10,
+        "p50Ms": 1.4,
+        "p95Ms": 1.5,
+        "maxMs": 1.5,
+        "rawMs": [
+          1.497,
+          1.417,
+          1.408,
+          1.481,
+          1.341,
+          1.486,
+          1.421,
+          1.384,
+          1.351,
+          1.38
+        ],
+        "responseBytes": 2700
+      },
+      "mounts": {
+        "samples": 10,
+        "p50Ms": 2,
+        "p95Ms": 5.2,
+        "maxMs": 5.2,
+        "rawMs": [
+          5.238,
+          2.117,
+          1.965,
+          1.942,
+          1.804,
+          2.036,
+          1.976,
+          1.818,
+          1.89,
+          2.026
+        ],
+        "responseBytes": 3315
+      },
+      "bootstrap": {
+        "samples": 10,
+        "p50Ms": 124.9,
+        "p95Ms": 153.8,
+        "maxMs": 153.8,
+        "rawMs": [
+          153.82,
+          139.135,
+          122.849,
+          134.718,
+          124.891,
+          124.674,
+          132.322,
+          120.261,
+          118.957,
+          134.888
+        ],
+        "responseBytes": 226651
+      },
+      "read": {
+        "samples": 10,
+        "p50Ms": 1.3,
+        "p95Ms": 2,
+        "maxMs": 2,
+        "rawMs": [
+          1.368,
+          1.936,
+          1.956,
+          1.427,
+          1.378,
+          1.223,
+          1.227,
+          1.314,
+          1.17,
+          1.12
+        ],
+        "responseBytes": 1017
+      },
+      "write": {
+        "samples": 10,
+        "p50Ms": 2,
+        "p95Ms": 4,
+        "maxMs": 4,
+        "rawMs": [
+          1.914,
+          1.83,
+          1.982,
+          2.143,
+          1.812,
+          1.857,
+          1.981,
+          2.361,
+          4.026,
+          3.197
+        ],
+        "responseBytes": 144
+      },
+      "sessionDuringTree": {
+        "samples": 5,
+        "p50Ms": 0.4,
+        "p95Ms": 120.9,
+        "maxMs": 120.9
+      },
+      "concurrentCopies": {
+        "requested": 6,
+        "totalMs": 411.2,
+        "statuses": [
+          200,
+          200,
+          503,
+          503,
+          503,
+          503
+        ],
+        "sessionResponse": {
+          "samples": 12,
+          "p50Ms": 0.7,
+          "p95Ms": 26.7,
+          "maxMs": 26.7
+        }
+      },
+      "postLoadRead": {
+        "samples": 10,
+        "p50Ms": 1.2,
+        "p95Ms": 1.3,
+        "maxMs": 1.3,
+        "rawMs": [
+          1.277,
+          1.174,
+          1.182,
+          1.178,
+          1.151,
+          1.15,
+          1.171,
+          1.144,
+          1.13,
+          1.188
+        ],
+        "responseBytes": 27
+      },
+      "peakServerRssMiB": 247.5
+    },
+    {
+      "run": 3,
+      "fileCount": 10000,
+      "shareCount": 100,
+      "startupMs": 118.1,
+      "tree": {
+        "samples": 10,
+        "p50Ms": 645.3,
+        "p95Ms": 684.8,
+        "maxMs": 684.8,
+        "rawMs": [
+          662.812,
+          668.151,
+          641.574,
+          641.718,
+          684.837,
+          645.292,
+          662.148,
+          652.959,
+          605.909,
+          590.562
+        ],
+        "responseBytes": 1176862
+      },
+      "catalog": {
+        "samples": 10,
+        "p50Ms": 7.2,
+        "p95Ms": 15.2,
+        "maxMs": 15.2,
+        "rawMs": [
+          7.287,
+          7.229,
+          15.196,
+          7.988,
+          7.32,
+          7.616,
+          7.167,
+          7.071,
+          6.917,
+          6.859
+        ],
+        "responseBytes": 25110
+      },
+      "mounts": {
+        "samples": 10,
+        "p50Ms": 10.5,
+        "p95Ms": 30.6,
+        "maxMs": 30.6,
+        "rawMs": [
+          11.253,
+          10.678,
+          10.505,
+          10.547,
+          10.529,
+          10.369,
+          10.695,
+          30.65,
+          10.541,
+          10.393
+        ],
+        "responseBytes": 31939
+      },
+      "bootstrap": {
+        "samples": 10,
+        "p50Ms": 583.1,
+        "p95Ms": 591,
+        "maxMs": 591,
+        "rawMs": [
+          587.449,
+          586.927,
+          590.995,
+          579.286,
+          583.112,
+          585.902,
+          582.992,
+          583.515,
+          581.901,
+          576.975
+        ],
+        "responseBytes": 1177518
+      },
+      "read": {
+        "samples": 10,
+        "p50Ms": 1.2,
+        "p95Ms": 1.4,
+        "maxMs": 1.4,
+        "rawMs": [
+          1.315,
+          1.308,
+          1.38,
+          1.208,
+          1.329,
+          1.294,
+          1.207,
+          1.077,
+          1.029,
+          1.011
+        ],
+        "responseBytes": 1017
+      },
+      "write": {
+        "samples": 10,
+        "p50Ms": 1.6,
+        "p95Ms": 1.7,
+        "maxMs": 1.7,
+        "rawMs": [
+          1.676,
+          1.672,
+          1.646,
+          1.671,
+          1.607,
+          1.652,
+          1.628,
+          1.716,
+          1.596,
+          1.574
+        ],
+        "responseBytes": 143
+      },
+      "sessionDuringTree": {
+        "samples": 5,
+        "p50Ms": 0.4,
+        "p95Ms": 586.9,
+        "maxMs": 586.9
+      },
+      "concurrentCopies": {
+        "requested": 6,
+        "totalMs": 382.8,
+        "statuses": [
+          200,
+          200,
+          503,
+          503,
+          503,
+          503
+        ],
+        "sessionResponse": {
+          "samples": 12,
+          "p50Ms": 0.7,
+          "p95Ms": 16.4,
+          "maxMs": 16.4
+        }
+      },
+      "postLoadRead": {
+        "samples": 10,
+        "p50Ms": 1.1,
+        "p95Ms": 1.2,
+        "maxMs": 1.2,
+        "rawMs": [
+          1.149,
+          1.158,
+          1.063,
+          1.2,
+          1.078,
+          1.249,
+          1.003,
+          1.033,
+          1.016,
+          1.059
+        ],
+        "responseBytes": 27
+      },
+      "peakServerRssMiB": 459.9
+    },
+    {
+      "run": 4,
+      "fileCount": 1000,
+      "shareCount": 10,
+      "startupMs": 112.2,
+      "tree": {
+        "samples": 10,
+        "p50Ms": 117.3,
+        "p95Ms": 124,
+        "maxMs": 124,
+        "rawMs": [
+          123.984,
+          122.007,
+          119.6,
+          117.633,
+          113.628,
+          122.855,
+          115.759,
+          117.273,
+          115.49,
+          115.052
+        ],
+        "responseBytes": 226419
+      },
+      "catalog": {
+        "samples": 10,
+        "p50Ms": 1.3,
+        "p95Ms": 1.4,
+        "maxMs": 1.4,
+        "rawMs": [
+          1.254,
+          1.215,
+          1.364,
+          1.318,
+          1.304,
+          1.348,
+          1.268,
+          1.238,
+          1.25,
+          1.167
+        ],
+        "responseBytes": 2700
+      },
+      "mounts": {
+        "samples": 10,
+        "p50Ms": 1.8,
+        "p95Ms": 5.1,
+        "maxMs": 5.1,
+        "rawMs": [
+          5.096,
+          2.032,
+          1.943,
+          1.889,
+          1.816,
+          1.776,
+          1.803,
+          1.814,
+          1.682,
+          1.759
+        ],
+        "responseBytes": 3315
+      },
+      "bootstrap": {
+        "samples": 10,
+        "p50Ms": 116.6,
+        "p95Ms": 141.2,
+        "maxMs": 141.2,
+        "rawMs": [
+          141.154,
+          116.566,
+          113.73,
+          122.029,
+          110.554,
+          110.369,
+          120.081,
+          113.436,
+          120.695,
+          116.735
+        ],
+        "responseBytes": 227075
+      },
+      "read": {
+        "samples": 10,
+        "p50Ms": 1.2,
+        "p95Ms": 1.4,
+        "maxMs": 1.4,
+        "rawMs": [
+          1.267,
+          1.413,
+          1.272,
+          1.231,
+          1.212,
+          1.118,
+          1.15,
+          1.244,
+          1.186,
+          1.156
+        ],
+        "responseBytes": 1017
+      },
+      "write": {
+        "samples": 10,
+        "p50Ms": 1.6,
+        "p95Ms": 1.8,
+        "maxMs": 1.8,
+        "rawMs": [
+          1.667,
+          1.738,
+          1.831,
+          1.646,
+          1.627,
+          1.641,
+          1.58,
+          1.725,
+          1.723,
+          1.59
+        ],
+        "responseBytes": 144
+      },
+      "sessionDuringTree": {
+        "samples": 5,
+        "p50Ms": 0.4,
+        "p95Ms": 111.7,
+        "maxMs": 111.7
+      },
+      "concurrentCopies": {
+        "requested": 6,
+        "totalMs": 392,
+        "statuses": [
+          200,
+          200,
+          503,
+          503,
+          503,
+          503
+        ],
+        "sessionResponse": {
+          "samples": 12,
+          "p50Ms": 0.7,
+          "p95Ms": 22,
+          "maxMs": 22
+        }
+      },
+      "postLoadRead": {
+        "samples": 10,
+        "p50Ms": 1.1,
+        "p95Ms": 1.2,
+        "maxMs": 1.2,
+        "rawMs": [
+          1.223,
+          1.094,
+          1.011,
+          1.101,
+          1.081,
+          1.078,
+          1.086,
+          1.089,
+          1.04,
+          1.037
+        ],
+        "responseBytes": 27
+      },
+      "peakServerRssMiB": 248.2
+    },
+    {
+      "run": 4,
+      "fileCount": 10000,
+      "shareCount": 100,
+      "startupMs": 113.4,
+      "tree": {
+        "samples": 10,
+        "p50Ms": 588.4,
+        "p95Ms": 614.1,
+        "maxMs": 614.1,
+        "rawMs": [
+          603.131,
+          594.9,
+          588.406,
+          598.905,
+          614.076,
+          584.122,
+          586.046,
+          582.396,
+          586.621,
+          588.82
+        ],
+        "responseBytes": 1179543
+      },
+      "catalog": {
+        "samples": 10,
+        "p50Ms": 7.1,
+        "p95Ms": 7.7,
+        "maxMs": 7.7,
+        "rawMs": [
+          7.545,
+          7.667,
+          7.42,
+          7.477,
+          7.271,
+          7.043,
+          6.955,
+          7.064,
+          6.861,
+          6.799
+        ],
+        "responseBytes": 25110
+      },
+      "mounts": {
+        "samples": 10,
+        "p50Ms": 10.6,
+        "p95Ms": 27.7,
+        "maxMs": 27.7,
+        "rawMs": [
+          11.007,
+          10.587,
+          10.639,
+          10.785,
+          27.676,
+          10.952,
+          10.594,
+          10.471,
+          10.352,
+          10.164
+        ],
+        "responseBytes": 32655
+      },
+      "bootstrap": {
+        "samples": 10,
+        "p50Ms": 596.5,
+        "p95Ms": 603.1,
+        "maxMs": 603.1,
+        "rawMs": [
+          598.955,
+          598.29,
+          594.412,
+          593.603,
+          599.061,
+          596.451,
+          603.117,
+          589.647,
+          597.64,
+          592.838
+        ],
+        "responseBytes": 1180199
+      },
+      "read": {
+        "samples": 10,
+        "p50Ms": 1.1,
+        "p95Ms": 1.3,
+        "maxMs": 1.3,
+        "rawMs": [
+          1.258,
+          1.124,
+          1.123,
+          1.121,
+          1.164,
+          1.061,
+          1.098,
+          1.137,
+          1.092,
+          1.038
+        ],
+        "responseBytes": 1017
+      },
+      "write": {
+        "samples": 10,
+        "p50Ms": 1.7,
+        "p95Ms": 1.8,
+        "maxMs": 1.8,
+        "rawMs": [
+          1.675,
+          1.669,
+          1.752,
+          1.724,
+          1.625,
+          1.677,
+          1.646,
+          1.747,
+          1.563,
+          1.657
+        ],
+        "responseBytes": 144
+      },
+      "sessionDuringTree": {
+        "samples": 5,
+        "p50Ms": 0.4,
+        "p95Ms": 599.9,
+        "maxMs": 599.9
+      },
+      "concurrentCopies": {
+        "requested": 6,
+        "totalMs": 372.9,
+        "statuses": [
+          200,
+          200,
+          503,
+          503,
+          503,
+          503
+        ],
+        "sessionResponse": {
+          "samples": 12,
+          "p50Ms": 0.7,
+          "p95Ms": 17,
+          "maxMs": 17
+        }
+      },
+      "postLoadRead": {
+        "samples": 10,
+        "p50Ms": 1.1,
+        "p95Ms": 1.2,
+        "maxMs": 1.2,
+        "rawMs": [
+          1.144,
+          1.212,
+          1.014,
+          1.086,
+          1.014,
+          1.11,
+          1.177,
+          1.072,
+          1.033,
+          1.129
+        ],
+        "responseBytes": 27
+      },
+      "peakServerRssMiB": 454.2
+    },
+    {
+      "run": 5,
+      "fileCount": 1000,
+      "shareCount": 10,
+      "startupMs": 105.7,
+      "tree": {
+        "samples": 10,
+        "p50Ms": 115.1,
+        "p95Ms": 123.3,
+        "maxMs": 123.3,
+        "rawMs": [
+          118.276,
+          123.262,
+          116.603,
+          117.003,
+          115.136,
+          113.49,
+          116.208,
+          112.881,
+          114.937,
+          111.284
+        ],
+        "responseBytes": 223734
+      },
+      "catalog": {
+        "samples": 10,
+        "p50Ms": 1.2,
+        "p95Ms": 1.5,
+        "maxMs": 1.5,
+        "rawMs": [
+          1.348,
+          1.25,
+          1.162,
+          1.151,
+          1.531,
+          1.233,
+          1.127,
+          1.317,
+          1.283,
+          1.287
+        ],
+        "responseBytes": 2700
+      },
+      "mounts": {
+        "samples": 10,
+        "p50Ms": 1.7,
+        "p95Ms": 1.8,
+        "maxMs": 1.8,
+        "rawMs": [
+          1.794,
+          1.755,
+          1.829,
+          1.751,
+          1.782,
+          1.683,
+          1.717,
+          1.666,
+          1.695,
+          1.686
+        ],
+        "responseBytes": 3235
+      },
+      "bootstrap": {
+        "samples": 10,
+        "p50Ms": 115.9,
+        "p95Ms": 124.7,
+        "maxMs": 124.7,
+        "rawMs": [
+          115.946,
+          122.29,
+          113.742,
+          111.807,
+          120.46,
+          111.747,
+          111.993,
+          124.655,
+          117.436,
+          124.277
+        ],
+        "responseBytes": 224390
+      },
+      "read": {
+        "samples": 10,
+        "p50Ms": 1.2,
+        "p95Ms": 1.3,
+        "maxMs": 1.3,
+        "rawMs": [
+          1.255,
+          1.295,
+          1.291,
+          1.102,
+          1.282,
+          1.24,
+          1.166,
+          1.128,
+          1.122,
+          1.055
+        ],
+        "responseBytes": 1017
+      },
+      "write": {
+        "samples": 10,
+        "p50Ms": 1.7,
+        "p95Ms": 1.8,
+        "maxMs": 1.8,
+        "rawMs": [
+          1.649,
+          1.713,
+          1.733,
+          1.707,
+          1.569,
+          1.645,
+          1.687,
+          1.838,
+          1.784,
+          1.628
+        ],
+        "responseBytes": 144
+      },
+      "sessionDuringTree": {
+        "samples": 5,
+        "p50Ms": 0.4,
+        "p95Ms": 123.2,
+        "maxMs": 123.2
+      },
+      "concurrentCopies": {
+        "requested": 6,
+        "totalMs": 390.8,
+        "statuses": [
+          200,
+          200,
+          503,
+          503,
+          503,
+          503
+        ],
+        "sessionResponse": {
+          "samples": 12,
+          "p50Ms": 0.7,
+          "p95Ms": 17.4,
+          "maxMs": 17.4
+        }
+      },
+      "postLoadRead": {
+        "samples": 10,
+        "p50Ms": 1,
+        "p95Ms": 1.2,
+        "maxMs": 1.2,
+        "rawMs": [
+          1.033,
+          1.041,
+          1.008,
+          1.153,
+          1.07,
+          1.1,
+          0.996,
+          1.037,
+          1.194,
+          1.201
+        ],
+        "responseBytes": 27
+      },
+      "peakServerRssMiB": 246.9
+    },
+    {
+      "run": 5,
+      "fileCount": 10000,
+      "shareCount": 100,
+      "startupMs": 106,
+      "tree": {
+        "samples": 10,
+        "p50Ms": 586.9,
+        "p95Ms": 616.9,
+        "maxMs": 616.9,
+        "rawMs": [
+          597.6,
+          583.765,
+          588.594,
+          586.711,
+          586.893,
+          616.859,
+          595.433,
+          582.204,
+          583.443,
+          590.223
+        ],
+        "responseBytes": 1178615
+      },
+      "catalog": {
+        "samples": 10,
+        "p50Ms": 6.9,
+        "p95Ms": 8,
+        "maxMs": 8,
+        "rawMs": [
+          8.006,
+          7.359,
+          7.222,
+          7.258,
+          6.987,
+          6.911,
+          6.865,
+          6.834,
+          6.923,
+          6.824
+        ],
+        "responseBytes": 25110
+      },
+      "mounts": {
+        "samples": 10,
+        "p50Ms": 10.9,
+        "p95Ms": 26.9,
+        "maxMs": 26.9,
+        "rawMs": [
+          10.931,
+          10.833,
+          26.875,
+          11.762,
+          11.495,
+          10.889,
+          10.643,
+          10.673,
+          12.989,
+          11.541
+        ],
+        "responseBytes": 32255
+      },
+      "bootstrap": {
+        "samples": 10,
+        "p50Ms": 590.3,
+        "p95Ms": 620.1,
+        "maxMs": 620.1,
+        "rawMs": [
+          599.207,
+          601.319,
+          603.579,
+          586.796,
+          584.113,
+          590.303,
+          620.06,
+          579.58,
+          590.227,
+          592.327
+        ],
+        "responseBytes": 1179271
+      },
+      "read": {
+        "samples": 10,
+        "p50Ms": 1,
+        "p95Ms": 1.3,
+        "maxMs": 1.3,
+        "rawMs": [
+          1.318,
+          1.339,
+          1.175,
+          1.137,
+          1.125,
+          1.022,
+          1.04,
+          1.046,
+          1.024,
+          1.042
+        ],
+        "responseBytes": 1017
+      },
+      "write": {
+        "samples": 10,
+        "p50Ms": 1.7,
+        "p95Ms": 8.5,
+        "maxMs": 8.5,
+        "rawMs": [
+          1.731,
+          1.606,
+          1.696,
+          1.727,
+          1.641,
+          1.67,
+          8.495,
+          1.768,
+          1.663,
+          1.68
+        ],
+        "responseBytes": 144
+      },
+      "sessionDuringTree": {
+        "samples": 5,
+        "p50Ms": 0.4,
+        "p95Ms": 581,
+        "maxMs": 581
+      },
+      "concurrentCopies": {
+        "requested": 6,
+        "totalMs": 371.4,
+        "statuses": [
+          200,
+          200,
+          503,
+          503,
+          503,
+          503
+        ],
+        "sessionResponse": {
+          "samples": 12,
+          "p50Ms": 0.7,
+          "p95Ms": 17.9,
+          "maxMs": 17.9
+        }
+      },
+      "postLoadRead": {
+        "samples": 10,
+        "p50Ms": 1.1,
+        "p95Ms": 1.2,
+        "maxMs": 1.2,
+        "rawMs": [
+          1.138,
+          1.082,
+          1.086,
+          1.124,
+          1.107,
+          1.017,
+          1.127,
+          1.085,
+          1.066,
+          1.193
+        ],
+        "responseBytes": 27
+      },
+      "peakServerRssMiB": 458.5
+    }
+  ],
+  "medians": [
+    {
+      "fileCount": 1000,
+      "shareCount": 10,
+      "tree": {
+        "p50Ms": 120.4,
+        "p95Ms": 132.7
+      },
+      "catalog": {
+        "p50Ms": 1.3,
+        "p95Ms": 1.5
+      },
+      "mounts": {
+        "p50Ms": 1.8,
+        "p95Ms": 4.9
+      },
+      "bootstrap": {
+        "p50Ms": 124.9,
+        "p95Ms": 147.7
+      },
+      "read": {
+        "p50Ms": 1.3,
+        "p95Ms": 1.4
+      },
+      "write": {
+        "p50Ms": 2,
+        "p95Ms": 2.1
+      },
+      "postLoadRead": {
+        "p50Ms": 1.1,
+        "p95Ms": 1.2
+      },
+      "sessionDuringTree": {
+        "p50Ms": 0.4,
+        "p95Ms": 123.2
+      },
+      "peakServerRssMiB": 247.5
+    },
+    {
+      "fileCount": 10000,
+      "shareCount": 100,
+      "tree": {
+        "p50Ms": 636.9,
+        "p95Ms": 675.9
+      },
+      "catalog": {
+        "p50Ms": 7.2,
+        "p95Ms": 8.7
+      },
+      "mounts": {
+        "p50Ms": 10.9,
+        "p95Ms": 30.1
+      },
+      "bootstrap": {
+        "p50Ms": 596.5,
+        "p95Ms": 620.1
+      },
+      "read": {
+        "p50Ms": 1.2,
+        "p95Ms": 1.4
+      },
+      "write": {
+        "p50Ms": 1.7,
+        "p95Ms": 2
+      },
+      "postLoadRead": {
+        "p50Ms": 1.1,
+        "p95Ms": 1.2
+      },
+      "sessionDuringTree": {
+        "p50Ms": 0.4,
+        "p95Ms": 599.9
+      },
+      "peakServerRssMiB": 459.9
+    }
+  ]
+}

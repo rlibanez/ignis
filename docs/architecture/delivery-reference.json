@@ -1,0 +1,8 @@
+{
+  "sourceCommit": "168046f16754242bb4a591f1e8446e15e37798aa",
+  "sourceTag": "delivery-source-2026-11-04",
+  "upstreamBase": "b349e57483473b21274b7cd8c9df01f0eea9f356",
+  "branch": "develop",
+  "obsidianTarget": "1.14.4",
+  "scope": "Compact delivery history; historical phase references remain unchanged."
+}

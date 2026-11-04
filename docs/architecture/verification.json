@@ -1,0 +1,44 @@
+{
+  "phase": 0,
+  "date": "2026-11-03",
+  "sourceCommit": "4b896055df511a6837a532c60318ac5e647cdd67",
+  "productSourceChanged": false,
+  "checks": {
+    "vitest": {
+      "filesPassed": 169,
+      "testsPassed": 2139,
+      "testsSkipped": 1,
+      "note": "Includes three new readiness-tool tests; ENOSPC requires dedicated tmpfs fixture."
+    },
+    "lint": "passed: packages, server and scripts",
+    "errorLeaks": "passed: 133 files scanned",
+    "build": {
+      "status": "passed",
+      "existingWarnings": [
+        "two direct-eval warnings in remote/window.js",
+        "Svelte ListItem click keyboard accessibility warning"
+      ]
+    },
+    "managementSmoke": {
+      "desktop": "passed",
+      "mobile": "passed",
+      "api": "synthetic",
+      "nativeCssVersion": "1.14.5",
+      "obsidianRuntimeLoaded": false
+    },
+    "load": {
+      "status": "passed",
+      "profile": "baseline",
+      "runs": 5,
+      "scenarios": 10,
+      "file": "baselines/phase0.json"
+    }
+  },
+  "notCertified": [
+    "Actual Android system keyboard",
+    "Full Obsidian 1.14.4 runtime E2E",
+    "Real configured OIDC provider",
+    "Dedicated ENOSPC/kill-restart matrix",
+    "WebSocket load and event-loop metrics"
+  ]
+}

@@ -1,0 +1,209 @@
+{
+  "schemaVersion": 1,
+  "fixtureVersion": 1,
+  "profile": "stress",
+  "runs": 1,
+  "samples": 5,
+  "warmup": 2,
+  "sourceCommit": "5729923f9faf9178716707d69b1e22fa464f9f17",
+  "upstreamBase": "aa19cc59e9e33a337055daa915453da3dc0d98fb",
+  "productDiffSha256": "c14f11330c6a659dc7859a7853576400b816acef403126d08555f80e23fb90de",
+  "harnessSha256": "5c0a4bc80957abc0baca9e3c1cacc34f6320eee6d7ae7e133f210f9a029edaa6",
+  "applicationVersion": "0.8.18",
+  "obsidianAssets": "synthetic; no Obsidian runtime loaded",
+  "cpuModel": "13th Gen Intel(R) Core(TM) i7-13700K",
+  "arch": "x64",
+  "kernel": "7.2.11-arch1-1",
+  "totalMemoryBytes": 33344876544,
+  "fixture": {
+    "notePayloadBytes": 1017,
+    "copyFiles": 1200,
+    "copyPayloadBytes": 1007,
+    "transport": "HTTP localhost, no compression, sequential samples",
+    "crypto": "scrypt login excluded from operation samples"
+  },
+  "cpuMax": null,
+  "memoryMax": null,
+  "node": "v24.22.1",
+  "platform": "linux",
+  "cpus": 24,
+  "date": "2026-11-03T14:23:33.235Z",
+  "scenarios": [
+    {
+      "run": 1,
+      "fileCount": 25000,
+      "shareCount": 1000,
+      "startupMs": 107,
+      "tree": {
+        "samples": 5,
+        "p50Ms": 173.3,
+        "p95Ms": 188.1,
+        "maxMs": 188.1,
+        "rawMs": [
+          178.19,
+          172.851,
+          171.03,
+          188.146,
+          173.297
+        ],
+        "responseBytes": 2902567
+      },
+      "catalog": {
+        "samples": 5,
+        "p50Ms": 11.1,
+        "p95Ms": 11.8,
+        "maxMs": 11.8,
+        "rawMs": [
+          10.979,
+          10.916,
+          11.781,
+          11.285,
+          11.137
+        ],
+        "responseBytes": 251010
+      },
+      "mounts": {
+        "samples": 5,
+        "p50Ms": 68,
+        "p95Ms": 79.3,
+        "maxMs": 79.3,
+        "rawMs": [
+          67.06,
+          67.956,
+          70.477,
+          67.018,
+          79.259
+        ],
+        "responseBytes": 328755
+      },
+      "bootstrap": {
+        "samples": 5,
+        "p50Ms": 196.1,
+        "p95Ms": 203.5,
+        "maxMs": 203.5,
+        "rawMs": [
+          203.508,
+          200.844,
+          195.573,
+          193.408,
+          196.089
+        ],
+        "responseBytes": 2903194
+      },
+      "read": {
+        "samples": 5,
+        "p50Ms": 1.3,
+        "p95Ms": 1.3,
+        "maxMs": 1.3,
+        "rawMs": [
+          1.322,
+          1.213,
+          1.252,
+          1.259,
+          1.317
+        ],
+        "responseBytes": 1017
+      },
+      "write": {
+        "samples": 5,
+        "p50Ms": 1.9,
+        "p95Ms": 1.9,
+        "maxMs": 1.9,
+        "rawMs": [
+          1.86,
+          1.92,
+          1.753,
+          1.747,
+          1.942
+        ],
+        "responseBytes": 143
+      },
+      "sessionDuringTree": {
+        "samples": 5,
+        "p50Ms": 0.5,
+        "p95Ms": 178.1,
+        "maxMs": 178.1
+      },
+      "concurrentCopies": {
+        "requested": 6,
+        "totalMs": 491.9,
+        "statuses": [
+          200,
+          200,
+          503,
+          503,
+          503,
+          503
+        ],
+        "sessionResponse": {
+          "samples": 12,
+          "p50Ms": 0.8,
+          "p95Ms": 22.3,
+          "maxMs": 22.3
+        }
+      },
+      "postLoadRead": {
+        "samples": 5,
+        "p50Ms": 1.1,
+        "p95Ms": 1.1,
+        "maxMs": 1.1,
+        "rawMs": [
+          1.136,
+          1.083,
+          1.119,
+          1.042,
+          1.073
+        ],
+        "responseBytes": 26
+      },
+      "peakServerRssMiB": 417.1,
+      "eventLoop": {
+        "resolutionMs": 10,
+        "samples": 175,
+        "p50Ms": 10.059775,
+        "p95Ms": 110.362623,
+        "maxMs": 192.282623,
+        "utilization": 0.8641028702320469
+      }
+    }
+  ],
+  "medians": [
+    {
+      "fileCount": 25000,
+      "shareCount": 1000,
+      "tree": {
+        "p50Ms": 173.3,
+        "p95Ms": 188.1
+      },
+      "catalog": {
+        "p50Ms": 11.1,
+        "p95Ms": 11.8
+      },
+      "mounts": {
+        "p50Ms": 68,
+        "p95Ms": 79.3
+      },
+      "bootstrap": {
+        "p50Ms": 196.1,
+        "p95Ms": 203.5
+      },
+      "read": {
+        "p50Ms": 1.3,
+        "p95Ms": 1.3
+      },
+      "write": {
+        "p50Ms": 1.9,
+        "p95Ms": 1.9
+      },
+      "postLoadRead": {
+        "p50Ms": 1.1,
+        "p95Ms": 1.1
+      },
+      "sessionDuringTree": {
+        "p50Ms": 0.5,
+        "p95Ms": 178.1
+      },
+      "peakServerRssMiB": 417.1
+    }
+  ]
+}

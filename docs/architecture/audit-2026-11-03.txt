@@ -1,0 +1,603 @@
+IGNIS — AUDITORÍA Y DISEÑO DE ARQUITECTURA
+Fecha: 3 de noviembre de 2026
+Estado: propuesta técnica; no implementada
+Repositorio: /home/roberto/projects/ignis
+Referencia auditada: feat/auth, 4b89605
+Base local de upstream: aa19cc59e9e33a337055daa915453da3dc0d98fb
+
+1. OBJETIVO, ALCANCE Y LÍMITES DE ESTA AUDITORÍA
+
+Preparar una reconstrucción interna de nuestra implementación que conserve sus
+funciones válidas y elimine acoplamientos, duplicaciones y mecanismos transitorios.
+Seguiremos con una aplicación, un proceso de servidor y una distribución Docker.
+No se propone dividir el producto en microservicios ni reconstruir el shim original.
+
+Se revisaron las responsabilidades y conexiones entre autenticación, OIDC,
+sesiones, políticas, rutas, bóvedas, comparticiones, disco, SQLite, WebSockets,
+guardado del editor, arranque, configuración, interfaz interna y gestor sin bóvedas.
+Se inspeccionaron también pruebas, herramienta de carga y comprobación de interfaz.
+Es una auditoría arquitectónica basada en código y pruebas, no una revisión línea
+por línea de todos los archivos ni una certificación de ausencia de vulnerabilidades.
+
+No se han modificado archivos del repositorio. Este informe y los registros de
+verificación se han escrito exclusivamente en /tmp. No se han rehecho commits,
+esquemas, datos o configuraciones. No se ha actualizado upstream desde la red.
+
+La diferencia de la rama incluye 126 archivos originales modificados y 219 nuevos.
+Esto incluye también Android, desarrollo y cambios generales de interfaz. El número
+de commits no es una medida de calidad de arquitectura ni un objetivo a minimizar.
+
+2. VERIFICACIÓN DE REFERENCIA
+
+Ejecutado con Node 24 y permisos para servidores locales:
+- Vitest completo: 168 archivos pasados; 2.136 pruebas pasadas, 1 omitida.
+- Duración informada por Vitest: 27,60 segundos en este entorno.
+- Oxlint en packages, servidor y check-management-ui: pasado.
+- check-error-leaks: pasado; 133 archivos examinados.
+- Ensayo check-load: FALLA antes de obtener métricas; timeout de arranque.
+
+La primera ejecución de Vitest dentro del sandbox produjo fallos de acceso a
+servidores locales y se interrumpió; la ejecución completa autorizada pasó. Aquellos
+fallos de infraestructura no se clasifican como fallos de producto.
+
+check-load espera /Server running on port (\d+)/, pero el servidor emite el evento
+server.started con texto "Server listening.". La prueba de integración del servidor
+ya consume el evento estructurado. La herramienta de carga necesita corregirse
+antes de dar cifras de rendimiento. En esta auditoría NO se ha medido p95 real.
+
+No se ha recompilado ni ejecutado aquí la validación visual de escritorio/móvil.
+check-management-ui utiliza API sintética y, opcionalmente, CSS nativo: es un smoke
+test útil, pero no sustituye ejecutar Obsidian real con dos usuarios y dispositivos.
+La prueba omitida de ENOSPC requiere IGNIS_TEST_FAULT_ROOT; debe tener una ejecución
+específica de fallos de disco antes de dar por terminado el refactor.
+
+Registros:
+/tmp/ignis-architecture-baseline-tests-unrestricted.log
+/tmp/ignis-architecture-load-baseline.log
+
+3. FORTALEZAS QUE DEBEMOS CONSERVAR
+
+- Políticas con rechazo por defecto y manifiesto de rutas revisadas.
+- Separación conceptual entre rol de instancia, membresía de bóveda y permiso
+  sobre un recurso. Un administrador no adquiere propiedad implícita por su rol.
+- Hashes de contraseña scrypt, tokens de sesión almacenados mediante hash,
+  revocación y versión de autenticación, reautenticación reciente y controles CSRF.
+- OIDC con validación de descubrimiento, transporte, transacciones e identidad.
+- Revalidación después de operaciones asíncronas y antes de entregar respuestas.
+- Identificadores estables de bóvedas, reservas y cuarentena ante operaciones
+  incompletas, protección del último administrador.
+- Comprobaciones de rutas, enlaces e identidad del recurso; no otorgar acceso a
+  un archivo distinto porque reaparezca bajo la misma ruta.
+- Control de versiones en el guardado, publicación de archivos completos y
+  recuperación de borradores ante denegación, conflicto o resultado incierto.
+- Invalidaciones WebSocket por cuenta, proyección de eventos y recuperación
+  de estado al reconectar, sin polling periódico de comparticiones.
+- Cuenta y administración disponibles sin ninguna bóveda abierta.
+- Pruebas negativas, de concurrencia, recuperación y aislamiento de información.
+
+Estas garantías son requisitos de comportamiento. Las clases, funciones, rutas
+internas, formatos y pruebas que solo reflejen la implementación pueden cambiar.
+
+4. HALLAZGOS ARQUITECTÓNICOS
+
+H01 — Frontera HTTP con demasiadas responsabilidades. Prioridad alta, confirmado.
+auth/http.js tiene 1.366 líneas y construye SQLite, servicios, OIDC, activos web,
+límites, cookies, rutas, estado, observadores y seguridad WebSocket. También instala
+funciones de negocio en req y sustituye res.write/end y ws.send.
+Efecto: revisar una funcionalidad exige entender un gran cierre con estado común;
+la composición, el transporte y las reglas de producto evolucionan juntos.
+Destino: raíz de composición explícita, rutas por función y adaptadores de
+respuesta/conexión con responsabilidades y ciclo de vida propios.
+
+H02 — Autorización repartida y dependencias ambientales. Alta, confirmado.
+route-manifest, member-routes, http-policy, vault-policy, vault-access,
+resource-policy y resource-shares participan en decisiones distintas. No toda
+separación es duplicación: la política de datos debe seguir separada de HTTP.
+El problema es que los contratos son informales y req adquiere numerosos métodos.
+resource-policy.permit admite acceso si falta authorizeVaultFile: el despliegue
+actual instala la frontera, pero ese comportamiento dificulta montar componentes
+de forma segura por construcción. No se ha demostrado aquí un bypass explotable.
+Destino: contexto autenticado obligatorio y política declarada por operación;
+montar una ruta protegida sin sus dependencias debe fallar en arranque.
+
+H03 — Coste repetido de autorización y proyección. Alta, confirmado estructuralmente.
+filterTree llama por entrada a una autorización que consulta identidad/membresía
+y usa transacción; sessions.resolve también utiliza BEGIN IMMEDIATE fuera de una
+transacción existente. state-events captura catálogos por conexión al reconciliar.
+Hay trabajo repetido observable en el código, pero no una regresión cuantificada.
+Destino: proyección por petición/snapshot, consultas preparadas y en lote,
+invalidación dirigida por usuario, medición antes de introducir cachés de permisos.
+Nunca reutilizar una decisión a través de una espera sin la revalidación necesaria.
+
+H04 — Servicio de comparticiones convertido en servicio general de contenido.
+Alta, confirmado. resource-shares.js (552 líneas) reúne catálogo, permisos,
+ubicaciones, exploración, lecturas, publicación, copias, movimientos y borrados.
+El guardado de archivos originales también pasa por writeOriginal de este servicio.
+Destino: servicio único de contenido/publicación usado por bóvedas y comparticiones;
+el módulo de compartir resuelve permisos y referencias, no es dueño de todo el disco.
+
+H05 — Coordinación SQLite/disco compleja y parcialmente síncrona. Alta, confirmado.
+Publicación, hashes y recorridos de archivos utilizan operaciones síncronas; hay
+trabajo de disco y fsync dentro de tramos transaccionales. La implementación ya
+contempla resultados inciertos y cuarentena: no debemos sustituirlos por rollback
+ficticio. SQLite y el disco NO comparten una transacción atómica.
+Destino: coordinador de operaciones, reservas durables, serialización por recurso
+y recuperación explícita; transacciones cortas donde sea seguro. No convertir todo
+a async sin conservar las garantías de versión e identidad.
+
+H06 — Descubrimiento de cambios ligado al archivo SQLite y a respuestas HTTP.
+Alta, confirmado. http.js observa identity.sqlite y sidecars; tras respuestas
+mutadoras programa reconciliación. Eso cubre CLI, pero la causa del evento es
+indirecta y puede reconstruir estado no afectado por la operación.
+Destino: cambios de dominio registrados en la misma transacción y publicación
+después del commit. Para CLI de otro proceso, una señal despierta al coordinador
+y una revisión durable permite reconciliar; fs.watch es una pista, no una cola
+fiable. Reconexión obtiene snapshot autorizado aunque se pierda la señal.
+
+H07 — Cliente con varios ciclos de vida y estado global. Alta, confirmado.
+client.js intercepta fetch/XHR, coordina bloqueo, recuperación y bóvedas; events.js
+mantiene la conexión de cuenta; ws-client mantiene la conexión de archivos;
+shared-files conserva montajes y reintentos. Muchas funciones consultan __ignisAuth,
+__currentVaultUuid y otros globals. Las dos conexiones tienen propósitos distintos:
+no hace falta fusionarlas para mejorar su diseño.
+Destino: runtime por documento y contexto explícito de sesión/bóveda; un propietario
+para suscripciones, cancelación y descarte de respuestas antiguas.
+
+H08 — Varias capas de guardado y dependencia de internals de Obsidian.
+Alta, confirmado. write-coalescer, write-durability, editor-saves, shared-files y
+publicación del servidor participan en el resultado de una escritura. editor-saves
+sustituye TextFileView.save y métodos del adapter, reflejando Obsidian 1.14.4.
+Las pruebas de editor usan dobles útiles, pero no prueban por sí solas el contrato
+con el binario real. Destino: coordinador de escrituras por contexto/recurso y un
+adaptador de versión acotado con pruebas reales. Escribir mediante un complemento
+y guardar desde un editor tienen intenciones distintas; no unificarlas ciegamente.
+
+H09 — Configuración compartida y alternativa privada coexistentes.
+Media/alta, confirmado. bootstrap fija configurationMode="shared"; private-runtime
+acepta un modo privado no activado por ese arranque. Aun así existen API y servicios
+de preferencias privadas y adapters de FS. No todo es código inalcanzable.
+Destino recomendado: conservar explícitamente el modo compartido de la versión
+actual y retirar el runtime alternativo y sus API cuando se cierre el inventario
+de consumidores. No activar silenciosamente el antiguo perfil restringido.
+
+H10 — UI reutilizada mediante adaptación de páginas/controladores.
+Alta, confirmado. management-modal importa controladores desde apps/.../auth/web,
+analiza templates con DOMParser, adapta document/window/location con Proxy y
+reordena nodos y estilos según el host. Son templates locales; NO está descargando
+las antiguas páginas externas. packages depende de una aplicación concreta.
+Destino: componentes que reciben root, modelo, API, navegación y dispose; hosts
+Obsidian y gestor sin bóvedas comparten los mismos formularios y controladores.
+
+H11 — Estilos y contratos de errores dispersos. Media, confirmado.
+CSS inline, CSS compartido, variables nativas y excepciones móviles conviven en
+management-modal, dialogs y shells. Errores de API alternan códigos, textos y
+respuestas genéricas; la traducción depende de strings/globales.
+Destino: tokens y variantes comunes, errores de dominio tipados por código y
+traducción en presentación, sin mostrar información sensible adicional.
+
+H12 — Pruebas y documentación no cubren toda la entrega. Alta, confirmado.
+La suite pasa, pero check-load falla por protocolo de readiness desactualizado;
+no hay workflow de CI de validación en .github/workflows en esta revisión;
+el README aún dice que no hay autenticación integrada. Los smoke tests de gestión
+no sustituyen E2E con Obsidian. Destino: una orden verificable de aceptación,
+readiness estructurado, pruebas por niveles y documentación operativa vigente.
+
+5. MODELO DE CONFIANZA: DECISIÓN OBLIGATORIA ANTES DE IMPLEMENTAR
+
+La política actual permite a owner/editor escribir configuración compartida de
+.obsidian. Esa carpeta puede contener código de complementos. El almacenamiento
+del navegador por cuenta evita mezclas accidentales, no aísla scripts del mismo
+origen. Un complemento autorizado puede actuar con la sesión de quien lo ejecuta.
+Esto es una propiedad estructural del entorno, no una vulnerabilidad nueva
+demostrada por esta auditoría.
+
+Propuesta para cerrar el diseño:
+- Datos de notas, preferencias declarativas y código ejecutable son superficies
+  distintas, con capacidades distintas.
+- Recomendación inicial: instalación/alteración de código ejecutable, complementos
+  y activos activos queda reservada al administrador autorizado sobre la bóveda;
+  editar contenido no concede implícitamente permiso de instalar código.
+- Los complementos instalados se consideran de confianza; no prometemos sandbox
+  ni aislamiento frente a un complemento malicioso ejecutado en el mismo origen.
+- Si se quiere permitir código de cualquier propietario, debe declararse como
+  perfil de confianza explícito. No presentarlo como aislamiento entre usuarios
+  mutuamente hostiles.
+- La política definitiva requiere aprobación antes de cambiar permisos actuales.
+  No se implementa aquí ni se decide de forma encubierta dentro de un refactor.
+
+No se propone inventar un sandbox de JavaScript ni afirmar que esta restricción
+resuelve todos los riesgos del mismo origen. Un aislamiento hostil fuerte exigiría
+otro diseño de orígenes/procesos y queda fuera del refactor propuesto.
+
+6. ARQUITECTURA OBJETIVO: MONOLITO MODULAR
+
+Mantener Express, SQLite, Node y la herramienta de build existente. No introducir
+ORM, broker, contenedores adicionales, framework de DI ni reescritura general de
+Obsidian. Empezar en JavaScript con contratos JSDoc y validación en fronteras;
+verificación estática de esos contratos donde aporte valor, sin migración masiva
+de lenguaje como condición para entregar la arquitectura.
+
+Distribución conceptual (nombres orientativos, no archivos creados):
+
+apps/ignis-server/server/
+  app/create-application.js          composición y ciclo de vida
+  features/identity/                 usuarios, credenciales, sesiones, OIDC
+  features/vaults/                   catálogo, propiedad y membresías
+  features/sharing/                  grants, ubicaciones y resolución
+  features/content/                  operaciones comunes y publicación
+  platform/persistence/              SQLite, schema y transacciones
+  platform/filesystem/               paths, staging, IO y recuperación
+  platform/events/                   registro de cambios y conexiones
+  transport/http/                    rutas, errores, CSRF y streaming
+  transport/websocket/               autenticación y proyección por receptor
+  integration/ignis/                 bootstrap, watchers, plugins y lifecycle
+
+packages/contracts/src/              DTO, validadores y códigos sin IO/secretos
+packages/management/src/             modelos de UI, API cliente y componentes
+packages/bridge/src/...              host Obsidian y adaptadores de sus internals
+packages/ui/src/...                  host del gestor sin bóvedas
+packages/shim/src/...                compatibilidad original y gateway de archivos
+
+Los features exponen una API pública pequeña; no un paquete por clase. Sus reglas
+puras no importan Express, DOM, SQLite ni configuración global. Los repositorios
+pueden vivir junto a cada feature e implementar contratos sobre la plataforma.
+El código cliente no importa archivos de apps/ignis-server. contracts no contiene
+la autoridad de permisos del servidor ni lógica criptográfica compartida por conveniencia.
+
+Dirección de dependencias:
+  transports -> casos de uso -> políticas y contratos
+  adaptadores de SQLite/disco -> contratos de casos de uso
+  composición -> instancia todas las dependencias
+  hosts UI -> componentes y API cliente -> contratos públicos
+
+La integración con Ignis pasa por funciones explícitas inyectadas. Evitar wrappers
+que simplemente deleguen sin definir un límite útil. Las pruebas de dependencias
+rechazan imports cruzados de infraestructura, ciclos y cliente -> servidor.
+
+7. CONTRATOS Y FLUJOS ESENCIALES
+
+7.1 Identidad y contexto
+Un contexto interno incluye requestId, actor, sessionId y ámbito de bóveda cuando
+corresponda. Lo construye el servidor; nunca acepta actor, rol o capacidades del
+JSON del cliente como autoridad. El token secreto se procesa en el adaptador de
+sesiones y no se propaga a logs ni a los modelos del navegador.
+Un contexto no es una autorización permanente: el caso de uso comprueba estado
+vigente antes del efecto y tras las esperas relevantes. Cookies, Origin/Host,
+proxy confiable, CSRF y límites son responsabilidades explícitas del transporte.
+La reautenticación reciente conserva inicialmente el umbral actual de 5 minutos;
+un retorno OIDC/intento de navegación no autoriza por sí solo una operación.
+
+7.2 Políticas y rutas
+Declaración por ruta de autenticación, CSRF, operación, validación y límites.
+Casos de uso declaran capacidades requeridas. El manifiesto se genera desde la
+declaración o se comprueba contra ella, evitando dos listas que deriven por separado.
+Nuevas rutas y campos quedan cerrados hasta revisarse. No usar el nombre "owner"
+para significar indistintamente "ruta accesible a un usuario normal" y propiedad.
+Las decisiones internas separan denegación, indisponibilidad y recurso inexistente;
+la API mantiene las respuestas opacas que evitan enumerar recursos ajenos.
+
+7.3 Referencias y filesystem
+Una referencia de archivo resuelta identifica bóveda/recurso, ruta canónica, origen
+original/compartido e identidad/versiones relevantes. Los IDs públicos son estables;
+las rutas físicas y directorios internos no actúan como credenciales ni IDs públicos.
+Un único resolvedor combina pertenencia, grants y protección del filesystem.
+Validar operaciones recursivas y sus límites antes de comenzar; la concurrencia
+con administradores del host no se promete segura fuera del contrato documentado.
+
+7.4 Contenido y guardado
+Tanto originales como montados usan la misma publicación de contenido. Una cola
+serializa operaciones sobre el mismo recurso y coordina conflictos con movimientos
+y operaciones de subárbol; no basta con mutex independientes por string de ruta.
+Las ediciones del editor envían versión base. Escrituras genéricas de complementos
+mantienen una intención explícita distinta, siempre bajo autorización vigente.
+Resultados: confirmado, denegado, conflicto, fallo anterior a publicación o incierto.
+Solo confirmado actualiza baseline y permite descartar el borrador. Un resultado
+incierto NO se reintenta como escritura incondicional. Reintentos y coalescing tienen
+un único dueño lógico por operación, aunque cliente y servidor conserven colas
+distintas por sus responsabilidades.
+
+7.5 SQLite y disco
+La UnitOfWork mantiene invariantes, auditoría y registro de cambios dentro de una
+transacción síncrona corta; no permite await en ella. No exponer SQL a HTTP/UI.
+Las operaciones de disco usan staging y reservas durables donde sea necesario.
+Un diario de operación describe prepared -> published -> committed o quarantined,
+con recuperación documentada por tipo. No crear un motor de workflows genérico.
+Si el proceso cae entre disco y SQLite, el recurso queda seguro y recuperable;
+nunca se concede acceso por adivinación a un archivo sustituto. Definir también
+qué se puede reanudar de forma automática y qué exige intervención explícita.
+
+7.6 Eventos
+La transacción registra el cambio relevante y sus sujetos. Solo después del commit
+se emite una invalidación dirigida, agrupada y acotada; nunca contenido sensible.
+Una revisión durable interna permite recuperar notificaciones tras desconexión.
+Cada usuario recibe su snapshot autorizado al reconectar; revisiones globales de
+actividad no se exponen a quien no puede conocer esa actividad.
+CLI utiliza los mismos casos de uso. En otro proceso, la señal de cambio no es la
+fuente de verdad. No introducir polling periódico de comparticiones; sí conservar
+heartbeat, caducidad, limpieza y backoff justificados.
+Los envíos WebSocket pasan por una función propia de publicación, sin sustituir
+ws.send para compensar publicaciones arbitrarias de otras capas.
+
+7.7 Runtime del navegador y Obsidian
+Un runtime por documento administra sesión, vault, conexión de cuenta, conexión de
+archivos, montajes y escrituras. Cada transición invalida/cancela operaciones del
+contexto anterior. Una caída de red no se confunde con revocación.
+El shim conserva los puntos síncronos que Obsidian necesita para arrancar: datos
+precargados y, cuando sea inevitable, operaciones síncronas explícitamente acotadas.
+No prometer eliminar XHR síncrono sin demostrar compatibilidad con el binario.
+La interceptación necesaria de APIs globales queda en un adaptador único, con
+instalación idempotente y limpieza documentada, fuera de la lógica de negocio.
+Los parches de TextFileView y métodos internos viven en un adaptador de versión;
+si la versión no soporta el contrato, no degradar a guardados inseguros en silencio.
+
+7.8 UI común
+Componentes reciben {root, api, session, navigation, host, signal, t} y devuelven
+dispose. Hosts gestionan ventana, foco, teclado, tooltip y tamaño nativo; los
+componentes gestionan formulario/tabla. Sin Proxy(document), pathname falsificado,
+DOMParser de páginas ni importar controladores web del servidor.
+Una tabla de usuarios, editor de grants, selector de ubicación y árbol reutilizable
+son componentes diferentes; no una página general oculta tras un formulario pequeño.
+Las páginas públicas de setup/login/reset y Android pueden reutilizar piezas
+seguras, pero no se rediseña ni se elimina el contrato de recepción Android.
+La i18n tiene un servicio y catálogo común, sin incluir mensajes secretos del servidor.
+
+8. PLAN DE IMPLEMENTACIÓN Y PUERTAS DE SALIDA
+
+F0 — Referencia reproducible y especificación de comportamiento.
+Entregables: tag/rama de referencia, inventario de funciones activas y rutas,
+readiness estructurado, check-load operativo, escenarios E2E y métricas iniciales.
+No reconstruir historia todavía. Usar datos desechables en las pruebas.
+Salida: suite/lint/build pasan; carga produce métricas; arranque repetible desde
+checkout limpio; decisiones de confianza y alcance firmadas; escenarios priorizados.
+
+F1 — Composición, contratos y persistencia inicial.
+Entregables: createApplication con start/stop idempotentes; dependencias explícitas,
+errores/DTO y convenciones; schema inicial consolidado para instalaciones nuevas.
+Podemos descartar bases de desarrollo, con rechazo claro de esquemas incompatibles;
+NO borrar silenciosamente bases existentes. Conservar invariantes y triggers útiles.
+Salida: inicialización/cierre sin listeners o timers huérfanos; comprobaciones de
+imports; BD nueva íntegra; último admin y unicidad protegidos también en SQLite.
+
+F2 — Identidad y cuenta como recorrido completo.
+Entregables: setup/login local/OIDC, sesión recordada, reautenticación, cambios de
+correo/password, vinculación/desvinculación y gestión de usuarios mediante casos
+de uso y rutas pequeñas. Runtime de identidad y formularios comunes mínimos.
+Reutilizar bibliotecas criptográficas/OIDC existentes; no reescribir protocolos.
+Salida: matriz de roles, CSRF, revocación, replay/issuer/subject/redirect OIDC y
+último admin pasa; cambio de email quita verificación; cuenta sin bóvedas funciona;
+sesiones antiguas no recuperan autoridad tras cambiar rol, estado o credenciales.
+
+F3 — Bóvedas, autorización y configuración.
+Entregables: catálogo/ID único, propiedad/membresías, resolver y política común,
+creación/registro/renombrado/borrado, proyección bootstrap y adjuntos autorizados.
+Resolver dualidad shared/private y aplicar política de código aprobada.
+Salida: mismo resultado desde API/CLI; sin acceso por ruta física ni fallback a
+otra bóveda; cero bóvedas soportado; fallos en lifecycle quedan reservados o en
+cuarentena; esquema/módulos alternativos sin consumidores retirados completamente.
+
+F4 — Servicio de contenido y adaptación de guardado.
+Entregables: publicación común, versión, cola por recurso/subárbol, outcomes claros,
+recuperación de borradores y adaptador acotado de editor real.
+Salida: dos editores con misma baseline no se pisan; fallo/timeout después de
+publicar no dispara replay ciego; ENOSPC/EACCES y kill/restart preservan originales
+o resultado incierto explícito; cambiar sesión/bóveda no reutiliza el borrador ajeno;
+plugins no heredan la intención/versiones de un editor concurrente.
+
+F5 — Comparticiones y eventos.
+Entregables: grants y ubicaciones sobre el resolvedor común; montajes; invalidación
+post-commit dirigida; reconexión y recuperación; watchers de origen necesarios.
+Salida: lectura/escritura/revocación efectivas sobre notas ya abiertas; conceder
+escritura de nuevo desbloquea sin recargar; lector sin cambios no recibe aviso de
+recuperación; ningún nombre/ruta/contenido ajeno en HTTP, eventos o cachés; CLI
+actualiza clientes; sin consulta periódica de comparticiones en reposo.
+
+F6 — Sustitución completa de la UI de gestión.
+Entregables: usuarios, compartir, grants, ubicación, confirmaciones y cuenta usando
+componentes y API cliente; hosts Obsidian/sin bóvedas; estilos/tokens y árbol comunes.
+Se puede extraer primero el host en F2; esta fase elimina la última vía antigua.
+Salida: mismos componentes desde todas las entradas; recursos individuales no abren
+catálogo detrás; errores de campos no desplazan formulario; mobile acciones antes
+de Cancelar, una por fila; foco/teclado, safe area, cierre y tooltips verificables;
+sin controladores por global, proxies DOM o imports cliente -> servidor.
+
+F7 — Rendimiento, operación y eliminación de código sustituido.
+Entregables: consultas y proyecciones por snapshot, observabilidad no sensible,
+recuperación documentada, CI, E2E y presupuestos. No dejar feature flags indefinidos
+ni dos caminos productivos para la misma operación.
+Salida: criterios globales de las secciones 9/10; documentación coherente con código;
+inventario final de integración con upstream; ninguna API/bandera/tabla vieja sin
+función vigente; Android conserva su recepción y los comportamientos autorizados.
+
+F8 — Historia de entrega sobre upstream fijado.
+Entregables: rama nueva desde un commit de upstream elegido y validado, llevando
+la arquitectura estabilizada en commits por recorridos completos y revisables.
+No hacer squash opaco de todo ni publicar commits que rompan tests a propósito.
+Salida: cada commit construye y pasa sus checks aplicables; árbol final equivalente
+a la implementación aceptada salvo diferencias expresamente justificadas; pruebas
+completas sobre la rama reconstruida; conservar la referencia histórica de trabajo.
+
+Las fases son secuenciales por dependencia, con cortes verticales funcionales. No
+se debe dejar todo el servidor listo y descubrir después que el cliente no puede
+consumirlo. Cada fase retira el camino sustituido al cerrar sus escenarios.
+Los títulos de commits se decidirán según los cambios reales, no por una cuota.
+
+9. CRITERIOS GLOBALES DE ACEPTACIÓN
+
+Seguridad (obligatorios, sin presupuesto de regresión):
+S1. Petición HTTP/WS/adjunto sin identidad o sin permiso no entrega datos protegidos.
+S2. Revocación impide nuevas operaciones; las operaciones en espera revalidan antes
+    de su efecto. Streams revalidan antes de nuevos envíos; bytes ya enviados no
+    pueden retirarse y no se promete cancelación retroactiva.
+S3. Identidad/rol/propiedad suministrados por el cliente no conceden autoridad.
+S4. CSRF, Host/Origin, proxies, límites, sesión recordada y reautenticación pasan la
+    misma matriz con autenticación local y OIDC donde corresponda.
+S5. Paths codificados, traversal, colisiones, symlinks/hardlinks y sustitución de
+    identidad quedan rechazados según el contrato documentado del filesystem.
+S6. Solo administrador verifica email; cambiarlo quita verificación y revoca sesiones.
+S7. OIDC no permite enlazar por coincidencia insegura de email ni perder el último
+    método de acceso al desvincular; reauth/confirmación/cierre se mantienen.
+S8. No hay información de recursos ajenos en árboles, bootstrap, catálogos,
+    WebSockets, recursos estáticos, errores, logs o recuperación de otra cuenta.
+
+Consistencia y recuperación:
+C1. Lectura/escritura de originales y montados comparten publicación y garantías.
+C2. Una escritura confirmada actualiza versión; una incierta conserva borrador y
+    no pasa a confirmada por inferencia de una simple lectura posterior.
+C3. Operaciones destructivas confirmadas actúan sobre el plan/versiones aceptadas;
+    cambios concurrentes invalidan el plan antes de afectar otros recursos.
+C4. Caída en cada frontera disco/DB deja un resultado documentado y seguro al
+    reiniciar. La prueba verifica bytes, identidad, grants y ausencia de temporales.
+C5. Read -> write y write -> read funcionan con editor abierto sin reload.
+C6. Offline, suspensión móvil, reconnect y respuestas antiguas no restauran
+    permisos revocados ni sobrescriben cambios pendientes con un snapshot viejo.
+
+Interfaz y compatibilidad:
+U1. Cuenta, usuarios y comparticiones funcionan con bóveda y sin ella.
+U2. Modal compacto de formulario y modal de catálogo tienen variantes explícitas;
+    desktop y móvil siguen las medidas/tokens nativos acordados.
+U3. A 390x844 y a 360x800, sin scroll horizontal, tooltips cortados o teclado
+    tapando acciones sin posibilidad de desplazamiento. También probar landscape.
+U4. Android Chrome/Brave/PWA y Firefox reales verifican teclado en campos iniciales
+    y renombrado; CDP emulado no certifica activación del teclado del sistema.
+U5. Español/inglés sincronizan setup/login/Obsidian según el comportamiento actual.
+U6. Binario Obsidian fijado funciona; la versión candidata de actualización se
+    somete al contrato del adaptador antes de declararse compatible.
+U7. Recepción Android: título + URL, adjuntos, límites, árbol, raíz y no sobrescribir
+    notas conservan su comportamiento. No rediseñar ese flujo en este refactor.
+
+Mantenibilidad:
+M1. Ninguna regla de negocio depende de req/res/DOM/globals del navegador.
+M2. Cliente no importa apps/.../server; contratos no importan infraestructura.
+M3. Casos de uso no ejecutan SQL ni manipulan componentes de interfaz.
+M4. Toda conexión, listener, timer, modal y cola tienen propietario y cierre probado.
+M5. Autorización y parsing son obligatorios por construcción en rutas protegidas.
+M6. No hay código alternativo abandonado ni compatibilidad con esquemas de
+    desarrollo que solo exista por la historia de nuestros 133 commits.
+
+10. PRESUPUESTO Y PRUEBAS DE RENDIMIENTO PROPUESTOS
+
+Primero reparar el harness; después guardar fixture, hardware, Node, Obsidian,
+versión, bytes y resultados en JSON. Separar coste criptográfico de autenticación
+de lecturas de sesión y operaciones normales. No comparar tiempos de máquinas distintas.
+
+Escenarios iniciales propuestos:
+- 1k/10k archivos, 10/100 comparticiones, usuario ajeno y 1/10/50 conexiones.
+- Catálogo, montajes, árbol, bootstrap, lectura y guardado; copias concurrentes.
+- Revocación, eventos repetidos, reconexión, CLI y cambios externos en disco.
+- Archivos próximos al límite configurado y árbol próximo a los límites existentes.
+- Sesión/lectura ligera mientras hay copias o recorridos pesados.
+
+Puertas propuestas para ratificar en F0:
+- Al menos 5 ejecuciones comparables y calentamiento fijo; informar p50/p95/max,
+  RSS y retraso del event loop. No usar una muestra única como prueba de mejora.
+- p95 y RSS de escenarios principales no empeoran más de 15% respecto a la mediana
+  de referencia; si el ruido supera ese margen, aumentar muestras y documentarlo.
+- Las rutas identificadas como cuello deben demostrar reducción del trabajo
+  repetido mediante contadores de consultas/proyecciones, además del tiempo.
+- Notificación end-to-end en conexiones locales sanas: objetivo p95 <= 1 s bajo
+  la carga acordada. Reconexión converge al snapshot actual sin depender de eventos.
+- No pérdida de bytes confirmados, fugas de memoria crecientes ni loops de retry
+  sin límite tras 100 ciclos abrir/cerrar y desconectar/reconectar.
+- No consultas periódicas de catálogo/montajes en reposo; distinguir heartbeat,
+  caducidad y reintentos de desconexión de polling de negocio.
+
+Son objetivos propuestos, no resultados ya medidos ni promesas para cualquier disco
+o red. Si fallan, se analiza y se decide; no se relaja seguridad para alcanzar cifras.
+
+11. ESTRATEGIA DE PRUEBAS Y ENTREGA
+
+- Unitarias: reglas puras, schemas, estados y proyección de información.
+- Integración: SQLite y filesystem reales desechables; HTTP/WS local; CLI misma BD.
+- Fallos: EACCES, ENOSPC, escritura parcial, caída antes/después de publicación y
+  commit, permisos revocados en barreras asíncronas y pérdida de respuesta.
+- E2E: Obsidian real sin redistribuir sus assets, dos contextos aislados de usuario,
+  desktop y móvil, editor abierto y recuperación; proveedor OIDC de pruebas.
+- Visual/accesibilidad: CSS nativo, foco/escape/lectores, safe-area y orden móvil.
+- Arquitectura: reglas de imports y contratos entre componentes; evitar tests que
+  solo busquen strings del código como sustituto de comprobar comportamiento.
+- CI: lint, leaks, arquitectura, unit/integración y build en cada cambio; carga,
+  fault injection y matriz real de Obsidian como gates de entrega reproducibles.
+
+No es obligatorio conservar el número de tests. Sí conservar o fortalecer los
+escenarios de seguridad y recuperación. Un test eliminado se relaciona con el
+escenario que lo reemplaza; las pruebas del runtime privado retirado desaparecen
+con esa función, no se simula que siga soportada.
+
+12. QUÉ NO SE VA A HACER
+
+- Reescribir Electron/Node shim, cachés o plugins originales que no lo necesiten.
+- Migrar a microservicios, introducir varios contenedores o un broker de mensajes.
+- Reimplementar criptografía, descubrimiento OIDC o validación JWT por cuenta propia.
+- Prometer colaboración CRDT o fusión automática de ediciones simultáneas.
+- Sacrificar control de versiones o revalidación para reducir consultas.
+- Modificar binarios de Obsidian ni publicarlos en el repositorio.
+- Mantener compatibilidad con bases/cookies/URLs de desarrollo sin consumidores.
+- Reescribir la historia actual antes de validar la arquitectura nueva.
+
+13. DECISIONES PENDIENTES Y SIGUIENTE PASO
+
+Antes de implementar:
+1. Aprobar el modelo de confianza de .obsidian/complementos de la sección 5.
+2. Ratificar modo compartido como único modo inicial y retirar alternativa privada
+   tras verificar sus consumidores; no cambiar funcionalidades en silencio.
+3. Aprobar descarte explícito de BD de desarrollo y nuevo schema inicial.
+4. Fijar upstream y Obsidian de referencia; no mezclar actualización funcional con
+   cambios de arquitectura sin validación separada.
+
+Los demás detalles de nombres y tamaño de carpetas se pueden resolver al implementar.
+No hay estimación temporal fiable antes de cerrar F0 y los contratos de contenido.
+
+Siguiente trabajo recomendado, cuando se autorice código: F0. No comenzar por mover
+archivos o renombrar carpetas. Obtener baseline fiable, especificación y decisiones;
+después extraer composición/contexto y entregar identidad como primer recorrido.
+
+14. MAPA DE EVIDENCIAS EN EL REPOSITORIO
+
+Composición y seguridad:
+apps/ignis-server/server/index.js
+apps/ignis-server/server/auth/http.js
+apps/ignis-server/server/auth/http-policy.js
+apps/ignis-server/server/auth/route-manifest.js
+apps/ignis-server/server/auth/member-routes.js
+apps/ignis-server/server/auth/sessions.js
+apps/ignis-server/server/auth/oidc/
+
+Datos, políticas y lifecycle:
+apps/ignis-server/server/auth/database.js
+apps/ignis-server/server/auth/schema.js
+apps/ignis-server/server/auth/vault-policy.js
+apps/ignis-server/server/auth/vault-access.js
+apps/ignis-server/server/auth/resource-shares.js
+apps/ignis-server/server/auth/vault-creation.js
+apps/ignis-server/server/auth/vault-rename.js
+apps/ignis-server/server/auth/vault-deletion.js
+apps/ignis-server/server/auth/user-deletion.js
+apps/ignis-server/server/vault/resource-policy.js
+apps/ignis-server/server/routes/bootstrap.js
+apps/ignis-server/server/routes/resource-shares.js
+
+Eventos y cliente:
+apps/ignis-server/server/auth/state-events.js
+apps/ignis-server/server/auth/vault-events.js
+apps/ignis-server/server/auth/web/client.js
+apps/ignis-server/server/auth/web/events.js
+packages/server-core/src/ws.js
+packages/shim/src/fs/index.js
+packages/shim/src/fs/shared-files.js
+packages/shim/src/fs/private-runtime.js
+packages/shim/src/fs/write-coalescer.js
+packages/shim/src/fs/write-durability.js
+packages/shim/src/editor-saves.js
+
+Interfaz, documentación y aceptación:
+packages/management/src/management-modal.js
+packages/management/src/account-settings.js
+packages/ui/src/management.js
+packages/bridge/src/settings/inject.js
+scripts/check-management-ui.mjs
+scripts/check-load.mjs
+packages/shim/src/editor-saves.test.js
+apps/ignis-server/server/auth/server.integration.test.mjs
+apps/ignis-server/server/auth/resource-shares-recovery.test.mjs
+README.md
+docs/ARCHITECTURE.md

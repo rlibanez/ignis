@@ -14,7 +14,8 @@ remains unmodified; the versioned editor adapter targets 1.14.4.
 `packages/management` owns shared account/users/sharing components. The bridge
 mounts them in native Obsidian Modals; the UI shell mounts the same components
 without a vault. There are no independent account/users/sharing HTML pages.
-Read the [operation and recovery guide](architecture/operations.md) for current boundaries,
+Read [the architecture phases](architecture/README.md) and the
+[operation and recovery guide](architecture/operations.md) for current boundaries,
 permission rules, consistency guarantees and acceptance evidence.
 
 ## Contents

@@ -105,6 +105,4 @@ conexiones y bloquea upgrades hasta recuperar la vigilancia. Revisar
 
 La instrumentación de retraso del event loop es exclusiva del harness de carga;
 no añade endpoints de diagnóstico ni datos privados al protocolo productivo.
-Las comprobaciones de esta entrega están disponibles como `npm test`, `npm run lint`,
-`npm run build`, `npm run test:management`, `npm run test:runtime`,
-`npm run test:image` y `npm run test:content-faults`.
+Consultar phase7.md y performance.md para reproducir las puertas de aceptación.
