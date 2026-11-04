@@ -7,19 +7,7 @@ const {buildIndexHtml} = require('../../static/index-html');
 
 function installRoutes({app,auth,authConfig,config,settings,writeCoalescer}) {
 const REPO_ROOT=path.resolve(__dirname,'../../../../..');
-// Reject oversized requests by Content-Length before parsing.
-app.use((req, res, next) => {
-  const declared = Number(req.headers["content-length"]);
-
-  if (Number.isFinite(declared) && declared > require("../../auth/incoming-share-config").incomingWriteBodyLimit(settings.get("maxBodyBytes"), authConfig.incomingShare, req.path)) {
-    return res.status(413).json({ error: "Request body too large" });
-  }
-
-  next();
-});
-
-app.use(require("../../auth/incoming-share-config").incomingBinaryParser(authConfig.incomingShare));
-app.use(express.json({ limit: settings.MAX_BODY_BACKSTOP }));
+app.use(require('../../transport/http/body-parser').createBodyParser({settings, incomingShare:authConfig.incomingShare}));
 app.use(auth.revalidate);
 app.use(compression());
 

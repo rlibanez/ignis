@@ -3,7 +3,7 @@ import {createRequire} from 'node:module';
 import fs from 'node:fs';
 import vm from 'node:vm';
 const require = createRequire(import.meta.url);
-const {readIncomingShareConfig, incomingWriteBodyLimit, configureIncomingShareAsset} = require('./incoming-share-config');
+const {readIncomingShareConfig, configureIncomingShareAsset} = require('./incoming-share-config');
 const source = fs.readFileSync(new URL('./web/share-store.js', import.meta.url), 'utf8');
 function runtime(config) {
   const assets = new Map([['/auth/share-store.js', {type:'text/javascript', content:Buffer.from(source)}]]);
@@ -30,17 +30,8 @@ it('preserves per-share deadlines across configuration changes', () => {
   expect(store.expired({createdAt:0, expiresAt:null}, Date.now())).toBe(false);
   expect(store.expired({createdAt:0}, 3600000)).toBe(true);
 });
-it('allows binary payloads at the write endpoint without increasing other API limits', () => {
-  const config = readIncomingShareConfig({IGNIS_SHARE_MAX_MIB:'128'}), general = 50*1024*1024;
-  const limit = incomingWriteBodyLimit(general, config, '/api/fs/writeFile');
-  expect(limit).toBe(128*1024*1024);
-  expect(incomingWriteBodyLimit(general,config,'/api/fs/mkdir')).toBe(general);
-  expect(incomingWriteBodyLimit(general,readIncomingShareConfig({}),'/api/fs/writeFile')).toBe(general);
-});
-
 it('permits a full GiB without allocating a GiB-sized test buffer', () => {
   const config = readIncomingShareConfig({IGNIS_SHARE_MAX_MIB:'1024'});
-  expect(incomingWriteBodyLimit(50*1024*1024, config, '/api/fs/writeFile')).toBe(1073741824);
   const store = runtime(config); expect(store.MAX_BYTES).toBe(1073741824);
 });
 it('parses binary uploads with content preconditions and enforces size even without Content-Length', async () => {

@@ -12,12 +12,6 @@ function readIncomingShareConfig(env = process.env) {
     ttlMinutes: integer('IGNIS_SHARE_TTL_MINUTES', 60, 0, 525600),
   });
 }
-function incomingWriteBodyLimit(generalLimit, config, pathname) {
-  // Incoming files use binary bodies. Other APIs retain their existing limit.
-  return pathname === '/api/fs/writeFile'
-    ? Math.max(generalLimit, config.maxMiB * 1024 * 1024)
-    : generalLimit;
-}
 function configureIncomingShareAsset(assets, config) {
   const asset = assets.get('/auth/share-store.js');
   assets.set('/auth/share-store.js', {...asset,
@@ -39,4 +33,4 @@ function incomingBinaryParser(config) {
     });
   };
 }
-module.exports = { readIncomingShareConfig, incomingWriteBodyLimit, configureIncomingShareAsset, incomingBinaryParser };
+module.exports = { readIncomingShareConfig, configureIncomingShareAsset, incomingBinaryParser };

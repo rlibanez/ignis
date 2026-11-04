@@ -27,6 +27,13 @@ mismos ajustes aunque no exista ninguna bóveda. Ser administrador de instancia 
 otorga acceso automático al contenido de otras bóvedas. Verificar correo sigue
 siendo exclusivo del administrador. La reautenticación reciente dura cinco minutos.
 
+El límite general `maxBodyBytes` se aplica al JSON descomprimido durante su
+lectura, también con Transfer-Encoding chunked, gzip o deflate. Los cambios del
+ajuste se aplican a las peticiones siguientes sin reiniciar. Las subidas binarias
+de recepción Android conservan su límite `IGNIS_SHARE_MAX_MIB`; ese límite no
+amplía el de las escrituras JSON. Autenticación, compartición e importación
+conservan sus parsers y límites específicos.
+
 ## Backup coherente y restauración
 
 La base identity.sqlite incluye identidades, sesiones, membresías, grants,
