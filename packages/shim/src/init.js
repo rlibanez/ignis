@@ -65,13 +65,15 @@ function fetchVaultInfo(vaultId) {
 }
 
 export function resolveVaultId() {
+  window.__currentVaultUuid = null;
   const urlParams = new URLSearchParams(window.location.search);
   window.__currentVaultId =
-    urlParams.get("vault") || localStorage.getItem("last-vault") || "";
+    urlParams.get("vault") || vaultService.rememberedVault() || "";
 
   if (!window.__currentVaultId) {
     const info = fetchVaultInfo("");
     window.__currentVaultId = info ? info.id : "";
+    window.__currentVaultUuid = info?.uuid || null;
   }
 
   const workspace = urlParams.get("workspace") || "";
@@ -90,7 +92,7 @@ function fetchBootstrap() {
 
     xhr.open(
       "GET",
-      "/api/bootstrap?vault=" + encodeURIComponent(window.__currentVaultId),
+      "/api/bootstrap?vault=" + encodeURIComponent(vaultService.getCurrentVaultReference()),
       false,
     );
     xhr.send();
@@ -105,13 +107,21 @@ function fetchBootstrap() {
   return null;
 }
 
-function applyVaultInfo(info) {
+export function applyVaultInfo(info) {
+  const browserId = vaultService.browserVaultId(info.uuid || info.id);
+  if (!browserId) throw new Error("Authenticated vault identity required");
   window.__currentVaultId = info.id;
-  localStorage.setItem("last-vault", info.id);
+  window.__currentVaultUuid = info.uuid || null;
+  vaultService.rememberVault(vaultService.getCurrentVaultReference());
+  if (info.uuid && window.history?.replaceState) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("vault", info.uuid);
+    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+  }
   window.__obsidianVersion = info.version || "0.0.0";
 
   window.__vaultConfig = {
-    id: info.id,
+    id: browserId,
     path: "/",
   };
 
@@ -156,7 +166,7 @@ function initVaultListFallback() {
 function initMetadataCacheFallback() {
   try {
     const vaultParam = window.__currentVaultId
-      ? "?vault=" + encodeURIComponent(window.__currentVaultId)
+      ? "?vault=" + encodeURIComponent(vaultService.getCurrentVaultReference())
       : "";
 
     const xhr = new XMLHttpRequest();
@@ -270,11 +280,18 @@ export function initialize() {
   resolveVaultId();
 
   const bootstrap = fetchBootstrap();
+  if (!bootstrap && window.__ignisAuth?.role === "user") {
+    window.__ignisBootstrapFailed = true;
+    throw new Error("Private vault initialization unavailable");
+  }
 
   if (bootstrap) {
     applyVaultInfo(bootstrap.vault);
     window.__vaultList = bootstrap.vaultList;
-    applyTree(bootstrap.tree);
+    let tree;
+    try { tree = fsShim._configureFiles(bootstrap); }
+    catch (error) { window.__ignisBootstrapFailed = true; throw error; }
+    applyTree(tree);
     fsShim._watcherClient.setTreeEtag(bootstrap.etag);
     applyCoreSyncGuard(bootstrap.plugins);
     bootstrapVirtualPlugins = bootstrap.virtualPlugins || [];
@@ -284,10 +301,10 @@ export function initialize() {
     // The priority slice (configs and plugin entry files) resolves window.__ignisBootReady, which the index.html injector waits on before appending Obsidian's scripts, so Obsidian's early reads hit the cache.
     // The bulk slice streams afterward without blocking boot.
     const { priority } = prefetchVaultContent(
-      window.__currentVaultId,
-      bootstrap.tree,
+      vaultService.getCurrentVaultReference(),
+      tree,
       fsShim._contentCache,
-      { onProgress: updateBootProgress },
+      { onProgress: updateBootProgress, filePolicy: fsShim._filePolicy },
     );
 
     window.__ignisBooting = true;

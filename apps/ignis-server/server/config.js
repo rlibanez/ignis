@@ -14,14 +14,16 @@ const dataRoot = process.env.DATA_ROOT || path.join(REPO_ROOT, "data");
 try {
   fs.mkdirSync(vaultRoot, { recursive: true });
 } catch (e) {
-  console.error("[config] Failed to create VAULT_ROOT:", vaultRoot, e.message);
+  require("@ignis/server-core/src/logger").emit("error", "server.config.vault_root_failed", { errorCode: e?.code });
 }
 
 try {
   fs.mkdirSync(dataRoot, { recursive: true });
 } catch (e) {
-  console.error("[config] Failed to create DATA_ROOT:", dataRoot, e.message);
+  require("@ignis/server-core/src/logger").emit("error", "server.config.data_root_failed", { errorCode: e?.code });
 }
+
+let vaultDirectoryAvailable = () => true;
 
 function discoverVaults() {
   // clean object. TODO: refactor to Map for more idiomatic code.
@@ -31,7 +33,7 @@ function discoverVaults() {
     const entries = fs.readdirSync(vaultRoot, { withFileTypes: true });
 
     for (const entry of entries) {
-      if (entry.name.startsWith(".")) {
+      if (entry.name.startsWith(".") || !vaultDirectoryAvailable(entry.name)) {
         continue;
       }
 
@@ -42,11 +44,7 @@ function discoverVaults() {
         try {
           isDir = fs.statSync(path.join(vaultRoot, entry.name)).isDirectory();
         } catch (e) {
-          console.error(
-            "[config] Skipping unreadable vault entry:",
-            entry.name,
-            e.message,
-          );
+          require("@ignis/server-core/src/logger").emit("error", "server.config.vault_unreadable", { errorCode: e?.code });
         }
       }
 
@@ -55,13 +53,15 @@ function discoverVaults() {
       }
     }
   } catch (e) {
-    console.error("[config] Failed to read VAULT_ROOT:", vaultRoot, e.message);
+    require("@ignis/server-core/src/logger").emit("error", "server.config.vault_scan_failed", { errorCode: e?.code });
   }
 
   // Optionally create a default vault if none exist
   if (
     Object.keys(vaults).length === 0 &&
-    process.env.AUTO_CREATE_DEFAULT === "true"
+    process.env.AUTO_CREATE_DEFAULT === "true" &&
+    vaultDirectoryAvailable("My Vault") &&
+    !fs.existsSync(path.join(vaultRoot, "My Vault"))
   ) {
     const defaultPath = path.join(vaultRoot, "My Vault");
 
@@ -69,9 +69,9 @@ function discoverVaults() {
       fs.mkdirSync(path.join(defaultPath, ".obsidian"), { recursive: true });
       vaults["My Vault"] = defaultPath;
 
-      console.log("[config] Created default vault: My Vault");
+      require("@ignis/server-core/src/logger").emit("info", "server.config.default_vault_created");
     } catch (e) {
-      console.error("[config] Failed to create default vault:", e.message);
+      require("@ignis/server-core/src/logger").emit("error", "server.config.default_vault_failed", { errorCode: e?.code });
     }
   }
   return vaults;
@@ -83,18 +83,19 @@ const RESCAN_MIN_INTERVAL_MS = 1000;
 let lastRescanAt = 0;
 
 function getVaultPath(id) {
-  return Object.prototype.hasOwnProperty.call(vaults, id) ? vaults[id] : null;
+  return Object.prototype.hasOwnProperty.call(vaults, id) && vaultDirectoryAvailable(id) ? vaults[id] : null;
 }
 
 module.exports = {
   port: process.env.PORT || 8080,
   vaultRoot,
   dataRoot,
+  setVaultDirectoryAvailability(check) { vaultDirectoryAvailable = check; },
   get vaults() {
-    return vaults;
+    return Object.assign(Object.create(null), Object.fromEntries(Object.entries(vaults).filter(([id]) => vaultDirectoryAvailable(id))));
   },
   get defaultVaultId() {
-    return Object.keys(vaults)[0] || null;
+    return Object.keys(vaults).find(id => vaultDirectoryAvailable(id)) || null;
   },
   getVaultPath,
   getVaultPathOrRescan(id, now = Date.now()) {
@@ -114,6 +115,7 @@ module.exports = {
     const target = path.resolve(absPath);
 
     for (const [vaultId, vaultPath] of Object.entries(vaults)) {
+      if (!vaultDirectoryAvailable(vaultId)) continue;
       const base = path.resolve(vaultPath);
 
       if (target === base || target.startsWith(base + path.sep)) {

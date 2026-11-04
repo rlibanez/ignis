@@ -81,7 +81,7 @@ function notifyStart(vaultId, info) {
     try {
       fn(vaultId, info);
     } catch (e) {
-      console.error("[watcher] Start listener error:", e);
+      require("./logger").emit("error", "core.watcher.start_listener_failed", { errorCode: e?.code });
     }
   }
 }
@@ -91,7 +91,7 @@ function notifyRebuild(vaultId) {
     try {
       fn(vaultId);
     } catch (e) {
-      console.error("[watcher] Rebuild listener error:", e);
+      require("./logger").emit("error", "core.watcher.rebuild_listener_failed", { errorCode: e?.code });
     }
   }
 }
@@ -111,9 +111,7 @@ function startWatching(vaultId, vaultPath) {
       return existing;
     }
 
-    console.warn(
-      `[watcher] Rebuilding watcher tracking no paths on vault: ${vaultId}`,
-    );
+    require("./logger").emit("warn", "core.watcher.rebuilding");
     stopWatching(vaultId);
     notifyRebuild(vaultId);
     rebuilt = true;
@@ -157,7 +155,7 @@ function startWatching(vaultId, vaultPath) {
       try {
         fn(event);
       } catch (e) {
-        console.error("[watcher] Listener error:", e);
+        require("./logger").emit("error", "core.watcher.listener_failed", { errorCode: e?.code });
       }
     }
 
@@ -165,7 +163,7 @@ function startWatching(vaultId, vaultPath) {
       try {
         fn(vaultId, event);
       } catch (e) {
-        console.error("[watcher] Global listener error:", e);
+        require("./logger").emit("error", "core.watcher.global_listener_failed", { errorCode: e?.code });
       }
     }
   }
@@ -190,7 +188,7 @@ function startWatching(vaultId, vaultPath) {
     })
     .on("error", (err) => {
       if (entry.ready) {
-        console.error(`[watcher] Error on vault "${vaultId}":`, err.message);
+        require("./logger").emit("error", "core.watcher.runtime_error", { errorCode: err.code, vaultId });
 
         return;
       }
@@ -205,10 +203,7 @@ function startWatching(vaultId, vaultPath) {
           path: err.path,
         };
 
-        console.error(
-          `[watcher] Error on vault "${vaultId}"${err.path ? ` at ${err.path}` : ""}:`,
-          err.message,
-        );
+        require("./logger").emit("error", "core.watcher.initial_error", { errorCode: err.code, vaultId });
       }
     })
     .on("ready", () => {
@@ -217,15 +212,9 @@ function startWatching(vaultId, vaultPath) {
       const tracked = countTrackedPaths(watcher.getWatched());
 
       if (entry.errorCount === 0) {
-        console.log(
-          `[watcher] Ready on vault "${vaultId}": ${tracked} paths tracked`,
-        );
+        require("./logger").emit("info", "core.watcher.ready", { count: tracked, vaultId });
       } else {
-        const hint = entry.enospc ? " Raise fs.inotify.max_user_watches." : "";
-
-        console.warn(
-          `[watcher] Ready on vault "${vaultId}": ${tracked} paths tracked, ${entry.errorCount} errors, ~${tracked - entry.errorCount} watched.${hint}`,
-        );
+        require("./logger").emit("warn", "core.watcher.ready_with_errors", { count: entry.errorCount, errorCode: entry.enospc ? "ENOSPC" : undefined, vaultId });
       }
 
       notifyStart(vaultId, { rebuilt, tracked, errors: entry.errorCount });
@@ -233,7 +222,7 @@ function startWatching(vaultId, vaultPath) {
 
   vaultWatchers.set(vaultId, entry);
   entry.idleTimer = setTimeout(() => stopWatching(vaultId), idleStopMs);
-  console.log(`[watcher] Started watching vault: ${vaultId}`);
+  require("./logger").emit("info", "core.watcher.started");
 
   return entry;
 }
@@ -248,10 +237,10 @@ function stopWatching(vaultId) {
   cancelIdleStop(entry);
   entry.listeners.clear();
   vaultWatchers.delete(vaultId);
-  console.log(`[watcher] Stopped watching vault: ${vaultId}`);
+  require("./logger").emit("info", "core.watcher.stopped");
 
   return entry.watcher.close().catch((e) => {
-    console.error(`[watcher] Close failed on vault "${vaultId}":`, e.message);
+    require("./logger").emit("error", "core.watcher.close_failed");
   });
 }
 

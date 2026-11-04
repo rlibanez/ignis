@@ -24,7 +24,7 @@ function heartbeatSweep(clients) {
 }
 
 function setupWebSocket(server, opts = {}) {
-  const { getVaultPath, originAllowlist } = opts;
+  const { getVaultPath, originAllowlist, security } = opts;
 
   if (typeof getVaultPath !== "function") {
     throw new Error("setupWebSocket: opts.getVaultPath is required");
@@ -32,7 +32,24 @@ function setupWebSocket(server, opts = {}) {
 
   const originSet = toOriginSet(originAllowlist);
 
-  const wss = new WebSocketServer({ server, path: "/ws" });
+  const wss = new WebSocketServer({
+    server,
+    path: "/ws",
+    maxPayload: 64 * 1024,
+    verifyClient: security
+      ? (info, done) => {
+          try {
+            done(
+              security.verify(info.req) === true,
+              401,
+              "Authentication required",
+            );
+          } catch {
+            done(false, 503, "Authentication unavailable");
+          }
+        }
+      : undefined,
+  });
 
   // Global message handlers: type -> handler(msg, ws).
   wss.messageHandlers = new Map();
@@ -134,6 +151,15 @@ function setupWebSocket(server, opts = {}) {
   };
 
   wss.on("connection", (ws, req) => {
+    if (security) {
+      try {
+        security.attach(ws, req);
+      } catch {
+        ws.terminate();
+        return;
+      }
+      if (ws.readyState !== ws.OPEN) return;
+    }
     if (originSet) {
       const origin = req.headers.origin;
 
@@ -143,8 +169,17 @@ function setupWebSocket(server, opts = {}) {
       }
     }
 
+    if (security?.accountEvents?.(req)) {
+      // Account invalidations never join a vault, start a watcher or subscribe
+      // to plugin channels. Keep only the ordinary connection heartbeat.
+      ws.isAlive=true;ws.on("pong",()=>{ws.isAlive=true;});
+      ws.on("message",()=>ws.close(4003,"Message not allowed"));
+      ws.on("error",()=>ws.terminate());
+      return;
+    }
     const params = new url.URL(req.url, "http://localhost").searchParams;
-    const vaultId = params.get("vault");
+    // Authentication may resolve a stable UUID to the canonical watcher key.
+    const vaultId = security?.vaultId ? security.vaultId(req) : params.get("vault");
 
     if (!vaultId || !getVaultPath(vaultId)) {
       ws.close(4001, "Invalid or missing vault ID");
@@ -152,7 +187,8 @@ function setupWebSocket(server, opts = {}) {
     }
 
     const vaultPath = getVaultPath(vaultId);
-    console.log(`[ws] Client connected to vault: ${vaultId}`);
+    const logContext = { username: req.ignisLogUsername, vaultName: req.ignisLogVaultName, vaultId, component: "websocket" };
+    require("./logger").emit("info", "core.ws.connected", logContext);
 
     // isAlive is reset by each pong; the heartbeat sweep terminates sockets that miss one.
     ws.isAlive = true;
@@ -180,15 +216,32 @@ function setupWebSocket(server, opts = {}) {
 
     // Dispatch incoming messages to registered handlers.
     ws.on("message", (data) => {
+      if (security?.receive && !security.receive(ws)) {
+        ws.terminate();
+        return;
+      }
       let msg;
 
       try {
         msg = JSON.parse(data);
-      } catch (e) {
-        console.warn("[ws] failed to parse incoming message:", e.message);
+      } catch {
+        require("./logger").emit("warn", "core.ws.invalid_json", logContext);
         return;
       }
 
+      if (security) {
+        try {
+          if (!security.message(ws, msg)) {
+            ws.close(4003, "Message not allowed");
+            return;
+          }
+        } catch {
+          ws.terminate();
+          return;
+        }
+      }
+
+      if (!msg || typeof msg !== "object" || Array.isArray(msg)) return;
       // Built-in channel-subscription tracking. Plugins don't register handlers for these types.
       if (msg.type === "subscribe-channel" && typeof msg.channel === "string") {
         addClientChannel(ws, msg.channel);
@@ -218,19 +271,16 @@ function setupWebSocket(server, opts = {}) {
           }
         }
       } catch (e) {
-        console.warn(
-          `[ws] handler for ${msg.channel ? msg.channel + ":" : ""}${msg.type} threw:`,
-          e.message,
-        );
+        require("./logger").emit("warn", "core.ws.handler_failed", { ...logContext, errorCode: e?.code });
       }
     });
 
     ws.on("error", (e) => {
-      console.warn(`[ws] Socket error on vault "${vaultId}":`, e.message);
+      require("./logger").emit("warn", "core.ws.socket_error", { ...logContext, errorCode: e?.code });
     });
 
     ws.on("close", () => {
-      console.log(`[ws] Client disconnected from vault: ${vaultId}`);
+      require("./logger").emit("info", "core.ws.disconnected", logContext);
       watcher.removeListener(vaultId, listener);
 
       const set = clientsByVault.get(vaultId);

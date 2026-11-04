@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const { createHash } = require("node:crypto");
 const config = require("../config");
 const { getVersion } = require("../version");
 const { versionedSrc } = require("./cache-headers");
@@ -39,8 +40,23 @@ function buildIndexHtml() {
   let html = fs.readFileSync(templatePath, "utf-8");
 
   html = html.replace("__OBSIDIAN_TERMS__", scriptJson(getObsidianTerms()));
-  html = html.replace("__IGNIS_UI_SRC__", `ignis-ui.js?v=${version}`);
-  html = html.replace("__SHIM_LOADER_SRC__", `shim-loader.js?v=${version}`);
+  // Fork builds can retain upstream semver; invalidate cached bundles by actual content.
+  const repoRoot = path.resolve(__dirname, "../../../..");
+  function bundleVersion(relative) {
+    const hash = createHash("sha256")
+      .update(fs.readFileSync(path.join(repoRoot, relative)))
+      .digest("hex")
+      .slice(0, 16);
+    return `${version}-${hash}`;
+  }
+  html = html.replace(
+    "__IGNIS_UI_SRC__",
+    `ignis-ui.js?v=${bundleVersion("packages/ui/dist/ignis-ui.js")}`,
+  );
+  html = html.replace(
+    "__SHIM_LOADER_SRC__",
+    `shim-loader.js?v=${bundleVersion("packages/shim/dist/shim-loader.js")}`,
+  );
   html = html.replace(
     "__APP_CSS_SRC__",
     versionedSrc("app.css", obsidianVersion),

@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import { Plugin, TFile, TFolder } from "obsidian";
 import {
   showFilePicker,
@@ -21,18 +23,24 @@ import { initProxyBlockNotice } from "./notices/proxy-block-notice.js";
 import { initWriteGiveupNotice } from "./notices/write-giveup-notice.js";
 import { initImageRetry } from "./image-retry.js";
 import { installReadingLock } from "./reading-lock.js";
+import { installRenameKeyboard } from "./rename-keyboard.js";
 
 class IgnisBridgePlugin extends Plugin {
   async onload() {
     console.log("[ignis-bridge] Plugin loaded");
 
-    await pluginRegistry.refresh();
+    if (window.__ignisAuth?.role === "admin") {
+      await pluginRegistry.refresh();
+
+      refreshIgnisSettings();
+      this._pluginTogglesUnsub = watchPluginToggles();
+    }
+
     patchSettingsModal(this);
-    refreshIgnisSettings();
-    this._pluginTogglesUnsub = watchPluginToggles();
+    installRenameKeyboard(this);
 
     this.registerDomEvent(window, "ignis:virtual-plugin-loaded", () => {
-      reconcilePluginTabs(this.app.setting);
+      if (window.__ignisAuth?.role === "admin") reconcilePluginTabs(this.app.setting);
     });
 
     this._statusBarUnsub = initStatusBar(this);
@@ -52,7 +60,7 @@ class IgnisBridgePlugin extends Plugin {
       installReadingLock(this);
     }
 
-    this.addRibbonIcon("upload", "Upload file", () => {
+    this.addRibbonIcon("upload", translateIgnis("Upload file"), () => {
       showFilePicker(this.app);
     });
 

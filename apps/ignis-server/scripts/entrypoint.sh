@@ -105,18 +105,18 @@ if [ ! -f "$OBSIDIAN_DIR/index.html" ] || [ "$installed_version" != "$OBSIDIAN_V
       *.deb)
         rm -rf /tmp/ob-deb
         dpkg-deb -x "$OBSIDIAN_PACKAGE" /tmp/ob-deb
-        npx --yes @electron/asar extract \
+        npx --yes --ignore-scripts @electron/asar@4.3.1 extract \
           /tmp/ob-deb/opt/Obsidian/resources/obsidian.asar "$OBSIDIAN_DIR"
         rm -rf /tmp/ob-deb
         ;;
       *.asar.gz)
         cp "$OBSIDIAN_PACKAGE" /tmp/obsidian.asar.gz
         gunzip -f /tmp/obsidian.asar.gz
-        npx --yes @electron/asar extract /tmp/obsidian.asar "$OBSIDIAN_DIR"
+        npx --yes --ignore-scripts @electron/asar@4.3.1 extract /tmp/obsidian.asar "$OBSIDIAN_DIR"
         rm -f /tmp/obsidian.asar
         ;;
       *.asar)
-        npx --yes @electron/asar extract "$OBSIDIAN_PACKAGE" "$OBSIDIAN_DIR"
+        npx --yes --ignore-scripts @electron/asar@4.3.1 extract "$OBSIDIAN_PACKAGE" "$OBSIDIAN_DIR"
         ;;
     esac
   else
@@ -127,7 +127,7 @@ if [ ! -f "$OBSIDIAN_DIR/index.html" ] || [ "$installed_version" != "$OBSIDIAN_V
 
     echo "[ignis] Unpacking asar..."
     gunzip /tmp/obsidian.asar.gz
-    npx --yes @electron/asar extract /tmp/obsidian.asar "$OBSIDIAN_DIR"
+    npx --yes --ignore-scripts @electron/asar@4.3.1 extract /tmp/obsidian.asar "$OBSIDIAN_DIR"
 
     rm -f /tmp/obsidian.asar
   fi
@@ -149,7 +149,7 @@ fi
 if ! command -v ob &>/dev/null; then
   echo "[ignis] Installing obsidian-headless..."
 
-  if npm install -g --prefix /usr/local obsidian-headless --silent 2>/dev/null; then
+  if npm install -g --ignore-scripts --prefix /usr/local obsidian-headless@0.0.14 --silent 2>/dev/null; then
     OB_VERSION=$(ob --version 2>/dev/null)
 
     if [ -n "$OB_VERSION" ]; then
@@ -163,6 +163,9 @@ if ! command -v ob &>/dev/null; then
 else
   echo "[ignis] obsidian-headless $(ob --version 2>/dev/null) available."
 fi
+
+# Runtime-created private data should not be readable by other OS users.
+umask 077
 
 # Run as the determined user
 exec gosu "$RUN_USER" node /app/apps/ignis-server/server/index.js

@@ -11,6 +11,7 @@ function createMetadataChannel(wss) {
 
   // vaultId -> { etag, timer, debounceStart }
   const state = new Map();
+  let closed = false;
 
   function stateOf(vaultId) {
     let announceState = state.get(vaultId);
@@ -35,7 +36,7 @@ function createMetadataChannel(wss) {
   }
 
   function reportRevision(vaultId, etag) {
-    if (!etag) {
+    if (closed || !etag) {
       return;
     }
 
@@ -70,6 +71,7 @@ function createMetadataChannel(wss) {
   }
 
   function reportReplacement(vaultId, etag) {
+    if (closed) return;
     const announceState = stateOf(vaultId);
 
     clearTimeout(announceState.timer);
@@ -91,7 +93,8 @@ function createMetadataChannel(wss) {
     state.delete(vaultId);
   }
 
-  return { reportRevision, reportReplacement, forgetVault };
+  function close() {closed=true;for (const id of state.keys()) forgetVault(id);}
+  return { reportRevision, reportReplacement, forgetVault, close };
 }
 
 module.exports = { createMetadataChannel };

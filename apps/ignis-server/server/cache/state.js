@@ -44,7 +44,7 @@ function notifyEntrySwapped(vaultId, revision) {
     try {
       fn(vaultId, revision);
     } catch (e) {
-      console.error("[bootstrap] swap listener error:", e.message);
+      require("@ignis/server-core/src/logger").emit("error", "server.cache.state.swap_listener_failed", { errorCode: e?.code });
     }
   }
 }
@@ -54,7 +54,7 @@ function notifyVaultInvalidated(vaultId) {
     try {
       fn(vaultId);
     } catch (e) {
-      console.error("[bootstrap] invalidate listener error:", e.message);
+      require("@ignis/server-core/src/logger").emit("error", "server.cache.state.invalidate_listener_failed", { errorCode: e?.code });
     }
   }
 }
@@ -64,21 +64,24 @@ function notifyStaleEntryServed(vaultId) {
     try {
       fn(vaultId);
     } catch (e) {
-      console.error("[bootstrap] stale listener error:", e.message);
+      require("@ignis/server-core/src/logger").emit("error", "server.cache.state.stale_listener_failed", { errorCode: e?.code });
     }
   }
 }
 
 function onEntrySwapped(fn) {
   swapListeners.add(fn);
+  return () => swapListeners.delete(fn);
 }
 
 function onVaultInvalidated(fn) {
   invalidateListeners.add(fn);
+  return () => invalidateListeners.delete(fn);
 }
 
 function onStaleEntryServed(fn) {
   staleListeners.add(fn);
+  return () => staleListeners.delete(fn);
 }
 
 function lastCrawlAt(vaultId) {

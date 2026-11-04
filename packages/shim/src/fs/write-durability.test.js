@@ -484,3 +484,11 @@ describe("silent by default", () => {
     expect(wd.getState()).toBe("clean");
   });
 });
+
+it.each(['CONTENT_CONFLICT','CONTENT_WRITE_UNCERTAIN','EACCES'])('retains %s including silent writes without automatic or manual replay',async code=>{
+ const failure=vi.fn();wd.onFailure(failure);
+ wd.trackWrite('note.md',{silent:true}).failure('draft','utf8',null,{code});
+ expect(wd.listFailed()).toEqual(['note.md']);expect(wd.listRetryableFailed()).toEqual([]);expect(wd.snapshotPending()[0]).toMatchObject({path:'note.md',data:'draft'});
+ wd.retryAll();await vi.advanceTimersByTimeAsync(120000);
+ expect(transport.writeFile).not.toHaveBeenCalled();expect(failure).toHaveBeenCalledWith('note.md');
+});

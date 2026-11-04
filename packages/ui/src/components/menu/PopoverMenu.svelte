@@ -1,4 +1,6 @@
 <script>
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
+
   import { createEventDispatcher } from "svelte";
   import { EllipsisVertical } from "lucide-svelte";
 
@@ -19,7 +21,7 @@
 </script>
 
 <div class="popover-wrapper">
-  <button class="popover-trigger" on:click={onTriggerClick} title="Options">
+  <button class="popover-trigger" on:click={onTriggerClick} title="{translateIgnis("Options")}">
     <EllipsisVertical size="1rem" />
   </button>
 

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title data-i18n="Sign in to Ignis">Sign in to Ignis</title>
+    <link rel="stylesheet" href="/auth/setup.css" />
+    <link rel="stylesheet" href="/auth/account.css" />
+    <script src="/auth/i18n.js" defer></script>
+    <script src="/auth/oidc-start.js" defer></script>
+    <script src="/auth/login.js" defer></script>
+    <script src="/auth/password-visibility.js" defer></script>
+    <link rel="stylesheet" href="/auth/components.css">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#f4f5f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#17191e" media="(prefers-color-scheme: dark)">
+<link rel="apple-touch-icon" href="/pwa/icon-512.png">
+<script src="/auth/pwa.js" defer></script>
+<script src="/auth/events.js" defer></script>
+</head>
+  <body>
+    <main>
+      <p class="brand" data-ignis-app-name>IGNIS</p>
+      <h1 data-i18n="Sign in">Sign in</h1>
+      <p id="status" role="status" aria-live="polite" data-i18n="Checking installation…">Checking installation…</p>
+      <form id="login-form" hidden>
+        <label for="login" data-i18n="Username">Username</label>
+        <input
+          id="login"
+          name="login"
+          autocomplete="username"
+          required
+          maxlength="64"
+        />
+        <label for="password" data-i18n="Password">Password</label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          autocomplete="current-password"
+          required
+          maxlength="1024"
+        />
+        <label class="remember-choice"><input id="remember-me" type="checkbox" /><span data-i18n="Keep me signed in"> Keep me signed in</span></label>
+        <div class="login-submit">
+          <button type="submit" data-i18n="Sign in">Sign in</button>
+          <p id="login-error" role="alert" hidden></p>
+        </div>
+      </form>
+      <div class="login-actions">
+      <button id="oidc-sign-in" hidden data-provider-template="Sign in with OpenID Connect">Sign in with OpenID Connect</button>
+      </div>
+      <noscript data-i18n="JavaScript is required to sign in.">JavaScript is required to sign in.</noscript>
+    </main>
+  </body>
+</html>

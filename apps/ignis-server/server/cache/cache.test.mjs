@@ -1,3 +1,4 @@
+import { captureLogs } from "../../../../packages/server-core/src/log-test-helper.mjs";
 import {
   describe,
   it,
@@ -135,7 +136,7 @@ describe("watched and unwatched serving modes", () => {
     seed("direct.md", "direct");
 
     const logs = [];
-    const spy = vi.spyOn(console, "log").mockImplementation((...args) => {
+    const spy = captureLogs("info").mockImplementation((...args) => {
       logs.push(args.join(" "));
     });
     let second;
@@ -148,7 +149,7 @@ describe("watched and unwatched serving modes", () => {
 
     expect(second).toBe(first);
     expect(second.response.tree["direct.md"]).toBeUndefined();
-    expect(logs.filter((l) => l.includes("build files="))).toEqual([]);
+    expect(logs.filter((l) => l.includes("server.cache.crawl.built"))).toEqual([]);
     expect(staleServed).toEqual([VAULT_ID]);
   });
 
@@ -294,7 +295,7 @@ describe("watcher-driven invalidation", () => {
   it("evicts the entry when the watcher is rebuilt", async () => {
     seed("a.md", "a");
 
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+    captureLogs("warn").mockImplementation(() => {});
     watcher.onWatcherRebuild((vaultId) =>
       bootstrapCache.invalidateVault(vaultId),
     );
@@ -317,7 +318,7 @@ describe("watcher-driven invalidation", () => {
   it("rejects until the vault root a rebuild was triggered by comes back", async () => {
     seed("a.md", "a");
 
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+    captureLogs("warn").mockImplementation(() => {});
     watcher.onWatcherRebuild((vaultId) =>
       bootstrapCache.invalidateVault(vaultId),
     );
@@ -424,8 +425,8 @@ describe("warm-up", () => {
     seed("warm.md", "warm");
 
     const logs = [];
-    const spy = vi.spyOn(console, "log").mockImplementation((...args) => {
-      logs.push(args.join(" "));
+    const spy = captureLogs("info").mockImplementation((...args) => {
+      logs.push(args);
     });
     let warmed, requested;
 
@@ -442,7 +443,7 @@ describe("warm-up", () => {
     expect(requested.response.tree["warm.md"]).toMatchObject({ type: "file" });
     expect(warmed).toBe(requested);
     expect(
-      logs.filter((l) => l.includes(`vault=${VAULT_ID} build`)),
+      logs.filter(([event, fields]) => event === "server.cache.crawl.built" && fields.vaultId === VAULT_ID),
     ).toHaveLength(1);
   });
 });
@@ -490,4 +491,47 @@ describe("vault plugin trust", () => {
       settings.update({ trustedVaults: [] });
     }
   });
+});
+
+describe("bootstrap vault catalog freshness", () => {
+  it("refreshes another vault's removal and creation in cached and compressed responses", async () => {
+    const { gunzipSync, brotliDecompressSync } = require("zlib");
+    const replacementDir = path.join(VAULT_ROOT, "replacement");
+    config.refreshVaults();
+    try {
+      const entry = await bootstrapCache.getOrBuild(VAULT_ID);
+      require("./compress").markCompressionStale(entry);
+      const oldCompression = bootstrapCache.getOrCompress(entry);
+      const tree = entry.response.tree;
+      const etag = entry.etag;
+      fs.renameSync(otherDir, replacementDir);
+      config.refreshVaults();
+      const refreshed = await bootstrapCache.getOrBuild(VAULT_ID);
+      const compressed = await bootstrapCache.getOrCompress(refreshed);
+      await oldCompression;
+      expect(refreshed.response.tree).toBe(tree);
+      expect(refreshed.etag).toBe(etag);
+      expect(refreshed.response.vaultList.map(v => v.id).sort()).toEqual(["replacement", VAULT_ID]);
+      for (const response of [
+        JSON.parse(gunzipSync(compressed.gz)),
+        JSON.parse(brotliDecompressSync(compressed.br)),
+      ]) {
+        expect(response.vaultList.map(v => v.id).sort()).toEqual(["replacement", VAULT_ID]);
+      }
+      expect(await bootstrapCache.getOrCompress(refreshed)).toBe(compressed);
+    } finally {
+      if (fs.existsSync(replacementDir)) fs.renameSync(replacementDir, otherDir);
+      config.refreshVaults();
+    }
+  });
+});
+
+it("refreshes compressed bootstrap identity even when the metadata etag is unchanged", async () => {
+  const { gunzipSync } = require("zlib");
+  const entry = await bootstrapCache.getOrBuild(VAULT_ID);
+  const initial = await bootstrapCache.getOrCompress(entry);
+  entry.response.vault = { ...entry.response.vault, uuid: "registered-id" };
+  const registered = await bootstrapCache.getOrCompress(entry);
+  expect(registered).not.toBe(initial);
+  expect(JSON.parse(gunzipSync(registered.gz)).vault.uuid).toBe("registered-id");
 });

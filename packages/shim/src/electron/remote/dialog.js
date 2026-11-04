@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import {
   showMessageDialog,
   showConfirmDialog,
@@ -107,9 +109,9 @@ async function startWorkaroundFlow(options, fingerprint) {
   console.log("[shim:dialog] Files staged for caller:", fingerprint);
 
   await showMessageDialog(
-    "Files Ready",
-    `Staged: ${names}\n\nPlease retry the action that brought you here. ` +
-      "The files will be provided automatically.",
+    translateIgnis("Files Ready"),
+    translateIgnis("Staged: {p0}\n\nPlease retry the action that brought you here. ", {p0: names}) +
+      translateIgnis("The files will be provided automatically."),
   );
 }
 
@@ -185,12 +187,12 @@ export const dialogShim = {
 
     // Fire-and-forget: show warning, then optionally start workaround flow
     showConfirmDialog(
-      "Feature Not Available",
-      "This action requires a native file picker which is not available in the browser.",
-      "A workaround is available: select your files first, then retry the action. " +
-        "They will be provided automatically.\n\n" +
-        "Note: individual files must be under 200 MB.",
-      "Select Files",
+      translateIgnis("Feature Not Available"),
+      translateIgnis("This action requires a native file picker which is not available in the browser."),
+      translateIgnis("A workaround is available: select your files first, then retry the action. ") +
+        translateIgnis("They will be provided automatically.\n\n") +
+        translateIgnis("Note: individual files must be under 200 MB."),
+      translateIgnis("Select Files"),
     ).then((confirmed) => {
       if (confirmed) {
         startWorkaroundFlow(options, callerFingerprint);
@@ -208,11 +210,11 @@ export const dialogShim = {
     const defaultName =
       options?.defaultPath?.split(/[/\\]/).pop() || "download";
     const name = await showPromptDialog(
-      "Save File",
-      "Save as:",
+      translateIgnis("Save File"),
+      translateIgnis("Save as:"),
       "filename",
       defaultName,
-      "Save",
+      translateIgnis("Save"),
     );
 
     if (!name) {
@@ -235,12 +237,12 @@ export const dialogShim = {
     const fullMessage = message + (detail ? "\n\n" + detail : "");
 
     if (buttons.length <= 1) {
-      await showMessageDialog(options.title || "Message", fullMessage);
+      await showMessageDialog(options.title || translateIgnis("Message"), fullMessage);
       return { response: 0, checkboxChecked: false };
     }
 
     const result = await showConfirmDialog(
-      options.title || "Confirm",
+      options.title || translateIgnis("Confirm"),
       message,
       detail,
       buttons[0],

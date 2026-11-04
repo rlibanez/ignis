@@ -1,9 +1,11 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import { FuzzySuggestModal } from "obsidian";
 
 class WorkspacePickerModal extends FuzzySuggestModal {
   constructor(app) {
     super(app);
-    this.setPlaceholder("Open workspace in new tab");
+    this.setPlaceholder(translateIgnis("Open workspace in new tab"));
   }
 
   getItems() {

@@ -10,7 +10,7 @@ import { hasVirtualFile, getVirtualFile } from "./virtual-files.js";
 import { cancelPending, enqueueWrite, hasPending } from "./write-coalescer.js";
 import { createUtimes } from "./utimes.js";
 
-export function createFsSync(metadataCache, contentCache, transport) {
+export function createFsSync(metadataCache, contentCache, transport, filePolicy = null) {
   const commitUtimes = createUtimes(metadataCache, transport);
 
   return {
@@ -196,6 +196,7 @@ export function createFsSync(metadataCache, contentCache, transport) {
     },
 
     unlinkSync(path) {
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       const resolved = resolvePath(path);
 
       markSentOp(resolved);
@@ -216,7 +217,8 @@ export function createFsSync(metadataCache, contentCache, transport) {
 
     readdirSync(path) {
       const entries = metadataCache.readdir(path);
-      return entries.map((e) => e.name);
+      const names = entries.map((e) => e.name);
+      return names;
     },
 
     lstatSync(path) {
@@ -225,6 +227,7 @@ export function createFsSync(metadataCache, contentCache, transport) {
     },
 
     mkdirSync(path, options) {
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       const recursive =
         typeof options === "object" ? !!options.recursive : !!options;
 
@@ -243,6 +246,7 @@ export function createFsSync(metadataCache, contentCache, transport) {
     },
 
     rmdirSync(path) {
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       const resolved = resolvePath(path);
 
       markSentOp(resolved);
@@ -258,6 +262,7 @@ export function createFsSync(metadataCache, contentCache, transport) {
     },
 
     rmSync(path, options) {
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       const recursive =
         typeof options === "object" ? !!options.recursive : false;
 
@@ -277,6 +282,8 @@ export function createFsSync(metadataCache, contentCache, transport) {
     },
 
     renameSync(oldPath, newPath) {
+      filePolicy?.assertOrdinary(oldPath, resolvePath(oldPath));
+      filePolicy?.assertOrdinary(newPath, resolvePath(newPath));
       const resolvedOld = resolvePath(oldPath);
       const resolvedNew = resolvePath(newPath);
 
@@ -304,6 +311,8 @@ export function createFsSync(metadataCache, contentCache, transport) {
     },
 
     copyFileSync(src, dest) {
+      filePolicy?.assertOrdinary(src, resolvePath(src));
+      filePolicy?.assertOrdinary(dest, resolvePath(dest));
       const resolvedSrc = resolvePath(src);
       const resolvedDest = resolvePath(dest);
 
@@ -336,6 +345,7 @@ export function createFsSync(metadataCache, contentCache, transport) {
     },
 
     appendFileSync(path, data) {
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       const resolved = resolvePath(path);
 
       markSentOp(resolved);
@@ -355,14 +365,17 @@ export function createFsSync(metadataCache, contentCache, transport) {
     },
 
     utimesSync(path, atime, mtime) {
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       commitUtimes(path, atime, mtime);
     },
 
     lutimesSync(path, atime, mtime) {
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       commitUtimes(path, atime, mtime);
     },
 
-    chmodSync() {
+    chmodSync(path) {
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       // The vault FS does not model permission bits. No-op.
     },
   };

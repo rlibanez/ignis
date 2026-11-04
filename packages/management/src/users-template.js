@@ -1,0 +1,186 @@
+// Bundled internal form template. No standalone page or network fetch.
+export default String.raw`
+    <main class="users-page">
+
+      <p id="status" role="status" aria-live="polite" data-i18n="Checking access…">Checking access…</p>
+      <section id="administration" hidden>
+        <section class="panel" aria-labelledby="accounts-heading">
+          <div class="panel-heading"><h2 id="accounts-heading" data-i18n="Accounts">Accounts</h2><button id="add-user" type="button" class="account-button" data-i18n="Add user">Add user</button></div>
+          <div class="table-scroll" role="region" aria-label="User accounts" tabindex="0" data-i18n-aria-label="User accounts">
+            <table class="responsive-table" role="table">
+              <thead><tr><th scope="col" data-i18n="Username">Username</th><th scope="col" data-i18n="Email">Email</th><th scope="col" data-i18n="Email verification">Email verification</th><th scope="col" data-i18n="Role">Role</th><th scope="col" data-i18n="Status">Status</th><th id="oidc-column" scope="col" hidden data-provider-template="OpenID Connect">OpenID Connect</th><th scope="col" class="actions-heading" data-i18n="Actions">Actions</th></tr></thead>
+              <tbody id="users"></tbody>
+            </table>
+          </div>
+        </section>
+        <dialog id="create-dialog" aria-labelledby="create-heading">
+        <h2 id="create-heading" data-i18n="Create user">Create user</h2>
+        <p id="create-status" role="status" aria-live="polite"></p>
+        <form id="create-user">
+          <div class="field-heading"><label for="new-login" data-i18n="Username">Username</label>
+            <span class="field-help"><button type="button" class="help-toggle" aria-label="About username" aria-expanded="false" aria-controls="new-login-help" data-i18n-aria-label="About username">?</button>
+              <span id="new-login-help" class="help-tooltip" role="tooltip" hidden data-i18n="3–64 ASCII letters, digits, dots, underscores or hyphens. Start with a letter or digit.">3–64 ASCII letters, digits, dots, underscores or hyphens. Start with a letter or digit.</span>
+            </span>
+          </div>
+          <input id="new-login" name="login" required minlength="3" maxlength="64"
+            pattern="[a-zA-Z0-9][a-zA-Z0-9._\-]{2,63}" autocomplete="off" />
+          <div class="field-heading"><label for="new-email" data-i18n="Email (optional)">Email (optional)</label>
+            <span class="field-help"><button type="button" class="help-toggle" aria-label="About email (optional)" aria-expanded="false" aria-controls="new-email-help" data-i18n-aria-label="About email (optional)">?</button>
+              <span id="new-email-help" class="help-tooltip" role="tooltip" hidden data-i18n="Changing the address clears confirmation. Confirm it explicitly to allow verified-email account linking. Email changes close the user&#x27;s sessions.">Changing the address clears confirmation. Confirm it explicitly to allow verified-email account linking. Email changes close the user's sessions.</span>
+            </span>
+          </div>
+          <input id="new-email" name="email" type="email" maxlength="254" autocomplete="off" />
+          <label class="email-confirmation"><input name="emailVerified" type="checkbox" /><span data-i18n="Verified email"> Verified email</span></label>
+          <div class="field-heading"><label for="new-password" data-i18n="Password">Password</label>
+            <span class="field-help"><button type="button" class="help-toggle" aria-label="About password" aria-expanded="false" aria-controls="policy" data-i18n-aria-label="About password">?</button>
+              <span id="policy" class="help-tooltip" role="tooltip" hidden data-i18n="Password requirements are loaded from the server.">Password requirements are loaded from the server.</span>
+            </span>
+          </div>
+          <input id="new-password" name="password" type="password" required maxlength="1024" autocomplete="new-password" />
+          <label for="confirm-password" data-i18n="Confirm password">Confirm password</label>
+          <input id="confirm-password" name="confirmation" type="password" required maxlength="1024" autocomplete="new-password" />
+          <div class="field-heading">
+            <label class="email-confirmation"><input name="requirePasswordChange" type="checkbox" /><span data-i18n="Force password change"> Force password change</span></label>
+            <span class="field-help"><button type="button" class="help-toggle" aria-label="About required password changes" aria-expanded="false" aria-controls="create-password-change-help" data-i18n-aria-label="About required password changes">?</button>
+              <span id="create-password-change-help" class="help-tooltip" role="tooltip" hidden data-i18n="Requires a local password. Existing sessions are closed. The user must sign in with their current local password and choose a different password before accessing Ignis, including through OpenID Connect.">Requires a local password. Existing sessions are closed. The user must sign in with their current local password and choose a different password before accessing Ignis, including through OpenID Connect.</span>
+            </span>
+          </div>
+          <div class="dialog-actions"><button id="cancel-create" type="button" class="cancel-button" data-i18n="Cancel">Cancel</button><button type="submit" data-i18n="Create user">Create user</button></div>
+        </form>
+        </dialog>
+      </section>
+      <dialog id="edit-dialog" aria-labelledby="edit-heading">
+        <h2 id="edit-heading"><span data-i18n="Edit user ">Edit user </span><span id="edit-user-name"></span></h2>
+        <form id="edit-user">
+          <div class="field-heading"><label for="edit-email" data-i18n="Email (optional)">Email (optional)</label>
+            <span class="field-help"><button type="button" class="help-toggle" aria-label="About email verification" aria-expanded="false" aria-controls="email-help" data-i18n-aria-label="About email verification">?</button>
+              <span id="email-help" class="help-tooltip" role="tooltip" hidden data-i18n="Changing the address clears confirmation. Confirm it explicitly to allow verified-email account linking. Email changes close the user&#x27;s sessions.">Changing the address clears confirmation. Confirm it explicitly to allow verified-email account linking. Email changes close the user's sessions.</span>
+            </span>
+          </div>
+          <input id="edit-email" name="email" type="email" maxlength="254" autocomplete="off" />
+          <label class="email-confirmation"><input name="emailVerified" type="checkbox" /><span data-i18n="Verified email"> Verified email</span></label>
+          <div class="field-heading"><label for="user-role" data-i18n="Account role">Account role</label>
+            <span class="field-help"><button type="button" class="help-toggle" aria-label="About account roles" aria-expanded="false" aria-controls="role-help" data-i18n-aria-label="About account roles">?</button>
+              <span id="role-help" class="help-tooltip" role="tooltip" hidden data-i18n="Administrators can manage users. Vault access still requires explicit membership. Changing a role closes all the user&#x27;s sessions. You cannot change your own role.">Administrators can manage users. Vault access still requires explicit membership. Changing a role closes all the user's sessions. You cannot change your own role.</span>
+            </span>
+          </div>
+          <select id="user-role" name="role"><option value="user" data-i18n="User">User</option><option value="admin" data-i18n="Administrator">Administrator</option></select>
+          <label id="confirm-admin-label" class="email-confirmation" hidden><input name="confirmAdmin" type="checkbox" /><span data-i18n="I confirm granting administrator access to this user"> I confirm granting administrator access to this user</span></label>
+          <div class="field-heading"><label for="user-status" data-i18n="Account status">Account status</label>
+            <span class="field-help"><button type="button" class="help-toggle" aria-label="About account status" aria-expanded="false" aria-controls="account-status-help" data-i18n-aria-label="About account status">?</button>
+              <span id="account-status-help" class="help-tooltip" role="tooltip" data-provider-template="Disabling an account blocks sign-in and revokes its Ignis sessions. Its files and OpenID Connect link are kept. Enabling it requires a new sign-in." hidden>Disabling an account blocks sign-in and revokes its Ignis sessions. Its files and OpenID Connect link are kept. Enabling it requires a new sign-in.</span>
+            </span>
+          </div>
+          <select id="user-status" name="status">
+            <option value="active" data-i18n="Active">Active</option>
+            <option value="disabled" data-i18n="Disabled">Disabled</option>
+          </select>
+
+          <div class="field-heading">
+            <label class="email-confirmation"><input name="requirePasswordChange" type="checkbox" /><span data-i18n="Force password change"> Force password change</span></label>
+            <span class="field-help"><button type="button" class="help-toggle" aria-label="About required password changes" aria-expanded="false" aria-controls="edit-password-change-help" data-i18n-aria-label="About required password changes">?</button>
+              <span id="edit-password-change-help" class="help-tooltip" role="tooltip" hidden data-i18n="Requires a local password. Existing sessions are closed. The user must sign in with their current local password and choose a different password before accessing Ignis, including through OpenID Connect.">Requires a local password. Existing sessions are closed. The user must sign in with their current local password and choose a different password before accessing Ignis, including through OpenID Connect.</span>
+            </span>
+          </div>
+          <p id="edit-status" role="status" aria-live="polite"></p>
+          <div class="edit-account-actions">
+          <button id="reset-password" type="button" class="warning-button" hidden data-i18n="Reset password">Reset password</button>
+          <button id="set-password" type="button" class="cancel-button" hidden data-i18n="Set local password">Set local password</button>
+          <section class="session-actions" aria-label="Session management" data-i18n-aria-label="Session management">
+            <button id="revoke-sessions" type="button" class="warning-button" data-i18n="Close all sessions">Close all sessions</button>
+
+          </section>
+          <section id="unlink-section" class="session-actions" aria-label="OpenID Connect linking" hidden data-i18n-aria-label="OpenID Connect linking">
+            <div id="unlink-control" class="unlink-control">
+              <button id="unlink-oidc" type="button" class="cancel-button" data-provider-template="Unlink OpenID Connect">Unlink OpenID Connect</button>
+              <span id="unlink-help" class="help-tooltip" role="tooltip" hidden data-i18n="Cannot unlink: this account needs a local password first.">Cannot unlink: this account needs a local password first.</span>
+            </div>
+            <div id="unlink-confirmation" hidden>
+              <p data-i18n="Remove this account&#x27;s link to the configured provider and close all its Ignis sessions? A local password is required to retain access. If this is your account, you will be signed out.">Remove this account's link to the configured provider and close all its Ignis sessions? A local password is required to retain access. If this is your account, you will be signed out.</p>
+              <p class="help" data-provider-template="The provider account is not deleted. Automatic account linking, if enabled, may link it again on a later OpenID Connect sign-in.">The provider account is not deleted. Automatic account linking, if enabled, may link it again on a later OpenID Connect sign-in.</p>
+              <button id="confirm-unlink" type="button" data-i18n="Confirm unlinking">Confirm unlinking</button>
+              <button id="cancel-unlink" type="button" class="cancel-button" data-i18n="Keep link">Keep link</button>
+            </div>
+          </section>
+          <div class="dialog-actions">
+            <button id="cancel-edit" type="button" class="cancel-button" data-i18n="Cancel">Cancel</button>
+            <button type="submit" data-i18n="Save changes">Save changes</button>
+          </div>
+          </div>
+        </form>
+      </dialog>
+      <dialog id="reset-dialog" aria-labelledby="reset-heading">
+        <h2 id="reset-heading"><span data-i18n="Reset password for ">Reset password for </span><span id="reset-user"></span></h2>
+        <div id="reset-prompt">
+          <p data-i18n="This closes all the user&#x27;s Ignis sessions and blocks sign-in until they set a new password. Any earlier temporary password stops working. The provider link is kept.">This closes all the user's Ignis sessions and blocks sign-in until they set a new password. Any earlier temporary password stops working. The provider link is kept.</p>
+          <p data-i18n="If the temporary password expires or is lost, an administrator must generate another one.">If the temporary password expires or is lost, an administrator must generate another one.</p>
+          <button id="generate-reset" type="button" class="warning-button" data-i18n="Generate temporary password">Generate temporary password</button>
+        </div>
+        <div id="reset-result" hidden>
+          <p data-i18n="Copy this temporary password now and give it privately to the user. It cannot be retrieved after closing this window.">Copy this temporary password now and give it privately to the user. It cannot be retrieved after closing this window.</p>
+          <label for="generated-secret" data-i18n="Temporary password">Temporary password</label>
+          <div class="password-control password-with-copy">
+            <input id="generated-secret" type="password" readonly autocomplete="off" />
+            <button id="copy-reset-password" type="button" class="password-toggle password-copy" aria-label="Copy password" title="Copy password" aria-controls="generated-secret" data-i18n-title="Copy password" data-i18n-aria-label="Copy password">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <g class="copy-icon"><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4" /></g>
+                <path class="copy-success" d="m5 12 4 4L19 6" />
+              </svg>
+            </button>
+            <span id="copy-feedback" class="copy-feedback" role="status" aria-live="polite"></span>
+          </div>
+          <p id="reset-expiry"></p>
+        </div>
+        <p id="reset-status" role="alert"></p>
+        <button id="close-reset" type="button" class="cancel-button" data-i18n="Cancel">Cancel</button>
+      </dialog>
+      <dialog id="password-dialog" aria-labelledby="password-heading">
+        <h2 id="password-heading"><span data-i18n="Set local password for ">Set local password for </span><span id="password-user"></span></h2>
+        <p class="help" data-i18n="All Ignis sessions for this user will close. The provider link is kept. If this is your account, you will need to sign in again.">All Ignis sessions for this user will close. The provider link is kept. If this is your account, you will need to sign in again.</p>
+        <p id="password-policy" class="help"></p>
+        <form id="set-password-form">
+          <label for="initial-password" data-i18n="New password">New password</label>
+          <input id="initial-password" name="password" type="password" required maxlength="1024" autocomplete="new-password" />
+          <label for="initial-confirmation" data-i18n="Confirm new password">Confirm new password</label>
+          <input id="initial-confirmation" name="confirmation" type="password" required maxlength="1024" autocomplete="new-password" />
+          <div class="dialog-actions"><button id="cancel-password" type="button" class="cancel-button" data-i18n="Cancel">Cancel</button><button type="submit" data-i18n="Set local password">Set local password</button></div>
+        </form>
+      </dialog>
+      <dialog id="delete-dialog" aria-labelledby="delete-heading">
+        <h2 id="delete-heading"><span data-i18n="Delete user ">Delete user </span><span id="delete-user-name"></span></h2>
+        <p data-i18n="This permanently removes the Ignis account and its access.">This permanently removes the Ignis account and its access.</p>
+        <p data-i18n="Owned vaults:">Owned vaults:</p>
+        <ul id="delete-vaults"></ul>
+        <form id="delete-user-form">
+          <label class="email-confirmation"><input name="deleteVaults" type="checkbox" /><span data-i18n="Delete all vaults owned by this user"> Delete all vaults owned by this user</span></label>
+          <p class="help" data-i18n="This also deletes shared vaults and their files for every collaborator. Other users&#x27; vaults are kept. Without this option, transfer or delete all owned vaults first.">This also deletes shared vaults and their files for every collaborator. Other users' vaults are kept. Without this option, transfer or delete all owned vaults first.</p>
+          <label for="delete-confirm-login" data-i18n="Type the username to confirm">Type the username to confirm</label>
+          <input id="delete-confirm-login" name="confirmLogin" autocomplete="off" required />
+          <p id="delete-status" role="alert"></p>
+          <div class="dialog-actions"><button id="cancel-delete" type="button" class="cancel-button" data-i18n="Cancel">Cancel</button><button id="confirm-delete" type="submit" class="danger-button" data-i18n="Delete user">Delete user</button></div>
+        </form>
+      </dialog>
+      <dialog id="revoke-confirmation" class="ignis-confirm" aria-labelledby="revoke-heading">
+        <h2 id="revoke-heading" data-i18n="Close all sessions">Close all sessions</h2>
+        <p id="revoke-warning"></p>
+        <div class="dialog-actions">
+          <button id="cancel-revoke" type="button" class="cancel-button" data-i18n="Cancel">Cancel</button>
+          <button id="confirm-revoke" type="button" class="warning-button" data-i18n="Confirm">Confirm</button>
+        </div>
+      </dialog>
+      <dialog id="reauth-dialog" aria-labelledby="reauth-heading">
+        <h2 id="reauth-heading" data-i18n="Confirm your identity">Confirm your identity</h2>
+        <p id="reauth-user"></p>
+        <div class="reauth-actions">
+        <form id="reauth-form">
+          <label for="reauth-password" data-i18n="Password">Password</label>
+          <input id="reauth-password" name="password" type="password" autofocus autocomplete="current-password" required maxlength="1024" />
+          <button type="submit" class="account-button" data-i18n="Confirm identity">Confirm identity</button>
+        </form>
+        <button id="reauth-oidc" type="button" class="account-button secondary" hidden data-i18n="Continue with OpenID Connect">Continue with OpenID Connect</button>
+        <p id="reauth-status" role="alert"></p>
+        <button id="cancel-reauth" type="button" class="account-button secondary" data-i18n="Cancel">Cancel</button>
+        </div>
+      </dialog>
+    </main>
+  `;

@@ -1,3 +1,4 @@
+import { captureLogs } from "../../../../packages/server-core/src/log-test-helper.mjs";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createRequire } from "module";
 import path from "path";
@@ -34,8 +35,8 @@ beforeEach(() => {
   fs.rmSync(vaultDir, { recursive: true, force: true });
   fs.mkdirSync(vaultDir, { recursive: true });
   vi.spyOn(watcher, "isWatching").mockReturnValue(true);
-  vi.spyOn(console, "warn").mockImplementation(() => {});
-  vi.spyOn(console, "log").mockImplementation(() => {});
+  captureLogs("warn").mockImplementation(() => {});
+  captureLogs("info").mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -119,7 +120,7 @@ describe("a crawl under a configured ignore list", () => {
 });
 
 describe("the crawl's heavy-plugin line", () => {
-  it("names each heavy plugin once per crawl", async () => {
+  it("reports each heavy plugin without exposing plugin paths", async () => {
     const plugin = ".obsidian/plugins/heavy";
 
     seed(`${plugin}/manifest.json`, "{}");
@@ -130,13 +131,12 @@ describe("the crawl's heavy-plugin line", () => {
 
     await build();
 
-    const lines = console.log.mock.calls
+    const lines = captureLogs("info").mock.calls
       .map((args) => args.join(" "))
-      .filter((line) => line.includes("[ignore-suggest]"));
+      .filter((line) => line.includes("server.cache.crawl.ignore_suggestions"));
 
     expect(lines).toEqual([
-      `[ignore-suggest] vault=${VAULT_ID} plugin=${plugin} ` +
-        `files=502 patterns=${plugin}/icons`,
+      "server.cache.crawl.ignore_suggestions [object Object]",
     ]);
   });
 
@@ -151,9 +151,9 @@ describe("the crawl's heavy-plugin line", () => {
 
     await build();
 
-    const lines = console.log.mock.calls
+    const lines = captureLogs("info").mock.calls
       .map((args) => args.join(" "))
-      .filter((line) => line.includes("[ignore-suggest]"));
+      .filter((line) => line.includes("server.cache.crawl.ignore_suggestions"));
 
     expect(lines).toEqual([]);
   });

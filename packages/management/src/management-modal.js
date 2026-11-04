@@ -1,0 +1,78 @@
+import {createManagementView} from "./management-view.js";
+import {mountUsers} from "./users-component.js";
+import {mountShares} from "./shares-component.js";
+import {mountAccountSecurity} from "./account-security-component.js";
+import mountPasswordVisibility from "./password-visibility.cjs";
+import {createComponentScope} from "./client.js";
+const t = text => globalThis.IgnisI18n?.t(text) ?? text;
+const titles = {users:"Manage users",shares:"Shared resources",password:"Set local password"};
+
+export function createManagementModal(Modal, setIcon) {
+return class ManagementModal extends Modal {
+  constructor(app, kind, options = {}) { super(app); this.options = options; this.kind = kind; this.abort = new AbortController(); this.channels = []; this.cleanups = []; }
+  async onOpen() {
+    const title = titles[this.kind];
+    const lost = () => this.close();
+    window.addEventListener("ignis:auth-lost", lost);
+    this.cleanups.push(() => window.removeEventListener("ignis:auth-lost", lost));
+    const resourceOnly = this.kind === "shares" && !!this.options.initialResource;
+    this.setTitle(t(resourceOnly ? "Manage resource" : title));
+    if (["shares", "users", "password"].includes(this.kind) && document.body.classList.contains("is-mobile")) {
+      // Let Obsidian position mobile sheets within its native safe-area inset.
+      this.modalEl.addClass("mod-lg");
+      if (resourceOnly) this.modalEl.addClass("mod-form");
+    } else if (!resourceOnly && ["shares", "users", "password"].includes(this.kind)) {
+      // Match the actual settings window, including theme and viewport sizing.
+      const settings = document.querySelector(".modal.mod-settings");
+      const size = settings?.getBoundingClientRect();
+      this.modalEl.style.width = size?.width ? `${size.width}px` : "var(--modal-width, 90vw)";
+      this.modalEl.style.height = size?.height ? `${size.height}px` : "var(--modal-height, 85vh)";
+      this.modalEl.style.maxWidth = size?.width ? "100vw" : "var(--modal-max-width, 1100px)";
+      this.modalEl.style.maxHeight = size?.height ? "100dvh" : "var(--modal-max-height, 1000px)";
+    } else if (resourceOnly) {
+      this.modalEl.addClass("mod-form");
+    } else {
+      this.modalEl.style.width = "min(1100px, 95vw)";
+      this.modalEl.style.height = "min(850px, 90dvh)";
+    }
+    this.contentEl.style.overflow = "auto";
+    const host = this.contentEl.createDiv();
+    host.classList.add("ignis-management-root");
+    const frame = document.createElement("div"); host.append(frame);
+    frame.textContent = t("Loading…");
+    try {
+      const dialogs=createManagementView({frame,host,modal:this.modalEl,setIcon,kind:this.kind,resourceOnly,
+        onDispose:fn=>this.cleanups.push(fn)});
+      const signal = this.abort.signal;
+      const scope = createComponentScope(frame, {...this.options,
+        signal, cleanups:this.cleanups, channels:this.channels,
+        decorate:dialogs.decorate,
+        onResourceActionFinished: resourceOnly ? () => this.close() : undefined,
+        onResourceDialogOpened: resourceOnly ? dialog => {
+          // Native dialogs live in the top layer. Hide only the otherwise empty
+          // host, retaining its scoped styles and controller lifecycle.
+          if (document.body.classList.contains("is-mobile") && dialog.classList.contains("native-direct-resource")) {
+            this.setTitle(dialog.querySelector("h2")?.textContent || t("Manage resource"));
+          } else {
+            this.modalEl.style.visibility = "hidden";
+            const backdrop = this.containerEl.querySelector(".modal-bg");
+            if (backdrop) backdrop.style.visibility = "hidden";
+          }
+          if (this.options.initialResource?.action !== "revoke") dialog.addEventListener("close", () => this.close(), {once:true, signal});
+        } : undefined,
+      });
+      ({users:mountUsers,shares:mountShares,password:mountAccountSecurity})[this.kind](scope);
+      mountPasswordVisibility(scope);
+    } catch { if (!this.abort.signal.aborted) frame.textContent = t("Request failed"); }
+  }
+  onClose() {
+    if (this.abort.signal.aborted) return;
+    this.abort.abort();
+    for(const cleanup of this.cleanups) cleanup();
+    for(const channel of this.channels)channel.close();
+    this.contentEl.querySelectorAll("input").forEach(input=>{input.value="";});
+    this.contentEl.empty();
+  }
+}
+
+}

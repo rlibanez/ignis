@@ -1,3 +1,4 @@
+import { captureLogs as captureEventLogs } from "../../../../packages/server-core/src/log-test-helper.mjs";
 import {
   describe,
   it,
@@ -128,9 +129,9 @@ describe("fs route handlers reconcile the coalescer buffer (WRITE_COALESCE_MS > 
     await bufferWrite("d/f.md", "v1", "v2new");
 
     expect((await rmdir("d")).ok).toBe(false); // ENOTEMPTY
-    await sleep(WINDOW + 200);
-
-    expect(onDisk("d/f.md")).toBe("v2new");
+    // A timer firing does not mean its asynchronous disk write has completed.
+    // Wait for the observable result, retaining a bounded failure deadline.
+    await vi.waitFor(() => expect(onDisk("d/f.md")).toBe("v2new"), { timeout: 2000 });
   });
 
   it("copyFile copies the buffered source content, not stale disk", async () => {
@@ -213,7 +214,7 @@ describe("tree route root responses come from the bootstrap cache", () => {
     fs.writeFileSync(abs("direct.md"), "direct");
 
     const logs = [];
-    const spy = vi.spyOn(console, "log").mockImplementation((...args) => {
+    const spy = captureEventLogs("info").mockImplementation((...args) => {
       logs.push(args.join(" "));
     });
     let stale;
@@ -225,7 +226,7 @@ describe("tree route root responses come from the bootstrap cache", () => {
     }
 
     expect(stale["direct.md"]).toBeUndefined();
-    expect(logs.filter((l) => l.includes("build files="))).toEqual([]);
+    expect(logs.filter((l) => l.includes("server.cache.crawl.built"))).toEqual([]);
 
     await bootstrapCache.reconcileVault(VAULT_ID);
 
@@ -239,7 +240,7 @@ describe("tree route root responses come from the bootstrap cache", () => {
     await writeFile("dedup.md", "x");
 
     const logs = [];
-    const spy = vi.spyOn(console, "log").mockImplementation((...args) => {
+    const spy = captureEventLogs("info").mockImplementation((...args) => {
       logs.push(args.join(" "));
     });
     let first, second;
@@ -255,7 +256,7 @@ describe("tree route root responses come from the bootstrap cache", () => {
 
     expect(first["dedup.md"]).toMatchObject({ type: "file" });
     expect(second).toEqual(first);
-    expect(logs.filter((l) => l.includes("[bootstrap]"))).toHaveLength(1);
+    expect(logs.filter((l) => l.includes("server.cache.crawl.built"))).toHaveLength(1);
   });
 });
 
@@ -320,12 +321,12 @@ describe("mutation routes apply to a watched vault's tree", () => {
   function captureLogs() {
     logs = [];
 
-    return vi.spyOn(console, "log").mockImplementation((...args) => {
+    return captureEventLogs("info").mockImplementation((...args) => {
       logs.push(args.join(" "));
     });
   }
 
-  const crawlLines = () => logs.filter((l) => l.includes("build files="));
+  const crawlLines = () => logs.filter((l) => l.includes("server.cache.crawl.built"));
 
   beforeEach(() => {
     bootstrapCache.invalidateAll();
@@ -643,5 +644,37 @@ describe("utimes route", () => {
     const tree = await fetch(u(`tree?vault=${VAULT_ID}`)).then((r) => r.json());
 
     expect(tree["d"]).toMatchObject({ type: "directory" });
+  });
+});
+
+describe('bounded batch prefetch',()=>{
+  it('opens 1000 duplicate and normalized paths only once',async()=>{
+    fs.writeFileSync(abs('note.md'),'content');
+    const open=vi.spyOn(fs.promises,'open');
+    try {
+      const response=await postJson('batch-read',{paths:[...Array(998).fill('note.md'),'./note.md','/note.md']});
+      expect(response.status).toBe(200);
+      expect((await response.json()).files).toEqual({'note.md':'content','./note.md':'content','/note.md':'content'});
+      expect(open.mock.calls.filter(([filename])=>filename===abs('note.md'))).toHaveLength(1);
+    }finally{open.mockRestore();}
+  });
+  it('continues prefetching a normal 50-file indexer batch',async()=>{
+    const paths=Array.from({length:50},(_,i)=>`note-${i}.md`);
+    for(const filename of paths)fs.writeFileSync(abs(filename),'# note');
+    const response=await postJson('batch-read',{paths});
+    expect(response.status).toBe(200);
+    expect(Object.keys((await response.json()).files)).toHaveLength(50);
+  });
+  it('omits oversized files while keeping them available for individual reads',async()=>{
+    fs.writeFileSync(abs('large.md'),Buffer.alloc(4*1024*1024+1,65));
+    const response=await postJson('batch-read',{paths:['large.md']});
+    expect(await response.json()).toEqual({files:{}});
+    const individual=await fetch(u(`readFile?${q('large.md')}`));
+    expect(individual.status).toBe(200);
+    expect((await individual.arrayBuffer()).byteLength).toBe(4*1024*1024+1);
+  });
+  it('rejects malformed and excessive input before reading files',async()=>{
+    for(const paths of [[null],[{}],['x'.repeat(1025)],Array(1001).fill('note.md')])
+      expect((await postJson('batch-read',{paths})).status).toBe(400);
   });
 });

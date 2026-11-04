@@ -37,34 +37,25 @@ Ignis is under active development as my daily driver for note taking. It's still
 
 ## Quick start
 
-Run Ignis with Docker Compose. Use the following compose file for a basic setup.
+This fork includes local/OIDC authentication, users, authorized vaults and shared resources. Build it from this repository using its root `docker-compose.yml`:
 
-```yaml
-services:
-  ignis:
-    image: nobbe/ignis:latest
-    ports:
-      - "8080:8080"
-    environment:
-      # match these to your host user (run: id)
-      - PUID=1000
-      - PGID=1000
-    volumes:
-      - ./vaults:/vaults
-      - ./data:/app/data
-      - obsidian-app:/app/obsidian-app
-    restart: unless-stopped
-
-volumes:
-  obsidian-app:
+```sh
+cp .env.example .env
+# Configure .env for your deployment before starting.
+docker compose up -d --build
 ```
 
-Save it as `docker-compose.yml`, then run `docker compose up -d` and open `http://localhost:8080`. The first start pulls Obsidian from its official source, so give it a minute or two. With no vaults yet, Ignis opens the vault manager to create your first one.
+The example configuration permits HTTP only on localhost for development. Use HTTPS in production, set `IGNIS_PUBLIC_ORIGIN` to the exact public origin and trust only your own reverse proxy through `IGNIS_TRUSTED_PROXIES`.
 
-> [!IMPORTANT]
-> Before exposing Ignis to other machines, put authentication in front of it and serve it over HTTPS. It has no built-in auth, so anyone who reaches an open instance can read and write the whole vault, and outside a secure context (HTTPS, or `localhost`) the browser disables features Ignis needs. See [Remote access](https://ignis.thiefling.com/docs/security/remote-access/) and [Authentication](https://ignis.thiefling.com/docs/security/authentication/).
+Create the first administrator through the interactive local CLI:
 
-Full setup and configuration are in the [deploy guide](https://ignis.thiefling.com/docs/server/deploy/); the rest of the [documentation](https://ignis.thiefling.com/docs/) covers settings, security, and operations.
+```sh
+docker compose exec ignis npm run auth -- bootstrap
+```
+
+Alternatively, enable one-time web setup with a fresh `IGNIS_INITIAL_ADMIN_KEY` as documented in `.env.example`, then remove it after setup. Use a clean installation with the current schema; older development databases are rejected without being erased. Obsidian assets are downloaded from the official source on first start.
+
+See the [architecture](docs/ARCHITECTURE.md) and [operation and recovery guide](docs/architecture/operations.md) for this fork. The upstream [documentation](https://ignis.thiefling.com/docs/) remains useful for the original editor and plugin features, but its deployment instructions do not configure this fork's authentication.
 
 ## Variants
 

@@ -151,9 +151,7 @@ function extractFromAsset(assetsPath, name, extract) {
   try {
     return extract(source);
   } catch (e) {
-    console.warn(
-      `[ignis] Obsidian terms: could not parse ${name}: ${e.message}`,
-    );
+    require("@ignis/server-core/src/logger").emit("warn", "server.static.obsidian-terms.parse_failed", { errorCode: e?.code });
     return null;
   }
 }
@@ -163,7 +161,7 @@ function resolveObsidianTerms({
   override = config.obsidianTermsOverride,
 } = {}) {
   if (override) {
-    console.log("[ignis] Obsidian terms: using OBSIDIAN_TERMS_STRING");
+    require("@ignis/server-core/src/logger").emit("info", "server.static.obsidian-terms.using_config");
     return override;
   }
 
@@ -179,24 +177,20 @@ function resolveObsidianTerms({
   );
 
   if (fromRenderer !== null && fromMain !== null && fromRenderer !== fromMain) {
-    console.warn(
-      "[ignis] Obsidian terms: app.js and main.js disagree, using app.js",
-    );
+    require("@ignis/server-core/src/logger").emit("warn", "server.static.obsidian-terms.disagreement");
   }
 
   if (fromRenderer !== null) {
-    console.log("[ignis] Obsidian terms: extracted from app.js");
+    require("@ignis/server-core/src/logger").emit("info", "server.static.obsidian-terms.extracted");
     return fromRenderer;
   }
 
   if (fromMain !== null) {
-    console.warn(
-      "[ignis] Obsidian terms: not found in app.js, using the main.js value",
-    );
+    require("@ignis/server-core/src/logger").emit("warn", "server.static.obsidian-terms.using_main");
     return fromMain;
   }
 
-  console.log("[ignis] Obsidian terms: no handshake in the served Obsidian");
+  require("@ignis/server-core/src/logger").emit("info", "server.static.obsidian-terms.absent");
   return null;
 }
 

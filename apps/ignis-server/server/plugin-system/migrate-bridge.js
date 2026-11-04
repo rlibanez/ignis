@@ -31,13 +31,13 @@ async function migratePluginFromVault(vaultPath, vaultName, pluginId) {
   } catch {}
 
   if (didWork) {
-    console.log(`[ignis] Migrated ${pluginId} out of vault: ${vaultName}`);
+    require("@ignis/server-core/src/logger").emit("info", "server.plugin-system.migrate-bridge.migrated");
   }
 
   return didWork;
 }
 
-async function migratePluginsFromAllVaults(vaultRoot, pluginIds) {
+async function migratePluginsFromAllVaults(vaultRoot, pluginIds, isAvailable = () => true) {
   if (!(await fs.promises.stat(vaultRoot).catch(() => null))) {
     return;
   }
@@ -45,7 +45,7 @@ async function migratePluginsFromAllVaults(vaultRoot, pluginIds) {
   const entries = await fs.promises.readdir(vaultRoot, { withFileTypes: true });
 
   for (const entry of entries) {
-    if (!entry.isDirectory()) {
+    if (!entry.isDirectory() || !isAvailable(entry.name)) {
       continue;
     }
 

@@ -12,8 +12,36 @@ async function fetchJson(url, options) {
 }
 
 export const vaultService = {
+  browserVaultId(reference) {
+    const auth = window.__ignisAuth;
+    if (auth?.blocked || !auth?.userId || !reference) return null;
+    return "ignis-v1:" + encodeURIComponent(auth.userId) + ":" + encodeURIComponent(reference);
+  },
+  rememberedVault() {
+    const auth = window.__ignisAuth;
+    if (auth?.blocked || !auth?.userId) return null;
+    try { return localStorage.getItem("ignis:last-vault:" + encodeURIComponent(auth.userId)); }
+    catch { return null; }
+  },
+
+  rememberVault(reference) {
+    const auth = window.__ignisAuth;
+    if (auth?.blocked || !auth?.userId) return;
+    try { localStorage.setItem("ignis:last-vault:" + encodeURIComponent(auth.userId), reference); }
+    catch { /* Browser storage is optional; authorization stays on the server. */ }
+  },
+
   getCurrentVaultId() {
     return window.__currentVaultId || "";
+  },
+
+  getCurrentVaultReference() {
+    return window.__currentVaultUuid || this.getCurrentVaultId();
+  },
+
+  referenceFor(id) {
+    if (id === this.getCurrentVaultId()) return this.getCurrentVaultReference();
+    return window.__vaultList?.find(vault => vault.id === id)?.uuid || id;
   },
 
   async listVaults() {
@@ -41,6 +69,40 @@ export const vaultService = {
     return [];
   },
 
+  async registrationOptions() {
+    return fetchJson(API_BASE + "/registration");
+  },
+
+  async registerVault(directory, ownerId, identity) {
+    return fetchJson(API_BASE + "/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ directory, ownerId, identity }),
+    });
+  },
+
+  async vaultMembers(uuid) {
+    return fetchJson(API_BASE + "/members?vault=" + encodeURIComponent(uuid));
+  },
+
+  async updateVaultMember(vault, login, role, expectedRole, revision) {
+    return fetchJson(API_BASE + "/members", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vault, login, role, expectedRole, revision }),
+    });
+  },
+
+  async transferVaultOwnership(vault, userId, expectedRole, revision) {
+    return fetchJson(API_BASE + "/transfer-ownership", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vault, userId, expectedRole, revision, confirm: true }),
+    });
+  },
+
+  async vaultOwners() {
+    return fetchJson(API_BASE + "/owners");
+  },
+
   async createVault(name) {
     await fetchJson(API_BASE + "/create", {
       method: "POST",
@@ -48,9 +110,9 @@ export const vaultService = {
       body: JSON.stringify({ name }),
     });
 
+    const list = await this.listVaults();
     this.setVaultTrust(name);
-
-    return this.listVaults();
+    return list;
   },
 
   createVaultSync(name) {
@@ -71,50 +133,66 @@ export const vaultService = {
     return fetchJson(API_BASE + "/refresh", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ vault: id }),
+      body: JSON.stringify({ vault: this.referenceFor(id) }),
     });
   },
 
   async renameVault(id, newName) {
-    await fetchJson(API_BASE + "/rename", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ vault: id, name: newName }),
-    });
+    const current = id === this.getCurrentVaultId() && !!window.__currentVaultUuid;
+    if(current) await window.__ignisAuth?.beginVaultRename?.(window.__currentVaultUuid);
+    let success=false;
+    try {
+      await fetchJson(API_BASE + "/rename", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vault: this.referenceFor(id), name: newName }),
+      });
 
-    this._migrateLocalStorage(id, newName);
+      this._migrateLocalStorage(id, newName);
 
-    if (id === this.getCurrentVaultId()) {
-      window.__currentVaultId = newName;
+      if (id === this.getCurrentVaultId()) {
+        window.__currentVaultId = newName;
 
-      if (window.__vaultConfig) {
-        window.__vaultConfig.id = newName;
+        if (window.__vaultConfig) {
+          window.__vaultConfig.id = this.browserVaultId(this.getCurrentVaultReference());
+        }
+
+        history.replaceState(null, "", "/?vault=" + encodeURIComponent(this.getCurrentVaultReference()));
       }
 
-      history.replaceState(null, "", "/?vault=" + encodeURIComponent(newName));
-    }
-
-    return this.listVaults();
+      const list = await this.listVaults();
+      success=true;
+      return list;
+    } finally { if(current) await window.__ignisAuth?.finishVaultRename?.(success); }
   },
 
-  async deleteVault(id) {
-    await fetchJson(API_BASE + "/remove?vault=" + encodeURIComponent(id), {
-      method: "DELETE",
-    });
-
-    const wasCurrentVault = id === this.getCurrentVaultId();
-
-    await this.listVaults();
-
-    return { wasCurrentVault };
+  async deleteVault(id, uuid) {
+    const reference = uuid || this.referenceFor(id);
+    const wasCurrentVault = window.__currentVaultUuid
+      ? reference === window.__currentVaultUuid
+      : id === this.getCurrentVaultId();
+    const coordinated = wasCurrentVault && !!window.__currentVaultUuid;
+    if (coordinated) await window.__ignisAuth?.beginVaultDelete?.(reference);
+    let success = false;
+    try {
+      const result = await fetchJson(API_BASE + "/remove?vault=" + encodeURIComponent(reference), {
+        method: "DELETE",
+      });
+      success = true;
+      await this.listVaults();
+      return { wasCurrentVault, cleanupPending: result.cleanupPending === true };
+    } finally {
+      if (coordinated) await window.__ignisAuth?.finishVaultDelete?.(success);
+    }
   },
 
   deleteVaultSync(id) {
+    const reference = window.__vaultList?.find(vault => vault.id === id)?.uuid || id;
     const xhr = new XMLHttpRequest();
 
     xhr.open(
       "DELETE",
-      API_BASE + "/remove?vault=" + encodeURIComponent(id),
+      API_BASE + "/remove?vault=" + encodeURIComponent(reference),
       false,
     );
 
@@ -124,29 +202,35 @@ export const vaultService = {
   },
 
   openVault(id) {
-    localStorage.setItem("last-vault", id);
+    const reference = this.referenceFor(id);
+    this.rememberVault(reference);
 
     const target = window.parent !== window ? window.parent : window;
 
-    target.location.href = "/?vault=" + encodeURIComponent(id);
+    target.location.href = "/?vault=" + encodeURIComponent(reference);
   },
 
   setVaultTrust(vaultId, trusted = true) {
-    localStorage.setItem("enable-plugin-" + vaultId, String(trusted));
+    const storageId = this.browserVaultId(this.referenceFor(vaultId));
+    if (!storageId) return;
+    localStorage.setItem("enable-plugin-" + storageId, String(trusted));
   },
 
   _migrateLocalStorage(oldId, newId) {
     const pluginKey = "enable-plugin-";
 
-    const oldVal = localStorage.getItem(pluginKey + oldId);
+    const reference = this.referenceFor(oldId);
+    const oldStorageId = this.browserVaultId(reference);
+    const newStorageId = this.browserVaultId(reference === oldId ? newId : reference);
+    const oldVal = oldStorageId ? localStorage.getItem(pluginKey + oldStorageId) : null;
 
-    if (oldVal !== null) {
-      localStorage.setItem(pluginKey + newId, oldVal);
-      localStorage.removeItem(pluginKey + oldId);
+    if (oldVal !== null && newStorageId && newStorageId !== oldStorageId) {
+      localStorage.setItem(pluginKey + newStorageId, oldVal);
+      localStorage.removeItem(pluginKey + oldStorageId);
     }
 
-    if (localStorage.getItem("last-vault") === oldId) {
-      localStorage.setItem("last-vault", newId);
+    if (this.rememberedVault() === oldId) {
+      this.rememberVault(newId);
     }
   },
 };

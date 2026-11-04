@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import { Notice } from "obsidian";
 
 // Delay past the store's pending threshold so a save landing shortly after never flashes the notice.
@@ -39,7 +41,7 @@ function initSaveNotice() {
   function message() {
     const { retrying } = writes.getDetail();
 
-    return retrying > 0 ? `Saving... (${retrying} retrying)` : "Saving...";
+    return retrying > 0 ? translateIgnis("Saving... ({p0} retrying)", {p0: (retrying)}) : translateIgnis("Saving...");
   }
 
   function beginEpisode() {
@@ -82,7 +84,7 @@ function initSaveNotice() {
       return;
     }
 
-    n.setMessage("Saved");
+    n.setMessage(translateIgnis("Saved"));
     n.setAutoHide(SAVED_HIDE_MS);
     savedNotice = n;
   }

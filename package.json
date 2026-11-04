@@ -11,10 +11,16 @@
     "build": "node build.js",
     "dev:server": "node apps/ignis-server/server/index.js",
     "dev": "npm run build && npm run dev:server",
+    "auth": "node apps/ignis-server/server/auth/cli.js",
     "docker:build": "node apps/ignis-server/scripts/build-image.js",
-    "lint": "oxlint packages apps/ignis-server/server --max-warnings 0 && node scripts/check-error-leaks.mjs",
+    "lint": "oxlint packages apps/ignis-server/server scripts --max-warnings 0 && node scripts/check-error-leaks.mjs && node scripts/check-architecture.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:image": "node scripts/check-image.mjs",
+    "test:content-faults": "node scripts/check-content-faults.mjs",
+    "test:management": "node scripts/check-management-ui.mjs && node scripts/check-management-ui.mjs --mobile && node scripts/check-management-ui.mjs --mobile --compact && node scripts/check-management-ui.mjs --mobile --landscape",
+    "test:runtime": "node scripts/check-obsidian-runtime.mjs && node scripts/check-obsidian-runtime.mjs --mobile",
+    "test:management-parity": "node scripts/check-obsidian-runtime.mjs --management-parity && node scripts/check-obsidian-runtime.mjs --management-parity --wide && node scripts/check-obsidian-runtime.mjs --management-parity --mobile && node scripts/check-obsidian-runtime.mjs --management-parity --mobile --compact && node scripts/check-obsidian-runtime.mjs --management-parity --mobile --landscape"
   },
   "dependencies": {
     "acorn": "^8.18.0",

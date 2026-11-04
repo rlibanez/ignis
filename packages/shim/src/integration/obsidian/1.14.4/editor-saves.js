@@ -1,0 +1,147 @@
+import {openRecoveryCopy} from '../../../recovery-copy.js';
+import { contentHash } from "../../../fs/content-versions.js";
+
+// A per-call token, never an ambient "currently saving" flag: an unrelated plugin
+// write must not inherit an editor's version while the adapter queue is waiting.
+const editorWrite = Symbol("ignis.editorWrite");
+const installed = new WeakMap();
+const fail = code => Object.assign(new Error("Saving is paused. Download your changes before reloading."), {code});
+
+export function installEditorSaves(obsidian, app, write, context, recover) {
+  const prototype = obsidian?.TextFileView?.prototype, adapter = app?.vault?.adapter;
+  if (typeof prototype?.save!=="function" || typeof adapter?.write!=="function" || typeof adapter?.queue!=="function" || typeof adapter?.reconcileInternalFile!=="function") throw new Error("Editor save integration unavailable");
+  if (installed.has(adapter)) return installed.get(adapter);
+  const views = new WeakMap(), pending = new Map();
+  const controller={snapshotPending:()=>{
+    const now=context(),result=[],included=new Set();
+    const visible=scope=>!!scope.sessionId && !!scope.vault && scope.vault===now.vault && (!now.sessionId || scope.sessionId===now.sessionId);
+    for(const [record,item] of pending){
+      if(!visible(item.scope))continue;
+      let data=item.data;
+      try{data=item.readDraft?.() ?? data;}catch{/* Retain the last captured draft. */}
+      result.push({path:item.path,data,encoding:'utf8'});included.add(record);
+    }
+    // A session can lock before the debounce or while another save is in flight.
+    // Capture current text, including edits that have not reached save() yet.
+    app.workspace.iterateAllLeaves(leaf=>{
+      const view=leaf.view,state=views.get(view),file=view?.file;
+      if(!state || !file || file.deleted || !view.dirty || !visible(state.scope))return;
+      const record=state.files.get(file);if(record && included.has(record))return;
+      try{
+        const data=view.getViewData();
+        if(typeof data==='string' && data!==view.lastSavedData)result.push({path:file.path,data,encoding:'utf8'});
+      }catch{/* A broken view must not discard other retained drafts. */}
+    });
+    return result;
+  }};
+  installed.set(adapter,controller);
+  const originalWrite = adapter.write;
+  adapter.write = function(path, data, options) {
+    const intent = options?.[editorWrite];
+    if (!intent) return originalWrite.call(this,path,data,options);
+    return this.queue(async () => {
+      intent.check();
+      await write(path,data,intent.expectedHash,intent.check);
+      intent.check();
+      // Preserve native Vault.modify's cache callback and file reconciliation.
+      options.immediate?.();
+      await this.reconcileInternalFile(path);
+    });
+  };
+  function attach(view) {
+    if (!(view instanceof obsidian.TextFileView) || views.has(view)) return;
+    const state={scope:{...context()},files:new WeakMap(),timer:null};views.set(view,state);
+    // Existing views bound the original save in their constructor before module
+    // extraction. Replace their debounce too, not just the prototype method.
+    view.requestSave=()=>{
+      // A new edit may retry a definite permission denial. Uncertain writes and
+      // version conflicts remain terminal; every retry still checks its baseline.
+      const record=view.file && state.files.get(view.file);
+      if(record?.failureCode==="EACCES")record.blocked=false;
+      view.dirty=true;clearTimeout(state.timer);state.timer=setTimeout(()=>{void view.save().catch(()=>{});},2000);};
+    view.register?.(()=>clearTimeout(state.timer));
+  }
+  function sameScope(state) {
+    const now=context();
+    if(!state.scope.sessionId || now.sessionId!==state.scope.sessionId || now.vault!==state.scope.vault)throw fail("AUTH_CONTEXT_CHANGED");
+  }
+  // Mirrors TextFileView.save in Obsidian 1.14.4, with an explicit baseline from
+  // this view and terminal recovery. Generic Vault.modify/adapter.write stay native.
+  prototype.save=async function(clear=false) {
+    attach(this);const state=views.get(this);
+    clearTimeout(state.timer);this.dirty=false;
+    const file=this.file;
+    if(!file || file.deleted)return;
+    if(!state.files.has(file))state.files.set(file,{blocked:false});
+    const record=state.files.get(file);
+    if(this.saving){if(!clear)this.saveAgain=true;return;}
+    this.saveAgain=false;
+    const data=this.getViewData(),previous=this.lastSavedData;
+    if(previous===data || previous===null)return;
+    const path=file.path;
+    const check=()=>{sameScope(state);if(record.blocked)throw fail(record.failureCode || "CONTENT_CONFLICT");if(this.file!==file || file.deleted || file.path!==path)throw fail("CONTENT_CONFLICT");};
+    this.saving=true;
+    try {
+      check();
+      if(typeof previous!=="string" || typeof data!=="string")throw fail("CONTENT_VERSION_REQUIRED");
+      // Never clear the editor until the server has acknowledged this version.
+      pending.set(record,{path,data,scope:state.scope,readDraft:()=>this.file===file && !file.deleted && file.path===path?this.getViewData():data});
+      this.data=data;this.lastSavedData=data;
+      await this.app.vault.modify(file,data,{[editorWrite]:{expectedHash:contentHash(previous),check}});
+      check();
+      pending.delete(record);
+      if(record.recoveryToken){
+        try{recover({path,resolved:true,recoveryToken:record.recoveryToken,...state.scope});}catch{}
+        record.recoveryToken=null;
+      }
+      record.failureCode=undefined;
+      if(clear){this.data=null;this.lastSavedData=null;this.clear();}
+    } catch(error) {
+      this.lastSavedData=previous;this.dirty=true;record.blocked=true;record.failureCode=error.code;
+      // A lost response may already have published the bytes. No blind retry and
+      // no automatic rebase, even if a background read subsequently returns data.
+      // Capture the current native view at the user action, not the earlier failed save.
+      let detached=false,restored=false;
+      const currentContent=()=>{
+        sameScope(state);
+        if(detached || restored)return data;
+        if(this.file!==file || file.deleted || file.path!==path)throw fail("CONTENT_CONFLICT");
+        return this.getViewData();
+      };
+      let retained=false;record.recoveryToken={};
+      try {sameScope(state);pending.set(record,{path,data,scope:state.scope,readDraft:()=>detached || restored || this.file!==file || file.deleted || file.path!==path?data:this.getViewData()});recover({path,recoveryToken:record.recoveryToken,content:data,currentContent,binary:false,...state.scope,code:error.code,
+        saveCopy:error.code==="EACCES" ? onSaved=>openRecoveryCopy(obsidian,app,{path,content:currentContent(),...state.scope},context,onSaved):undefined,
+        restoreOriginal:error.code==="EACCES" && typeof this.setViewData==="function" ? ()=>{
+          sameScope(state);
+          if(detached){
+            // The native view has been unloaded. Never apply its old baseline
+            // to a reopened editor: that editor may have received newer content.
+            const active=app.workspace.getActiveViewOfType?.(obsidian.TextFileView);
+            if(!active || active.file?.path!==path || active.saving || active.getViewData()!==active.lastSavedData)throw fail("CONTENT_CONFLICT");
+            return;
+          }
+          if(restored)return;
+          if(this.saving || this.file!==file || file.deleted || file.path!==path || this.getViewData()!==data)throw fail("CONTENT_CONFLICT");
+          clearTimeout(state.timer);
+          this.setViewData(previous,false);this.data=previous;this.lastSavedData=previous;this.dirty=false;this.saveAgain=false;
+          restored=true;record.recoveryToken=null;
+          // Keep the draft available to both copy and download after restoration.
+        }:undefined});retained=true;}catch{}
+      // Native unload waits for save(true). A denied write is safe to detach
+      // only after retaining its exact draft; uncertain writes still block unload.
+      if(clear && error.code==="EACCES" && retained){
+        detached=true;this.data=null;this.lastSavedData=null;this.dirty=false;this.saveAgain=false;this.clear();
+        return;
+      }
+      throw error;
+    } finally {
+      this.saving=false;
+      if(this.saveAgain && !clear && !record.blocked)void this.save().catch(()=>{});
+    }
+  };
+  const originalLoad=prototype.onload;
+  prototype.onload=function(...args){attach(this);return originalLoad?.apply(this,args);};
+  app.workspace.iterateAllLeaves(leaf=>attach(leaf.view));
+  app.workspace.on("layout-change",()=>app.workspace.iterateAllLeaves(leaf=>attach(leaf.view)));
+  return controller;
+}

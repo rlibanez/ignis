@@ -5,24 +5,26 @@ import { sendRequest } from "../util/send-request.js";
 const listeners = new Map();
 
 const syncHandlers = {
-  vault: () => window.__vaultConfig || { id: "default-vault", path: "/" },
+  vault: () => {
+    if (!window.__vaultConfig || window.__ignisAuth?.blocked) {
+      throw new Error("Authenticated vault identity required");
+    }
+    return window.__vaultConfig;
+  },
   version: () => window.__obsidianVersion || "0.0.0",
   "is-dev": () => false,
   "is-quitting": () => false,
   "is-closing": () => false,
   cli: () => false,
-  "set-language": () => null,
+  "set-language": (language) => { window.IgnisI18n?.fromObsidian({ getLanguage: () => language }); return null; },
 
-  policy: () => ({
-    plugins: true,
-    themes: true,
-    snippets: true,
-    sync: true,
-    publish: true,
-    webViewer: true,
-    devTools: true,
-    insider: true,
-  }),
+  // UI availability only: server membership, write and network checks remain authoritative.
+  policy: () => Object.fromEntries(
+    ["plugins", "themes", "snippets", "sync", "publish", "webViewer", "devTools", "insider"]
+      .map(key => [key, !window.__ignisAuth?.blocked &&
+        (window.__ignisAuth?.role === "admin" ||
+        (window.__ignisAuth?.role === "user" && ["plugins", "themes", "snippets", "sync", "publish", "webViewer"].includes(key)))]),
+  ),
 
   terms: () => {
     if (!window.__obsidianTerms) {
@@ -35,7 +37,7 @@ const syncHandlers = {
   },
 
   "file-url": () =>
-    "/vault-files/" + encodeURIComponent(window.__currentVaultId || "") + "/",
+    "/vault-files/" + encodeURIComponent(vaultService.getCurrentVaultReference()) + "/",
 
   "disable-update": () => true,
   update: () => "",
@@ -68,7 +70,12 @@ const syncHandlers = {
   "vault-list": () => {
     const result = {};
 
-    for (const v of window.__vaultList || []) {
+    // Refresh when opening the switcher: another session may have changed the catalog.
+    let vaults;
+    try { vaults = vaultService.listVaultsSync(); }
+    catch { vaults = []; }
+
+    for (const v of vaults) {
       result[v.id] = {
         path: "/" + v.id,
         ts: Date.now(),

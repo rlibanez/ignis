@@ -222,7 +222,7 @@ function mountRoutes(router, plugin) {
 
   router.get("/vaults", (req, res) => {
     const syncManager = plugin.getSyncManager();
-    res.json({ vaults: syncManager.getAllStates() });
+    res.json({ vaults: syncManager.getAllStates().filter(state => !req.canReadVault || req.canReadVault(state.vaultId)) });
   });
 
   router.post("/create-remote-vault", async (req, res) => {

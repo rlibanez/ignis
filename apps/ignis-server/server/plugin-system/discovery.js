@@ -29,14 +29,12 @@ function discoverPlugins(pluginsDir) {
     try {
       plugin = require(indexPath);
     } catch (e) {
-      console.warn(`[plugins] Failed to load ${entry.name}: ${e.message}`);
+      require("@ignis/server-core/src/logger").emit("warn", "server.plugin-system.discovery.load_failed", { errorCode: e?.code });
       continue;
     }
 
     if (!plugin.id || !plugin.name || typeof plugin.register !== "function") {
-      console.warn(
-        `[plugins] Skipping ${entry.name}: missing id, name, or register`,
-      );
+      require("@ignis/server-core/src/logger").emit("warn", "server.plugin-system.discovery.invalid_plugin");
       continue;
     }
 
@@ -65,7 +63,7 @@ function discoverPlugins(pluginsDir) {
       module: plugin,
     });
 
-    console.log(`[plugins] Discovered: ${plugin.name}`);
+    require("@ignis/server-core/src/logger").emit("info", "server.plugin-system.discovery.discovered");
   }
 
   return discovered;

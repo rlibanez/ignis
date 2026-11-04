@@ -1,7 +1,40 @@
 const config = require("../config");
-const { watcher } = require("@ignis/server-core");
+const { watcher, writeCoalescer } = require("@ignis/server-core");
 
 let wss = null;
+const activeWork = new Set();
+const trackedHandlers = new WeakSet();
+
+// Track completion of the handlers themselves, including after a client disconnect.
+// Response close alone does not mean an asynchronous file write has completed.
+function trackRouterWork(router) {
+  for (const layer of router.stack) {
+    for (const entry of layer.route?.stack || []) {
+      const handler = entry.handle;
+      if (trackedHandlers.has(handler)) continue;
+      entry.handle = function (req, res, next) {
+        let done;
+        const completion = new Promise(resolve => { done = resolve; });
+        activeWork.add(completion);
+        const finish = () => { activeWork.delete(completion); done(); };
+        try {
+          return Promise.resolve(handler(req, res, next)).then(finish, error => { finish(); next(error); });
+        } catch (error) { finish(); next(error); }
+      };
+      trackedHandlers.add(entry.handle);
+    }
+  }
+}
+
+async function drainRouterWork() {
+  let timer;
+  try {
+    await Promise.race([
+      Promise.all(activeWork),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("Vault operations still running")), 5000); }),
+    ]);
+  } finally { clearTimeout(timer); }
+}
 
 function setWss(w) {
   wss = w;
@@ -22,10 +55,7 @@ async function withWatcherStopped(vaultId, vaultPath, mutate) {
       try {
         watcher.startWatching(vaultId, vaultPath);
       } catch (err) {
-        console.error(
-          `[vault] Watcher restore failed for "${vaultId}":`,
-          err.message,
-        );
+        require("@ignis/server-core/src/logger").emit("error", "server.vault.lifecycle.watcher_restore_failed", { errorCode: err?.code });
       }
 
       if (wss) {
@@ -37,4 +67,13 @@ async function withWatcherStopped(vaultId, vaultPath, mutate) {
   }
 }
 
-module.exports = { setWss, withWatcherStopped };
+// Registered lifecycle operations keep failed vaults quarantined; do not restart
+// their watcher on failure. Closing sockets also drops per-client listeners.
+async function quiesceRegisteredVault(vaultId, vaultPath) {
+  if (wss) wss.closeVaultSockets(vaultId);
+  await drainRouterWork();
+  await watcher.stopWatching(vaultId);
+  await writeCoalescer.flushPendingSubtree(vaultPath);
+}
+
+module.exports = { setWss, withWatcherStopped, quiesceRegisteredVault, trackRouterWork, drainRouterWork };

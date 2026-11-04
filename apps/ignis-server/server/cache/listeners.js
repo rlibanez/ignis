@@ -6,35 +6,30 @@ function registerCacheListeners({
   watcher,
   writeCoalescer,
 }) {
-  bootstrapCache.onEntrySwapped((vaultId, revision) =>
+  const offSwap = bootstrapCache.onEntrySwapped((vaultId, revision) =>
     metadataChannel.reportReplacement(vaultId, revision),
   );
 
-  bootstrapCache.onVaultInvalidated((vaultId) =>
+  const offInvalidated = bootstrapCache.onVaultInvalidated((vaultId) =>
     metadataChannel.forgetVault(vaultId),
   );
 
-  watcher.addGlobalListener((vaultId, event) => {
+  const changed = (vaultId, event) => {
     bootstrapCache.applyMutation(vaultId, event).then(
       (revision) => {
         try {
           metadataChannel.reportRevision(vaultId, revision);
         } catch (e) {
-          console.warn(
-            `[metadata] revision announce failed on vault ${vaultId}:`,
-            e.message,
-          );
+          require("@ignis/server-core/src/logger").emit("warn", "server.cache.listeners.revision_failed", { errorCode: e?.code });
         }
       },
       (e) =>
-        console.warn(
-          `[bootstrap] event apply failed on vault ${vaultId} for ${event.path}:`,
-          e.message,
-        ),
+        require("@ignis/server-core/src/logger").emit("warn", "server.cache.listeners.event_failed"),
     );
-  });
+  };
+  watcher.addGlobalListener(changed);
 
-  writeCoalescer.onFlushSuccess((absPath) => {
+  const offFlush = writeCoalescer.onFlushSuccess((absPath) => {
     const match = config.vaultForPath(absPath);
 
     if (!match) {
@@ -45,12 +40,10 @@ function registerCacheListeners({
     bootstrapCache
       .applyMutation(match.vaultId, { type: "modified", path: match.relPath })
       .catch((e) =>
-        console.warn(
-          `[bootstrap] flush apply failed on vault ${match.vaultId} for ${match.relPath}:`,
-          e.message,
-        ),
+        require("@ignis/server-core/src/logger").emit("warn", "server.cache.listeners.flush_failed"),
       );
   });
+  return () => {offSwap();offInvalidated();offFlush();watcher.removeGlobalListener(changed);};
 }
 
 module.exports = { registerCacheListeners };

@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 const BASE = "/api/ext/headless-sync";
 
 async function fetchJson(path, opts = {}) {
@@ -5,13 +7,19 @@ async function fetchJson(path, opts = {}) {
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || `Request failed: ${res.status}`);
+    throw new Error(data.error || translateIgnis("Request failed: {p0}", {p0: (res.status)}));
   }
 
   return res.json();
 }
 
+function vaultReference(id) {
+  const vault = typeof window === "undefined" ? null : window.__ignis?.vault;
+  return vault?.id === id && vault.uuid ? vault.uuid : id;
+}
+
 function post(path, body) {
+  if (Object.hasOwn(body, "vaultId")) body = { ...body, vaultId: vaultReference(body.vaultId) };
   return fetchJson(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -36,7 +44,7 @@ function getRemoteVaults() {
 }
 
 function setupSync(vaultId, remoteVault, opts = {}) {
-  return post("/setup", { vaultId, remoteVault, ...opts });
+  return post("/setup", { ...opts, vaultId, remoteVault });
 }
 
 function createRemoteVault(name, encryption, password, region) {
@@ -44,7 +52,7 @@ function createRemoteVault(name, encryption, password, region) {
 }
 
 function setConfig(vaultId, syncConfig) {
-  return post("/config", { vaultId, ...syncConfig });
+  return post("/config", { ...syncConfig, vaultId });
 }
 
 function startSync(vaultId) {
@@ -64,7 +72,7 @@ function getVaults() {
 }
 
 function getLogs(vaultId, limit = 100) {
-  return fetchJson(`/logs?vaultId=${encodeURIComponent(vaultId)}&limit=${limit}`);
+  return fetchJson(`/logs?vaultId=${encodeURIComponent(vaultReference(vaultId))}&limit=${limit}`);
 }
 
 module.exports = {

@@ -1,4 +1,9 @@
+import {consumeManagementIntent} from "../../../management/src/intent.js";
+import { ManagementModal } from "./management-modal.js";
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import { Platform } from "obsidian";
+import * as accountTab from "./account-tab.js";
 import * as generalTab from "./general-tab.js";
 import * as vaultTab from "./vault-tab.js";
 import * as serverPluginsTab from "./server-plugins-tab.js";
@@ -18,25 +23,28 @@ import {
 let ignisTabs = [];
 
 function createIgnisTabs(app) {
+  const account = new IgnisSettingTab(app, "ignis-account", translateIgnis("Account"), "user-round", accountTab.settingDefinitions);
+  if (window.__ignisAuth?.role !== "admin") return [account];
   return [
+    account,
     new IgnisSettingTab(
       app,
       "ignis-general",
-      "General",
+      translateIgnis("General"),
       "flame",
       generalTab.settingDefinitions,
     ),
     new IgnisSettingTab(
       app,
       "ignis-vault",
-      "Vault",
+      translateIgnis("Vault"),
       "vault",
       vaultTab.settingDefinitions,
     ),
     new IgnisSettingTab(
       app,
       "ignis-core-plugins",
-      "Core plugins",
+      translateIgnis("Core plugins"),
       "blocks",
       serverPluginsTab.settingDefinitions,
     ),
@@ -44,6 +52,7 @@ function createIgnisTabs(app) {
 }
 
 function refreshIgnisSettings() {
+  if (window.__ignisAuth?.role !== "admin") return;
   for (const store of [serverSettings, pluginList]) {
     store.refresh().then((changed) => {
       if (!changed) {
@@ -71,10 +80,10 @@ function writeVersionRow(versionSetting, ignisVersion) {
   const desc = versionSetting.descEl;
 
   desc.empty();
-  desc.createEl("strong", { text: `Running in Ignis v${ignisVersion}` });
+  desc.createEl("strong", { text: translateIgnis("Running in Ignis v{p0}", {p0: (ignisVersion)}) });
   desc.createEl("br");
   desc.appendText(
-    "Obsidian is served through Ignis. There's no installer to update.",
+    translateIgnis("Obsidian is served through Ignis. There's no installer to update."),
   );
 }
 
@@ -146,7 +155,7 @@ function injectIgnisSettings(setting, plugin) {
   patchOpenTab(setting);
   patchVersionRow(setting, plugin.manifest.version);
 
-  const ignis = createGroup("Ignis", "ignis");
+  const ignis = createGroup(translateIgnis("Ignis"), "ignis");
 
   for (const tab of ignisTabs) {
     tab.navEl = createNavEl(tab, setting);
@@ -156,7 +165,9 @@ function injectIgnisSettings(setting, plugin) {
 
   setting.tabGroupContainerEl.appendChild(ignis.group);
 
-  const corePlugins = createGroup("Ignis Core Plugins", "ignis-core-plugins");
+  if (window.__ignisAuth?.role !== "admin") return ignisTabs;
+
+  const corePlugins = createGroup(translateIgnis("Ignis Core Plugins"), "ignis-core-plugins");
   setting.tabGroupContainerEl.appendChild(corePlugins.group);
 
   hideIgnisFromCommunityPlugins(setting);
@@ -171,6 +182,21 @@ function patchSettingsModal(plugin) {
   plugin._originalOnOpen = original;
 
   ignisTabs = createIgnisTabs(plugin.app);
+  window.__ignisOpenResourceSharing = options => { const modal = new ManagementModal(plugin.app, "shares", options); modal.open(); return modal; };
+  window.__ignisOpenManagement = kind => {
+    if(kind==='users' || kind==='shares')return new ManagementModal(plugin.app,kind).open();
+    if(kind==='password')return new ManagementModal(plugin.app,'password',{passwordSetup:true}).open();
+    if(kind==='email'){
+      const account=ignisTabs.find(tab=>tab.id==='ignis-account');
+      if(account)account.pendingEmailEdit=true;
+    }
+    window.__ignisOpenAccount();
+  };
+  window.__ignisOpenAccount = () => {
+    setting.open();
+    const account = ignisTabs.find(tab => tab.id === "ignis-account");
+    if (account) setting.openTab(account);
+  };
 
   for (const tab of ignisTabs) {
     tab.update();
@@ -192,6 +218,7 @@ function patchSettingsModal(plugin) {
 
     refreshIgnisSettings();
   };
+  consumeManagementIntent(window,window.__ignisOpenManagement);
 }
 
 function unpatchSettingsModal(plugin) {
@@ -206,6 +233,9 @@ function unpatchSettingsModal(plugin) {
   }
 
   ignisTabs = [];
+  delete window.__ignisOpenAccount;
+  delete window.__ignisOpenManagement;
+  delete window.__ignisOpenResourceSharing;
   setting.refreshSearch();
 
   if (setting._ignisOriginalOpenTab) {

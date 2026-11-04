@@ -1,0 +1,293 @@
+import {openCopyDialog} from "../copy-dialog.js";
+import { normalize } from "../util/path.js";
+import { resolvePath } from "./transforms.js";
+export const SHARED_ROOT = "Shared with me";
+const fail = (code, message = "Shared resource unavailable") => {throw Object.assign(new Error(message),{code});};
+const under = (path,root) => path===root || path.startsWith(root+"/");
+function wire(input){const value={...input};delete value.role;return value;}
+const base64 = bytes => {let binary="";for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(binary);};
+const bytes = value => Uint8Array.from(atob(value),character=>character.charCodeAt(0));
+export function createSharedFiles({metadataCache,watch,currentContext,request=fetch,createXHR=()=>new XMLHttpRequest(),onFailure=()=>{},onNotice=()=>{},onRemoved=()=>{}}) {
+  let scope=null, enabled=false, outgoing=[], mounted=new Map(), tree=Object.create(null), listening=false, refreshing=false, refreshPending=false, retryTimer=null, retryDelay=2000, maxBytes=0,generation=0;
+  const states=new Map(),reserved=new Set(),subscribers=new Set();
+  function context(){const value=currentContext();if(!scope?.sessionId || value?.sessionId!==scope.sessionId || value?.vault!==scope.vault)fail("AUTH_CONTEXT_CHANGED","Session or vault changed");}
+  function fence(){const original=scope,epoch=generation;return ()=>{
+    if(original!==scope || epoch!==generation)fail('AUTH_CONTEXT_CHANGED','Session or vault changed');
+    context();
+  };}
+  function owns(path){return enabled && [...reserved].some(root=>under(normalize(path),root));}
+  function containsMount(path){return enabled && [...reserved].some(root=>root.startsWith(normalize(path)+"/"));}
+  function selected(value){
+    if(typeof value!=="string")return false;
+    const original=normalize(value),resolved=resolvePath(value);
+    if(!owns(original) && !owns(resolved))return false;
+    if(original!==resolved || original.split("/").some(part=>[".","..",""].includes(part)))fail("EACCES");
+    context();return original;
+  }
+  function target(path){
+    const found=[...mounted].find(([root])=>under(path,root));
+    if(!found || found[1].blocked)fail("ENOENT");
+    const [root,mount]=found,relative=path.slice(root.length).replace(/^\//,"");
+    if(mount.kind==="file" && relative)fail("ENOENT");
+    return {id:mount.id,path:relative,role:mount.role};
+  }
+  function result(status,data){context();if(status<200||status>=300)fail((status===404?"ENOENT":status===403?"EACCES":data?.code || "SHARE_UNAVAILABLE"),data?.error || "Shared resource unavailable");return data;}
+  async function exchange(operation,input){
+    const check=fence();check();let response;
+    try{response=await request('/api/shares',{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json','X-Ignis-Context':scope.sessionId},body:JSON.stringify({operation,input:wire(input)})});}
+    catch{check();fail('SHARE_NETWORK_UNAVAILABLE','Shared resources connection temporarily unavailable');}
+    check();const data=await response.json();check();return result(response.status,data);
+  }
+  function exchangeSync(operation,input){
+    const check=fence();check();const xhr=createXHR();xhr.open('POST','/api/shares',false);xhr.setRequestHeader('Content-Type','application/json');xhr.send(JSON.stringify({operation,input:wire(input)}));check();return result(xhr.status,JSON.parse(xhr.responseText));
+  }
+  function mountName(mount){
+    const value=mount.localPath;
+    if(typeof value!=="string" || !value || normalize(value)!==value || value.split("/").some(part=>!part || part===".." || part.startsWith(".")))fail("SHARE_UNAVAILABLE");
+    return value;
+  }
+  function accept(snapshot,notify){
+    context();
+    const next=Object.create(null),map=new Map();maxBytes=snapshot.limits.maxFileBytes;
+    for(const mount of snapshot.mounts){const name=mountName(mount);if(map.has(name))fail("SHARE_UNAVAILABLE","Shared resource names conflict");map.set(name,mount);reserved.add(name);
+      if(mount.blocked){metadataCache.deleteSubtree(name);onNotice("A shared location conflicts with local content or its parent is unavailable. Choose another location in Shared, then reload.");continue;}
+      for(const [relative,meta] of Object.entries(mount.tree)){const path=name+(relative?"/"+relative:"");next[path]=meta;}
+    }
+    // A path reused for a different grant must not inherit an old editor's save baseline.
+    for(const [root,oldMount] of mounted)if(map.has(root) && map.get(root).id!==oldMount.id){
+      for(const path of Object.keys(tree))if(under(path,root) && next[path]){
+        state(path).blocked=true;if(notify)onRemoved(path);
+      }
+    }
+    // Capture open editors before a downgrade can refresh them as read-only.
+    for(const [root,oldMount] of mounted)if(oldMount.role==="editor" && map.get(root)?.role==="reader"){
+      for(const path of Object.keys(tree))if(under(path,root) && tree[path].type==="file"){
+        if(notify)onRemoved(path,"read-only");
+      }
+    }
+    mounted=map;
+    for(const path of Object.keys(tree).sort((a,b)=>b.length-a.length))if(!next[path]){
+      metadataCache.delete(path);if(states.has(path))states.get(path).blocked=true;if(notify){onRemoved(path);watch._dispatch("rename",path);}
+    }
+    for(const [path,meta] of Object.entries(next).sort(([a],[b])=>a.length-b.length)){
+      const previous=tree[path];metadataCache.set(path,meta);
+      if(notify && (!previous || previous.mtime!==meta.mtime || previous.size!==meta.size))watch._dispatch(previous?"change":"rename",path);
+    }
+    outgoing=snapshot.outgoing || [];
+    tree=next;for(const subscriber of subscribers)subscriber();
+  }
+  function configure(ordinary){
+    if(scope)stop();generation++;
+    scope={...currentContext()};
+    enabled=true;
+    try{accept(exchangeSync("mounts",{vault:scope.vault}),false);}catch(error){onNotice(error.message);throw error;}
+    const safe={...ordinary};for(const [root,mount] of mounted)if(mount.blocked)for(const path of Object.keys(safe))if(under(path,root))delete safe[path];
+    return {...safe,...tree};
+  }
+  // A failed refresh is not a failed save. Keep the snapshot until reconnection or the next event.
+  // Actual writes still pass through writeError and retain their recovery copy.
+  async function refresh(){
+    if(!enabled)return;
+    if(refreshing){refreshPending=true;return;}
+    const epoch=generation,check=fence();
+    clearTimeout(retryTimer);retryTimer=null;refreshing=true;
+    try{const snapshot=await exchange("mounts",{vault:scope.vault});check();accept(snapshot,true);retryDelay=2000;}
+    catch(error){
+      if(epoch!==generation)return;try{check();}catch{return;}
+      if(error.code!=="SHARE_NETWORK_UNAVAILABLE")onNotice(error.message);
+      if(enabled && ["SHARE_NETWORK_UNAVAILABLE","SHARE_UNAVAILABLE"].includes(error.code)){
+        retryTimer=setTimeout(()=>{retryTimer=null;void refresh();},retryDelay);retryTimer.unref?.();retryDelay=Math.min(30000,retryDelay*2);
+      }
+    }finally{if(epoch===generation){refreshing=false;if(refreshPending){refreshPending=false;void refresh();}}}
+  }
+  const changed=event=>{if(event.detail?.shares)void refresh();};
+  function start(){if(enabled&&!listening){listening=true;globalThis.window?.addEventListener("ignis:state-changed",changed);void refresh();}}
+  function stop(){generation++;refreshing=false;clearTimeout(retryTimer);retryTimer=null;retryDelay=2000;if(listening)globalThis.window?.removeEventListener("ignis:state-changed",changed);listening=false;refreshPending=false;for(const path of Object.keys(tree))metadataCache.delete(path);tree=Object.create(null);mounted.clear();outgoing=[];states.clear();reserved.clear();enabled=false;scope=null;}
+  function stat(path){context();const value=metadataCache.toStat(path);if(!value)fail("ENOENT");return value;}
+  function readdir(path){if(!stat(path).isDirectory())fail("ENOTDIR");return metadataCache.readdir(path).map(entry=>entry.name);}
+  function state(path){if(!states.has(path))states.set(path,{etag:undefined,blocked:false,busy:false});return states.get(path);}
+  function decode(file,encoding){if(file.kind!=="file")fail("EISDIR");const format=typeof encoding==="object"?encoding?.encoding:encoding;const content=bytes(file.content);if(!format)return content;if(!["utf8","utf-8"].includes(format))fail("EINVAL","Unsupported shared file encoding");return new TextDecoder().decode(content);}
+  function inputBytes(data,encoding){const format=typeof encoding==="object"?encoding?.encoding:encoding;if(format && !["utf8","utf-8"].includes(format))fail("EINVAL");const value=typeof data==="string"?new TextEncoder().encode(data):data;if(!(value instanceof Uint8Array) || value.length>maxBytes)fail("SHARE_TOO_LARGE");return value;}
+  function readAccepted(path,file,encoding){const value=state(path);if(value.etag===undefined)value.etag=file.etag;return decode(file,encoding);}
+  async function read(path,encoding){const check=fence(),file=await exchange("read",target(path));check();return readAccepted(path,file,encoding);}
+  function readSync(path,encoding){return readAccepted(path,exchangeSync("read",target(path)),encoding);}
+  function writeStart(path,data,encoding){context();const destination=target(path);if(destination.role!=="editor")fail("EACCES","This shared resource is read-only");const value=state(path);if(value.blocked)fail("SHARE_CONFLICT","Shared saves paused; preserve your changes and reload");if(value.busy)fail("EBUSY");value.busy=true;return {destination,value,content:base64(inputBytes(data,encoding))};}
+  function writeError(path,data,error,check){check();const value=state(path);if(error.code!=="EACCES")value.blocked=true;try{onFailure({path,content:typeof data==="string"?data:base64(data),binary:typeof data!=="string",code:error.code,...scope});}catch{}throw error;}
+  async function write(path,data,encoding,expected){const check=fence();let operation;try{check();
+    operation=writeStart(path,data,encoding);const {destination,value,content}=operation;
+    value.etag=expected!==undefined?expected:metadataCache.has(path)?(await exchange("read",destination)).etag:null;
+    check();const response=await exchange("write",{...destination,role:undefined,action:"write",etag:value.etag,content});check();value.etag=response.etag;
+    await refresh();
+  }catch(error){writeError(path,data,error,check);}finally{if(operation)operation.value.busy=false;}}
+  async function writeEditor(path,data,expectedHash) {
+    const check=fence();check();
+    const selectedPath=selected(path);
+    if(!selectedPath)fail("EACCES");
+    const destination=target(selectedPath);
+    if(destination.role!=="editor")fail("EACCES");
+    if(state(selectedPath).blocked)fail("SHARE_CONFLICT");
+    if(typeof expectedHash!=="string" || !/^[a-f0-9]{64}$/.test(expectedHash))fail("SHARE_CONFLICT");
+    const result=await exchange("write",{...destination,action:"write",etag:expectedHash,content:base64(inputBytes(data,"utf8"))});
+    check();await refresh();check();return result;
+  }
+  function writeSync(path,data,encoding,expected){const check=fence();let operation;try{check();
+    operation=writeStart(path,data,encoding);const {destination,value,content}=operation;
+    value.etag=expected!==undefined?expected:metadataCache.has(path)?exchangeSync("read",destination).etag:null;
+    const response=exchangeSync("write",{...destination,role:undefined,action:"write",etag:value.etag,content});value.etag=response.etag;
+    accept(exchangeSync("mounts",{vault:scope.vault}),true);
+  }catch(error){writeError(path,data,error,check);}finally{if(operation)operation.value.busy=false;}}
+  function mutationInput(method,path){const destination=target(path);if(!destination.path || destination.role!=="editor")fail("EACCES","Shared resource roots and read-only resources cannot be changed");return {...destination,role:undefined,action:method,etag:method==="mkdir"?null:stat(path).isDirectory()?"directory":state(path).etag};}
+  async function mutate(method,path){const check=fence();check();const input=mutationInput(method,path);if(input.etag===undefined)input.etag=(await exchange("read",target(path))).etag;check();await exchange(method,input);check();states.delete(path);await refresh();}
+  function mutateSync(method,path){const input=mutationInput(method,path);if(input.etag===undefined)input.etag=exchangeSync("read",target(path)).etag;exchangeSync(method,input);states.delete(path);accept(exchangeSync("mounts",{vault:scope.vault}),true);}
+  function renameInput(path,newPath){
+    context();const resolved=resolvePath(newPath),next=normalize(newPath);
+    if(resolved!==next || !next || next.split("/").some(part=>!part || part==="." || part===".."))fail("EACCES");
+    if(metadataCache.has(next))fail("EEXIST");
+    for(const [key,value] of states)if(under(key,path) && (value.busy || value.blocked))fail("SHARE_CONFLICT","Save changes or reload before renaming this resource");
+    const source=target(path);
+    if(!source.path){
+      if(owns(next))fail("EACCES");
+      return {operation:"destination",input:{id:source.id,vault:scope.vault,localPath:next},next};
+    }
+    const destination=target(next);
+    if(source.id!==destination.id || source.role!=="editor")fail("EACCES");
+    return {operation:"rename",input:{id:source.id,path:source.path,to:destination.path,etag:stat(path).isDirectory()?undefined:state(path).etag},next};
+  }
+  function renamed(path,next){
+    metadataCache.rename(path,next);
+    for(const key of Object.keys(tree))if(under(key,path)){tree[next+key.slice(path.length)]=tree[key];delete tree[key];}
+    for(const [key,value] of new Map(states))if(under(key,path)){states.set(next+key.slice(path.length),value);states.delete(key);}
+    if(mounted.has(path)){mounted.set(next,{...mounted.get(path),localPath:next});mounted.delete(path);reserved.add(next);}
+  }
+  async function rename(path,next){
+    const check=fence();check();const operation=renameInput(path,next);
+    if(operation.operation==="rename" && operation.input.etag===undefined)operation.input.etag=(await exchange("read",target(path))).etag;
+    check();await exchange(operation.operation,operation.input);check();renamed(path,operation.next);await refresh();
+  }
+  function renameSync(path,next){
+    const operation=renameInput(path,next);
+    if(operation.operation==="rename" && operation.input.etag===undefined)operation.input.etag=exchangeSync("read",target(path)).etag;
+    exchangeSync(operation.operation,operation.input);renamed(path,operation.next);accept(exchangeSync("mounts",{vault:scope.vault}),true);
+  }
+  function copySelector(value) {
+    if(typeof value!=="string" || !value || normalize(value)!==value || value.split("/").some(part=>!part || part===".." || part==="." || part.startsWith(".")))fail("EACCES","Choose a content file or folder");
+    context();const received=selected(value);
+    if(received){const item=target(received);return {id:item.id,vault:null,path:item.path};}
+    if(containsMount(value))fail("ENOTSUP","Copy received resources individually");
+    if(resolvePath(value)!==value)fail("EACCES");
+    return {id:null,vault:scope.vault,path:value};
+  }
+  async function copyContent(from,to) {
+    const check=fence();check();const input={from:copySelector(from),to:copySelector(to)};
+    await exchange("copy",input);check();await refresh();
+  }
+  function access(path,mode=0){stat(path);if(mode&1 || ((mode&2) && (target(path).role!=="editor")))fail("EACCES");}
+  function wrap(original,sync=false){const methods=new Map();return new Proxy(original,{get(object,name){const fn=object[name];if(typeof fn!=="function")return fn;if(methods.has(name))return methods.get(name);const wrapped=(...args)=>{
+    const path=selected(args[0]),second=["rename","renameSync","copyFile","copyFileSync"].includes(name)?selected(args[1]):false;
+    if(["rename","renameSync","rmdir","rmdirSync","rm","rmSync"].includes(name) && containsMount(args[0]))fail("ENOTSUP","Move shared resources out of this folder before moving or deleting it");
+    if(!path&&!second)return fn.apply(object,args);
+    const method=String(name).replace(/Sync$/,"");
+    const check=fence();
+    const run=()=>{check();
+      if(method==="rename"){if(!path)fail("ENOTSUP");return sync?renameSync(path,args[1]):rename(path,args[1]);}
+      if(method==="copyFile"){
+        if(sync){exchangeSync("copy",{from:copySelector(args[0]),to:copySelector(args[1])});accept(exchangeSync("mounts",{vault:scope.vault}),true);return;}
+        return copyContent(args[0],args[1]);
+      }
+      if(second || ["utimes","lutimes","chmod"].includes(method))fail("ENOTSUP","This operation is not supported on shared resources");
+      if(method==="exists"){try{stat(path);return true;}catch(error){if(error.code==="ENOENT")return false;throw error;}}
+      if(["stat","lstat"].includes(method))return stat(path);
+      if(method==="readdir")return readdir(path);
+      if(method==="access")return access(path,args[1]);
+      if(method==="readFile")return sync?readSync(path,args[1]):read(path,args[1]);
+      if(method==="writeFile")return sync?writeSync(path,args[1],args[2]):write(path,args[1],args[2]);
+      if(method==="appendFile") {
+        // Append is read/modify/write, unlike an intentional full replacement.
+        // Its precondition must describe the bytes used to assemble the result.
+        const join=file=>{const current=decode(file),append=inputBytes(args[1],args[2]),joined=new Uint8Array(current.length+append.length);joined.set(current);joined.set(append,current.length);return joined;};
+        if(sync){const file=exchangeSync("read",target(path));return writeSync(path,join(file),undefined,file.etag);}
+        return exchange("read",target(path)).then(file=>{check();return write(path,join(file),undefined,file.etag);});
+      }
+      if(method==="mkdir") {if(args[1]?.recursive && metadataCache.get(path)?.type==="directory")return;return sync?mutateSync("mkdir",path):mutate("mkdir",path);}
+      if(["unlink","rmdir","rm"].includes(method)){if(args[1]?.recursive){if(sync)fail("ENOTSUP","Use the file explorer to confirm recursive deletion");return removeReceived(path);}return sync?mutateSync("remove",path):mutate("remove",path);}
+      fail("ENOTSUP");
+    };
+    return sync?run():Promise.resolve().then(run);
+  };methods.set(name,wrapped);return wrapped;}});}
+  function resourceUrl(path){const selectedPath=selected(path);if(!selectedPath)return null;const destination=target(selectedPath);return "/api/shares/content?"+new URLSearchParams({id:destination.id,path:destination.path,context:scope.sessionId});}
+  async function removeReceived(path) {
+    const check=fence();check();const destination=target(path);
+    if(!destination.path || destination.role!=="editor")fail("EACCES","A received root cannot be deleted. Remove its destination in Shared instead. Read-only resources cannot be deleted.");
+    for(const [name,value] of states)if(under(name,path)&&(value.busy||value.blocked))fail("SHARE_CONFLICT","Save or download pending changes before deleting this resource.");
+    const input={id:destination.id,path:destination.path};
+    const preview=await exchange("previewRemoval",input);
+    check();if(!globalThis.confirm(`Permanently delete “${path}” and its contents (${preview.files} files, ${preview.folders} folders) for everyone? This deletes the original, bypasses the trash and cannot be undone.`))fail("ECANCELED","Deletion canceled");
+    check();
+    await exchange("removeConfirmed",{...input,confirm:true,revision:preview.revision});
+    check();for(const name of states.keys())if(under(name,path))states.delete(name);
+    await refresh();
+  }
+  function installAdapter(app,obsidian){
+    const adapter=app?.vault?.adapter;
+    if(!adapter?.getResourcePath)return;
+    // Obsidian's local trash renames into .trash outside the received grant.
+    // Do not relax that boundary: explicitly confirm permanent server deletion.
+    for(const method of ["trashLocal","trashSystem","remove","rmdir"]) {
+      if(typeof adapter[method]!=="function")continue;
+      const fallback=adapter[method].bind(adapter);
+      adapter[method]=async(path,...args)=>{
+        const sharedPath=selected(path);
+        if(!sharedPath)return fallback(path,...args);
+        const check=fence();const run=async()=>{check();await removeReceived(sharedPath);check();if(adapter.reconcileInternalFile)await adapter.reconcileInternalFile(path);return method==="trashSystem"?true:undefined;};
+        return adapter.queue?adapter.queue(run):run();
+      };
+    }
+    if(typeof adapter.copy==="function"){
+      const fallback=adapter.copy.bind(adapter);
+      adapter.copy=async(from,to)=>{
+        if(!selected(from)&&!selected(to))return fallback(from,to);
+        const check=fence();const run=async()=>{check();await copyContent(from,to);check();if(adapter.reconcileInternalFile)await adapter.reconcileInternalFile(to);};
+        return adapter.queue?adapter.queue(run):run();
+      };
+    }
+    if(obsidian && app.workspace?.on)app.workspace.on("file-menu",(menu,file)=>{
+      if(!file?.path || file.path.split("/").some(part=>part.startsWith(".")))return;
+      const menuCheck=fence();
+      menu.addItem(item=>item.setTitle(globalThis.IgnisI18n?.t("Copy to…") ?? "Copy to…").setIcon("copy").onClick(()=>{
+        menuCheck();const sourceVault=scope.vault,sourceSession=scope.sessionId;
+        const checkSource=()=>{menuCheck();context();if(scope.vault!==sourceVault||scope.sessionId!==sourceSession)fail("AUTH_CONTEXT_CHANGED","Session or vault changed");};
+        const read=async url=>{checkSource();const response=await request(url,{cache:'no-store',headers:{'X-Ignis-Context':sourceSession}});checkSource();const data=await response.json();checkSource();return result(response.status,data);};
+        openCopyDialog(obsidian,app,file,describe,async(from,to,destination)=>{
+          checkSource();
+          if(destination===sourceVault){await copyContent(from,to);if(adapter.reconcileInternalFile)await adapter.reconcileInternalFile(to);}
+          else await exchange('copy',{from:copySelector(from),to:{id:null,vault:destination,path:to}});
+        },{
+          currentVault:sourceVault,
+          listVaults:async()=> (await read('/api/vault/list')).filter(v=>v.uuid===sourceVault||['owner','editor'].includes(v.membership)),
+          loadVault:async id=>{
+            if(id===sourceVault)return app.vault;
+            const entries=await read('/api/fs/tree?vault='+encodeURIComponent(id));
+            return {getAllLoadedFiles:()=>Object.entries(entries).filter(([,meta])=>meta.type==='directory').map(([path])=>({path,name:path.split('/').pop(),children:[]})),getAbstractFileByPath:path=>Object.hasOwn(entries,path)};
+          },
+        });
+      }));
+    });
+    const original=adapter.getResourcePath.bind(adapter);
+    adapter.getResourcePath=(path,...args)=>resourceUrl(path) || original(path,...args);
+    // Repair attachments rendered before the runtime bridge became available.
+    const prefix="/vault-files/"+encodeURIComponent(scope?.vault || "")+"/";
+    for(const element of document.querySelectorAll("img[src],audio[src],video[src],source[src]")){
+      try {const url=new URL(element.getAttribute("src"),location.origin);if(url.origin===location.origin && url.pathname.startsWith(prefix)){
+        const replacement=resourceUrl(decodeURIComponent(url.pathname.slice(prefix.length)));if(replacement)element.setAttribute("src",replacement);
+      }}catch{/* Unrelated or unsupported resource URL. */}
+    }
+  }
+  function describe(path){
+    if(!enabled)return null;try{context();}catch{return null;}
+    const value=normalize(path),found=[...mounted].find(([root,mount])=>!mount.blocked&&under(value,root));
+    if(found)return {direction:"incoming",role:found[1].role,owner:found[1].owner || "",root:found[0]};
+    const sent=outgoing.find(item=>value===item.path);
+    return sent?{direction:"outgoing",root:sent.path}:null;
+  }
+  return {configure,refresh,start,stop,owns,wrap,copyContent,writeEditor,describe,subscribe(fn){subscribers.add(fn);return ()=>subscribers.delete(fn);},resourceUrl,installAdapter,assertOrdinary(path,resolved){if(owns(path)||owns(resolved))fail("ENOTSUP","File descriptors are not supported on shared resources");}};
+}

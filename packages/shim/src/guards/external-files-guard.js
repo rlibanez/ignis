@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 const OPEN_FILE_COMMAND = "app:open-file";
 
 const NOTICE_TEXT = "Ignis doesn't support opening files outside the vault.";
@@ -25,7 +27,7 @@ function refuseOutsideDragOnTabBar(app, e, showNotice) {
 
 export function installExternalFilesOverrides(obsidian, app) {
   const { Platform, Notice } = obsidian;
-  const showNotice = () => new Notice(NOTICE_TEXT);
+  const showNotice = () => new Notice(translateIgnis(NOTICE_TEXT));
 
   Object.defineProperty(Platform, "canOpenExternalFiles", {
     get: () => false,

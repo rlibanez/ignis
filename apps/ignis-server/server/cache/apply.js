@@ -20,9 +20,7 @@ function startStallTimer(vaultId, queue) {
   queue.stallTimer = setTimeout(() => {
     queue.stallTimer = null;
 
-    console.warn(
-      `[bootstrap] apply queue on vault ${vaultId}: no task has completed in ${Math.round(QUEUE_STALL_THRESHOLD_MS / 1000)}s`,
-    );
+    require("@ignis/server-core/src/logger").emit("warn", "server.cache.apply.queue_stalled");
   }, QUEUE_STALL_THRESHOLD_MS);
   queue.stallTimer.unref?.();
 }
@@ -67,9 +65,7 @@ function enqueue(vaultId, task) {
 
 function beginCrawl(vaultId) {
   if (activeCrawls.has(vaultId)) {
-    console.warn(
-      `[bootstrap] crawl began on vault ${vaultId} while one is active`,
-    );
+    require("@ignis/server-core/src/logger").emit("warn", "server.cache.apply.overlapping_crawl");
   }
 
   const crawl = { mutations: [] };
@@ -185,7 +181,7 @@ function bumpRevision(entry) {
 }
 
 function failBatch(vaultId, e) {
-  console.warn(`[bootstrap] apply failed on vault ${vaultId}:`, e.message);
+  require("@ignis/server-core/src/logger").emit("warn", "server.cache.apply.apply_failed");
   invalidateVault(vaultId);
 
   return null;

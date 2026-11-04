@@ -112,3 +112,18 @@ describe("ws-client channels", () => {
     });
   });
 });
+
+describe("vault lifecycle closure", () => {
+  it("locks the vault and never reconnects after a lifecycle change", () => {
+    const unavailable = vi.fn();
+    window.__ignisAuth = { vaultUnavailable: unavailable };
+    const client = createWsClient();
+    client.connect("Notes");
+    sockets[0].onopen();
+    sockets[0].onclose({ code: 4002 });
+    expect(unavailable).toHaveBeenCalledOnce();
+    vi.advanceTimersByTime(60000);
+    expect(sockets).toHaveLength(1);
+    expect(client.isOpen()).toBe(false);
+  });
+});

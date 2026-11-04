@@ -61,8 +61,12 @@ router.post("/", async (req, res) => {
       body: reqBody,
     };
 
-    const credentials = signinCredentials(req.body);
-    let relayed = await relayOnce(relayArgs);
+    const member = req.auth?.user.role === "user";
+    // Never let a normal account use the server's Obsidian CLI sign-in state.
+    const credentials = member ? null : signinCredentials(req.body);
+    let relayed = member
+      ? await require("./member-network").memberRelay(relayArgs, relayOnce, proxyMode, settings.get("proxyAllowlist"))
+      : await relayOnce(relayArgs);
 
     if (credentials) {
       relayed = await resolveSignin(credentials, relayed, () =>

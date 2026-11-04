@@ -1,3 +1,4 @@
+import { captureLogs } from "../../../../packages/server-core/src/log-test-helper.mjs";
 import {
   describe,
   it,
@@ -261,7 +262,7 @@ describe("ancestors and stats", () => {
   it("invalidates when the path it has to stat is gone", async () => {
     seed("a.md", "a");
 
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = captureLogs("warn").mockImplementation(() => {});
     const first = await build();
 
     expect(await apply({ type: "created", path: "ghost.md" })).toBeNull();
@@ -298,7 +299,7 @@ describe("crawls in flight", () => {
     const first = await build();
 
     seed("direct.md", "direct");
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+    captureLogs("warn").mockImplementation(() => {});
 
     const readdirSpy = runMidCrawl(async () => {
       seed("late.md", "late");
@@ -358,7 +359,7 @@ describe("crawls in flight", () => {
   it("does not replay onto a crawl an invalidation superseded", async () => {
     seed("a.md", "a");
 
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = captureLogs("warn").mockImplementation(() => {});
     const statSpy = vi.spyOn(fs.promises, "stat");
 
     const readdirSpy = runMidCrawl(async () => {
@@ -480,7 +481,7 @@ describe("compression", () => {
   it("retries a compression that failed while the entry was built", async () => {
     seed("a.md", "a");
 
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = captureLogs("warn").mockImplementation(() => {});
     const failing = vi
       .spyOn(zlib, "brotliCompress")
       .mockImplementation((buf, opts, cb) => cb(new Error("compress failed")));
@@ -550,7 +551,7 @@ describe("queue", () => {
     seed("a.md", "a");
 
     const entry = await build();
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = captureLogs("warn").mockImplementation(() => {});
     const realStat = fs.promises.stat;
     let release;
     const held = new Promise((r) => (release = r));
@@ -587,7 +588,7 @@ describe("queue", () => {
 
     expect(stalled).toEqual([0, 1, 1]);
     expect(warn.mock.calls[0].join(" ")).toBe(
-      `[bootstrap] apply queue on vault ${VAULT_ID}: no task has completed in 30s`,
+      "server.cache.apply.queue_stalled",
     );
     expect(entry.response.tree["wedged.md"]).toMatchObject({ type: "file" });
   });

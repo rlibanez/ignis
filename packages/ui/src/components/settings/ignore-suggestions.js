@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 function groupSuggestions(suggestions) {
   const rows = new Map();
 
@@ -26,8 +28,8 @@ function describeVaults(vaults) {
   return vaults
     .map(({ vault, fileCount }, i) =>
       i === 0
-        ? `${fileCount.toLocaleString()} files in ${vault}`
-        : `${fileCount.toLocaleString()} in ${vault}`,
+        ? translateIgnis("{p0} files in {p1}", {p0: (fileCount.toLocaleString()), p1: (vault)})
+        : translateIgnis("{p0} in {p1}", {p0: (fileCount.toLocaleString()), p1: (vault)}),
     )
     .join(", ");
 }

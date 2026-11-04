@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import { setIcon } from "obsidian";
 import { checkForUpdate } from "../update-check.js";
 import * as serverSettings from "./server-settings.js";
@@ -7,7 +9,7 @@ import { messageDefinition, blockDefinition } from "./settings-ui.js";
 const GITHUB_URL = "https://github.com/Nystik-gh/ignis";
 
 const TEXT_LINKS = [
-  { text: "Docs", href: "https://ignis.thiefling.com/docs/" },
+  { text: translateIgnis("Docs"), href: "https://ignis.thiefling.com/docs/" },
 ];
 
 const ICON_LINKS = [
@@ -89,9 +91,9 @@ function addHeader(containerEl) {
   });
 
   const info = header.createDiv("ignis-header-info");
-  info.createEl("div", { text: "Ignis", cls: "ignis-header-title" });
+  info.createEl("div", { text: translateIgnis("Ignis"), cls: "ignis-header-title" });
   info.createEl("div", {
-    text: "Obsidian server bridge",
+    text: translateIgnis("Obsidian server bridge"),
     cls: "ignis-header-subtitle",
   });
 
@@ -99,12 +101,12 @@ function addHeader(containerEl) {
 
   const versionCol = right.createDiv("ignis-header-version-col");
   versionCol.createEl("span", {
-    text: `Version ${version}`,
+    text: translateIgnis("Version {p0}", {p0: (version)}),
     cls: "ignis-header-version",
   });
 
   const updateIndicator = versionCol.createEl("a", {
-    text: "Checking...",
+    text: translateIgnis("Checking..."),
     cls: "ignis-update-indicator",
     attr: { target: "_blank", rel: "noopener noreferrer" },
   });
@@ -122,11 +124,11 @@ function addHeader(containerEl) {
 
   checkForUpdate(version).then((latest) => {
     if (latest) {
-      updateIndicator.textContent = `v${latest.version} available`;
+      updateIndicator.textContent = translateIgnis("v{p0} available", {p0: (latest.version)});
       updateIndicator.addClass("ignis-update-available");
       updateIndicator.href = latest.url;
     } else {
-      updateIndicator.textContent = "Up to date";
+      updateIndicator.textContent = translateIgnis("Up to date");
     }
   });
 }
@@ -142,26 +144,26 @@ function addInsecureContextCallout(containerEl) {
 
   const text = callout.createDiv("ignis-insecure-callout-text");
   text.createEl("div", {
-    text: "Insecure connection",
+    text: translateIgnis("Insecure connection"),
     cls: "ignis-insecure-callout-title",
   });
 
   const body = text.createEl("div", { cls: "ignis-insecure-callout-body" });
   body.appendText(
-    "The browser disables some APIs on insecure pages, so parts of Obsidian do not work here. ",
+    translateIgnis("The browser disables some APIs on insecure pages, so parts of Obsidian do not work here. "),
   );
   body.createEl("a", {
-    text: "Serving Ignis over HTTPS",
+    text: translateIgnis("Serving Ignis over HTTPS"),
     href: REMOTE_ACCESS_DOCS_URL,
     attr: { target: "_blank", rel: "noopener noreferrer" },
   });
-  body.appendText(" restores them.");
+  body.appendText(translateIgnis(" restores them."));
 }
 
 const STATUS_LABELS = {
-  open: "Connected",
-  connecting: "Connecting...",
-  closed: "Disconnected",
+  open: translateIgnis("Connected"),
+  connecting: translateIgnis("Connecting..."),
+  closed: translateIgnis("Disconnected"),
 };
 
 const STATUS_DOT_CLASSES = {
@@ -172,7 +174,7 @@ const STATUS_DOT_CLASSES = {
 
 function serverStatusDefinition() {
   return {
-    name: "Server status",
+    name: translateIgnis("Server status"),
     render: (setting) => {
       const ws = window.__ignis.ws;
 
@@ -209,8 +211,8 @@ function serverSettingsGroups(tab) {
         items: [
           messageDefinition(
             serverSettings.loadFailed()
-              ? "Failed to load server settings."
-              : "Loading server settings...",
+              ? translateIgnis("Failed to load server settings.")
+              : translateIgnis("Loading server settings..."),
           ),
         ],
       },
@@ -220,25 +222,25 @@ function serverSettingsGroups(tab) {
   return [
     {
       type: "group",
-      heading: "Caching",
+      heading: translateIgnis("Caching"),
       items: [
         numberField({
-          name: "Content cache (MB)",
-          desc: "Browser cache of file content. Applies after reload.",
+          name: translateIgnis("Content cache (MB)"),
+          desc: translateIgnis("Browser cache of file content. Applies after reload."),
           key: "contentCacheBytes",
           fromStored: (bytes) => Math.round(bytes / MB),
           toStored: (n) => n * MB,
         }),
         numberField({
-          name: "Input cache (MB)",
-          desc: "Cache for files picked for import. Applies after reload.",
+          name: translateIgnis("Input cache (MB)"),
+          desc: translateIgnis("Cache for files picked for import. Applies after reload."),
           key: "inputCacheBytes",
           fromStored: (bytes) => Math.round(bytes / MB),
           toStored: (n) => n * MB,
         }),
         numberField({
-          name: "Input cache TTL (minutes)",
-          desc: "How long picked files stay cached. Applies after reload.",
+          name: translateIgnis("Input cache TTL (minutes)"),
+          desc: translateIgnis("How long picked files stay cached. Applies after reload."),
           key: "inputCacheTtlMs",
           fromStored: (ms) => Math.round(ms / MINUTE),
           toStored: (n) => n * MINUTE,
@@ -247,34 +249,34 @@ function serverSettingsGroups(tab) {
     },
     {
       type: "group",
-      heading: "Security",
+      heading: translateIgnis("Security"),
       items: [
         numberField({
-          name: "Max request body (MB)",
-          desc: "Largest request the server accepts.",
+          name: translateIgnis("Max request body (MB)"),
+          desc: translateIgnis("Largest request the server accepts."),
           key: "maxBodyBytes",
           fromStored: (bytes) => Math.round(bytes / MB),
           toStored: (n) => n * MB,
         }),
         ...proxyAccessFields(tab),
         listField(tab, {
-          name: "Direct-fetch hosts",
-          desc: "Hosts the browser fetches directly, bypassing the proxy. Only for hosts that allow cross-origin browser requests (CORS); everything else goes through the proxy. Applies after reload.",
+          name: translateIgnis("Direct-fetch hosts"),
+          desc: translateIgnis("Hosts the browser fetches directly, bypassing the proxy. Only for hosts that allow cross-origin browser requests (CORS); everything else goes through the proxy. Applies after reload."),
           key: "directFetchHosts",
           modal: {
             placeholder: "api.example.com",
-            emptyNote: "No hosts yet.",
+            emptyNote: translateIgnis("No hosts yet."),
           },
         }),
       ],
     },
     {
       type: "group",
-      heading: "Advanced",
+      heading: translateIgnis("Advanced"),
       items: [
         numberField({
-          name: "Write coalesce window (ms)",
-          desc: "Debounce window for rapid writes on slow filesystems. 0 disables. Maximum 60000.",
+          name: translateIgnis("Write coalesce window (ms)"),
+          desc: translateIgnis("Debounce window for rapid writes on slow filesystems. 0 disables. Maximum 60000."),
           key: "writeCoalesceMs",
           fromStored: (n) => n,
           toStored: (n) => n,
@@ -292,13 +294,13 @@ function getProxyMode() {
 // Proxy access mode plus the allowlist row, which only shows in "allowlist" mode.
 function proxyAccessFields(tab) {
   const accessField = {
-    name: "Proxy access",
-    desc: "Which external hosts Obsidian may reach through the server's CORS proxy.",
+    name: translateIgnis("Proxy access"),
+    desc: translateIgnis("Which external hosts Obsidian may reach through the server's CORS proxy."),
     render: (setting) => {
       setting.addDropdown((dd) => {
-        dd.addOption("any", "Any public host");
-        dd.addOption("allowlist", "Allowlist only");
-        dd.addOption("disabled", "Disabled");
+        dd.addOption("any", translateIgnis("Any public host"));
+        dd.addOption("allowlist", translateIgnis("Allowlist only"));
+        dd.addOption("disabled", translateIgnis("Disabled"));
         dd.setValue(getProxyMode());
 
         dd.onChange(async (value) => {
@@ -310,21 +312,21 @@ function proxyAccessFields(tab) {
   };
 
   const allowlistField = listField(tab, {
-    name: "Proxy host allowlist",
-    desc: "Hostnames the proxy may reach, matched exactly.",
+    name: translateIgnis("Proxy host allowlist"),
+    desc: translateIgnis("Hostnames the proxy may reach, matched exactly."),
     key: "proxyAllowlist",
     modal: {
       placeholder: "api.example.com",
-      emptyNote: "No hosts yet.",
+      emptyNote: translateIgnis("No hosts yet."),
       recommended: {
-        note: "Restricting the proxy stops Obsidian's plugin and theme browser and updates from working unless their hosts are allowed.",
+        note: translateIgnis("Restricting the proxy stops Obsidian's plugin and theme browser and updates from working unless their hosts are allowed."),
         hosts: [
           "releases.obsidian.md",
           "github.com",
           "api.github.com",
           "raw.githubusercontent.com",
         ],
-        buttonText: "Add recommended hosts",
+        buttonText: translateIgnis("Add recommended hosts"),
       },
     },
   });
@@ -337,13 +339,13 @@ function proxyAccessFields(tab) {
 
 function ignoreRulesField() {
   return {
-    name: "Ignored paths",
+    name: translateIgnis("Ignored paths"),
     desc: createFragment((frag) => {
       frag.appendText(
-        "Rules for paths to ignore when watching for file changes. Ignored paths still appear in the vault and can be manually refreshed. Uses gitignore patterns ",
+        translateIgnis("Rules for paths to ignore when watching for file changes. Ignored paths still appear in the vault and can be manually refreshed. Uses gitignore patterns "),
       );
       frag.createEl("a", {
-        text: "Learn more",
+        text: translateIgnis("Learn more"),
         href: "https://ignis.thiefling.com/docs/performance/#ignored-paths",
         attr: { target: "_blank", rel: "noopener noreferrer" },
       });
@@ -353,7 +355,7 @@ function ignoreRulesField() {
       let rules = current.ignoreRules;
 
       const setLabel = (btn) =>
-        btn.setButtonText(rules.length ? `Edit (${rules.length})` : "Edit");
+        btn.setButtonText(rules.length ? translateIgnis("Edit ({p0})", {p0: (rules.length)}) : translateIgnis("Edit"));
 
       setting.addButton((btn) => {
         setLabel(btn);

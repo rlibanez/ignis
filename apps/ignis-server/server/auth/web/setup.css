@@ -1,0 +1,113 @@
+:root {
+  color-scheme: light dark;
+  background: light-dark(#f4f5f8, #17191e);
+  font-family: system-ui, sans-serif;
+}
+body {
+  margin: 0;
+  box-sizing: border-box;
+  min-height: 100dvh;
+  /* Paint through the gesture area while keeping form controls clear of it. */
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+    env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  background: light-dark(#f4f5f8, #17191e);
+  color: light-dark(#222631, #e9ebf0);
+}
+main {
+  max-width: 28rem;
+  margin: 3rem auto;
+  padding: 2rem;
+}
+.brand {
+  font-weight: 750;
+  letter-spacing: 0.18em;
+  color: light-dark(#6846be, #b7a0f4);
+}
+h1 {
+  font-size: 1.8rem;
+  line-height: 1.2;
+}
+p {
+  line-height: 1.55;
+}
+label {
+  display: block;
+  margin: 1.25rem 0 0.4rem;
+  font-weight: 600;
+}
+input,
+button {
+  font: inherit;
+  box-sizing: border-box;
+  width: 100%;
+  border-radius: 0.45rem;
+  padding: 0.75rem;
+}
+input {
+  border: 1px solid light-dark(#898d99, #777d8d);
+  background: light-dark(#fff, #22252d);
+  color: inherit;
+}
+input:focus-visible,
+button:focus-visible {
+  outline: 3px solid #a48be8;
+  outline-offset: 3px;
+}
+button {
+  margin-top: 1.5rem;
+  border: 0;
+  background: #6846be;
+  color: #fff;
+  font-weight: 650;
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+.help {
+  font-size: 0.85rem;
+  margin: 0.4rem 0;
+  color: light-dark(#515766, #b1b7c6);
+}
+[hidden] {
+  display: none !important;
+}
+@media (max-width: 480px) {
+  main {
+    margin: 1rem auto;
+    padding: 1.25rem;
+  }
+}
+
+.form-error:not(:empty), .field-error:not(:empty) {
+  padding: .75rem 1rem;
+  border: 1px solid light-dark(#c25969, #a76070);
+  border-left-width: 3px;
+  border-radius: .45rem;
+  background: light-dark(#fff0f2, #3c252d);
+  color: light-dark(#932238, #ffbdc9);
+  font-size: .9rem;
+  font-weight: 550;
+}
+.field-error { margin: .5rem 0 0; }
+input[aria-invalid="true"] { border-color: light-dark(#b32b45, #f08ca0); outline-color: light-dark(#b32b45, #f08ca0); }
+
+.password-control { position: relative; }
+.password-control input { padding-right: 3.25rem; }
+.password-control .password-toggle {
+  position: absolute; right: .25rem; top: 50%; transform: translateY(-50%);
+  display: flex; align-items: center; justify-content: center;
+  width: 2.5rem; height: 2.5rem; margin: 0; padding: .5rem;
+  border: 0; background: transparent; color: light-dark(#515766, #b1b7c6);
+}
+.password-control .password-toggle:hover { background: light-dark(#edeaf5, #353040); color: light-dark(#593598, #d2bfff); }
+.password-toggle svg { width: 1.25rem; height: 1.25rem; }
+
+/* Keep installation keys as text inputs, independently of visual masking. */
+input.masked-text { -webkit-text-security: disc; }
+.setup-field-heading { position: relative; display: flex; align-items: center; gap: .5rem; margin: 1.25rem 0 .4rem; }
+.setup-field-heading label { margin: 0; }
+.setup-field-help { display: inline-flex; }
+.setup-field-help .setup-help-toggle { display: inline-flex; align-items: center; justify-content: center; width: 1.4rem; height: 1.4rem; padding: 0; margin: 0; border: 1px solid light-dark(#898d99, #777d8d); border-radius: 50%; background: transparent; color: inherit; font-size: .8rem; }
+.setup-help-tooltip { position: absolute; z-index: 4; top: calc(100% + .4rem); left: 0; box-sizing: border-box; width: min(27rem, 100%); padding: .75rem; border: 1px solid light-dark(#b9bdc9, #696d7b); border-radius: .5rem; background: light-dark(#fff, #30333d); color: inherit; box-shadow: 0 .5rem 1.5rem #0004; font-size: .85rem; line-height: 1.5; }

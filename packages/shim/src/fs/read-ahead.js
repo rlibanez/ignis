@@ -16,7 +16,7 @@ function parentDir(path) {
   return slash < 0 ? "" : path.slice(0, slash);
 }
 
-export function createReadAhead(metadataCache, contentCache) {
+export function createReadAhead(metadataCache, contentCache, filePolicy = null) {
   const inFlightBatchByPath = new Map();
   let inFlightBytes = 0;
   let roomNeededForLastSkippedBatch = 0;
@@ -27,6 +27,7 @@ export function createReadAhead(metadataCache, contentCache) {
 
   function isCandidate(path, missedPath) {
     if (
+      (filePolicy && !filePolicy.allowsSharedPrefetch(path)) ||
       path === missedPath ||
       inFlightBatchByPath.has(path) ||
       contentCache.has(path) ||
@@ -101,7 +102,7 @@ export function createReadAhead(metadataCache, contentCache) {
       paths.map((p) => [p, contentCache.pathUpdates(p)]),
     );
 
-    const batch = fetchBatch(window.__currentVaultId, paths)
+    const batch = fetchBatch(window.__currentVaultUuid || window.__currentVaultId, paths)
       .then((result) => {
         for (const [p, content] of Object.entries(result.files || {})) {
           if (typeof content === "string" && pathUpdatesBefore.has(p)) {

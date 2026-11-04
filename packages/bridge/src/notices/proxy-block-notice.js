@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import { Modal, Notice } from "obsidian";
 
 // Paired with the shim's proxy-block reporter, which dispatches this event.
@@ -10,15 +12,15 @@ function noticeText({ code, host }) {
   switch (code) {
     case "private-host":
     case "private-resolve":
-      return `Ignis blocked a connection to ${host} (private address).`;
+      return translateIgnis("Ignis blocked a connection to {p0} (private address).", {p0: (host)});
     case "dns":
-      return `Ignis could not resolve ${host}.`;
+      return translateIgnis("Ignis could not resolve {p0}.", {p0: (host)});
     case "allowlist":
-      return `Ignis blocked ${host}: not in the proxy host allowlist.`;
+      return translateIgnis("Ignis blocked {p0}: not in the proxy host allowlist.", {p0: (host)});
     case "disabled":
-      return "Ignis blocked a connection: proxy access is disabled.";
+      return translateIgnis("Ignis blocked a connection: proxy access is disabled.");
     default:
-      return "Ignis blocked a connection.";
+      return translateIgnis("Ignis blocked a connection.");
   }
 }
 
@@ -32,19 +34,19 @@ class ProxyBlockModal extends Modal {
     const { contentEl } = this;
     const { code, host, address } = this.detail;
 
-    this.setTitle("Connection blocked");
+    this.setTitle(translateIgnis("Connection blocked"));
     contentEl.addClass("ignis-block-modal");
 
     if (code === "private-host" || code === "private-resolve") {
       const intro = contentEl.createEl("p");
       intro.appendText(
-        "Ignis relays plugin requests through the server, which blocks private addresses unless they are explicitly allowed. ",
+        translateIgnis("Ignis relays plugin requests through the server, which blocks private addresses unless they are explicitly allowed. "),
       );
       intro.createEl("code", { text: host });
       intro.appendText(
         code === "private-resolve"
-          ? " resolves to the private address "
-          : " is a private address.",
+          ? translateIgnis(" resolves to the private address ")
+          : translateIgnis(" is a private address."),
       );
 
       if (code === "private-resolve") {
@@ -52,19 +54,19 @@ class ProxyBlockModal extends Modal {
         intro.appendText(".");
       }
 
-      intro.appendText(" Allow it in one of two ways:");
+      intro.appendText(translateIgnis(" Allow it in one of two ways:"));
 
       const list = contentEl.createEl("ul");
 
       const envItem = list.createEl("li");
-      envItem.appendText("Set the ");
+      envItem.appendText(translateIgnis("Set the "));
       envItem.createEl("code", { text: "PROXY_ALLOW_PRIVATE_HOSTS" });
-      envItem.appendText(" environment variable on the server to include ");
+      envItem.appendText(translateIgnis(" environment variable on the server to include "));
       envItem.createEl("code", { text: address || host });
       envItem.appendText(".");
 
       const directItem = list.createEl("li");
-      directItem.appendText("Add ");
+      directItem.appendText(translateIgnis("Add "));
       directItem.createEl("code", { text: host });
       directItem.appendText(
         " to direct-fetch hosts (Settings > Ignis > General > Security), so the browser connects to it directly. The target must allow cross-origin requests (CORS).",
@@ -72,26 +74,26 @@ class ProxyBlockModal extends Modal {
 
       const docs = contentEl.createEl("p");
       docs.createEl("a", {
-        text: "Docs: sync connectivity",
+        text: translateIgnis("Docs: sync connectivity"),
         href: DOCS_URL,
         attr: { target: "_blank", rel: "noopener noreferrer" },
       });
     } else if (code === "dns") {
       contentEl.createEl("p", {
-        text: `The server could not resolve ${host}. Check the hostname, or use an IP address instead. The name must resolve on the Ignis server.`,
+        text: translateIgnis("The server could not resolve {p0}. Check the hostname, or use an IP address instead. The name must resolve on the Ignis server.", {p0: (host)}),
       });
     } else if (code === "allowlist") {
       contentEl.createEl("p", {
-        text: `Proxy access is restricted to an allowlist, and ${host} is not on it. Add it under Settings > Ignis > General > Security > Proxy host allowlist.`,
+        text: translateIgnis("Proxy access is restricted to an allowlist, and {p0} is not on it. Add it under Settings > Ignis > General > Security > Proxy host allowlist.", {p0: (host)}),
       });
     } else if (code === "disabled") {
       contentEl.createEl("p", {
-        text: "Proxy access is disabled under Settings > Ignis > General > Security. Cross-origin plugin requests are blocked while it is disabled.",
+        text: translateIgnis("Proxy access is disabled under Settings > Ignis > General > Security. Cross-origin plugin requests are blocked while it is disabled."),
       });
     } else {
       // fallback to server error if unknown code.
       contentEl.createEl("p", {
-        text: this.detail.message || "Ignis blocked the connection.",
+        text: this.detail.message || translateIgnis("Ignis blocked the connection."),
       });
     }
   }
@@ -109,7 +111,7 @@ export function initProxyBlockNotice(app) {
     frag.appendChild(document.createTextNode(noticeText(detail) + " "));
 
     const details = document.createElement("button");
-    details.textContent = "Details";
+    details.textContent = translateIgnis("Details");
     details.addEventListener("click", () => {
       new ProxyBlockModal(app, detail).open();
     });

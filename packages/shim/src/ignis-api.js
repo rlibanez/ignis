@@ -9,6 +9,7 @@ export function installIgnisApi(wsClient, writes) {
     get() {
       return {
         id: window.__currentVaultId || null,
+        uuid: window.__currentVaultUuid || null,
         path: window.__vaultConfig?.path || null,
       };
     },

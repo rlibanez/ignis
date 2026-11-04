@@ -81,6 +81,7 @@ export function createWsClient() {
   }
 
   function openSocket() {
+    if (window.__ignisAuth?.blocked) return;
     if (ws) {
       return;
     }
@@ -88,7 +89,8 @@ export function createWsClient() {
     setState("connecting");
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${protocol}//${window.location.host}/ws?vault=${encodeURIComponent(vaultId)}`;
+    const context = window.__ignisAuth?.sessionId;
+    const url = `${protocol}//${window.location.host}/ws?vault=${encodeURIComponent(vaultId)}${context ? "&context=" + encodeURIComponent(context) : ""}`;
 
     try {
       ws = new WebSocket(url);
@@ -131,8 +133,14 @@ export function createWsClient() {
       dispatch(msg);
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       ws = null;
+      if (event?.code === 4002) {
+        manuallyClosed = true;
+        window.__ignisAuth?.vaultUnavailable?.();
+      } else {
+        window.__ignisAuth?.check();
+      }
       setState("closed");
 
       if (!manuallyClosed) {
@@ -156,6 +164,12 @@ export function createWsClient() {
       openSocket();
     }, RECONNECT_DELAY_MS);
   }
+
+  if (
+    typeof window !== "undefined" &&
+    typeof window.addEventListener === "function"
+  )
+    window.addEventListener("ignis:auth-lost", disconnect);
 
   function connect(id) {
     if (!id) {

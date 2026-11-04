@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 const { Plugin } = require("obsidian");
 const { HeadlessSyncSettingTab } = require("./settings-tab");
 const { initSyncStatusBar } = require("./sync-status-bar");
@@ -28,7 +30,7 @@ class IgnisHeadlessSyncPlugin extends Plugin {
 
     this.addCommand({
       id: "start-sync",
-      name: "Start server-side sync",
+      name: translateIgnis("Start server-side sync"),
       callback: async () => {
         try {
           await api.startSync(this.app.vault.getName());
@@ -40,7 +42,7 @@ class IgnisHeadlessSyncPlugin extends Plugin {
 
     this.addCommand({
       id: "stop-sync",
-      name: "Stop server-side sync",
+      name: translateIgnis("Stop server-side sync"),
       callback: async () => {
         try {
           await api.stopSync(this.app.vault.getName());
@@ -52,7 +54,7 @@ class IgnisHeadlessSyncPlugin extends Plugin {
 
     this.addCommand({
       id: "show-status",
-      name: "Show sync status",
+      name: translateIgnis("Show sync status"),
       callback: () => {
         this.app.setting.open();
         this.app.setting.openTabById("ignis-headless-sync");

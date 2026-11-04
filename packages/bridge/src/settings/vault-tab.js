@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import { vaultService } from "@ignis/services";
 import * as serverSettings from "./server-settings.js";
 import { messageDefinition } from "./settings-ui.js";
@@ -8,8 +10,8 @@ function settingDefinitions() {
       type: "group",
       items: [
         messageDefinition(
-          "Settings for the currently active vault. " +
-            "These settings are not stored in the vault itself, unlike Obsidian's native settings; they apply to all browsers and devices that open this vault.",
+          translateIgnis("Settings for the currently active vault. ") +
+            translateIgnis("These settings are not stored in the vault itself, unlike Obsidian's native settings; they apply to all browsers and devices that open this vault."),
         ),
       ],
     },
@@ -21,8 +23,8 @@ function vaultSettingDefinition() {
   if (!serverSettings.get()) {
     return messageDefinition(
       serverSettings.loadFailed()
-        ? "Failed to load server settings."
-        : "Loading server settings...",
+        ? translateIgnis("Failed to load server settings.")
+        : translateIgnis("Loading server settings..."),
     );
   }
 
@@ -35,8 +37,8 @@ function getTrustedVaults() {
 
 function trustDefinition() {
   return {
-    name: "Always trust plugins for this vault",
-    desc: "Enable community plugins for this vault in every browser that opens it, so the restricted-mode prompt does not appear on a new device or after clearing site data.",
+    name: translateIgnis("Always trust plugins for this vault"),
+    desc: translateIgnis("Enable community plugins for this vault in every browser that opens it, so the restricted-mode prompt does not appear on a new device or after clearing site data."),
     render: (setting) => {
       const vaultId = vaultService.getCurrentVaultId();
 

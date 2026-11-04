@@ -17,16 +17,14 @@ const timers = new Map();
 const queuedVaults = new Set();
 let runningReconcile = null;
 let reconcilingVault = null;
+let stopped = false;
 
 function runReconcile(vaultId) {
   let timer = null;
 
   const released = new Promise((resolve) => {
     timer = setTimeout(() => {
-      console.warn(
-        `[tree-reconcile] vault=${vaultId} reconcile has not completed in ` +
-          `${Math.round(RECONCILE_RELEASE_MS / 1000)}s, resuming schedule`,
-      );
+      require("@ignis/server-core/src/logger").emit("warn", "server.cache.reconcile.timeout");
       resolve();
     }, RECONCILE_RELEASE_MS);
     timer.unref?.();
@@ -37,7 +35,7 @@ function runReconcile(vaultId) {
     .catch((e) => {
       // no need to warn if vault removed mid-crawl
       if (config.getVaultPath(vaultId)) {
-        console.warn(`[tree-reconcile] vault=${vaultId} failed:`, e.message);
+        require("@ignis/server-core/src/logger").emit("warn", "server.cache.reconcile.failed");
       }
     })
     .finally(() => clearTimeout(timer));
@@ -47,7 +45,7 @@ function runReconcile(vaultId) {
 
 function pump() {
   // one crawl at a time, conserves memory
-  if (runningReconcile || queuedVaults.size === 0) {
+  if (stopped || runningReconcile || queuedVaults.size === 0) {
     return;
   }
 
@@ -64,7 +62,7 @@ function pump() {
 }
 
 function scheduleReconcile(vaultId) {
-  if (queuedVaults.has(vaultId) || reconcilingVault === vaultId) {
+  if (stopped || queuedVaults.has(vaultId) || reconcilingVault === vaultId) {
     return;
   }
 
@@ -91,6 +89,7 @@ function tick(vaultId) {
 }
 
 function startSchedule(vaultId) {
+  if (stopped) return;
   scheduleUnlessRecent(vaultId);
 
   if (timers.has(vaultId)) {
@@ -111,6 +110,7 @@ function cancelVault(vaultId) {
 
 // Test-only.
 function _reset() {
+  stopped = false;
   for (const timer of timers.values()) {
     clearInterval(timer);
   }
@@ -129,7 +129,17 @@ async function _drain() {
   }
 }
 
+function stop() {
+  stopped=true;
+  for (const id of timers.keys()) cancelVault(id);
+  queuedVaults.clear();
+  return runningReconcile;
+}
+function resume() {stopped=false;}
+
 module.exports = {
+  stop,
+  resume,
   startSchedule,
   scheduleReconcile,
   cancelVault,

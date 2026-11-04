@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import { Notice } from "obsidian";
 
 // Paired with the shim's write-giveup subscriber.
@@ -26,7 +28,7 @@ export function initWriteGiveupNotice() {
     lastNotified.set(path, now);
 
     new Notice(
-      `Ignis failed to save "${path}". Changes may be lost on reload.`,
+      translateIgnis("Ignis failed to save \"{p0}\". Changes may be lost on reload.", {p0: (path)}),
       10000,
     );
   };

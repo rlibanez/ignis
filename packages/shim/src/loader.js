@@ -1,3 +1,11 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
+import { installVaultAccountMenu } from "./vault-account-menu.js";
+import { installEditorSaves } from "./integration/obsidian/editor-saves.js";
+import { installSharedIcons } from "./shared-icons.js";
+import { installSharedPanel } from "./shared-panel.js";
+import { installAccountStorage } from "./account-storage.js";
+import { snapshotBuffered, suspendCoalescer } from "./fs/write-coalescer.js";
 import { installRequire } from "./require.js";
 import { installGlobals } from "./globals/index.js";
 import { installCssOverrides } from "./css-overrides.js";
@@ -24,14 +32,18 @@ import {
   onFailureChange,
   listPending,
   listFailed,
+  listRetryableFailed,
   retryAll,
   getDetail,
+  snapshotPending,
+  suspendWrites,
 } from "./fs/write-durability.js";
 
 // __IGNIS_VERSION__ (semver) and __IGNIS_BUILD__ are replaced at build time.
 window.__ignis = { version: __IGNIS_VERSION__, build: __IGNIS_BUILD__ };
 window.__ignis_registerUI = registerUI;
 
+let editorSaves;
 installIgnisApi(wsClient, {
   getState,
   onStateChange,
@@ -39,8 +51,14 @@ installIgnisApi(wsClient, {
   onFailureChange,
   listPending,
   listFailed,
+  listRetryableFailed,
   retryAll,
   getDetail,
+  snapshotPending: () => [...snapshotPending(), ...snapshotBuffered(), ...(editorSaves?.snapshotPending() || [])],
+});
+window.addEventListener("ignis:auth-lost", () => {
+  suspendWrites();
+  suspendCoalescer();
 });
 
 const BRIDGE_MANIFEST = {
@@ -49,11 +67,13 @@ const BRIDGE_MANIFEST = {
   version: __IGNIS_VERSION__,
   minAppVersion: "1.13.0",
   description:
-    "Additional Ignis specific functionality and ignis plugin management.",
+    translateIgnis("Additional Ignis specific functionality and ignis plugin management."),
   author: "Nystik",
   authorUrl: "https://github.com/Nystik-gh/ignis",
   isDesktopOnly: false,
 };
+
+installAccountStorage();
 
 installGlobals(); // process, Buffer, window overrides (before require so Buffer is available)
 installRequire(); // shim registry, window.require
@@ -68,12 +88,13 @@ setTimeout(() => {
 initialize(); // vault config, metadata cache, plugin prompt
 
 function onLayoutReady() {
+  fsShim._sharedFiles.start();
   window.__ignisBooting = false;
 }
 
 // Connect the shared WebSocket after everything is initialized; watcher and live-toggle subscribers attach to the same client.
 if (window.__currentVaultId) {
-  fsShim._watcherClient.connect(window.__currentVaultId);
+  fsShim._watcherClient.connect(window.__currentVaultUuid || window.__currentVaultId);
   watchPluginToggles(wsClient);
 }
 
@@ -88,6 +109,16 @@ wsClient.subscribe("write-giveup", (msg) => {
 
 extractObsidianModule()
   .then(async (obsidian) => {
+    window.IgnisI18n?.fromObsidian(obsidian);
+    // Fail closed if an upstream change prevents installation of editor guards.
+    try {
+      editorSaves=installEditorSaves(obsidian,window.app,fsShim._writeEditorFile,fsShim._editorContext,fsShim._recoverEditor,{version:window.__obsidianVersion});
+    } catch(error) {
+      const message=document.createElement("p");
+      message.textContent=translateIgnis("Editor protection could not initialize. Reload or contact your administrator. Editing is unavailable.");
+      document.body.replaceChildren(message);
+      throw error;
+    }
     // window.app exists once Obsidian's module is extracted.
     if (
       window.app &&
@@ -98,11 +129,14 @@ extractObsidianModule()
     }
 
     if (obsidian) {
+      installVaultAccountMenu(obsidian);
       installPopoutOverrides(obsidian);
       installExternalFilesOverrides(obsidian, window.app);
     }
 
-    installMobileVaultSwitcher(window.app);
+    fsShim._sharedFiles.installAdapter(window.app,obsidian);
+    if(obsidian){installSharedPanel(obsidian,window.app,fsShim._sharedFiles);installSharedIcons(obsidian,fsShim._sharedFiles);}
+    installMobileVaultSwitcher(window.app, obsidian);
     installOpenFileParam(window.app);
 
     // Dynamic import so the bridge's top-level obsidian import resolves after installRequire + extractObsidianModule.

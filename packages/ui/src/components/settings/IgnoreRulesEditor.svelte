@@ -1,4 +1,6 @@
 <script>
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
+
   import { createEventDispatcher, onMount, onDestroy } from "svelte";
   import { X } from "lucide-svelte";
   import RuleSetCard from "./RuleSetCard.svelte";
@@ -94,7 +96,7 @@
   <div class="editor">
     <div class="header">
       <div class="head-left">
-        <span class="title">Ignored paths</span>
+        <span class="title">{translateIgnis("Ignored paths")}</span>
 
         <div class="legend-row">
           <LegendSwatch color="var(--text-faint)" label="excluded" />
@@ -105,7 +107,7 @@
       <button
         class="close"
         type="button"
-        title="Close"
+        title="{translateIgnis("Close")}"
         on:click={() => dispatch("close")}
       >
         <X size={16} />
@@ -114,20 +116,19 @@
 
     <div class="body">
       <div class="section-head">
-        <span class="heading">Rule sets</span>
+        <span class="heading">{translateIgnis("Rule sets")}</span>
 
         <button
           class="add-link"
           type="button"
           on:click={() => openEditor(null, -1)}
         >
-          <span class="plus">+</span> Add rule set
-        </button>
+          <span class="plus">+</span>{translateIgnis(" Add rule set\n        ")}</button>
       </div>
 
       <div class="scroll rules-scroll">
         {#if items.length === 0}
-          <div class="empty">No rule sets yet.</div>
+          <div class="empty">{translateIgnis("No rule sets yet.")}</div>
         {:else}
           {#each items as item, index (index)}
             <RuleSetCard
@@ -140,12 +141,10 @@
       </div>
 
       <div class="section-head suggestions-head">
-        <span class="heading">Suggestions</span>
+        <span class="heading">{translateIgnis("Suggestions")}</span>
       </div>
 
-      <p class="section-desc">
-        Folders that may be problematic for the file watcher.
-      </p>
+      <p class="section-desc">{translateIgnis("\n        Folders that may be problematic for the file watcher.\n      ")}</p>
 
       {#if pending.length > 0}
         <div class="scroll suggestions-scroll">
@@ -154,7 +153,7 @@
           {/each}
         </div>
       {:else}
-        <div class="suggestions-empty">No problem folders found.</div>
+        <div class="suggestions-empty">{translateIgnis("No problem folders found.")}</div>
       {/if}
     </div>
   </div>

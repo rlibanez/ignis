@@ -1,7 +1,7 @@
 import { vaultService } from "@ignis/services";
 import InsecureContextModal from "./components/layout/InsecureContextModal.svelte";
 
-function showVaultManager() {
+export function showVaultManager() {
   if (document.querySelector(".vault-manager-overlay")) return;
 
   new window.IgnisUI.VaultManager({

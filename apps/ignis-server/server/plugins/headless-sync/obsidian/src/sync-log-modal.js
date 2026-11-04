@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 const { Modal, Setting, Notice } = require("obsidian");
 const api = require("./api");
 const { KIND_OPTIONS, kindOf } = require("./sync-log-kinds");
@@ -27,7 +29,7 @@ class SyncLogModal extends Modal {
 
   onOpen() {
     this.modalEl.addClass("ignis-sync-log-modal");
-    this.titleEl.setText("Sync log");
+    this.titleEl.setText(translateIgnis("Sync log"));
 
     const toolbar = new Setting(this.contentEl);
 
@@ -43,25 +45,25 @@ class SyncLogModal extends Modal {
     });
 
     toolbar.addText((text) => {
-      text.setPlaceholder("Filter...").onChange((value) => {
+      text.setPlaceholder(translateIgnis("Filter...")).onChange((value) => {
         this.filter = value;
         this.renderLines();
       });
     });
 
     toolbar.addButton((btn) => {
-      btn.setButtonText("Copy sync log").onClick(async () => {
+      btn.setButtonText(translateIgnis("Copy sync log")).onClick(async () => {
         try {
           await navigator.clipboard.writeText(this.visibleLines().join("\n"));
-          new Notice("Sync log copied");
+          new Notice(translateIgnis("Sync log copied"));
         } catch (e) {
-          new Notice(`Failed to copy sync log: ${e.message}`);
+          new Notice(translateIgnis("Failed to copy sync log: {p0}", {p0: (e.message)}));
         }
       });
     });
 
     this.logBox = this.contentEl.createEl("pre", { cls: "ignis-log-terminal" });
-    this.codeEl = this.logBox.createEl("code", { text: "Loading logs..." });
+    this.codeEl = this.logBox.createEl("code", { text: translateIgnis("Loading logs...") });
 
     this.loadLogs();
   }
@@ -71,7 +73,7 @@ class SyncLogModal extends Modal {
       const logsData = await api.getLogs(this.vaultId, LOG_LIMIT);
       this.entries = logsData.logs;
     } catch (e) {
-      this.codeEl.textContent = `Failed to load logs: ${e.message}`;
+      this.codeEl.textContent = translateIgnis("Failed to load logs: {p0}", {p0: (e.message)});
       return;
     }
 
@@ -122,14 +124,14 @@ class SyncLogModal extends Modal {
 
   renderLines() {
     if (this.entries.length === 0) {
-      this.codeEl.textContent = "No log entries yet.";
+      this.codeEl.textContent = translateIgnis("No log entries yet.");
       return;
     }
 
     const lines = this.visibleLines();
 
     this.codeEl.textContent =
-      lines.length > 0 ? lines.join("\n") : "No matching log entries.";
+      lines.length > 0 ? lines.join("\n") : translateIgnis("No matching log entries.");
   }
 
   onClose() {

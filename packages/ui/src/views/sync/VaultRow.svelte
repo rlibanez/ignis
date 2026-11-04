@@ -1,4 +1,6 @@
 <script>
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
+
   import { createEventDispatcher } from "svelte";
   import Button from "../../components/input/Button.svelte";
 
@@ -36,11 +38,11 @@
   <div class="vault-row-main">
     <div class="vault-row-info">
       <div class="vault-row-name">{vault.name}</div>
-      <div class="vault-row-region">{vault.region || "Unknown region"}</div>
+      <div class="vault-row-region">{vault.region || translateIgnis("Unknown region")}</div>
     </div>
     <div class="vault-row-actions">
       <Button variant="secondary" on:click={toggleExpand}>
-        {expanded ? "Cancel" : "Connect"}
+        {expanded ? translateIgnis("Cancel") : translateIgnis("Connect")}
       </Button>
     </div>
   </div>
@@ -49,39 +51,39 @@
     <div class="vault-row-options">
       <div class="option-row">
         <div class="option-label">
-          <div class="option-name">Vault password</div>
-          <div class="option-desc">Required if the vault uses end-to-end encryption</div>
+          <div class="option-name">{translateIgnis("Vault password")}</div>
+          <div class="option-desc">{translateIgnis("Required if the vault uses end-to-end encryption")}</div>
         </div>
         <input
           type="password"
-          placeholder="Leave empty if not encrypted"
+          placeholder="{translateIgnis("Leave empty if not encrypted")}"
           bind:value={vaultPassword}
         />
       </div>
 
       <div class="option-row">
         <div class="option-label">
-          <div class="option-name">Device name</div>
-          <div class="option-desc">Identifies this server in sync version history</div>
+          <div class="option-name">{translateIgnis("Device name")}</div>
+          <div class="option-desc">{translateIgnis("Identifies this server in sync version history")}</div>
         </div>
         <input type="text" bind:value={deviceName} />
       </div>
 
       <div class="option-row">
         <div class="option-label">
-          <div class="option-name">Sync mode</div>
+          <div class="option-name">{translateIgnis("Sync mode")}</div>
         </div>
         <select bind:value={mode}>
-          <option value="bidirectional">Bidirectional</option>
-          <option value="pull-only">Pull only (remote to server)</option>
-          <option value="mirror-remote">Mirror remote (exact copy)</option>
+          <option value="bidirectional">{translateIgnis("Bidirectional")}</option>
+          <option value="pull-only">{translateIgnis("Pull only (remote to server)")}</option>
+          <option value="mirror-remote">{translateIgnis("Mirror remote (exact copy)")}</option>
         </select>
       </div>
 
       <div class="option-footer">
-        <Button variant="secondary" on:click={toggleExpand}>Cancel</Button>
+        <Button variant="secondary" on:click={toggleExpand}>{translateIgnis("Cancel")}</Button>
         <Button variant="primary" disabled={linking} on:click={onLink}>
-          {linking ? "Linking..." : "Link Vault"}
+          {linking ? translateIgnis("Linking...") : translateIgnis("Link Vault")}
         </Button>
       </div>
     </div>

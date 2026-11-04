@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import { Modal, Setting, Notice } from "obsidian";
 import { appendMissing } from "./ignore-patterns.js";
 
@@ -18,7 +20,7 @@ class ListEditorModal extends Modal {
         .addButton((btn) =>
           btn
             .setButtonText(
-              this.opts.recommended.buttonText || "Add recommended",
+              this.opts.recommended.buttonText || translateIgnis("Add recommended"),
             )
             .onClick(() => this.addRecommended()),
         );
@@ -28,7 +30,7 @@ class ListEditorModal extends Modal {
     this.renderList();
 
     new Setting(this.contentEl)
-      .setName("Add entry")
+      .setName(translateIgnis("Add entry"))
       .addText((text) => {
         this.input = text;
         text.setPlaceholder(this.opts.placeholder || "");
@@ -42,7 +44,7 @@ class ListEditorModal extends Modal {
       })
       .addButton((btn) =>
         btn
-          .setButtonText("Add")
+          .setButtonText(translateIgnis("Add"))
           .setCta()
           .onClick(() => this.addCurrent()),
       );
@@ -69,7 +71,7 @@ class ListEditorModal extends Modal {
     }
 
     if (!this.addValues([entry])) {
-      new Notice("That entry is already in the list.");
+      new Notice(translateIgnis("That entry is already in the list."));
       return;
     }
 
@@ -82,8 +84,8 @@ class ListEditorModal extends Modal {
 
     new Notice(
       added > 0
-        ? `Added ${added} host${added === 1 ? "" : "s"}.`
-        : "All recommended hosts are already in the list.",
+        ? translateIgnis("Added {p0} host{p1}.", {p0: (added), p1: (added === 1 ? "" : "s")})
+        : translateIgnis("All recommended hosts are already in the list."),
     );
   }
 
@@ -108,7 +110,7 @@ class ListEditorModal extends Modal {
       new Setting(this.listEl).setName(entry).addExtraButton((btn) =>
         btn
           .setIcon("trash-2")
-          .setTooltip("Remove")
+          .setTooltip(translateIgnis("Remove"))
           .onClick(() => this.remove(entry)),
       );
     }

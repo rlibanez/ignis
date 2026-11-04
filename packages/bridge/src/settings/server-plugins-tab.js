@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import { Notice } from "obsidian";
 import * as pluginList from "./plugin-list.js";
 import { reconcilePluginTabs } from "./plugin-tabs.js";
@@ -14,12 +16,12 @@ async function togglePlugin(pluginId, enable) {
   const res = await fetch(`/api/plugins/${pluginId}/${action}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ vault: vaultId }),
+    body: JSON.stringify({ vault: window.__ignis?.vault?.uuid || vaultId }),
   });
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || `Failed to ${action} plugin`);
+    throw new Error(data.error || translateIgnis("Failed to {p0} plugin", {p0: (action)}));
   }
 
   return res.json();
@@ -31,8 +33,8 @@ function settingDefinitions(tab) {
       type: "group",
       items: [
         messageDefinition(
-          "Ignis plugins extend server functionality and run alongside your vaults. " +
-            "They are separate from Obsidian's built-in plugins.",
+          translateIgnis("Ignis plugins extend server functionality and run alongside your vaults. ") +
+            translateIgnis("They are separate from Obsidian's built-in plugins."),
         ),
       ],
     },
@@ -47,14 +49,14 @@ function pluginDefinitions(tab) {
     return [
       messageDefinition(
         pluginList.loadFailed()
-          ? "Failed to load plugins."
-          : "Loading plugins...",
+          ? translateIgnis("Failed to load plugins.")
+          : translateIgnis("Loading plugins..."),
       ),
     ];
   }
 
   if (plugins.length === 0) {
-    return [messageDefinition("No server plugins available.")];
+    return [messageDefinition(translateIgnis("No server plugins available."))];
   }
 
   return plugins.map((plugin) => pluginDefinition(tab, plugin));
@@ -81,7 +83,7 @@ function pluginDefinition(tab, plugin) {
             pluginList.setEnabled(plugin.id, getVaultId(), value);
 
             new Notice(
-              `${plugin.name} ${value ? "enabled" : "disabled"} for this vault.`,
+              translateIgnis("{p0} {p1} for this vault.", {p0: (plugin.name), p1: (value ? "enabled" : "disabled")}),
             );
 
             // The server's WS broadcast drives the actual load/unload via virtual-plugin-loader.
@@ -90,7 +92,7 @@ function pluginDefinition(tab, plugin) {
               reconcilePluginTabs(tab.app.setting);
             }, 100);
           } catch (e) {
-            new Notice(`Failed: ${e.message}`);
+            new Notice(translateIgnis("Failed: {p0}", {p0: (e.message)}));
             toggle.setValue(!value);
           }
         });

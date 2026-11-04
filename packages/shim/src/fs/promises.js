@@ -23,7 +23,7 @@ import { createUtimes } from "./utimes.js";
 import { createReadAhead } from "./read-ahead.js";
 import { isTextPath } from "./indexer-prefetch.js";
 
-export function createFsPromises(metadataCache, contentCache, transport) {
+export function createFsPromises(metadataCache, contentCache, transport, filePolicy = null) {
   initWriteCoalescer(transport);
   initWriteDurability(transport, enqueue);
 
@@ -34,7 +34,7 @@ export function createFsPromises(metadataCache, contentCache, transport) {
   });
 
   const commitUtimes = createUtimes(metadataCache, transport);
-  const readAhead = createReadAhead(metadataCache, contentCache);
+  const readAhead = createReadAhead(metadataCache, contentCache, filePolicy);
 
   return {
     async stat(path) {
@@ -71,7 +71,8 @@ export function createFsPromises(metadataCache, contentCache, transport) {
         throw e;
       }
       const entries = metadataCache.readdir(path);
-      return entries.map((e) => e.name);
+      const names = entries.map((e) => e.name);
+      return names;
     },
 
     async readFile(path, encoding) {
@@ -221,6 +222,7 @@ export function createFsPromises(metadataCache, contentCache, transport) {
     },
 
     async appendFile(path, data, encoding) {
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       const resolved = resolvePath(path);
 
       markSentOp(resolved);
@@ -233,6 +235,7 @@ export function createFsPromises(metadataCache, contentCache, transport) {
     },
 
     async unlink(path) {
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       const resolved = resolvePath(path);
 
       markSentOp(resolved);
@@ -243,6 +246,8 @@ export function createFsPromises(metadataCache, contentCache, transport) {
     },
 
     async rename(oldPath, newPath) {
+      filePolicy?.assertOrdinary(oldPath, resolvePath(oldPath));
+      filePolicy?.assertOrdinary(newPath, resolvePath(newPath));
       const resolvedOld = resolvePath(oldPath);
       const resolvedNew = resolvePath(newPath);
 
@@ -264,6 +269,7 @@ export function createFsPromises(metadataCache, contentCache, transport) {
     },
 
     async mkdir(path, options) {
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       const recursive =
         typeof options === "object" ? !!options.recursive : !!options;
 
@@ -276,6 +282,7 @@ export function createFsPromises(metadataCache, contentCache, transport) {
     },
 
     async rmdir(path) {
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       const resolved = resolvePath(path);
 
       markSentOp(resolved);
@@ -284,6 +291,7 @@ export function createFsPromises(metadataCache, contentCache, transport) {
     },
 
     async rm(path, options) {
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       const recursive =
         typeof options === "object" ? !!options.recursive : false;
 
@@ -297,6 +305,8 @@ export function createFsPromises(metadataCache, contentCache, transport) {
     },
 
     async copyFile(src, dest) {
+      filePolicy?.assertOrdinary(src, resolvePath(src));
+      filePolicy?.assertOrdinary(dest, resolvePath(dest));
       const resolvedDest = resolvePath(dest);
 
       markSentOp(resolvedDest);
@@ -306,7 +316,7 @@ export function createFsPromises(metadataCache, contentCache, transport) {
       metadataCache.set(resolvedDest, meta);
     },
 
-    async access(path) {
+    async access(path, mode) {
       const resolved = resolvePath(path);
 
       if (metadataCache.has(resolved)) {
@@ -330,18 +340,22 @@ export function createFsPromises(metadataCache, contentCache, transport) {
     },
 
     async utimes(path, atime, mtime) {
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       await commitUtimes(path, atime, mtime);
     },
 
     async lutimes(path, atime, mtime) {
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       await commitUtimes(path, atime, mtime);
     },
 
-    async chmod() {
+    async chmod(path) {
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       // No permission bits in the vault FS. No-op.
     },
 
     async open(path, flags) {
+      filePolicy?.assertOrdinary(path, resolvePath(path));
       const hasInCache = isInputCachePath(path) && inputCacheGet(path) !== null;
       const resolved = resolvePath(path);
 

@@ -61,3 +61,44 @@ describe("the request-url log line", () => {
     expect(JSON.stringify(log.mock.calls)).not.toContain("SECRET");
   });
 });
+
+describe("vault switcher catalog", () => {
+  it("uses the server list instead of a stale bootstrap list", async () => {
+    const { vaultService } = await import("@ignis/services");
+    window.__vaultList = [{ id: "deleted" }, { id: "existing" }];
+    vi.spyOn(vaultService, "listVaultsSync").mockReturnValue([{ id: "existing" }]);
+    expect(Object.keys(ipcRenderer.sendSync("vault-list"))).toEqual(["existing"]);
+  });
+
+  it("does not offer cached vaults when refreshing fails", async () => {
+    const { vaultService } = await import("@ignis/services");
+    window.__vaultList = [{ id: "deleted" }];
+    vi.spyOn(vaultService, "listVaultsSync").mockImplementation(() => { throw new Error("offline"); });
+    expect(ipcRenderer.sendSync("vault-list")).toEqual({});
+  });
+});
+
+it("does not start Obsidian with a shared default browser identity", () => {
+  expect(() => ipcRenderer.sendSync("vault")).toThrow("Authenticated vault identity required");
+  window.__vaultConfig = { id: "ignis-v1:account:vault", path: "/" };
+  expect(ipcRenderer.sendSync("vault")).toEqual(window.__vaultConfig);
+  window.__ignisAuth = { blocked: true };
+  expect(() => ipcRenderer.sendSync("vault")).toThrow("Authenticated vault identity required");
+});
+
+describe("vault plugin availability policy",()=>{
+ it.each(["admin","user"])("allows all core and community plugins for %s",role=>{
+  window.__ignisAuth={role};
+  const policy=ipcRenderer.sendSync("policy");
+  expect(policy.plugins).toBe(true);expect(policy.themes).toBe(true);expect(policy.snippets).toBe(true);
+  for (const key of ["sync", "publish", "webViewer"]) expect(policy[key]).toBe(true);
+  for (const key of ["devTools", "insider"]) expect(policy[key]).toBe(role === "admin");
+ });
+ it.each(["admin", "user"])("disables the policy for a blocked %s session", role => {
+  window.__ignisAuth = {role, blocked:true};
+  expect(Object.values(ipcRenderer.sendSync("policy")).every(value => value === false)).toBe(true);
+ });
+ it("does not enable plugins without an authenticated role",()=>{
+  expect(ipcRenderer.sendSync("policy").plugins).toBe(false);
+ });
+});

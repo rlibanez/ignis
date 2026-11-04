@@ -1,7 +1,9 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import { Notice } from "obsidian";
 
 function getVaultId() {
-  return window.__currentVaultId || "";
+  return window.__ignis?.vault?.uuid || window.__currentVaultId || "";
 }
 
 function triggerDownload(endpoint, filePath, downloadName) {
@@ -24,7 +26,7 @@ async function copyIgnisUrl(file) {
 
   const copied = await writeToClipboard(url);
 
-  new Notice(copied ? "Ignis URL copied" : `Ignis URL: ${url}`);
+  new Notice(copied ? translateIgnis("Ignis URL copied") : translateIgnis("Ignis URL: {p0}", {p0: (url)}));
 }
 
 // navigator.clipboard needs a secure context; the execCommand path also copies on plain HTTP.
@@ -70,7 +72,7 @@ function showFilePicker(app, targetFolder = null) {
     const folder = targetFolder || app.vault.getRoot();
     const folderPath = folder.path;
 
-    new Notice(`Uploading ${files.length} file(s)...`);
+    new Notice(translateIgnis("Uploading {p0} file(s)...", {p0: (files.length)}));
 
     let successCount = 0;
     let errorCount = 0;
@@ -91,11 +93,11 @@ function showFilePicker(app, targetFolder = null) {
     }
 
     if (successCount > 0) {
-      new Notice(`Uploaded ${successCount} file(s) successfully`);
+      new Notice(translateIgnis("Uploaded {p0} file(s) successfully", {p0: (successCount)}));
     }
 
     if (errorCount > 0) {
-      new Notice(`Failed to upload ${errorCount} file(s)`, 5000);
+      new Notice(translateIgnis("Failed to upload {p0} file(s)", {p0: (errorCount)}), 5000);
     }
 
     input.remove();
@@ -108,7 +110,7 @@ function showFilePicker(app, targetFolder = null) {
 function addFileMenuItems(menu, file) {
   menu.addItem((item) => {
     item
-      .setTitle("Download")
+      .setTitle(translateIgnis("Download"))
       .setIcon("download")
       .onClick(() => triggerDownload("download", file.path, file.name));
   });
@@ -117,7 +119,7 @@ function addFileMenuItems(menu, file) {
   menu.addItem((item) => {
     item
       .setSection("info.copy")
-      .setTitle("as Ignis URL")
+      .setTitle(translateIgnis("as Ignis URL"))
       .setIcon("link")
       .onClick(() => copyIgnisUrl(file));
   });
@@ -126,7 +128,7 @@ function addFileMenuItems(menu, file) {
 function addFolderMenuItems(menu, folder, app) {
   menu.addItem((item) => {
     item
-      .setTitle("Download as ZIP")
+      .setTitle(translateIgnis("Download as ZIP"))
       .setIcon("download")
       .onClick(() =>
         triggerDownload("download-zip", folder.path, `${folder.name}.zip`),
@@ -135,7 +137,7 @@ function addFolderMenuItems(menu, folder, app) {
 
   menu.addItem((item) => {
     item
-      .setTitle("Upload file")
+      .setTitle(translateIgnis("Upload file"))
       .setIcon("upload")
       .onClick(() => showFilePicker(app, folder));
   });

@@ -34,6 +34,10 @@
       50%      { opacity: 1;    transform: scale(1.04); }
     }
   </style>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#202020">
+<link rel="apple-touch-icon" href="/pwa/icon-512.png">
+<script src="/auth/pwa.js" defer></script>
 </head>
 <body class="theme-dark">
 <div id="ignis-status">
@@ -42,11 +46,54 @@
 </div>
 <script>window.__obsidianTerms = __OBSIDIAN_TERMS__;</script>
 <!-- Ignis shims: must run before any Obsidian code. -->
-<script type="text/javascript" src="__SHIM_LOADER_SRC__"></script>
-<script type="text/javascript" src="__IGNIS_UI_SRC__"></script>
+<script src="/auth/i18n.js"></script>
+<script src="/auth/client.js"></script>
+<script src="/auth/events.js"></script>
 <!-- Obsidian scripts injected dynamically to avoid touching their files. -->
 <script>
-(function () {
+(async function () {
+  try {
+    await window.__ignisAuth.ready;
+    async function load(src) {
+      await new Promise(function (resolve, reject) {
+        var script = document.createElement("script");
+        script.src = src;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+    const uiSrc = "__IGNIS_UI_SRC__";
+    const params = new URLSearchParams(location.search);
+    let showManager = params.get("manager") === "1";
+    if (!showManager) {
+      const reference = params.get("vault");
+      const response = await fetch("/api/vault/info" + (reference ? "?vault=" + encodeURIComponent(reference) : ""), { cache: "no-store" });
+      if (response.status === 404) showManager = true;
+      else {
+        if (!response.ok) throw new Error("Vault selection unavailable");
+        const info = await response.json();
+        if (window.__ignisAuth.role === "user" && !info.uuid) throw new Error("Registered vault required");
+        const selected = info.uuid || info.id;
+        if (!selected) throw new Error("Vault identity required");
+        params.set("vault", selected);
+        history.replaceState(null, "", location.pathname + "?" + params.toString());
+      }
+    }
+    if (showManager) {
+      await load(uiSrc);
+      document.getElementById("ignis-status")?.remove();
+      window.IgnisUI.showVaultManager();
+      window.IgnisUI.openRequestedManagement();
+      return;
+    }
+    await load("__SHIM_LOADER_SRC__");
+    if (window.__ignisBootstrapFailed) throw new Error("Private vault initialization unavailable");
+    await load(uiSrc);
+  } catch {
+    window.__ignisAuth?.lock("Unable to start Ignis. Sign in again to continue.");
+    return;
+  }
   var scripts = __OBSIDIAN_SCRIPTS__;
   var label = document.getElementById("ignis-status-label");
   var status = document.getElementById("ignis-status");

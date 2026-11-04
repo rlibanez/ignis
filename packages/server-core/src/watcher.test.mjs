@@ -1,3 +1,4 @@
+import { captureLogs } from "./log-test-helper.mjs";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createRequire } from "module";
 import path from "path";
@@ -232,8 +233,8 @@ describe("watcher start hook", () => {
     await makeVaultDir(3);
     const starts = [];
 
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+    captureLogs("error").mockImplementation(() => {});
+    captureLogs("warn").mockImplementation(() => {});
     watcher.onWatcherStart((vaultId, info) => starts.push(info));
 
     const entry = watcher.startWatching(VAULT_ID, tmpDir);
@@ -379,8 +380,8 @@ describe("watcher scan errors", () => {
   it("logs the first error once and totals the rest on the ready line", async () => {
     await makeVaultDir(5);
 
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = captureLogs("error").mockImplementation(() => {});
+    const warnSpy = captureLogs("warn").mockImplementation(() => {});
 
     const entry = watcher.startWatching(VAULT_ID, tmpDir);
     const ready = whenReady(entry);
@@ -398,28 +399,22 @@ describe("watcher scan errors", () => {
     await ready;
 
     expect(errorSpy).toHaveBeenCalledTimes(1);
-    expect(errorSpy.mock.calls[0].join(" ")).toContain("f0.md");
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain("f0.md");
+    expect(errorSpy.mock.calls[0][1].errorCode).toBe("EPERM");
     expect(entry.errorCount).toBe(3);
     expect(entry.firstError).toMatchObject({ code: "EPERM" });
 
     expect(warnSpy).toHaveBeenCalledTimes(1);
 
-    const line = warnSpy.mock.calls[0].join(" ");
-    const counts = line.match(
-      /(\d+) paths tracked, (\d+) errors, ~(-?\d+) watched/,
-    );
-
-    expect(counts).not.toBeNull();
-    expect(Number(counts[1])).toBeGreaterThanOrEqual(5);
-    expect(Number(counts[2])).toBe(3);
-    expect(Number(counts[3])).toBe(Number(counts[1]) - 3);
+    expect(warnSpy.mock.calls[0][0]).toBe("core.watcher.ready_with_errors");
+    expect(warnSpy.mock.calls[0][1].count).toBe(3);
   });
 
   it("names the inotify limit when a scan error is ENOSPC", async () => {
     await makeVaultDir(2);
 
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    captureLogs("error").mockImplementation(() => {});
+    const warnSpy = captureLogs("warn").mockImplementation(() => {});
 
     const entry = watcher.startWatching(VAULT_ID, tmpDir);
     const ready = whenReady(entry);
@@ -434,9 +429,7 @@ describe("watcher scan errors", () => {
 
     await ready;
 
-    expect(warnSpy.mock.calls[0].join(" ")).toContain(
-      "fs.inotify.max_user_watches",
-    );
+    expect(warnSpy.mock.calls[0][1].errorCode).toBe("ENOSPC");
   });
 
   it("logs every error that arrives after ready", async () => {
@@ -446,7 +439,7 @@ describe("watcher scan errors", () => {
 
     await whenReady(entry);
 
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const errorSpy = captureLogs("error").mockImplementation(() => {});
 
     entry.watcher.emit("error", watchError("late one"));
     entry.watcher.emit("error", watchError("late two"));

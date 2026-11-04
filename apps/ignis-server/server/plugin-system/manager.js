@@ -54,31 +54,28 @@ async function initPlugins(ctx) {
         }
       }
     } catch (e) {
-      console.error(`[plugins] Failed to load ${pluginId}: ${e.message}`);
-      console.error(e.stack);
+      require("@ignis/server-core/src/logger").emit("error", "server.plugin-system.manager.load_failed", { errorCode: e?.code });
     }
   }
 }
 
 async function shutdownPlugins() {
-  console.log("[plugins] Shutting down all plugins...");
+  require("@ignis/server-core/src/logger").emit("info", "server.plugin-system.manager.shutdown_started");
 
   for (const loaded of loadedPlugins.values()) {
     if (loaded.shutdown) {
       try {
-        console.log(`[plugins] Shutting down: ${loaded.name}`);
+        require("@ignis/server-core/src/logger").emit("info", "server.plugin-system.manager.stopping");
         await loaded.shutdown();
       } catch (e) {
-        console.error(
-          `[plugins] Error shutting down ${loaded.name}: ${e.message}`,
-        );
+        require("@ignis/server-core/src/logger").emit("error", "server.plugin-system.manager.shutdown_failed", { errorCode: e?.code });
       }
     }
   }
 
   loadedPlugins.clear();
   pluginRouters.clear();
-  console.log("[plugins] All plugins shut down");
+  require("@ignis/server-core/src/logger").emit("info", "server.plugin-system.manager.shutdown_complete");
 }
 
 function getPluginDataDir(dataRoot, pluginId) {
@@ -108,13 +105,14 @@ async function loadPlugin(pluginId) {
     wss: serverCtx.wss,
     watcher: serverCtx.watcher,
     router,
-    log: (msg) => console.log(`[plugin:${pluginId}] ${msg}`),
+    log: (msg) => require("@ignis/server-core/src/logger").emit("info", "server.plugin-system.manager.plugin_event"),
     dataDir,
     getEnabledVaults: () =>
       configStore.getEnabledVaults(pluginConfig, pluginId),
   };
 
   await plugin.register(pluginCtx);
+  require("../transport/http/protect-router").protectRouter(router);
 
   pluginRouters.set(pluginId, router);
 
@@ -126,7 +124,7 @@ async function loadPlugin(pluginId) {
     shutdown: plugin.shutdown ? plugin.shutdown.bind(plugin) : null,
   });
 
-  console.log(`[plugins] Loaded: ${discovered.name}`);
+  require("@ignis/server-core/src/logger").emit("info", "server.plugin-system.manager.loaded");
 }
 
 async function unloadPlugin(pluginId) {
@@ -137,13 +135,13 @@ async function unloadPlugin(pluginId) {
   }
 
   if (loaded.shutdown) {
-    console.log(`[plugins] Shutting down: ${loaded.name}`);
+    require("@ignis/server-core/src/logger").emit("info", "server.plugin-system.manager.unloading");
     await loaded.shutdown();
   }
 
   pluginRouters.delete(pluginId);
   loadedPlugins.delete(pluginId);
-  console.log(`[plugins] Unloaded: ${loaded.name}`);
+  require("@ignis/server-core/src/logger").emit("info", "server.plugin-system.manager.unloaded");
 }
 
 async function enablePluginForVault(pluginId, vaultId) {

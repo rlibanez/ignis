@@ -16,7 +16,7 @@ function uint8ToBase64(bytes) {
 }
 
 function vaultId() {
-  return window.__currentVaultId || "";
+  return window.__currentVaultUuid || window.__currentVaultId || "";
 }
 
 const KEEPALIVE_MAX_BYTES = 64 * 1024;
@@ -58,7 +58,12 @@ async function request(method, endpoint, params = {}, headers) {
     options.keepalive = true;
   }
 
-  const res = await fetch(url.toString(), options);
+  let res;
+  try {res=await fetch(url.toString(), options);}
+  catch(error){
+    if(endpoint==='/writeFile')throw Object.assign(new Error('Save acknowledgement unavailable'),{code:'CONTENT_WRITE_UNCERTAIN',outcome:'uncertain'});
+    throw error;
+  }
   // A 304 is a valid conditional response.
   if (!res.ok && res.status !== 304) {
     const err = await res
@@ -66,6 +71,12 @@ async function request(method, endpoint, params = {}, headers) {
       .catch(() => ({ error: res.statusText, code: "UNKNOWN" }));
     const e = new Error(err.error || res.statusText);
     e.code = err.code || "UNKNOWN";
+    if(endpoint==='/writeFile'){
+      if(res.status===408 || (res.status>=500 && err.outcome!=='failed'))e.code='CONTENT_WRITE_UNCERTAIN';
+      else if([401,403,404].includes(res.status))e.code='CONTENT_UNAVAILABLE';
+      else if(res.status===409 && e.code==='UNKNOWN')e.code='CONTENT_CONFLICT';
+      e.outcome=err.outcome;
+    }
     throw e;
   }
 
@@ -74,7 +85,16 @@ async function request(method, endpoint, params = {}, headers) {
 
 async function requestJson(method, endpoint, params = {}) {
   const res = await request(method, endpoint, params);
-  return res.json();
+  try{
+    const result=await res.json();
+    if(endpoint==='/writeFile' && (result?.ok!==true || !Number.isFinite(result.mtime) || !Number.isSafeInteger(result.size) || result.size<0))
+      throw new Error('Invalid save acknowledgement');
+    return result;
+  }
+  catch(error){
+    if(endpoint==='/writeFile')throw Object.assign(new Error('Save acknowledgement unavailable'),{code:'CONTENT_WRITE_UNCERTAIN',outcome:'uncertain'});
+    throw error;
+  }
 }
 
 function requestSync(method, endpoint, params = {}) {
@@ -151,11 +171,15 @@ export const transport = {
   async writeFile(path, content, encoding) {
     const isText = typeof content === "string";
     return requestJson("POST", "/writeFile", {
-      path: normPath(path),
-      content: isText ? content : uint8ToBase64(content),
-      encoding: encoding || (isText ? "utf-8" : "binary"),
-      base64: !isText,
+      path: normPath(path), content: isText ? content : uint8ToBase64(content),
+      encoding: encoding || (isText ? "utf-8" : "binary"), base64: !isText,
     });
+  },
+
+  async writeEditorFile(path, content, expectedHash) {
+    if (typeof expectedHash !== "string" || !/^[a-f0-9]{64}$/.test(expectedHash))
+      throw Object.assign(new Error("Missing editor version"), {code:"CONTENT_VERSION_REQUIRED"});
+    return requestJson("POST", "/writeFile", {path:normPath(path),content,encoding:"utf8",expectedHash});
   },
 
   async appendFile(path, content) {
@@ -170,10 +194,8 @@ export const transport = {
   },
 
   async rename(oldPath, newPath) {
-    return requestJson("POST", "/rename", {
-      oldPath: normPath(oldPath),
-      newPath: normPath(newPath),
-    });
+    const result=await requestJson("POST", "/rename", {oldPath:normPath(oldPath),newPath:normPath(newPath)});
+    return result;
   },
 
   async copyFile(src, dest) {
@@ -184,7 +206,8 @@ export const transport = {
   },
 
   async unlink(path) {
-    return requestJson("DELETE", "/unlink", { path: normPath(path) });
+    const result=await requestJson("DELETE", "/unlink", { path: normPath(path) });
+    return result;
   },
 
   async rmdir(path) {
@@ -233,10 +256,8 @@ export const transport = {
   writeFileSync(path, content, encoding) {
     const isText = typeof content === "string";
     requestSync("POST", "/writeFile", {
-      path: normPath(path),
-      content: isText ? content : uint8ToBase64(content),
-      encoding: encoding || (isText ? "utf-8" : "binary"),
-      base64: !isText,
+      path:normPath(path),content:isText?content:uint8ToBase64(content),
+      encoding:encoding || (isText?"utf-8":"binary"),base64:!isText,
     });
   },
 };

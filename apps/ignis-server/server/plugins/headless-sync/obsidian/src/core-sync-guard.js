@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 const { Notice } = require("obsidian");
 const fs = require("fs");
 
@@ -64,10 +66,10 @@ function startCoreSyncGuard(plugin, api) {
 
     if (enabled && !wasEnabled) {
       showConflictWarning(
-        "Headless Sync Stopped",
-        "Obsidian Sync has been enabled. Headless Sync has been automatically " +
-          "stopped to avoid conflicts between the two sync methods.\n\n" +
-          "To use Headless Sync again, disable Obsidian Sync in Core Plugins.",
+        translateIgnis("Headless Sync Stopped"),
+        translateIgnis("Obsidian Sync has been enabled. Headless Sync has been automatically ") +
+          translateIgnis("stopped to avoid conflicts between the two sync methods.\n\n") +
+          translateIgnis("To use Headless Sync again, disable Obsidian Sync in Core Plugins."),
       );
     }
 

@@ -1,3 +1,5 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import { ListEditorModal } from "./list-editor-modal.js";
 import * as serverSettings from "./server-settings.js";
 
@@ -42,7 +44,7 @@ function listField(tab, { name, desc, key, modal }) {
       let value = serverSettings.get()[key];
 
       const setLabel = (btn) =>
-        btn.setButtonText(value.length ? `Edit (${value.length})` : "Edit");
+        btn.setButtonText(value.length ? translateIgnis("Edit ({p0})", {p0: (value.length)}) : translateIgnis("Edit"));
 
       setting.addButton((btn) => {
         setLabel(btn);

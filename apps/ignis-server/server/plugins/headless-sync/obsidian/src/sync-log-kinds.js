@@ -1,11 +1,13 @@
+
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 const KIND_OPTIONS = [
   { kind: "all", name: "All" },
-  { kind: "upload", name: "Uploads" },
-  { kind: "download", name: "Downloads" },
-  { kind: "deletion", name: "Deletions" },
-  { kind: "conflict", name: "Conflicts" },
-  { kind: "error", name: "Errors" },
-  { kind: "status", name: "Status" },
+  { kind: "upload", name: translateIgnis("Uploads") },
+  { kind: "download", name: translateIgnis("Downloads") },
+  { kind: "deletion", name: translateIgnis("Deletions") },
+  { kind: "conflict", name: translateIgnis("Conflicts") },
+  { kind: "error", name: translateIgnis("Errors") },
+  { kind: "status", name: translateIgnis("Status") },
 ];
 
 const KIND_PREFIXES = [

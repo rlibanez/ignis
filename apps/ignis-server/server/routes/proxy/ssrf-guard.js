@@ -61,10 +61,7 @@ function buildAllowList(entries) {
       if (net.isIP(entry)) {
         exact.add(entry);
       } else {
-        console.warn(
-          "[proxy] ignoring invalid PROXY_ALLOW_PRIVATE_HOSTS entry:",
-          entry,
-        );
+        require("@ignis/server-core/src/logger").emit("warn", "server.routes.proxy.ssrf-guard.invalid_allowlist");
       }
 
       continue;
@@ -82,10 +79,7 @@ function buildAllowList(entries) {
       const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
       cidrV4.push({ network: (ipv4ToInt(base) & mask) >>> 0, mask });
     } else {
-      console.warn(
-        "[proxy] ignoring unsupported PROXY_ALLOW_PRIVATE_HOSTS entry:",
-        entry,
-      );
+      require("@ignis/server-core/src/logger").emit("warn", "server.routes.proxy.ssrf-guard.unsupported_allowlist");
     }
   }
 
@@ -134,7 +128,7 @@ const PRIVATE_HOST_REMEDY =
 function blockError(status, message, block) {
   const e = httpError(status, message);
   e.block = block;
-  console.warn(`[proxy] ${message}`);
+  require("@ignis/server-core/src/logger").emit("warn", "server.routes.proxy.ssrf-guard.request_blocked");
   return e;
 }
 

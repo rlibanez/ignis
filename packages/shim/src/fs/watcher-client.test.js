@@ -7,7 +7,7 @@ import { trackWrite, _reset as resetDurability } from "./write-durability.js";
 
 const RESYNC_DEBOUNCE_MS = 1000;
 
-function makeDeps(metadataOverride) {
+function makeDeps(metadataOverride, filePolicy = null) {
   const store = new Map();
 
   const metadataCache = metadataOverride || {
@@ -51,6 +51,7 @@ function makeDeps(metadataOverride) {
     fsWatch,
     wsClient,
     transport,
+    filePolicy,
   );
 
   return {

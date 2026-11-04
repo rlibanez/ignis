@@ -1,0 +1,80 @@
+/* Hidden reauthentication fields must stay hidden despite the flex layout. */
+.ignis-password-modal [hidden] { display: none !important; }
+
+.ignis-password-modal .ignis-password-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 20px 0;
+}
+
+.ignis-password-modal .ignis-password-field input {
+  width: 100%;
+  min-width: 0;
+  padding-inline-end: 48px;
+}
+
+.ignis-password-modal .ignis-password-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ignis-password-modal .ignis-password-heading .ignis-password-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  margin: 0;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 14px;
+  line-height: 1;
+  box-shadow: none;
+}
+
+.ignis-password-modal .ignis-password-control {
+  position: relative;
+  display: block;
+}
+
+.ignis-password-modal .ignis-password-control .ignis-password-toggle {
+  position: absolute;
+  inset-inline-end: 4px;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.ignis-password-modal .ignis-password-toggle:hover {
+  color: var(--text-normal);
+}
+
+/* Override the phone mod-form padding without changing its safe-area spacing. */
+.is-mobile .modal.mod-form.ignis-password-modal .modal-button-container {
+  width: 100%;
+  margin-inline: 0;
+  padding-inline: 0;
+  box-sizing: border-box;
+}
+
+.is-mobile .ignis-password-modal .modal-button-container > button {
+  width: 100%;
+  max-width: 100%;
+  margin-inline: 0;
+  box-sizing: border-box;
+}

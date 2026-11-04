@@ -1,8 +1,11 @@
 <script>
+const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
+
   import { createEventDispatcher } from "svelte";
   import { X } from "lucide-svelte";
 
   export let title = "";
+  export let overlayClass = "";
   export let width = "600px";
   export let closeOnOverlayClick = true;
 
@@ -36,7 +39,7 @@
 
 <!-- svelte-ignore a11y-no-static-element-interactions -->
 <div
-  class="modal-overlay"
+  class="modal-overlay {overlayClass}"
   bind:this={overlayEl}
   on:click={onOverlayClick}
   on:keydown={onKeydown}
@@ -47,7 +50,7 @@
         <slot name="icon" />
         <span class="header-title">{title}</span>
       </div>
-      <button class="close-btn" on:click={close} title="Close">
+      <button class="close-btn" on:click={close} title="{translateIgnis("Close")}">
         <X size="1.125rem" />
       </button>
     </div>

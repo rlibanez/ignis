@@ -34,7 +34,7 @@ function stripRequestFramingHeaders(headers) {
   return out;
 }
 
-function requestOnce(targetUrl, method, headers, body) {
+function requestOnce(targetUrl, method, headers, body, timeoutMs, lookup = safeLookup) {
   return new Promise((resolve, reject) => {
     const mod = targetUrl.protocol === "https:" ? https : http;
     const outHeaders = stripRequestFramingHeaders(headers);
@@ -46,13 +46,22 @@ function requestOnce(targetUrl, method, headers, body) {
       outHeaders["Content-Length"] = Buffer.byteLength(body);
     }
 
+    let deadline;
     const req = mod.request(
       targetUrl,
-      { method, headers: outHeaders, lookup: safeLookup },
-      resolve,
+      { method, headers: outHeaders, lookup },
+      response => {
+        response.once("end", () => clearTimeout(deadline));
+        response.once("close", () => clearTimeout(deadline));
+        resolve(response);
+      },
     );
-
-    req.on("error", reject);
+    req.on("error", error => { clearTimeout(deadline); reject(error); });
+    // Bound the complete hop, including DNS, headers and a slow response body.
+    if (timeoutMs) {
+      deadline = setTimeout(() => req.destroy(new Error("Upstream timeout")), timeoutMs);
+      deadline.unref();
+    }
 
     if (hasBody) {
       req.write(body);
@@ -63,13 +72,14 @@ function requestOnce(targetUrl, method, headers, body) {
 }
 
 // Follow redirects manually so every hop runs through safeLookup and is re-checked.
-async function proxyRequest({ url, method, headers, body }) {
+async function proxyRequest({ url, method, headers, body, allowedTarget, timeoutMs, lookup }) {
   let current = new URL(url);
   let currentMethod = method;
   let currentHeaders = headers;
   let currentBody = body;
 
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    if (allowedTarget && !allowedTarget(current)) throw httpError(403, "Download redirect unavailable");
     if (current.protocol !== "http:" && current.protocol !== "https:") {
       throw httpError(400, "Only http and https URLs are allowed");
     }
@@ -84,6 +94,8 @@ async function proxyRequest({ url, method, headers, body }) {
       currentMethod,
       currentHeaders,
       currentBody,
+      timeoutMs,
+      lookup,
     );
 
     if (!REDIRECT_CODES.has(res.statusCode) || !res.headers.location) {
@@ -182,16 +194,16 @@ function readBody(res, maxBytes) {
   });
 }
 
-async function relayOnce({ url, method, headers, body }) {
-  const upstream = await proxyRequest({ url, method, headers, body });
+async function relayOnce({ url, method, headers, body, allowedTarget, timeoutMs, lookup, maxBytes = MAX_RESPONSE_BYTES }) {
+  const upstream = await proxyRequest({ url, method, headers, body, allowedTarget, timeoutMs, lookup });
   const declaredLength = Number(upstream.headers["content-length"]);
 
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_RESPONSE_BYTES) {
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
     upstream.destroy();
     return { tooLarge: true };
   }
 
-  const respBody = await readBody(upstream, MAX_RESPONSE_BYTES);
+  const respBody = await readBody(upstream, maxBytes);
 
   // Strip hop-by-hop and encoding headers; the body is already decompressed.
   const skipHeaders = new Set([
