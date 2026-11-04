@@ -1,5 +1,5 @@
-// Bound both directions of portable vault transfers; no unbounded archive or
-// browser Blob allocation. Import adds its draft lifetime separately.
+// Conservative export defaults for the browser Blob download. The import
+// policy overrides byte bounds for its disk-backed streaming pipeline.
 const limits=Object.freeze({files:10000,fileBytes:32*1024*1024,totalBytes:256*1024*1024,zipBytes:64*1024*1024,concurrent:4});
 function portablePath(value){
  if(typeof value!=='string'||!value||value.length>1024||value.split('/').length>32)return null;

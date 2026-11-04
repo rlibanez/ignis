@@ -1,6 +1,19 @@
 // Shared English/Spanish UI catalog. Never apply to notes, names or protocol fields.
 (() => {
   const catalog = {
+  "Not enough free space to import the vault.": "No hay suficiente espacio libre para importar la bóveda.",
+  "Import vaults": "Importar bóvedas",
+  "These items are outside the detected vaults and will not be imported.": "Estos elementos están fuera de las bóvedas detectadas y no se importarán.",
+  "Files outside detected vaults are not imported.": "Los archivos fuera de las bóvedas detectadas no se importan.",
+  "Vaults imported successfully.": "Bóvedas importadas correctamente.",
+  "Select the vaults to import. Names and preferences are independent for each vault.": "Selecciona las bóvedas que quieres importar. Cada una tiene su propio nombre y preferencias.",
+  "Nested vaults remain inside their containing vault and are not imported separately.": "Las bóvedas anidadas permanecen dentro de su bóveda contenedora y no se importan por separado.",
+  "Outside detected vaults": "Fuera de las bóvedas detectadas",
+  "Select at least one vault.": "Selecciona al menos una bóveda.",
+  "Choose a different name for each vault.": "Elige un nombre diferente para cada bóveda.",
+  "Import failed. Retry the pending vaults.": "La importación ha fallado. Reintenta las bóvedas pendientes.",
+  "Imported": "Importada",
+  "Pending": "Pendiente",
   "Check the vault name and selected files.": "Comprueba el nombre de la bóveda y los archivos seleccionados.",
   "No importable files were found.": "No se han encontrado archivos que se puedan importar.",
   "This browser did not supply folder paths. Use a ZIP file.": "El navegador no ha facilitado las rutas de la carpeta. Utiliza un archivo ZIP.",
@@ -24,7 +37,7 @@
   "Select a folder or ZIP file first.": "Selecciona primero una carpeta o un archivo ZIP.",
   "The new vault belongs to your account. It will only become available after the import completes.": "La nueva bóveda pertenecerá a tu cuenta. Solo estará disponible cuando termine la importación.",
   "Only app, hotkey and graph preferences are imported. Plugins, themes, layouts, hidden state and sharing permissions are excluded. Community plugins start disabled.": "Solo se importan los ajustes de aplicación, atajos y grafo. Se excluyen los complementos, temas, espacios de trabajo, archivos ocultos y permisos de compartición. Los complementos comunitarios quedan desactivados.",
-  "Maximum: 10000 files and folders, 32 MiB per file, 256 MiB total; ZIP upload up to 64 MiB.": "Máximo: 10000 archivos y carpetas, 32 MiB por archivo, 256 MiB en total y ZIP de hasta 64 MiB.",
+  "Maximum: 10000 files and folders, 512 MiB per file, 4 GiB total; ZIP upload up to 1 GiB.": "Máximo: 10000 archivos y carpetas, 512 MiB por archivo, 4 GiB en total y ZIP de hasta 1 GiB.",
   "Create a new vault from a local folder or ZIP file.": "Crea una bóveda nueva desde una carpeta local o un archivo ZIP.",
   "Vault imported successfully.": "Bóveda importada correctamente.",
   "Finishing import…": "Finalizando importación…",

@@ -1,7 +1,7 @@
 // Inventory of data APIs. This classifies surfaces; it does NOT grant vault access.
 // Owners may use the reviewed content surfaces; per-vault authorization is separate.
 const groups = [
-  {mount:"",source:"transport/http/vault-import.js",surface:"vault-import",routes:["start","zip","file","commit","cancel","select"].map(name=>["POST",`/api/vault/import/${name}`,"manage"])},
+  {mount:"",source:"transport/http/vault-import.js",surface:"vault-import",routes:["start","zip","file","commit","cancel","select","scan","scan-zip","review","prepare","cancel-source"].map(name=>["POST",`/api/vault/import/${name}`,"manage"])},
   { mount: "", source: "transport/http/sharing/router.js", surface: "resource-sharing", routes: [["GET","/api/shares","read"],["POST","/api/shares","manage"],["GET","/api/shares/content","read"]] },
   { mount: "/api/fs", source: "routes/fs.js", surface: "vault-content", routes: [
     ...["stat", "readFile", "access", "tree", "download", "download-zip"].map(name => ["GET", `/${name}`, "read"]),

@@ -60,6 +60,7 @@ jobs:
       - run: docker build -f apps/ignis-server/Dockerfile -t ignis:architecture-smoke .
       - run: npm run test:image
       - run: npm run test:content-faults
+      - run: npm run test:large-imports
   real-runtime:
     if: github.event_name == 'workflow_dispatch' && inputs.real_runtime
     runs-on: [self-hosted, ignis-acceptance]

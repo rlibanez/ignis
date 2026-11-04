@@ -23,7 +23,8 @@
     "test:runtime": "node scripts/check-obsidian-runtime.mjs && node scripts/check-obsidian-runtime.mjs --mobile",
     "test:budget": "node scripts/compare-load.mjs",
     "test:management-parity": "node scripts/check-obsidian-runtime.mjs --management-parity && node scripts/check-obsidian-runtime.mjs --management-parity --wide && node scripts/check-obsidian-runtime.mjs --management-parity --mobile && node scripts/check-obsidian-runtime.mjs --management-parity --mobile --compact && node scripts/check-obsidian-runtime.mjs --management-parity --mobile --landscape",
-    "test:vault-transfers": "node scripts/check-obsidian-runtime.mjs --vault-transfers && node scripts/check-obsidian-runtime.mjs --vault-transfers --mobile"
+    "test:vault-transfers": "node scripts/check-obsidian-runtime.mjs --vault-transfers && node scripts/check-obsidian-runtime.mjs --vault-transfers --mobile",
+    "test:large-imports": "node scripts/check-large-imports.mjs"
   },
   "dependencies": {
     "acorn": "^8.18.0",

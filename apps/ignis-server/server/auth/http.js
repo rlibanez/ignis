@@ -430,7 +430,8 @@ function createAuthBoundary({
         return safe(res, 429, "Too many network requests");
       if (["/api/vault/import/select", "/api/vault/export", "/api/vault/members", "/api/vault/transfer-ownership", "/api/vault/rename", "/api/vault/remove"].includes(pathname) && !limits.vaultMembers(session.user.id))
         return safe(res, 429, "Too many access requests; try again in a minute.");
-      if (["/api/vault/create","/api/vault/import/start","/api/vault/import/zip"].includes(pathname) && !limits.vaultCreation(session.user.id))
+      if (["/api/vault/import/review","/api/vault/import/prepare"].includes(pathname)&&!limits.sharedResources(session.user.id))return safe(res,429,"Too many access requests; try again in a minute.");
+      if (["/api/vault/create","/api/vault/import/start","/api/vault/import/zip","/api/vault/import/scan","/api/vault/import/scan-zip"].includes(pathname) && !limits.vaultCreation(session.user.id))
         return safe(res,429,"Too many vault creation requests; try again in a minute.");
       // Authorized resource requests extend inactivity; session/status polling and WS do not.
       req.auth = getSession(req, true);

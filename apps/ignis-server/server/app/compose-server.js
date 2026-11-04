@@ -53,6 +53,7 @@ async function composeServer() {
     auth.install(app);
     installRoutes({app,auth,authConfig,config,settings,writeCoalescer});
     server = http.createServer(app);
+    require('../transport/http/upload-timeouts').installUploadTimeouts(server);
     wss = setupWebSocket(server,{getVaultPath:config.getVaultPath,originAllowlist:settings.get('wsOrigins'),security:auth.wsSecurity});
     disposers.push(() => new Promise((resolve,reject) => wss.close(error => error ? reject(error) : resolve())));
     vaultLifecycle.setWss(wss);

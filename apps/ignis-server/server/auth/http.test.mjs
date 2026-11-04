@@ -1735,17 +1735,17 @@ it("acknowledges cancellation during an import file write and removes the draft 
  const start=await request('/api/vault/import/start',{jar:user,method:'POST',headers,body:{name:'Cancelled',configuration:false,files:[{path:'Note.md',size:5}]}});
  const {id}=await start.json();
  let resume,entered;const waiting=new Promise(resolve=>{resume=resolve;}),started=new Promise(resolve=>{entered=resolve;});
- const write=fs.promises.writeFile;
- const spy=vi.spyOn(fs.promises,'writeFile').mockImplementation(async(...args)=>{await write(...args);if(args[0]===path.join(root,'data','vault-imports',id,'0')){entered();await waiting;}});
+ const open=fs.promises.open;
+ const spy=vi.spyOn(fs.promises,'open').mockImplementation(async(file,...args)=>{const fd=await open(file,...args);if(file===path.join(root,'data','vault-imports',id,'0')){const write=fd.write.bind(fd);fd.write=async(...data)=>{const result=await write(...data);entered();await waiting;return result;};}return fd;});
  let draining,drained=false;
- const uploading=request('/api/vault/import/file?id='+id+'&index=0',{jar:user,method:'POST',headers:{...headers,'content-type':'application/octet-stream'},body:'hello'});
+ const uploading=request('/api/vault/import/file?id='+id+'&index=0',{jar:user,method:'POST',headers:{...headers,'content-type':'application/octet-stream'},body:'hello'}).catch(error=>({status:null,error}));
  try{
   await started;
   draining=require('../vault/lifecycle').drainRouterWork().then(()=>{drained=true;});
   await new Promise(resolve=>setImmediate(resolve));expect(drained).toBe(false);
   const cancel=await request('/api/vault/import/cancel?id='+id,{jar:user,method:'POST',headers,body:{}});expect(cancel.status).toBe(200);
  }finally{resume();spy.mockRestore();}
- expect((await uploading).status).toBe(404);await draining;expect(drained).toBe(true);expect(fs.readdirSync(path.join(root,'data','vault-imports'))).toEqual([]);
+ expect([404,null]).toContain((await uploading).status);await draining;expect(drained).toBe(true);expect(fs.readdirSync(path.join(root,'data','vault-imports'))).toEqual([]);
 });
 
 it('returns the real shared login cooldown when reauthentication is rate limited',async()=>{
@@ -1754,4 +1754,22 @@ it('returns the real shared login cooldown when reauthentication is rate limited
  for(let i=0;i<9;i++)expect((await request('/api/auth/reauth',{jar,method:'POST',headers,body:{password:''}})).status).toBe(400);
  const limited=await request('/api/auth/reauth',{jar,method:'POST',headers,body:{password:PASSWORD}});
  expect(limited.status).toBe(429);expect(limited.headers.get('retry-after')).toBe('900');
+});
+
+it('protects multi-vault scans/reviews/preparation with CSRF, live context and source ownership',async()=>{
+ const jar=await login('normal'),other=await login(),context=await(await request('/api/auth/session',{jar})).json();
+ const headers={'x-ignis-csrf':await csrf(jar),'x-ignis-context':context.sessionId},body={attempt:'20000000-0000-4000-8000-000000000001',files:[{path:'A/.obsidian',kind:'directory',size:0},{path:'A/Note.md',size:5},{path:'B/.obsidian',kind:'directory',size:0}]};
+ expect((await request('/api/vault/import/scan',{method:'POST',body})).status).toBe(401);
+ expect((await request('/api/vault/import/scan',{jar,method:'POST',body})).status).toBe(403);
+ expect((await request('/api/vault/import/scan',{jar,method:'POST',headers:{...headers,'x-ignis-context':'stale'},body})).status).toBe(409);
+ const scan=await request('/api/vault/import/scan',{jar,method:'POST',headers,body});expect(scan.status).toBe(200);const source=await scan.json();expect(source.vaults.map(v=>v.root)).toEqual(['A','B']);
+ const selected={id:source.id,root:'A',name:'Imported',configuration:false,selected:[]};
+ for(const endpoint of ['review','prepare','cancel-source'])expect((await request('/api/vault/import/'+endpoint,{jar:other,method:'POST',headers:{'x-ignis-csrf':await csrf(other)},body:endpoint==='cancel-source'?{id:source.id}:selected})).status).toBe(404);
+ expect((await request('/api/vault/import/review',{jar,method:'POST',headers,body:{...selected,root:'../A'}})).status).toBe(400);
+ expect((await request('/api/vault/import/review',{jar,method:'POST',headers,body:selected})).status).toBe(200);
+ const prepared=await request('/api/vault/import/prepare',{jar,method:'POST',headers,body:selected});expect(prepared.status).toBe(200);const stage=await prepared.json();expect(stage.sourceIndexes).toEqual([0,1]);
+ expect((await request('/api/vault/import/file?id='+stage.id+'&index=1',{jar,method:'POST',headers:{...headers,'content-type':'application/octet-stream'},body:'hello'})).status).toBe(200);
+ expect((await request('/api/vault/import/commit?id='+stage.id,{jar,method:'POST',headers,body:{}})).status).toBe(200);
+ expect((await request('/api/vault/import/cancel-source',{jar,method:'POST',headers,body:{id:source.id}})).status).toBe(200);
+ expect(fs.readFileSync(path.join(root,'Imported','Note.md'),'utf8')).toBe('hello');expect(fs.existsSync(path.join(root,'B'))).toBe(false);
 });

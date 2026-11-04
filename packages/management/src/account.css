@@ -118,3 +118,13 @@
 .ignis-import-exclusion-list input:disabled { opacity:0.4; filter:grayscale(1); }
 
 .is-mobile .ignis-import-exclusions [data-import-select-all] { width:100%; }
+
+.ignis-import-detected{display:flex;flex-direction:column;gap:var(--size-4-3,12px)}
+.ignis-import-vault{border:1px solid var(--background-modifier-border);border-radius:var(--radius-m);padding:var(--size-4-3,12px);min-width:0}
+.ignis-import-enable{display:flex;align-items:center;gap:var(--size-4-2,8px);overflow-wrap:anywhere}
+.ignis-import-summary{white-space:pre-line;overflow-wrap:anywhere;margin-top:0}
+
+.ignis-import-detected[hidden]{display:none!important}
+.is-mobile .ignis-import-vault,.native-management-mobile .ignis-import-vault{padding:12px 0;border-width:0 0 1px;border-radius:0}
+
+.ignis-import-result{min-height:3em;margin-bottom:0}

@@ -1,5 +1,6 @@
 const t=text=>globalThis.IgnisI18n?.t(text)??text;
 const reasons={
+ 'outside-vaults':'Files outside detected vaults are not imported.',
  'appearance-state':'Appearance settings are not imported because the original themes and snippets are excluded.',
  'community-plugins-state':'Community plugins start disabled.',
  'core-plugins-state':'The default Ignis core plugins are used.',
@@ -15,7 +16,7 @@ export function createExclusionsModal(Modal){
   constructor(app,entries,onDismiss,onApply){super(app);this.entries=[...entries].sort((a,b)=>a.path.localeCompare(b.path));this.onDismiss=onDismiss;this.onApply=onApply;this.selected=new Set(entries.filter(e=>e.selected).map(e=>e.path));}
   onOpen(){
    this.setTitle(t('Excluded items'));this.modalEl.addClass('mod-lg','mod-form','ignis-password-modal','ignis-import-exclusions');
-   this.contentEl.createEl('p',{text:t('Select the excluded items to import. Protected items cannot be selected. Your original files are unchanged.')});
+   this.contentEl.createEl('p',{text:t(this.onApply?'Select the excluded items to import. Protected items cannot be selected. Your original files are unchanged.':'These items are outside the detected vaults and will not be imported.')});
    this.selectAll=this.contentEl.createEl('button',{attr:{type:'button','data-import-select-all':''}});
    this.selectAll.addEventListener('click',()=>{if(this.busy)return;const allowed=this.entries.filter(entry=>entry.selectable),all=allowed.every(entry=>this.selected.has(entry.path));for(const entry of allowed){if(all)this.selected.delete(entry.path);else this.selected.add(entry.path);}this.render();});
    this.list=this.contentEl.createEl('ul',{cls:'ignis-import-exclusion-list'});
@@ -24,6 +25,7 @@ export function createExclusionsModal(Modal){
    this.more.addEventListener('click',()=>{this.count+=100;this.render();});
    const buttons=this.contentEl.createDiv({cls:'modal-button-container'}),close=buttons.createEl('button',{text:t('Close')});close.type='button';close.addEventListener('click',()=>this.close());
    this.apply=buttons.createEl('button',{text:t('Apply'),cls:'mod-cta'});this.apply.type='button';this.apply.addEventListener('click',async()=>{if(this.busy)return;this.busy=true;this.selectAll.disabled=true;this.apply.disabled=true;close.disabled=true;try{await this.onApply([...this.selected]);this.busy=false;this.close();}catch(error){this.error.textContent=error.message;}finally{this.busy=false;this.apply.disabled=false;close.disabled=false;this.updateSelectAll();}});
+   this.apply.hidden=this.selectAll.hidden=!this.onApply;
    this.error=this.contentEl.createEl('p',{attr:{role:'alert'}});this.count=100;this.render();close.focus();
   }
   render(){

@@ -4,6 +4,7 @@ import fs from 'node:fs';import os from 'node:os';import path from 'node:path';
 import net from 'node:net';import {spawn} from 'node:child_process';import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';import {browser} from './lib/chrome.mjs';
 import {waitForServerStarted} from './lib/server-readiness.mjs';
+import {vaultBatchUi} from './lib/vault-batch-ui.mjs';
 import {vaultImportUi} from './lib/vault-import-ui.mjs';
 import {managementParity} from './lib/management-parity.mjs';
 const require=createRequire(import.meta.url),repo=fileURLToPath(new URL('../',import.meta.url));
@@ -64,7 +65,7 @@ try{
  await grant(null);await bob.wait(`require('fs')._sharedFiles.describe('Shared.md')===null`,'live revocation');
  const denied=await bob.run(`(async()=>{const session=await(await fetch('/api/auth/session')).json(),csrf=await(await fetch('/api/auth/csrf')).json();return (await fetch('/api/shares',{method:'POST',headers:{'Content-Type':'application/json','X-Ignis-Context':session.sessionId,'X-Ignis-Csrf':csrf.csrfToken},body:JSON.stringify({operation:'read',input:{id:${JSON.stringify(resource.id)},path:''}})})).status;})()`);assert.equal(denied,404);
 
- if(process.argv.includes('--vault-transfers'))await vaultImportUi({native:alice,shell:await login('empty')});
+ if(process.argv.includes('--vault-transfers')){const shell=await login('empty');await vaultBatchUi({native:alice,shell});await vaultImportUi({native:alice,shell});}
  // Exercise the real bridge host, not the vaultless fallback or synthetic CSS.
  await alice.run(`window.__ignisOpenManagement('users')`);await alice.wait(`!!document.querySelector('#administration') && !document.querySelector('#administration').hidden`,'native users host');
  await alice.run(`document.querySelector('#administration').closest('.modal-container').querySelector('.modal-header-button:not(.mod-start),.modal-close-button').click()`);await alice.wait(`!document.querySelector('#administration')`,'native management close');

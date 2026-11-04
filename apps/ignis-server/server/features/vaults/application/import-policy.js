@@ -1,4 +1,4 @@
-const limits=Object.freeze({...require('./transfer-policy').limits,ttl:10*60*1000});
+const limits=Object.freeze({...require('./transfer-policy').limits,fileBytes:512*1024*1024,totalBytes:4*1024*1024*1024,zipBytes:1024*1024*1024,ttl:4*60*60*1000,idle:30*60*1000});
 const fail=code=>{throw Object.assign(new Error('Vault import rejected'),{code});};
 function importPath(value){const result=require('./transfer-policy').portablePath(value);if(result===null)fail('IMPORT_PATH');return result;}
 function included(name,configuration,kind='file'){
@@ -24,7 +24,7 @@ function selectable(name,kind,role){
  return /^\.obsidian\/(app|hotkeys|graph|workspace|workspace-mobile|workspaces)\.json$/.test(name)||
   (role==='admin'&&/^\.obsidian\/(appearance|core-plugins)\.json$/.test(name));
 }
-function manifest(input,configuration,selected=[],role='user'){
+function manifest(input,configuration,selected=[],role='user',sourceOnly=false){
  if(!Array.isArray(selected)||selected.length>8||selected.some(p=>typeof p!=='string')||new Set(selected).size!==selected.length)fail('IMPORT_REQUEST');
  if(!Array.isArray(input)||input.length>limits.files)fail('IMPORT_LIMIT');
  const nodes=new Map();let total=0;
@@ -45,7 +45,7 @@ function manifest(input,configuration,selected=[],role='user'){
   return {path:name,kind,size:item.size,include:included(name,configuration,kind)||selected.includes(name)};
  });
  if(selected.some(name=>!entries.some(e=>e.path===name&&selectable(e.path,e.kind,role))))fail('IMPORT_REQUEST');
- if(entries.length&&!entries.some(e=>e.include||selectable(e.path,e.kind,role)))fail('IMPORT_EMPTY');
+ if(!sourceOnly&&entries.some(e=>e.kind==='file')&&!entries.some(e=>e.include||selectable(e.path,e.kind,role)))fail('IMPORT_EMPTY');
  const excludedEntries=entries.filter(e=>!included(e.path,configuration,e.kind)).map(e=>({path:e.path,kind:e.kind,reason:exclusionReason(e.path,configuration),selectable:selectable(e.path,e.kind,role),selected:e.include}));
  return {entries,total,excluded:excludedEntries.filter(e=>!e.selected).length,excludedEntries};
 }
