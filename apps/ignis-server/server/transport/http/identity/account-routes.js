@@ -31,7 +31,11 @@ function createRoutes({identity,config,csrf,limits,cookies,resetCookies,safe,ori
       if (req.headers["x-ignis-context"] !== session.id) return safe(res, 409, "Session changed");
       if (!req.body || Array.isArray(req.body) || Object.keys(req.body).join(",") !== "password" || typeof req.body.password !== "string")
         return safe(res, 400, "Expected password only");
-      if (!limits.login(req.ip, session.user.login)) return safe(res, 429, "Too many requests");
+      const attempt = limits.checkLogin(req.ip, session.user.login);
+      if (!attempt.allowed) {
+        res.set("Retry-After", String(attempt.retryAfterSeconds));
+        return safe(res, 429, "Too many requests");
+      }
       req.ignisLogUsername = session.user.login;
       try {
         const result=await identity.unlinkOwn(token,session.id,req.body.password);
@@ -76,7 +80,11 @@ function createRoutes({identity,config,csrf,limits,cookies,resetCookies,safe,ori
       if (req.headers["x-ignis-context"] !== session.id) return safe(res, 409, "Session changed");
       if (!req.body || Object.keys(req.body).some(key => key !== "password") || typeof req.body.password !== "string")
         return safe(res, 400, "Expected password only");
-      if (!limits.login(req.ip, session.user.login)) return safe(res, 429, "Too many requests");
+      const attempt = limits.checkLogin(req.ip, session.user.login);
+      if (!attempt.allowed) {
+        res.set("Retry-After", String(attempt.retryAfterSeconds));
+        return safe(res, 429, "Too many requests");
+      }
       const previous = cookies.read(req.headers.cookie);
       const keepSignedIn=identity.remembered(previous);
       const result = await identity.reauthenticate(previous, session.id, req.body.password);
@@ -93,8 +101,11 @@ function createRoutes({identity,config,csrf,limits,cookies,resetCookies,safe,ori
       req.ignisLogUsername = session.user.login;
       if (!originAllowed(req, true) || !csrf.valid(req, session))
         return safe(res, 403, "Request rejected");
-      if (!limits.login(req.ip, session.user.login))
+      const attempt = limits.checkLogin(req.ip, session.user.login);
+      if (!attempt.allowed) {
+        res.set("Retry-After", String(attempt.retryAfterSeconds));
         return safe(res, 429, "Too many requests");
+      }
       const body = req.body;
       if (!body || Array.isArray(body) ||
           Object.keys(body).some((key) => !["currentPassword", "newPassword"].includes(key)) ||

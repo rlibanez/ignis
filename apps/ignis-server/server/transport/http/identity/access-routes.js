@@ -55,8 +55,9 @@ function createRoutes({identity,config,csrf,limits,cookies,rememberCookies,reset
       /* Account-independent failure. */
     }
     req.ignisLogAttemptedUsername = login;
-    if (!limits.login(req.ip, login)) {
-      res.set("Retry-After", "60");
+    const attempt = limits.checkLogin(req.ip, login);
+    if (!attempt.allowed) {
+      res.set("Retry-After", String(attempt.retryAfterSeconds));
       return safe(res, 429, "Too many requests");
     }
     if (!initialized()) return safe(res, 403, "Initial administrator required");

@@ -6,24 +6,38 @@ function key(value) {
 
 function createRequestLimits({ now = Date.now, capacity = 10000 } = {}) {
   const buckets = new Map();
-  function allow(rules) {
+  function check(rules) {
     const at = now();
     for (const [id, bucket] of buckets)
       if (bucket.until <= at) buckets.delete(id);
-    let missing = 0;
+    let missing = 0, retryAt = at;
     for (const [id, limit] of rules) {
       const bucket = buckets.get(id);
-      if (bucket && bucket.count >= limit) return false;
+      if (bucket && bucket.count >= limit) retryAt = Math.max(retryAt, bucket.until);
       if (!bucket) missing++;
     }
-    if (buckets.size + missing > capacity) return false;
+    if (buckets.size + missing > capacity) {
+      // Expiring one of this request's own counters also requires recreating it;
+      // only unrelated counters free capacity for the missing rule counters.
+      const own = new Set(rules.map(([id]) => id));
+      const expiries = [...buckets].filter(([id]) => !own.has(id)).map(([,bucket]) => bucket.until).sort((a,b) => a-b);
+      const needed = buckets.size + missing - capacity;
+      retryAt = Math.max(retryAt, expiries[needed-1] ?? at + 60000);
+    }
+    if (retryAt > at) return {allowed:false,retryAfterSeconds:Math.max(1,Math.ceil((retryAt-at)/1000))};
     for (const [id, , duration] of rules) {
       const bucket = buckets.get(id) || { count: 0, until: at + duration };
       bucket.count++;
       buckets.set(id, bucket);
     }
-    return true;
+    return {allowed:true,retryAfterSeconds:0};
   }
+  const allow = rules => check(rules).allowed;
+  const loginRules = (ip, login) => [
+    ["login-global", 60, 60000],
+    ["login-ip:" + key(ip), 10, 15 * 60000],
+    ["login-account:" + key(login), 10, 15 * 60000],
+  ];
   return {
     staticRequest: (ip) =>
       allow([
@@ -44,12 +58,8 @@ function createRequestLimits({ now = Date.now, capacity = 10000 } = {}) {
       ["reset-global", 30, 60000],
       ["reset-ip:" + key(ip), 10, 15 * 60000],
     ]),
-    login: (ip, login) =>
-      allow([
-        ["login-global", 60, 60000],
-        ["login-ip:" + key(ip), 10, 15 * 60000],
-        ["login-account:" + key(login), 10, 15 * 60000],
-      ]),
+    login: (ip, login) => allow(loginRules(ip, login)),
+    checkLogin: (ip, login) => check(loginRules(ip, login)),
     oidcStart: (ip) =>
       allow([
         ["oidc-start-global", 60, 60000],

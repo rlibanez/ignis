@@ -385,6 +385,13 @@ describe("HTTP boundary", () => {
       headers: { "x-ignis-csrf": token },
     });
     expect(limited.status).toBe(429);
+    expect(limited.headers.get("retry-after")).toBe("900");
+    clock += 125001;
+    const stillLimited=await request("/api/auth/login",{jar,method:"POST",body:{login:"admin",password:PASSWORD},headers:{"x-ignis-csrf":await csrf(jar)}});
+    expect(stillLimited.status).toBe(429);expect(stillLimited.headers.get("retry-after")).toBe("775");
+    clock += 774999;
+    const recovered=await request("/api/auth/login",{jar,method:"POST",body:{login:"admin",password:PASSWORD},headers:{"x-ignis-csrf":await csrf(jar)}});
+    expect(recovered.status).toBe(200);
   });
   it("expires HTTP sessions and rejects disabled users", async () => {
     const jar = await login("normal");
@@ -1739,4 +1746,12 @@ it("acknowledges cancellation during an import file write and removes the draft 
   const cancel=await request('/api/vault/import/cancel?id='+id,{jar:user,method:'POST',headers,body:{}});expect(cancel.status).toBe(200);
  }finally{resume();spy.mockRestore();}
  expect((await uploading).status).toBe(404);await draining;expect(drained).toBe(true);expect(fs.readdirSync(path.join(root,'data','vault-imports'))).toEqual([]);
+});
+
+it('returns the real shared login cooldown when reauthentication is rate limited',async()=>{
+ const jar=await login('normal'),context=await (await request('/api/auth/session',{jar})).json();
+ const headers={'x-ignis-csrf':await csrf(jar),'x-ignis-context':context.sessionId};
+ for(let i=0;i<9;i++)expect((await request('/api/auth/reauth',{jar,method:'POST',headers,body:{password:''}})).status).toBe(400);
+ const limited=await request('/api/auth/reauth',{jar,method:'POST',headers,body:{password:PASSWORD}});
+ expect(limited.status).toBe(429);expect(limited.headers.get('retry-after')).toBe('900');
 });

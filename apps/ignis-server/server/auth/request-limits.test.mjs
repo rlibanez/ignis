@@ -69,3 +69,39 @@ it('bounds vault creation per account and globally and recovers after a minute',
  const global=createRequestLimits();for(let i=0;i<60;i++)expect(global.vaultCreation(String(i))).toBe(true);
  expect(global.vaultCreation('next')).toBe(false);
 });
+
+it('reports the remaining login wait, rounds up seconds and never extends it on rejection',()=>{
+ let at=0;const limits=createRequestLimits({now:()=>at});
+ for(let i=0;i<10;i++)expect(limits.checkLogin('one-ip','one-account').allowed).toBe(true);
+ expect(limits.checkLogin('one-ip','one-account')).toEqual({allowed:false,retryAfterSeconds:900});
+ at=123456;expect(limits.checkLogin('one-ip','one-account').retryAfterSeconds).toBe(777);
+ at=899999;expect(limits.checkLogin('one-ip','one-account').retryAfterSeconds).toBe(1);
+ at=900000;expect(limits.checkLogin('one-ip','one-account')).toEqual({allowed:true,retryAfterSeconds:0});
+});
+it('uses the longest blocking window when global and account budgets are both exhausted',()=>{
+ let at=0;const limits=createRequestLimits({now:()=>at});
+ for(let i=0;i<60;i++)expect(limits.login('ip-'+i,i<10?'target':'account-'+i)).toBe(true);
+ at=1500;expect(limits.checkLogin('fresh-ip','target').retryAfterSeconds).toBe(899);
+ expect(limits.checkLogin('fresh-ip','fresh-account').retryAfterSeconds).toBe(59);
+ at=60000;expect(limits.checkLogin('fresh-ip','fresh-account').allowed).toBe(true);
+});
+it('uses the later expiry when IP and account windows started at different times',()=>{
+ let at=0;const limits=createRequestLimits({now:()=>at});limits.login('target-ip','initial');
+ at=120000;
+ for(let i=0;i<9;i++)expect(limits.login('target-ip','other-'+i)).toBe(true);
+ for(let i=0;i<10;i++)expect(limits.login('different-'+i,'target-account')).toBe(true);
+ expect(limits.checkLogin('target-ip','target-account').retryAfterSeconds).toBe(900);
+ at=900000;expect(limits.checkLogin('target-ip','target-account').retryAfterSeconds).toBe(120);
+});
+it('reports when enough unrelated counters expire to recover capacity',()=>{
+ let at=0;const limits=createRequestLimits({now:()=>at,capacity:3});limits.login('one','first');
+ expect(limits.checkLogin('two','second').retryAfterSeconds).toBe(900);
+ at=60000;expect(limits.checkLogin('two','second').retryAfterSeconds).toBe(840);
+ at=900000;expect(limits.checkLogin('two','second').allowed).toBe(true);
+});
+it('does not let rejected attempts from one IP exhaust the global login budget for another user',()=>{
+ const limits=createRequestLimits();
+ for(let i=0;i<10;i++)expect(limits.login('attacker-ip','guess-'+i)).toBe(true);
+ for(let i=10;i<100;i++)expect(limits.login('attacker-ip','guess-'+i)).toBe(false);
+ expect(limits.checkLogin('legitimate-ip','legitimate-account').allowed).toBe(true);
+});
