@@ -572,61 +572,39 @@ router.post("/utimes", async (req, res) => {
   }
 });
 
-// POST /api/fs/batch-read { paths, vault } - bulk read text file contents
-// Used by the indexer pre-fetcher to avoid N round trips during startup.
+// Bounded prefetch; omitted files retain the client's individual-read fallback.
+const batchReader=require('../transport/http/batch-reader').createBatchReader({pending:getPending});
 router.post("/batch-read", async (req, res) => {
-  const vaultRoot = getVaultRoot(req, res);
-
-  if (!vaultRoot) {
-    return;
+  const vaultRoot=getVaultRoot(req,res);
+  if(!vaultRoot)return;
+  const paths=req.body?.paths;
+  if(!Array.isArray(paths) || paths.length>1000 || paths.some(value=>typeof value!=='string' || value.length>1024))
+    return res.status(400).json({error:"Invalid batch paths"});
+  const entries=new Map();
+  for(const key of new Set(paths)) {
+    const filename=resolveVaultPath(vaultRoot,key);
+    if(!filename || !permit(req,vaultRoot,filename,"content.read"))continue;
+    if(!entries.has(filename))entries.set(filename,{filename,keys:[]});
+    entries.get(filename).keys.push(key);
   }
-
-  const paths = Array.isArray(req.body?.paths) ? req.body.paths : [];
-
-  // The indexer prefetcher (the only caller) batches at 50, so a much larger list is not legitimate.
-  if (paths.length > 1000) {
-    return res.status(400).json({ error: "too many paths in batch-read" });
-  }
-
-  if (paths.length === 0) {
-    return res.json({ files: {} });
-  }
-
-  const files = {};
-
-  await Promise.all(
-    paths.map(async (relPath) => {
-      const resolved = resolveVaultPath(vaultRoot, relPath);
-
-      if (!resolved || !permit(req, vaultRoot, resolved, "content.read")) {
-        return;
-      }
-
-      try {
-        const buffered = getPending(resolved);
-
-        if (buffered) {
-          if (typeof buffered.data === "string") {
-            files[relPath] = buffered.data;
-          } else if (
-            buffered.encoding === "utf8" ||
-            buffered.encoding === "utf-8"
-          ) {
-            files[relPath] = buffered.data.toString("utf-8");
-          }
-          return;
-        }
-
-        const data = await fs.promises.readFile(resolved, "utf-8");
-        files[relPath] = data;
-      } catch {
-        // Skip unreadable files silently. The client falls back to a
-        // normal readFile when a path isn't in the response.
-      }
-    }),
-  );
-
-  res.json({ files });
+  const abort=new AbortController();
+  const cancel=()=>{if(!res.writableEnded)abort.abort();};
+  res.once('close',cancel);
+  try {
+    await batchReader.read({actor:req.auth?.user.id || req.socket.remoteAddress,
+      entries:[...entries.values()],signal:abort.signal,
+      allowed:entry=>!entry || !req.authorizeVaultFile ||
+        req.authorizeVaultFile(req._vaultId,"content.read",toRelative(vaultRoot,entry.filename)),
+      onResult:files=>new Promise(resolve=>{
+        const done=()=>{res.off('finish',done);res.off('close',done);resolve();};
+        res.once('finish',done);res.once('close',done);
+        res.json({files});
+      })});
+  } catch(error) {
+    if(abort.signal.aborted)return;
+    if(error.status===429)res.set('Retry-After','1');
+    res.status(error.status===429?429:error.status===403?403:503).json({error:"Batch read unavailable"});
+  } finally {res.off('close',cancel);}
 });
 
 // GET /api/fs/tree?vault=... returns the full recursive file tree with metadata

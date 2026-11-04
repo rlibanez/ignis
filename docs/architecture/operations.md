@@ -34,6 +34,15 @@ de recepción Android conservan su límite `IGNIS_SHARE_MAX_MIB`; ese límite no
 amplía el de las escrituras JSON. Autenticación, compartición e importación
 conservan sus parsers y límites específicos.
 
+La precarga `batch-read` deduplica rutas resueltas y admite hasta 1000 entradas.
+Lee como máximo dos archivos simultáneos por petición, con 4 MiB por archivo y
+16 MiB por lote, tanto de entrada como de respuesta serializada (sin la envoltura
+JSON). Los archivos omitidos se consultan por la vía individual existente. Admite
+seis peticiones simultáneas por cuenta y dieciséis globales; el exceso recibe 429
+con Retry-After. Al desconectar se cancela el trabajo pendiente; las lecturas ya
+en curso terminan antes de liberar la reserva. Los permisos se comprueban de nuevo
+antes/durante la lectura y antes de emitir la respuesta.
+
 ## Backup coherente y restauración
 
 La base identity.sqlite incluye identidades, sesiones, membresías, grants,

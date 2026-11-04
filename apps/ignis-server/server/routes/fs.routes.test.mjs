@@ -646,3 +646,35 @@ describe("utimes route", () => {
     expect(tree["d"]).toMatchObject({ type: "directory" });
   });
 });
+
+describe('bounded batch prefetch',()=>{
+  it('opens 1000 duplicate and normalized paths only once',async()=>{
+    fs.writeFileSync(abs('note.md'),'content');
+    const open=vi.spyOn(fs.promises,'open');
+    try {
+      const response=await postJson('batch-read',{paths:[...Array(998).fill('note.md'),'./note.md','/note.md']});
+      expect(response.status).toBe(200);
+      expect((await response.json()).files).toEqual({'note.md':'content','./note.md':'content','/note.md':'content'});
+      expect(open.mock.calls.filter(([filename])=>filename===abs('note.md'))).toHaveLength(1);
+    }finally{open.mockRestore();}
+  });
+  it('continues prefetching a normal 50-file indexer batch',async()=>{
+    const paths=Array.from({length:50},(_,i)=>`note-${i}.md`);
+    for(const filename of paths)fs.writeFileSync(abs(filename),'# note');
+    const response=await postJson('batch-read',{paths});
+    expect(response.status).toBe(200);
+    expect(Object.keys((await response.json()).files)).toHaveLength(50);
+  });
+  it('omits oversized files while keeping them available for individual reads',async()=>{
+    fs.writeFileSync(abs('large.md'),Buffer.alloc(4*1024*1024+1,65));
+    const response=await postJson('batch-read',{paths:['large.md']});
+    expect(await response.json()).toEqual({files:{}});
+    const individual=await fetch(u(`readFile?${q('large.md')}`));
+    expect(individual.status).toBe(200);
+    expect((await individual.arrayBuffer()).byteLength).toBe(4*1024*1024+1);
+  });
+  it('rejects malformed and excessive input before reading files',async()=>{
+    for(const paths of [[null],[{}],['x'.repeat(1025)],Array(1001).fill('note.md')])
+      expect((await postJson('batch-read',{paths})).status).toBe(400);
+  });
+});
