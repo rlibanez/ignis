@@ -1,8 +1,13 @@
 // Coalesces boot-window writes per path so they flush in a few round-trips instead of one per save.
 
 import { markSentOp } from "./echo-guard.js";
-import { hasWriteInProgress, trackWrite } from "./write-durability.js";
-import { normalize } from "../util/path.js";
+import {
+  dropRetries,
+  hasWriteInProgress,
+  retryNow,
+  trackWrite,
+} from "./write-durability.js";
+import { isPathInSubtree, normalize } from "../util/path.js";
 
 const QUIET_MS = 100; // flush a path this long after its last write
 const MAX_WAIT_MS = 2000; // but never hold a buffered write longer than this
@@ -16,7 +21,7 @@ const queuedWrites = new Map();
 let nextQueuedId = 0;
 let listenersBound = false;
 const pending = new Map(); // path -> { data, encoding, onResult, quiet, max }
-const tails = new Map(); // path -> promise serializing that path's in-flight write
+const tails = new Map(); // path -> promise of the last operation queued on that path
 
 // Set by init.js on the bootstrap path, cleared at layout-ready.
 export function isBooting() {
@@ -63,29 +68,94 @@ function performWrite(path, data, encoding, onResult, opts) {
       return result;
     },
     (err) => {
-      // put the failed write in the durability queue, which retries it in the background.
       track.failure(data, encoding, onResult, err);
       throw err;
     },
   );
 }
 
-// Run a write only after any in-flight write to the same path completes.
-export function enqueue(path, run) {
-  const prev = tails.get(path) || Promise.resolve();
-  const guarded = () => {
-    if (suspended) throw new Error("Session locked");
-    return run();
-  };
-  const result = prev.then(guarded, guarded);
-  const tail = result.catch(() => {});
-
+function setTail(path, tail) {
   tails.set(path, tail);
   tail.then(() => {
     if (tails.get(path) === tail) {
       tails.delete(path);
     }
   });
+}
+
+function ancestorTails(path) {
+  const found = [];
+
+  for (let i = path.indexOf("/"); i >= 0; i = path.indexOf("/", i + 1)) {
+    const tail = tails.get(path.slice(0, i));
+
+    if (tail) {
+      found.push(tail);
+    }
+  }
+
+  return found;
+}
+
+function whenAll(promises) {
+  if (promises.length <= 1) {
+    return promises[0] || Promise.resolve();
+  }
+
+  return Promise.all(promises);
+}
+
+// Queue a write on the specified path, queued after existing operations on the path or ancestor paths.
+export function enqueue(path, run) {
+  const prev = whenAll(
+    [tails.get(path), ...ancestorTails(path)].filter(Boolean),
+  );
+  const guarded = () => { if (suspended) throw new Error("Session locked"); return run(); };
+  const result = prev.then(guarded, guarded);
+  const tail = result.catch(() => {});
+
+  setTail(path, tail);
+
+  return result;
+}
+
+export function enqueueMutation(
+  paths,
+  run,
+  { supersededPaths = [], dependentPaths = [] } = {},
+) {
+  if (suspended) return Promise.reject(new Error("Session locked"));
+  const touches = (key) => paths.some((path) => isPathInSubtree(key, path));
+
+  for (const key of Array.from(pending.keys())) {
+    if (touches(key)) {
+      flushPending(key);
+    }
+  }
+
+  const writes = paths.flatMap(ancestorTails);
+
+  for (const [key, tail] of tails) {
+    if (touches(key)) {
+      writes.push(tail);
+    }
+  }
+
+  const result = Promise.all(writes)
+    .then(() => Promise.all(dependentPaths.map(retryNow)))
+    .then(() => { if (suspended) throw new Error("Session locked"); return run(); })
+    .then((value) => {
+      for (const path of supersededPaths) {
+        dropRetries(path);
+      }
+
+      return value;
+    });
+  const tail = result.catch(() => {});
+
+  for (const path of paths) {
+    setTail(path, tail);
+  }
 
   return result;
 }
@@ -149,10 +219,21 @@ export function hasPending(path) {
   return pending.has(path);
 }
 
+export function whenIdle(path) {
+  const norm = normalize(path);
+
+  return whenAll([tails.get(norm), ...ancestorTails(norm)].filter(Boolean));
+}
+
 export function hasUnconfirmedWrite(path) {
   const norm = normalize(path);
 
-  return pending.has(norm) || tails.has(norm) || hasWriteInProgress(norm);
+  return (
+    pending.has(norm) ||
+    tails.has(norm) ||
+    ancestorTails(norm).length > 0 ||
+    hasWriteInProgress(norm)
+  );
 }
 
 function flushAll() {

@@ -6,6 +6,7 @@ import {writeOutcome} from "../../../contracts/src/content.js";
 const terminalFailure=error=>["uncertain","conflict","denied"].includes(writeOutcome(error)) || error?.code?.startsWith("CONTENT_");
 
 import { markSentOp } from "./echo-guard.js";
+import { isPathInSubtree } from "../util/path.js";
 
 // Only a write lagging past this shows as pending.
 const PENDING_AFTER_MS = 1000;
@@ -26,6 +27,8 @@ let serialize = (path, run) => run();
 // path -> { gen, status, silent, overThreshold, data, encoding, onResult, followUp, attempts, startTimer, retryTimer }
 // status "inflight" | "retrying" | "failed"; a failed non-silent entry is kept out of the aggregate but retained for retryAll().
 const entries = new Map();
+
+const sendUnqueued = (path, run) => Promise.resolve().then(run);
 
 // Bumped on every fresh write to a path, so a stale timer or settled promise from a superseded write bows out.
 let genCounter = 0;
@@ -180,8 +183,8 @@ function scheduleRetry(path, gen) {
   entry.retryTimer = setTimeout(() => attempt(path, gen), delay);
 }
 
-function attempt(path, gen) {
-  if (suspended) return;
+function attempt(path, gen, schedule = serialize) {
+  if (suspended) return Promise.reject(new Error("Session locked"));
   const entry = entries.get(path);
 
   if (!entry || entry.gen !== gen || !transport) {
@@ -189,7 +192,7 @@ function attempt(path, gen) {
   }
 
   // Serialize behind any in-flight write; if a newer write superseded us while queued, skip the send.
-  serialize(path, () => {
+  const writeAttempt = schedule(path, () => {
     if (suspended) return Promise.reject(new Error("Session locked"));
     const current = entries.get(path);
 
@@ -215,7 +218,9 @@ function attempt(path, gen) {
           .catch(() => {})
           .then(() => result);
       });
-  }).then(
+  });
+
+  writeAttempt.then(
     () => {
       const current = entries.get(path);
 
@@ -238,23 +243,28 @@ function attempt(path, gen) {
       }
       current.attempts += 1;
 
-      if (current.attempts <= MAX_ATTEMPTS) {
+      if (current.attempts <= MAX_ATTEMPTS && !error?.permanent) {
         scheduleRetry(path, gen);
         return;
       }
 
-      if (current.silent) {
-        // Silent writes give up without user surfacing; the optimistic cache staleness clears on reload.
-        console.error("[shim:fs] write durability gave up (silent):", path);
-        discard(path);
-        recompute();
-      } else {
-        current.status = "failed";
-        recompute();
-        emitFailure(path);
-      }
+      giveUp(path, current);
     },
   );
+
+  return writeAttempt;
+}
+
+function giveUp(path, entry) {
+  if (entry.silent) {
+    console.error("[shim:fs] write durability gave up (silent):", path);
+    discard(path);
+    recompute();
+  } else {
+    entry.status = "failed";
+    recompute();
+    emitFailure(path);
+  }
 }
 
 // Track one write; the caller reports the outcome on the returned handle.
@@ -268,6 +278,7 @@ export function trackWrite(path, opts) {
     prev.status === "failed" &&
     !prev.silent
   );
+  const inheritsSurfacing = !!(prev && !prev.silent);
 
   discard(path);
 
@@ -277,7 +288,7 @@ export function trackWrite(path, opts) {
     data: opts?.data,
     encoding: opts?.encoding,
     status: "inflight",
-    silent: silentByDefault || !!(opts && opts.silent),
+    silent: !inheritsSurfacing && (silentByDefault || !!(opts && opts.silent)),
     overThreshold: false,
     startTimer: null,
     retryTimer: null,
@@ -330,6 +341,11 @@ export function trackWrite(path, opts) {
         current.terminal=true;current.silent=false;current.status="failed";
         recompute();emitFailure(path);return;
       }
+      if (error?.permanent) {
+        giveUp(path, current);
+        return;
+      }
+
       scheduleRetry(path, gen);
       recompute();
     },
@@ -348,10 +364,68 @@ export function attachFollowUp(path, fn) {
   return true;
 }
 
+export function dropRetries(path) {
+  let retiredFailure = false;
+
+  for (const [key, entry] of entries) {
+    const awaitingRetry = entry.status !== "inflight";
+
+    if (!awaitingRetry || !isPathInSubtree(key, path)) {
+      continue;
+    }
+
+    retiredFailure ||= entry.status === "failed" && !entry.silent;
+    discard(key);
+  }
+
+  recompute();
+
+  if (retiredFailure) {
+    emitFailureChange();
+  }
+}
+
+export function retryNow(path) {
+  const retries = [];
+  let retiredFailure = false;
+
+  for (const [key, entry] of entries) {
+    const awaitingRetry = entry.status !== "inflight";
+
+    if (!awaitingRetry || !isPathInSubtree(key, path)) {
+      continue;
+    }
+
+    if (entry.terminal) return Promise.reject(Object.assign(new Error("Unconfirmed content requires recovery"), {code: "CONTENT_WRITE_UNCERTAIN", outcome: "uncertain"}));
+    clearTimeout(entry.retryTimer);
+
+    if (entry.status === "failed") {
+      retiredFailure ||= !entry.silent;
+      entry.status = "retrying";
+      entry.attempts = 1;
+    }
+
+    // Retries occur in the active queue slot, so use sendUnqueued.
+    retries.push(attempt(key, entry.gen, sendUnqueued));
+  }
+
+  recompute();
+
+  if (retiredFailure) {
+    emitFailureChange();
+  }
+
+  return Promise.all(retries);
+}
+
 export function hasWriteInProgress(path) {
   const entry = entries.get(path);
 
   return !!entry && entry.status !== "failed";
+}
+
+export function hasFailedWrite(path) {
+  return entries.get(path)?.status === "failed";
 }
 
 export function getState() {

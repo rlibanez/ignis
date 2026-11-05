@@ -10,8 +10,10 @@ import { installRequire } from "./require.js";
 import { installGlobals } from "./globals/index.js";
 import { installCssOverrides } from "./css-overrides.js";
 import { installEmulateMobile } from "./emulate-mobile.js";
-import { installMobileVaultSwitcher } from "./mobile-vault-switcher.js";
-import { installOpenFileParam } from "./open-file-param.js";
+import { installMobileVaultSwitcher } from "./integrations/mobile-vault-switcher.js";
+import { installOpenFileParam } from "./integrations/open-file-param.js";
+import { installBackNavigation } from "./integrations/back-navigation/back-navigation.js";
+import { installThemeColor } from "./integrations/theme-color.js";
 import { installPopoutOverrides } from "./guards/popout-guard.js";
 import { installExternalFilesOverrides } from "./guards/external-files-guard.js";
 import { initialize, getBootstrapVirtualPlugins } from "./init.js";
@@ -79,6 +81,7 @@ installGlobals(); // process, Buffer, window overrides (before require so Buffer
 installRequire(); // shim registry, window.require
 installCssOverrides(); // browser-specific CSS fixes
 installEmulateMobile();
+installBackNavigation(); // Load before app.js so our popstate runs before Obsidian's
 
 // Fallback that ends the boot window if layout-ready never fires.
 setTimeout(() => {
@@ -138,6 +141,7 @@ extractObsidianModule()
     if(obsidian){installSharedPanel(obsidian,window.app,fsShim._sharedFiles);installSharedIcons(obsidian,fsShim._sharedFiles);}
     installMobileVaultSwitcher(window.app, obsidian);
     installOpenFileParam(window.app);
+    installThemeColor(window.app);
 
     // Dynamic import so the bridge's top-level obsidian import resolves after installRequire + extractObsidianModule.
     const mod = await import("@ignis/bridge");

@@ -19,12 +19,14 @@ const syncHandlers = {
   "set-language": (language) => { window.IgnisI18n?.fromObsidian({ getLanguage: () => language }); return null; },
 
   // UI availability only: server membership, write and network checks remain authoritative.
-  policy: () => Object.fromEntries(
+  policy: () => { const flat = Object.fromEntries(
     ["plugins", "themes", "snippets", "sync", "publish", "webViewer", "devTools", "insider"]
       .map(key => [key, !window.__ignisAuth?.blocked &&
         (window.__ignisAuth?.role === "admin" ||
         (window.__ignisAuth?.role === "user" && ["plugins", "themes", "snippets", "sync", "publish", "webViewer"].includes(key)))]),
-  ),
+  ); return {...flat, policy: {...flat, corePlugins: {}, communityPlugins: [], privatePlugins: []}, status: "not managed", source: "", diagnostics: []}; },
+
+  "plugin-script-root": () => null,
 
   terms: () => {
     if (!window.__obsidianTerms) {

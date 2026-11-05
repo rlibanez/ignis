@@ -69,7 +69,8 @@ it("rejects missing or forbidden file/bootstrap selection before accessing disk 
         const res = { status: value => { status = value; return res; }, json: value => { payload = value; } };
         await handler(req, res);
         expect(status).toBe(404);
-        expect(payload).toEqual({ error: "Vault unavailable" });
+        expect(payload.error).toBe("Vault unavailable");
+        expect(payload).not.toHaveProperty("id");
       }
     }
   } finally { Object.assign(actualConfig, saved); }

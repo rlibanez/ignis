@@ -21,20 +21,66 @@ function vaultId() {
 
 const KEEPALIVE_MAX_BYTES = 64 * 1024;
 
+const RESPONSE_TIMEOUT_MS = 30 * 1000;
+const UPLOAD_MS_PER_64KB = 1000;
+
+const JSON_TYPE = "application/json";
+
 // keepalive lets a request finish after the page starts unloading.
 // Its body is capped at 64KB across a shared pool, so opt in only under that limit.
-function withinKeepaliveCap(body) {
-  if (!body) {
-    return true;
-  }
-
-  return new TextEncoder().encode(body).length <= KEEPALIVE_MAX_BYTES;
+function withinKeepaliveCap(bodyBytes) {
+  return bodyBytes <= KEEPALIVE_MAX_BYTES;
 }
 
-async function request(method, endpoint, params = {}, headers) {
+function responseTimeout(bodyBytes) {
+  const uploadChunks = Math.ceil(bodyBytes / (64 * 1024));
+
+  return RESPONSE_TIMEOUT_MS + uploadChunks * UPLOAD_MS_PER_64KB;
+}
+
+function readType(encoding) {
+  return encoding === "utf8" || encoding === "utf-8"
+    ? "text/plain"
+    : "application/octet-stream";
+}
+
+function requestError(message, code) {
+  const e = new Error(message);
+
+  e.code = code;
+
+  return e;
+}
+
+function isPermanentStatus(status) {
+  return status >= 400 && status < 500 && status !== 408 && status !== 429;
+}
+
+function statusError(status, message, code) {
+  const e = requestError(message, code);
+
+  e.status = status;
+  e.permanent = isPermanentStatus(status);
+
+  return e;
+}
+
+function requireType(contentType, expected) {
+  const mediaType = (contentType || "").split(";")[0].trim().toLowerCase();
+
+  if (mediaType !== expected) {
+    throw requestError(
+      "Unexpected response type: " + (contentType || "none"),
+      "ECONTENTTYPE",
+    );
+  }
+}
+
+async function request(method, endpoint, params = {}, { accept, headers }) {
   const url = new URL(API_BASE + endpoint, window.location.origin);
 
-  const options = { method };
+  const controller = new AbortController();
+  const options = { method, signal: controller.signal };
 
   if (method === "GET" || method === "DELETE") {
     if (vaultId()) {
@@ -53,51 +99,81 @@ async function request(method, endpoint, params = {}, headers) {
     options.headers = { ...options.headers, ...headers };
   }
 
+  const bodyBytes = options.body
+    ? new TextEncoder().encode(options.body).length
+    : 0;
+
   // A write (POST/DELETE) opts into keepalive so a page dismissal does not drop it.
-  if (method !== "GET" && withinKeepaliveCap(options.body)) {
+  if (method !== "GET" && withinKeepaliveCap(bodyBytes)) {
     options.keepalive = true;
   }
 
+  const timer = setTimeout(
+    () => controller.abort(),
+    responseTimeout(bodyBytes),
+  );
+  const uncertain = () => Object.assign(new Error("Save acknowledgement unavailable"), {code: "CONTENT_WRITE_UNCERTAIN", outcome: "uncertain"});
   let res;
-  try {res=await fetch(url.toString(), options);}
-  catch(error){
-    if(endpoint==='/writeFile')throw Object.assign(new Error('Save acknowledgement unavailable'),{code:'CONTENT_WRITE_UNCERTAIN',outcome:'uncertain'});
+
+  try {
+    res = await fetch(url.toString(), options);
+  } catch (e) {
+    if (["/writeFile", "/appendFile"].includes(endpoint)) throw uncertain();
+    if (controller.signal.aborted) {
+      throw requestError("Request timed out", "ETIMEDOUT");
+    }
+
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (res.redirected) {
+    if (["/writeFile", "/appendFile"].includes(endpoint)) throw uncertain();
+    throw requestError("Request was redirected", "EREDIRECT");
+  }
+
+  if (res.status === 304) {
+    return res;
+  }
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+
+    const error = statusError(res.status, err.error || res.statusText, err.code || "UNKNOWN");
+    if (["/writeFile", "/appendFile"].includes(endpoint)) {
+      if (res.status === 408 || (res.status >= 500 && err.outcome !== "failed")) error.code = "CONTENT_WRITE_UNCERTAIN";
+      else if ([401, 403, 404].includes(res.status)) error.code = "CONTENT_UNAVAILABLE";
+      else if (res.status === 409 && error.code === "UNKNOWN") error.code = "CONTENT_CONFLICT";
+      error.outcome = err.outcome;
+    }
     throw error;
   }
-  // A 304 is a valid conditional response.
-  if (!res.ok && res.status !== 304) {
-    const err = await res
-      .json()
-      .catch(() => ({ error: res.statusText, code: "UNKNOWN" }));
-    const e = new Error(err.error || res.statusText);
-    e.code = err.code || "UNKNOWN";
-    if(endpoint==='/writeFile'){
-      if(res.status===408 || (res.status>=500 && err.outcome!=='failed'))e.code='CONTENT_WRITE_UNCERTAIN';
-      else if([401,403,404].includes(res.status))e.code='CONTENT_UNAVAILABLE';
-      else if(res.status===409 && e.code==='UNKNOWN')e.code='CONTENT_CONFLICT';
-      e.outcome=err.outcome;
-    }
-    throw e;
-  }
+
+  try { requireType(res.headers.get("Content-Type"), accept); }
+  catch (error) { if (["/writeFile", "/appendFile"].includes(endpoint)) throw uncertain(); throw error; }
 
   return res;
 }
 
 async function requestJson(method, endpoint, params = {}) {
-  const res = await request(method, endpoint, params);
-  try{
-    const result=await res.json();
-    if(endpoint==='/writeFile' && (result?.ok!==true || !Number.isFinite(result.mtime) || !Number.isSafeInteger(result.size) || result.size<0))
-      throw new Error('Invalid save acknowledgement');
+  const res = await request(method, endpoint, params, { accept: JSON_TYPE });
+  try {
+    const result = await res.json();
+    if ((endpoint === "/writeFile" && (result?.ok !== true || !Number.isFinite(result.mtime) || !Number.isSafeInteger(result.size) || result.size < 0)) || (endpoint === "/appendFile" && result?.ok !== true)) throw new Error("Invalid save acknowledgement");
     return result;
-  }
-  catch(error){
-    if(endpoint==='/writeFile')throw Object.assign(new Error('Save acknowledgement unavailable'),{code:'CONTENT_WRITE_UNCERTAIN',outcome:'uncertain'});
+  } catch (error) {
+    if (["/writeFile", "/appendFile"].includes(endpoint)) throw Object.assign(new Error("Save acknowledgement unavailable"), {code: "CONTENT_WRITE_UNCERTAIN", outcome: "uncertain"});
     throw error;
   }
 }
 
-function requestSync(method, endpoint, params = {}) {
+function requestSync(
+  method,
+  endpoint,
+  params = {},
+  { accept, binaryResponse },
+) {
   const url = new URL(API_BASE + endpoint, window.location.origin);
 
   if (method === "GET" || method === "DELETE") {
@@ -113,6 +189,10 @@ function requestSync(method, endpoint, params = {}) {
   const xhr = new XMLHttpRequest();
   xhr.open(method, url.toString(), false); // synchronous
 
+  if (binaryResponse) {
+    xhr.overrideMimeType("text/plain; charset=x-user-defined");
+  }
+
   if (method !== "GET" && method !== "DELETE") {
     xhr.setRequestHeader("Content-Type", "application/json");
     xhr.send(JSON.stringify({ vault: vaultId(), ...params }));
@@ -120,20 +200,28 @@ function requestSync(method, endpoint, params = {}) {
     xhr.send();
   }
 
+  if (xhr.responseURL !== url.toString()) {
+    throw requestError("Request was redirected", "EREDIRECT");
+  }
+
   if (xhr.status >= 400) {
     let err;
 
     try {
       const body = JSON.parse(xhr.responseText);
-      err = new Error(body.error || "Request failed");
-      err.code = body.code || "UNKNOWN";
+      err = statusError(
+        xhr.status,
+        body.error || "Request failed",
+        body.code || "UNKNOWN",
+      );
     } catch {
-      err = new Error("Request failed: " + xhr.status);
-      err.code = "UNKNOWN";
+      err = statusError(xhr.status, "Request failed: " + xhr.status, "UNKNOWN");
     }
 
     throw err;
   }
+
+  requireType(xhr.getResponseHeader("Content-Type"), accept);
 
   return xhr;
 }
@@ -141,7 +229,12 @@ function requestSync(method, endpoint, params = {}) {
 export const transport = {
   async fetchTree(etag) {
     const headers = etag ? { "If-None-Match": etag } : undefined;
-    const res = await request("GET", "/tree", {}, headers);
+    const res = await request(
+      "GET",
+      "/tree",
+      {},
+      { accept: JSON_TYPE, headers },
+    );
 
     if (res.status === 304) {
       return { notModified: true, etag: res.headers.get("ETag") };
@@ -155,10 +248,12 @@ export const transport = {
   },
 
   async readFile(path, encoding) {
-    const res = await request("GET", "/readFile", {
-      path: normPath(path),
-      encoding: encoding || "",
-    });
+    const res = await request(
+      "GET",
+      "/readFile",
+      { path: normPath(path), encoding: encoding || "" },
+      { accept: readType(encoding) },
+    );
 
     if (encoding === "utf8" || encoding === "utf-8") {
       return res.text();
@@ -171,8 +266,10 @@ export const transport = {
   async writeFile(path, content, encoding) {
     const isText = typeof content === "string";
     return requestJson("POST", "/writeFile", {
-      path: normPath(path), content: isText ? content : uint8ToBase64(content),
-      encoding: encoding || (isText ? "utf-8" : "binary"), base64: !isText,
+      path: normPath(path),
+      content: isText ? content : uint8ToBase64(content),
+      encoding: encoding || (isText ? "utf-8" : "binary"),
+      base64: !isText,
     });
   },
 
@@ -183,9 +280,11 @@ export const transport = {
   },
 
   async appendFile(path, content) {
+    const isText = typeof content === "string";
     return requestJson("POST", "/appendFile", {
       path: normPath(path),
-      content,
+      content: isText ? content : uint8ToBase64(content),
+      base64: !isText,
     });
   },
 
@@ -194,8 +293,10 @@ export const transport = {
   },
 
   async rename(oldPath, newPath) {
-    const result=await requestJson("POST", "/rename", {oldPath:normPath(oldPath),newPath:normPath(newPath)});
-    return result;
+    return requestJson("POST", "/rename", {
+      oldPath: normPath(oldPath),
+      newPath: normPath(newPath),
+    });
   },
 
   async copyFile(src, dest) {
@@ -206,8 +307,7 @@ export const transport = {
   },
 
   async unlink(path) {
-    const result=await requestJson("DELETE", "/unlink", { path: normPath(path) });
-    return result;
+    return requestJson("DELETE", "/unlink", { path: normPath(path) });
   },
 
   async rmdir(path) {
@@ -234,12 +334,15 @@ export const transport = {
   },
 
   readFileSync(path, encoding) {
-    const xhr = requestSync("GET", "/readFile", {
-      path: normPath(path),
-      encoding: encoding || "",
-    });
+    const wantText = encoding === "utf8" || encoding === "utf-8";
+    const xhr = requestSync(
+      "GET",
+      "/readFile",
+      { path: normPath(path), encoding: encoding || "" },
+      { accept: readType(encoding), binaryResponse: !wantText },
+    );
 
-    if (encoding === "utf8" || encoding === "utf-8") {
+    if (wantText) {
       return xhr.responseText;
     }
 
@@ -247,17 +350,16 @@ export const transport = {
     const bytes = new Uint8Array(binary.length);
 
     for (let i = 0; i < binary.length; i++) {
-      bytes[i] = binary.charCodeAt(i);
+      bytes[i] = binary.charCodeAt(i) & 0xff;
     }
 
     return bytes;
   },
-
   writeFileSync(path, content, encoding) {
     const isText = typeof content === "string";
     requestSync("POST", "/writeFile", {
       path:normPath(path),content:isText?content:uint8ToBase64(content),
       encoding:encoding || (isText?"utf-8":"binary"),base64:!isText,
-    });
+    }, {accept: JSON_TYPE});
   },
 };

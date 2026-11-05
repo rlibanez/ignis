@@ -18,6 +18,7 @@ import {
   resolvePath,
 } from "./transforms.js";
 import { enqueue, flushPending, hasUnconfirmedWrite } from "./write-coalescer.js";
+import { hasFailedWrite } from "./write-durability.js";
 import { wsClient } from "../ws-client.js";
 
 const currentContext = () => ({
@@ -27,7 +28,10 @@ const currentContext = () => ({
 const metadataCache = new MetadataCache();
 const contentCache = new ContentCache();
 
-contentCache.retainWhile(hasUnconfirmedWrite);
+contentCache.retainWhile(
+  (path) => hasUnconfirmedWrite(path) || hasFailedWrite(path),
+);
+contentCache.refuseFillWhile(hasUnconfirmedWrite);
 
 const fsWatch = createFsWatch(transport);
 let editorNotice;

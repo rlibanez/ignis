@@ -1,9 +1,9 @@
 
 const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
-import { addFullscreenMenuItem } from "./fullscreen-menu.js";
+import { addFullscreenMenuItem } from "../fullscreen-menu.js";
 // Use one Obsidian menu instead of the mobile adapter's native select.
 import { vaultService } from "@ignis/services";
-import { showVaultManager } from "./ui-registry.js";
+import { showVaultManager } from "../ui-registry.js";
 
 export function installMobileVaultSwitcher(app, obsidian) {
   app.workspace.onLayoutReady(() => {

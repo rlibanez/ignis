@@ -96,7 +96,8 @@ describe("vault plugin availability policy",()=>{
  });
  it.each(["admin", "user"])("disables the policy for a blocked %s session", role => {
   window.__ignisAuth = {role, blocked:true};
-  expect(Object.values(ipcRenderer.sendSync("policy")).every(value => value === false)).toBe(true);
+  const answer = ipcRenderer.sendSync("policy");
+  for (const key of ["plugins", "themes", "snippets", "sync", "publish", "webViewer", "devTools", "insider"]) { expect(answer[key]).toBe(false); expect(answer.policy[key]).toBe(false); }
  });
  it("does not enable plugins without an authenticated role",()=>{
   expect(ipcRenderer.sendSync("policy").plugins).toBe(false);
@@ -114,4 +115,29 @@ it('does not recreate or adopt a known owner-scoped vault when opening it native
  const {vaultService}=await import('@ignis/services');window.__vaultList=[{id:'alice/Notes',uuid:'existing'}];
  const create=vi.spyOn(vaultService,'createVaultSync');const open=vi.spyOn(vaultService,'openVault').mockImplementation(()=>{});
  expect(ipcRenderer.sendSync('vault-open','/alice/Notes')).toBe(true);expect(create).not.toHaveBeenCalled();expect(open).toHaveBeenCalledWith('alice/Notes');
+});
+
+describe("the policy answer", () => {
+  it("carries the same values flat and under policy", () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    window.__ignisAuth = {role: "admin"};
+    const answer = ipcRenderer.sendSync("policy");
+    const sharedKeys = ["plugins", "themes", "snippets", "devTools", "insider"];
+
+    for (const key of sharedKeys) {
+      expect(answer[key]).toBe(true);
+      expect(answer.policy[key]).toBe(answer[key]);
+    }
+  });
+});
+
+describe("the plugin-script-root channel", () => {
+  it("answers null without the unhandled-channel warning", () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    expect(ipcRenderer.sendSync("plugin-script-root")).toBeNull();
+    expect(warn).not.toHaveBeenCalled();
+  });
 });

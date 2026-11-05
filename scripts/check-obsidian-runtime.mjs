@@ -42,6 +42,15 @@ try{
   try{await client.wait(`!!window.app?.workspace && !!window.app?.vault`,'real Obsidian workspace',30000);}catch(error){console.error(JSON.stringify({user,errors:client.errors,page:await client.run(`({url:location.href,body:document.body.innerText.slice(0,3000),hasApp:!!window.app})`)}));throw error;}await client.run(`new Promise(resolve=>app.workspace.onLayoutReady(resolve))`);assert.equal(await client.run(`app.vault.getName()`),vault.name,'native vault name excludes the owner namespace');const labels=await client.run(`Array.from(document.querySelectorAll('.workspace-drawer-vault-name')).map(el=>el.textContent)`);for(const label of labels)assert.equal(label,vault.name,'native switcher displays only the vault name');return client;
  }
  const alice=await login('owner',owner),bob=await login('receiver',receiver);
+ const manifest=await(await fetch(origin+'/manifest.webmanifest')).json();
+ assert.equal(manifest.share_target.action,'/share-target','upstream PWA integration preserves Android reception');
+ for(const client of [alice,bob])assert.equal(await client.run(`document.querySelectorAll('link[rel="manifest"]').length`),1,'one authoritative PWA manifest');
+ for(const directory of ['owner/Owner','receiver/Receiver']){
+  const probe=path.join(vaultRoot,directory,'.OBSIDIANTEST'),deadline=Date.now()+5000;
+  while(fs.existsSync(probe)&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,50));
+  assert.equal(fs.existsSync(probe),false,'Obsidian probe must not remain on disk');
+ }
+
  for(const client of clients)await client.run(`(async()=>{const file=app.vault.getAbstractFileByPath('Shared.md');if(!file)throw Error('Shared file absent');await app.workspace.getLeaf().openFile(file);})()`);
  await bob.wait(`!!app.workspace.getLeavesOfType('markdown').find(leaf=>leaf.view.file?.path==='Shared.md')?.view?.editor`,'recipient editor');
  await bob.run(`(async()=>{const view=app.workspace.getLeavesOfType('markdown').find(leaf=>leaf.view.file?.path==='Shared.md')?.view;view.editor.setValue(${JSON.stringify('# Shared\nconfirmed from recipient\n')});await view.save();})()`);
@@ -68,11 +77,19 @@ try{
 
  if(process.argv.includes('--vault-transfers')){const shell=await login('empty');await vaultBatchUi({native:alice,shell});await vaultImportUi({native:alice,shell});}
  // Exercise the real bridge host, not the vaultless fallback or synthetic CSS.
+ await alice.call('Page.bringToFront');
+ const activationPoint=await alice.run(`({x:innerWidth-25,y:innerHeight-25})`);
+ await alice.call('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...activationPoint});
+ await alice.call('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...activationPoint});
+ await alice.wait(`Object.getOwnPropertyDescriptor(History.prototype,'state').get.call(history)?.ignisVirtualEntry===true`,'browser back virtual entry');
  await alice.run(`window.__ignisOpenManagement('users')`);await alice.wait(`!!document.querySelector('#administration') && !document.querySelector('#administration').hidden`,'native users host');
- await alice.run(`document.querySelector('#administration').closest('.modal-container').querySelector('.modal-header-button:not(.mod-start),.modal-close-button').click()`);await alice.wait(`!document.querySelector('#administration')`,'native management close');
+ const historyEntries=await alice.call('Page.getNavigationHistory');
+ assert.ok(historyEntries.currentIndex>0,'browser history has a previous entry');
+ await alice.call('Page.navigateToHistoryEntry',{entryId:historyEntries.entries[historyEntries.currentIndex-1].id});
+ await alice.wait(`!document.querySelector('#administration') && !!app.workspace`,'browser back closes management without leaving the vault');
  if((process.argv.includes('--management-parity')||process.argv.includes('--management-notices')))await managementParity({native:alice,shell:await login('empty'),origin,vault:owner.id,mobile:process.argv.includes('--mobile'),noticesOnly:process.argv.includes('--management-notices')});
  if(process.argv.includes('--vault-transfers')||process.argv.includes('--vault-ownership')){await vaultOwnershipUi({owner:alice,member:bob,vault:owner,origin});assert.equal(fs.readFileSync(path.join(vaultRoot,'receiver/Owner/Shared.md'),'utf8'),'saved after ownership transfer');}
- console.log(JSON.stringify({status:'passed',runtime:'1.14.4',mobile:process.argv.includes('--mobile'),checks:['two isolated accounts','real workspace and editor','recipient save reaches original bytes','native management host','read-only edit denied','live read/write restoration in same editor','live revocation']}));
+ console.log(JSON.stringify({status:'passed',runtime:'1.14.4',mobile:process.argv.includes('--mobile'),checks:['two isolated accounts','real workspace and editor','recipient save reaches original bytes','native management host and browser back','single PWA manifest with Android reception','no stale Obsidian probes','read-only edit denied','live read/write restoration in same editor','live revocation']}));
 }finally{
  for(const client of clients)await client.close();db?.close();if(child){child.kill('SIGTERM');await Promise.race([new Promise(r=>child.once('exit',r)),new Promise(r=>setTimeout(r,3000))]);if(child.exitCode===null)child.kill('SIGKILL');}fs.rmSync(root,{recursive:true,force:true});
 }

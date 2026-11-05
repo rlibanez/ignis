@@ -7,11 +7,35 @@ import {
   resolvePathInfo,
 } from "./transforms.js";
 import { hasVirtualFile, getVirtualFile } from "./virtual-files.js";
-import { cancelPending, enqueue, enqueueWrite, hasPending } from "./write-coalescer.js";
+import {
+  cancelPending,
+  enqueueMutation,
+  enqueueWrite,
+  hasPending,
+} from "./write-coalescer.js";
 import { createUtimes } from "./utimes.js";
+import { createMutations } from "./mutations.js";
+import { utf8ByteLength } from "../util/utf8.js";
 
 export function createFsSync(metadataCache, contentCache, transport, filePolicy = null) {
   const commitUtimes = createUtimes(metadataCache, transport);
+  const { commitAppend, commitCopy, commitRemove, commitRename } =
+    createMutations(metadataCache, contentCache, transport);
+
+  function appendFileSync(path, data) {
+    filePolicy?.assertOrdinary(path, resolvePath(path));
+    const resolved = resolvePath(path);
+
+    commitAppend(resolved, data, () => transport.appendFile(resolved, data), {
+      silent: true,
+    }).catch((e) => {
+      console.error(
+        "[shim:fs] appendFileSync background append failed:",
+        resolved,
+        e,
+      );
+    });
+  }
 
   return {
     existsSync(path) {
@@ -125,6 +149,8 @@ export function createFsSync(metadataCache, contentCache, transport, filePolicy 
 
       if (result === null) {
         // A resolver can map a path onto a physical target that does not exist yet, so a redirected miss retries the original path before failing.
+        const updatesBeforeFetch = contentCache.pathUpdates(resolved);
+
         try {
           result = transport.readFileSync(resolved, encoding);
         } catch (e) {
@@ -139,7 +165,7 @@ export function createFsSync(metadataCache, contentCache, transport, filePolicy 
           }
         }
 
-        contentCache.set(resolved, result);
+        contentCache.setFromServer(resolved, result, updatesBeforeFetch);
       }
 
       // Apply registered read transforms (e.g., patching synced config files).
@@ -154,11 +180,16 @@ export function createFsSync(metadataCache, contentCache, transport, filePolicy 
       return result;
     },
 
-    writeFileSync(path, data, encoding) {
-      if (typeof encoding === "object") {
-        encoding = encoding?.encoding;
+    writeFileSync(path, data, options) {
+      const appendsToFile = options?.flag === "a" || options?.flag === "a+";
+
+      if (appendsToFile) {
+        appendFileSync(path, data);
+        return;
       }
 
+      const encoding =
+        typeof options === "object" ? options?.encoding : options;
       const resolved = resolvePath(path);
       const transformed = applyWriteTransform(resolved, data);
 
@@ -166,26 +197,32 @@ export function createFsSync(metadataCache, contentCache, transport, filePolicy 
 
       const size =
         typeof transformed === "string"
-          ? transformed.length
+          ? utf8ByteLength(transformed)
           : transformed.byteLength || 0;
 
-      const applyResult = (result) => {
-        // A synchronous unlink may have already removed this optimistic entry.
-        if (!metadataCache.has(resolved)) return;
-        metadataCache.set(resolved, {
-          type: "file",
-          size: result.size || size,
-          mtime: result.mtime,
-          ctime: metadataCache.get(resolved)?.ctime || Date.now(),
-        });
-      };
-
-      metadataCache.set(resolved, {
+      const written = {
         type: "file",
         size,
         mtime: Date.now(),
         ctime: metadataCache.get(resolved)?.ctime || Date.now(),
-      });
+      };
+
+      const applyResult = (result) => {
+        const replacedSinceWrite = metadataCache.get(resolved) !== written;
+
+        if (replacedSinceWrite) {
+          return;
+        }
+
+        metadataCache.set(resolved, {
+          type: "file",
+          size: result.size || size,
+          mtime: result.mtime,
+          ctime: written.ctime,
+        });
+      };
+
+      metadataCache.set(resolved, written);
 
       if (hasPending(resolved)) {
         cancelPending(resolved);
@@ -201,13 +238,8 @@ export function createFsSync(metadataCache, contentCache, transport, filePolicy 
       filePolicy?.assertOrdinary(path, resolvePath(path));
       const resolved = resolvePath(path);
 
-      cancelPending(resolved);
-      markSentOp(resolved);
-      contentCache.delete(resolved);
-      metadataCache.delete(resolved);
-
       // Fire-and-forget. suppress ENOENT (file already gone)
-      enqueue(resolved, () => transport.unlink(resolved)).catch((e) => {
+      commitRemove(resolved, () => transport.unlink(resolved)).catch((e) => {
         if (e.code !== "ENOENT") {
           console.error(
             "[shim:fs] unlinkSync background delete failed:",
@@ -239,7 +271,11 @@ export function createFsSync(metadataCache, contentCache, transport, filePolicy 
       markSentOp(resolved);
       metadataCache.set(resolved, { type: "directory" });
 
-      transport.mkdir(resolved, recursive).catch((e) => {
+      enqueueMutation([resolved], () => {
+        markSentOp(resolved);
+
+        return transport.mkdir(resolved, recursive);
+      }).catch((e) => {
         console.error(
           "[shim:fs] mkdirSync background create failed:",
           resolved,
@@ -248,14 +284,21 @@ export function createFsSync(metadataCache, contentCache, transport, filePolicy 
       });
     },
 
-    rmdirSync(path) {
+    rmdirSync(path, options) {
+      const recursive = !!options?.recursive;
       filePolicy?.assertOrdinary(path, resolvePath(path));
       const resolved = resolvePath(path);
 
-      markSentOp(resolved);
-      metadataCache.delete(resolved);
+      if (metadataCache.get(resolved)?.type === "file") {
+        const e = new Error(`ENOTDIR: not a directory, rmdir '${path}'`);
 
-      transport.rmdir(resolved).catch((e) => {
+        e.code = "ENOTDIR";
+        throw e;
+      }
+
+      commitRemove(resolved, () =>
+        recursive ? transport.rm(resolved, true) : transport.rmdir(resolved),
+      ).catch((e) => {
         console.error(
           "[shim:fs] rmdirSync background remove failed:",
           resolved,
@@ -271,17 +314,15 @@ export function createFsSync(metadataCache, contentCache, transport, filePolicy 
 
       const resolved = resolvePath(path);
 
-      markSentOp(resolved);
-      metadataCache.delete(resolved);
-      contentCache.delete(resolved);
-
-      transport.rm(resolved, recursive).catch((e) => {
-        console.error(
-          "[shim:fs] rmSync background remove failed:",
-          resolved,
-          e,
-        );
-      });
+      commitRemove(resolved, () => transport.rm(resolved, recursive)).catch(
+        (e) => {
+          console.error(
+            "[shim:fs] rmSync background remove failed:",
+            resolved,
+            e,
+          );
+        },
+      );
     },
 
     renameSync(oldPath, newPath) {
@@ -290,21 +331,9 @@ export function createFsSync(metadataCache, contentCache, transport, filePolicy 
       const resolvedOld = resolvePath(oldPath);
       const resolvedNew = resolvePath(newPath);
 
-      markSentOp(resolvedOld);
-      markSentOp(resolvedNew);
-
-      for (const key of metadataCache.rename(resolvedOld, resolvedNew)) {
-        contentCache.delete(key);
-      }
-
-      const content = contentCache.get(resolvedOld);
-
-      if (content !== null) {
-        contentCache.set(resolvedNew, content);
-        contentCache.delete(resolvedOld);
-      }
-
-      transport.rename(resolvedOld, resolvedNew).catch((e) => {
+      commitRename(resolvedOld, resolvedNew, () =>
+        transport.rename(resolvedOld, resolvedNew),
+      ).catch((e) => {
         console.error(
           "[shim:fs] renameSync background rename failed:",
           resolvedOld,
@@ -319,53 +348,18 @@ export function createFsSync(metadataCache, contentCache, transport, filePolicy 
       const resolvedSrc = resolvePath(src);
       const resolvedDest = resolvePath(dest);
 
-      markSentOp(resolvedDest);
-
-      // Optimistically mirror the source so a sync read right after sees it.
-      const content = contentCache.get(resolvedSrc);
-
-      if (content !== null) {
-        contentCache.set(resolvedDest, content);
-      }
-
-      const srcMeta = metadataCache.get(resolvedSrc);
-
-      if (srcMeta) {
-        metadataCache.set(resolvedDest, { ...srcMeta });
-      }
-
-      transport
-        .copyFile(src, resolvedDest)
-        .then(() => transport.stat(resolvedDest))
-        .then((meta) => metadataCache.set(resolvedDest, meta))
-        .catch((e) => {
-          console.error(
-            "[shim:fs] copyFileSync background copy failed:",
-            resolvedDest,
-            e,
-          );
-        });
+      commitCopy(resolvedSrc, resolvedDest, () =>
+        transport.copyFile(resolvedSrc, resolvedDest),
+      ).catch((e) => {
+        console.error(
+          "[shim:fs] copyFileSync background copy failed:",
+          resolvedDest,
+          e,
+        );
+      });
     },
 
-    appendFileSync(path, data) {
-      filePolicy?.assertOrdinary(path, resolvePath(path));
-      const resolved = resolvePath(path);
-
-      markSentOp(resolved);
-      contentCache.invalidate(resolved);
-
-      transport
-        .appendFile(resolved, data)
-        .then(() => transport.stat(resolved))
-        .then((meta) => metadataCache.set(resolved, meta))
-        .catch((e) => {
-          console.error(
-            "[shim:fs] appendFileSync background append failed:",
-            resolved,
-            e,
-          );
-        });
-    },
+    appendFileSync,
 
     utimesSync(path, atime, mtime) {
       filePolicy?.assertOrdinary(path, resolvePath(path));

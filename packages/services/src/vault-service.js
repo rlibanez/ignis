@@ -153,7 +153,7 @@ export const vaultService = {
           window.__vaultConfig.id = this.browserVaultId(this.getCurrentVaultReference());
         }
 
-        history.replaceState(null, "", "/?vault=" + encodeURIComponent(this.getCurrentVaultReference()));
+        history.replaceState(history.state, "", "/?vault=" + encodeURIComponent(this.getCurrentVaultReference()));
       }
 
       const list = await this.listVaults();

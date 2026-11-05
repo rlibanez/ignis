@@ -4,10 +4,12 @@ import {
   cancelPending,
   COALESCE_MAX_BYTES,
   enqueue,
+  enqueueMutation,
   enqueueWrite,
   hasPending,
   initWriteCoalescer,
   isBooting,
+  whenIdle,
 } from "./write-coalescer.js";
 import { isInputCachePath, inputCacheGet } from "./input-cache.js";
 import {
@@ -18,8 +20,10 @@ import {
 } from "./transforms.js";
 import { hasVirtualFile, getVirtualFile } from "./virtual-files.js";
 import { realpathSync } from "./realpath.js";
-import { initWriteDurability, onFailure } from "./write-durability.js";
+import { initWriteDurability } from "./write-durability.js";
 import { createUtimes } from "./utimes.js";
+import { createMutations } from "./mutations.js";
+import { utf8ByteLength } from "../util/utf8.js";
 import { createReadAhead } from "./read-ahead.js";
 import { isTextPath } from "./indexer-prefetch.js";
 
@@ -27,22 +31,50 @@ export function createFsPromises(metadataCache, contentCache, transport, filePol
   initWriteCoalescer(transport);
   initWriteDurability(transport, enqueue);
 
-  // On give-up, drop the optimistic content so a re-read returns server truth.
-  // Metadata is left as-is: a reconciling stat would also fail (server unreachable) and deleting on that would lose a live file.
-  onFailure((failedPath) => {
-    contentCache.invalidate(failedPath);
-  });
-
   const commitUtimes = createUtimes(metadataCache, transport);
+  const { commitAppend, commitCopy, commitRemove, commitRename } =
+    createMutations(metadataCache, contentCache, transport);
   const readAhead = createReadAhead(metadataCache, contentCache, filePolicy);
+
+  async function appendFile(path, data, encoding) {
+    filePolicy?.assertOrdinary(path, resolvePath(path));
+    const resolved = resolvePath(path);
+
+    await commitAppend(resolved, data, () =>
+      transport.appendFile(resolved, data),
+    );
+  }
 
   return {
     async stat(path) {
-      const resolved = resolvePath(path);
+      if (isInputCachePath(path) && inputCacheGet(path) !== null) {
+        const data = inputCacheGet(path);
+        const size = data ? data.length || data.byteLength || 0 : 0;
+
+        return {
+          size,
+          mtime: new Date(),
+          ctime: new Date(),
+          isFile: () => true,
+          isDirectory: () => false,
+          isSymbolicLink: () => false,
+        };
+      }
+
+      const { resolved, redirected } = resolvePathInfo(path);
       const cached = metadataCache.toStat(resolved);
 
       if (cached) {
         return cached;
+      }
+
+      if (!redirected) {
+        const e = new Error(
+          `ENOENT: no such file or directory, stat '${path}'`,
+        );
+
+        e.code = "ENOENT";
+        throw e;
       }
 
       const meta = await transport.stat(resolved);
@@ -137,6 +169,22 @@ export function createFsPromises(metadataCache, contentCache, transport, filePol
       }
 
       if (result === null) {
+        await whenIdle(resolved);
+        result = contentCache.get(resolved);
+      }
+
+      const removedWhileWaiting =
+        result === null && !redirected && !metadataCache.has(resolved);
+
+      if (removedWhileWaiting) {
+        const e = new Error(
+          `ENOENT: no such file or directory, open '${path}'`,
+        );
+        e.code = "ENOENT";
+        throw e;
+      }
+
+      if (result === null) {
         if (isTextPath(resolved) && !redirected) {
           readAhead.fetchAround(resolved);
         }
@@ -172,11 +220,16 @@ export function createFsPromises(metadataCache, contentCache, transport, filePol
       return result;
     },
 
-    async writeFile(path, data, encoding) {
-      if (typeof encoding === "object") {
-        encoding = encoding?.encoding;
+    async writeFile(path, data, options) {
+      const appendsToFile = options?.flag === "a" || options?.flag === "a+";
+
+      if (appendsToFile) {
+        await appendFile(path, data);
+        return;
       }
 
+      const encoding =
+        typeof options === "object" ? options?.encoding : options;
       const resolved = resolvePath(path);
       const transformed = applyWriteTransform(resolved, data);
 
@@ -184,24 +237,32 @@ export function createFsPromises(metadataCache, contentCache, transport, filePol
 
       const size =
         typeof transformed === "string"
-          ? transformed.length
+          ? utf8ByteLength(transformed)
           : transformed.byteLength || 0;
 
-      const applyResult = (result) => {
-        metadataCache.set(resolved, {
-          type: "file",
-          size: result.size || size,
-          mtime: result.mtime,
-          ctime: metadataCache.get(resolved)?.ctime || Date.now(),
-        });
-      };
-
-      metadataCache.set(resolved, {
+      const written = {
         type: "file",
         size,
         mtime: Date.now(),
         ctime: metadataCache.get(resolved)?.ctime || Date.now(),
-      });
+      };
+
+      const applyResult = (result) => {
+        const replacedSinceWrite = metadataCache.get(resolved) !== written;
+
+        if (replacedSinceWrite) {
+          return;
+        }
+
+        metadataCache.set(resolved, {
+          type: "file",
+          size: result.size || size,
+          mtime: result.mtime,
+          ctime: written.ctime,
+        });
+      };
+
+      metadataCache.set(resolved, written);
 
       if (isBooting() && size <= COALESCE_MAX_BYTES) {
         bufferWrite(resolved, transformed, encoding, applyResult);
@@ -221,28 +282,13 @@ export function createFsPromises(metadataCache, contentCache, transport, filePol
       }
     },
 
-    async appendFile(path, data, encoding) {
-      filePolicy?.assertOrdinary(path, resolvePath(path));
-      const resolved = resolvePath(path);
-
-      markSentOp(resolved);
-      contentCache.invalidate(resolved);
-
-      await transport.appendFile(resolved, data);
-
-      const meta = await transport.stat(resolved);
-      metadataCache.set(resolved, meta);
-    },
+    appendFile,
 
     async unlink(path) {
       filePolicy?.assertOrdinary(path, resolvePath(path));
       const resolved = resolvePath(path);
 
-      markSentOp(resolved);
-      contentCache.delete(resolved);
-      metadataCache.delete(resolved);
-
-      await transport.unlink(resolved);
+      await commitRemove(resolved, () => transport.unlink(resolved));
     },
 
     async rename(oldPath, newPath) {
@@ -251,21 +297,9 @@ export function createFsPromises(metadataCache, contentCache, transport, filePol
       const resolvedOld = resolvePath(oldPath);
       const resolvedNew = resolvePath(newPath);
 
-      markSentOp(resolvedOld);
-      markSentOp(resolvedNew);
-
-      for (const key of metadataCache.rename(resolvedOld, resolvedNew)) {
-        contentCache.delete(key);
-      }
-
-      const content = contentCache.get(resolvedOld);
-
-      if (content !== null) {
-        contentCache.set(resolvedNew, content);
-        contentCache.delete(resolvedOld);
-      }
-
-      await transport.rename(resolvedOld, resolvedNew);
+      await commitRename(resolvedOld, resolvedNew, () =>
+        transport.rename(resolvedOld, resolvedNew),
+      );
     },
 
     async mkdir(path, options) {
@@ -278,16 +312,28 @@ export function createFsPromises(metadataCache, contentCache, transport, filePol
       markSentOp(resolved);
       metadataCache.set(resolved, { type: "directory" });
 
-      await transport.mkdir(resolved, recursive);
+      await enqueueMutation([resolved], () => {
+        markSentOp(resolved);
+
+        return transport.mkdir(resolved, recursive);
+      });
     },
 
-    async rmdir(path) {
+    async rmdir(path, options) {
+      const recursive = !!options?.recursive;
       filePolicy?.assertOrdinary(path, resolvePath(path));
       const resolved = resolvePath(path);
 
-      markSentOp(resolved);
-      metadataCache.delete(resolved);
-      await transport.rmdir(resolved);
+      if (metadataCache.get(resolved)?.type === "file") {
+        const e = new Error(`ENOTDIR: not a directory, rmdir '${path}'`);
+
+        e.code = "ENOTDIR";
+        throw e;
+      }
+
+      await commitRemove(resolved, () =>
+        recursive ? transport.rm(resolved, true) : transport.rmdir(resolved),
+      );
     },
 
     async rm(path, options) {
@@ -297,26 +343,25 @@ export function createFsPromises(metadataCache, contentCache, transport, filePol
 
       const resolved = resolvePath(path);
 
-      markSentOp(resolved);
-      metadataCache.delete(resolved);
-      contentCache.delete(resolved);
-
-      await transport.rm(resolved, recursive);
+      await commitRemove(resolved, () => transport.rm(resolved, recursive));
     },
 
     async copyFile(src, dest) {
       filePolicy?.assertOrdinary(src, resolvePath(src));
       filePolicy?.assertOrdinary(dest, resolvePath(dest));
+      const resolvedSrc = resolvePath(src);
       const resolvedDest = resolvePath(dest);
 
-      markSentOp(resolvedDest);
-      await transport.copyFile(src, resolvedDest);
-
-      const meta = await transport.stat(resolvedDest);
-      metadataCache.set(resolvedDest, meta);
+      await commitCopy(resolvedSrc, resolvedDest, () =>
+        transport.copyFile(resolvedSrc, resolvedDest),
+      );
     },
 
-    async access(path, mode) {
+    async access(path) {
+      if (isInputCachePath(path) && inputCacheGet(path) !== null) {
+        return;
+      }
+
       const resolved = resolvePath(path);
 
       if (metadataCache.has(resolved)) {

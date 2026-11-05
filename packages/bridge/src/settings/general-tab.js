@@ -15,7 +15,7 @@ const TEXT_LINKS = [
 const ICON_LINKS = [
   {
     label: "Discord",
-    href: "https://discord.gg/8pqQQj4my",
+    href: "https://discord.gg/rgyXBAeNMM",
     icon: "/assets/discord.svg",
   },
   {

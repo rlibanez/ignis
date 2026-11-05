@@ -3,6 +3,7 @@ import {
   initWriteCoalescer,
   bufferWrite,
   enqueueWrite,
+  enqueueMutation,
   snapshotBuffered,
   suspendCoalescer,
   _reset,
@@ -29,4 +30,23 @@ it("preserves queued and buffered writes for export while preventing their dispa
     _reset();
     vi.useRealTimers();
   }
+});
+
+it("does not dispatch a queued folder mutation after session lock", async () => {
+  _reset();
+  try {
+    let release;
+    const transport = {writeFile: vi.fn(() => new Promise(resolve => {release = resolve;}))};
+    initWriteCoalescer(transport);
+    const write = enqueueWrite("folder/note.md", "draft", "utf8");
+    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+    const send = vi.fn();
+    const mutation = enqueueMutation(["folder"], send);
+    const rejected = expect(mutation).rejects.toThrow("Session locked");
+    suspendCoalescer();
+    release({mtime:1,size:5});
+    await write;
+    await rejected;
+    expect(send).not.toHaveBeenCalled();
+  } finally { _reset(); }
 });
