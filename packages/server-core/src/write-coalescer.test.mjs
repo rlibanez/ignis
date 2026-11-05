@@ -17,6 +17,12 @@ const FLUSH_ATTEMPTS = 1 + 6;
 let tmpDir;
 
 beforeEach(async () => {
+  // Control scheduling independently of runner load. Keep real files, but make
+  // their promise completion deterministic; slow writes are gated explicitly.
+  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+  vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+  vi.spyOn(fs.promises, "writeFile").mockImplementation(async (...args) => fs.writeFileSync(...args));
+  vi.spyOn(fs.promises, "stat").mockImplementation(async (...args) => fs.statSync(...args));
   coalescer.configure({
     writeCoalesceMs: SHORT_WINDOW_MS,
     flushRetryBackoffMs: [RETRY_BACKOFF_MS],
@@ -27,6 +33,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   coalescer._reset();
+  vi.clearAllTimers();
+  vi.useRealTimers();
   vi.restoreAllMocks();
   coalescer.configure({ writeCoalesceMs: 0 });
   await fs.promises.rm(tmpDir, { recursive: true, force: true });
@@ -53,11 +61,8 @@ describe("writeCoalesced", () => {
 
     await coalescer.writeCoalesced(filePath, "first", "utf-8");
 
-    const start = Date.now();
     const result = await coalescer.writeCoalesced(filePath, "second", "utf-8");
-    const elapsed = Date.now() - start;
 
-    expect(elapsed).toBeLessThan(10);
     expect(result.size).toBe(6);
 
     const onDisk = await fs.promises.readFile(filePath, "utf-8");
@@ -71,7 +76,7 @@ describe("writeCoalesced", () => {
     await coalescer.writeCoalesced(filePath, "v2", "utf-8");
     await coalescer.writeCoalesced(filePath, "v3", "utf-8");
 
-    await sleep(SHORT_WINDOW_MS + 30);
+    await vi.advanceTimersByTimeAsync(SHORT_WINDOW_MS + 30);
 
     const onDisk = await fs.promises.readFile(filePath, "utf-8");
     expect(onDisk).toBe("v3");
@@ -85,27 +90,28 @@ describe("writeCoalesced", () => {
       await coalescer.writeCoalesced(filePath, `v${i}`, "utf-8");
     }
 
-    await sleep(SHORT_WINDOW_MS + 30);
+    await vi.advanceTimersByTimeAsync(SHORT_WINDOW_MS + 30);
 
     expect(spy).toHaveBeenCalledTimes(2);
   });
 
-  it("stays snappy when the filesystem is slow", async () => {
+  it("buffers a save without waiting for a delayed disk write", async () => {
     const filePath = path.join(tmpDir, "file.txt");
-    const realWrite = fs.promises.writeFile.bind(fs.promises);
-
-    vi.spyOn(fs.promises, "writeFile").mockImplementation(async (...args) => {
-      await sleep(200);
-      return realWrite(...args);
-    });
-
     await coalescer.writeCoalesced(filePath, "first", "utf-8");
-
-    const start = Date.now();
-    await coalescer.writeCoalesced(filePath, "second", "utf-8");
-    const elapsed = Date.now() - start;
-
-    expect(elapsed).toBeLessThan(20);
+    let finishWrite;
+    vi.spyOn(fs.promises, "writeFile").mockImplementation(async (...args) => {
+      await new Promise(resolve => { finishWrite = resolve; });
+      fs.writeFileSync(...args);
+    });
+    const result = await coalescer.writeCoalesced(filePath, "second", "utf-8");
+    expect(result.size).toBe(6);
+    expect(finishWrite).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(SHORT_WINDOW_MS);
+    expect(finishWrite).toBeTypeOf("function");
+    expect(await fs.promises.readFile(filePath, "utf-8")).toBe("first");
+    finishWrite();
+    await coalescer.flushPending(filePath);
+    expect(await fs.promises.readFile(filePath, "utf-8")).toBe("second");
   });
 
   it("returns synthetic metadata when the file is deleted before the post-write stat", async () => {
@@ -258,7 +264,7 @@ describe("flush-failure durability", () => {
     expect(coalescer.getPending(filePath)).not.toBeNull();
     expect(coalescer.getPending(filePath).data).toBe("second");
 
-    await sleep(RETRY_BACKOFF_MS + 50);
+    await vi.advanceTimersByTimeAsync(RETRY_BACKOFF_MS + 50);
 
     expect(await fs.promises.readFile(filePath, "utf-8")).toBe("second");
     expect(coalescer.getPending(filePath)).toBeNull();
@@ -274,11 +280,11 @@ describe("flush-failure durability", () => {
       Object.assign(new Error("EIO"), { code: "EIO" }),
     );
 
-    await sleep(SHORT_WINDOW_MS + 20);
+    await vi.advanceTimersByTimeAsync(SHORT_WINDOW_MS + 20);
 
     expect(coalescer.getPending(filePath)).not.toBeNull();
 
-    await sleep(RETRY_BACKOFF_MS + 50);
+    await vi.advanceTimersByTimeAsync(RETRY_BACKOFF_MS + 50);
 
     expect(await fs.promises.readFile(filePath, "utf-8")).toBe("second");
     expect(coalescer.getPending(filePath)).toBeNull();
@@ -305,7 +311,7 @@ describe("flush success", () => {
 
     expect(flushed).toEqual([]);
 
-    await sleep(SHORT_WINDOW_MS + 30);
+    await vi.advanceTimersByTimeAsync(SHORT_WINDOW_MS + 30);
 
     expect(flushed).toEqual([filePath]);
   });
@@ -354,7 +360,7 @@ describe("flush success", () => {
     const filePath = path.join(tmpDir, "file.txt");
 
     await coalescer.writeCoalesced(filePath, "only", "utf-8");
-    await sleep(SHORT_WINDOW_MS + 30);
+    await vi.advanceTimersByTimeAsync(SHORT_WINDOW_MS + 30);
 
     expect(flushed).toEqual([]);
   });
@@ -372,7 +378,7 @@ describe("flush success", () => {
 
     expect(flushed).toEqual([]);
 
-    await sleep(RETRY_BACKOFF_MS + 50);
+    await vi.advanceTimersByTimeAsync(RETRY_BACKOFF_MS + 50);
 
     expect(flushed).toEqual([filePath]);
   });
@@ -416,6 +422,7 @@ describe("flush give-up", () => {
   function failWrites() {
     return vi
       .spyOn(fs.promises, "writeFile")
+      .mockClear()
       .mockRejectedValue(Object.assign(new Error("EIO"), { code: "EIO" }));
   }
 
@@ -426,7 +433,7 @@ describe("flush give-up", () => {
     const spy = failWrites();
     await coalescer.writeCoalesced(filePath, "second", "utf-8");
 
-    await sleep(GIVE_UP_MS);
+    await vi.advanceTimersByTimeAsync(GIVE_UP_MS);
 
     expect(spy).toHaveBeenCalledTimes(FLUSH_ATTEMPTS);
     expect(givenUp).toEqual([filePath]);
@@ -445,7 +452,7 @@ describe("flush give-up", () => {
     await expect(coalescer.flushPending(filePath)).rejects.toThrow();
     await coalescer.writeCoalesced(filePath, "third", "utf-8");
 
-    await sleep(GIVE_UP_MS);
+    await vi.advanceTimersByTimeAsync(GIVE_UP_MS);
 
     expect(givenUp).toEqual([filePath]);
     expect(spy).toHaveBeenCalledTimes(FLUSH_ATTEMPTS + 1);
@@ -459,7 +466,7 @@ describe("flush give-up", () => {
     const spy = failWrites();
     await coalescer.writeCoalesced(filePath, "second", "utf-8");
 
-    await sleep(GIVE_UP_MS);
+    await vi.advanceTimersByTimeAsync(GIVE_UP_MS);
 
     expect(givenUp).toEqual([filePath]);
 
@@ -473,8 +480,13 @@ describe("flush give-up", () => {
 describe("a flush already writing", () => {
   const FLUSH_WRITE_MS = 100;
 
+  async function complete(operation, ms = FLUSH_WRITE_MS) {
+    await vi.advanceTimersByTimeAsync(ms);
+    return operation;
+  }
+
   function slowDisk(failures) {
-    const realWrite = fs.promises.writeFile.bind(fs.promises);
+    const realWrite = (...args) => fs.writeFileSync(...args);
     const peakConcurrent = { value: 0 };
     let active = 0;
     let failed = 0;
@@ -506,7 +518,7 @@ describe("a flush already writing", () => {
     const peakConcurrent = slowDisk(failures);
 
     await coalescer.writeCoalesced(filePath, "second", "utf-8");
-    await sleep(SHORT_WINDOW_MS + 20);
+    await vi.advanceTimersByTimeAsync(SHORT_WINDOW_MS + 20);
 
     return peakConcurrent;
   }
@@ -515,7 +527,7 @@ describe("a flush already writing", () => {
     const filePath = path.join(tmpDir, "file.txt");
     const peakConcurrent = await startSlowFlush(filePath);
 
-    await coalescer.writeCoalesced(filePath, "third", "utf-8");
+    await complete(coalescer.writeCoalesced(filePath, "third", "utf-8"), FLUSH_WRITE_MS * 2);
 
     expect(peakConcurrent.value).toBe(1);
     expect(await fs.promises.readFile(filePath, "utf-8")).toBe("third");
@@ -531,7 +543,7 @@ describe("a flush already writing", () => {
       encoding: "utf-8",
     });
 
-    await coalescer.flushPending(filePath);
+    await complete(coalescer.flushPending(filePath));
 
     expect(await fs.promises.readFile(filePath, "utf-8")).toBe("second");
   });
@@ -540,7 +552,7 @@ describe("a flush already writing", () => {
     const filePath = path.join(tmpDir, "file.txt");
 
     await startSlowFlush(filePath);
-    await coalescer.flushPending(filePath);
+    await complete(coalescer.flushPending(filePath));
 
     expect(await fs.promises.readFile(filePath, "utf-8")).toBe("second");
   });
@@ -549,10 +561,10 @@ describe("a flush already writing", () => {
     const filePath = path.join(tmpDir, "file.txt");
 
     await startSlowFlush(filePath);
-    await coalescer.supersedePending(filePath, () =>
+    await complete(coalescer.supersedePending(filePath, () =>
       fs.promises.unlink(filePath),
-    );
-    await sleep(FLUSH_WRITE_MS + 50);
+    ));
+    await vi.advanceTimersByTimeAsync(FLUSH_WRITE_MS + 50);
 
     await expect(fs.promises.access(filePath)).rejects.toMatchObject({
       code: "ENOENT",
@@ -563,10 +575,10 @@ describe("a flush already writing", () => {
     const filePath = path.join(tmpDir, "file.txt");
 
     await startSlowFlush(filePath, 1);
-    await coalescer.supersedePending(filePath, () =>
+    await complete(coalescer.supersedePending(filePath, () =>
       fs.promises.unlink(filePath),
-    );
-    await sleep(RETRY_BACKOFF_MS + FLUSH_WRITE_MS + 50);
+    ));
+    await vi.advanceTimersByTimeAsync(RETRY_BACKOFF_MS + FLUSH_WRITE_MS + 50);
 
     expect(coalescer.getPending(filePath)).toBeNull();
     await expect(fs.promises.access(filePath)).rejects.toMatchObject({
@@ -581,9 +593,9 @@ describe("a flush already writing", () => {
 
     await fs.promises.mkdir(dir);
     await startSlowFlush(filePath);
-    await coalescer.supersedePendingSubtree(dir, async () => {
+    await complete(coalescer.supersedePendingSubtree(dir, async () => {
       seen = await fs.promises.readFile(filePath, "utf-8");
-    });
+    }));
 
     expect(seen).toBe("second");
   });
@@ -592,7 +604,7 @@ describe("a flush already writing", () => {
     const filePath = path.join(tmpDir, "file.txt");
 
     await startSlowFlush(filePath);
-    await coalescer.flushAll();
+    await complete(coalescer.flushAll());
 
     expect(await fs.promises.readFile(filePath, "utf-8")).toBe("second");
   });
@@ -611,7 +623,7 @@ describe("supersedePending", () => {
     await coalescer.supersedePending(filePath, () =>
       fs.promises.unlink(filePath),
     );
-    await sleep(SHORT_WINDOW_MS + 30);
+    await vi.advanceTimersByTimeAsync(SHORT_WINDOW_MS + 30);
 
     expect(coalescer.getPending(filePath)).toBeNull();
     await expect(fs.promises.access(filePath)).rejects.toMatchObject({
@@ -628,7 +640,7 @@ describe("supersedePending", () => {
         throw new Error("op failed");
       }),
     ).rejects.toThrow("op failed");
-    await sleep(SHORT_WINDOW_MS + 30);
+    await vi.advanceTimersByTimeAsync(SHORT_WINDOW_MS + 30);
 
     expect(await fs.promises.readFile(filePath, "utf-8")).toBe("buffered");
   });
@@ -638,10 +650,12 @@ describe("supersedePending", () => {
     let seen;
 
     await buffered(filePath);
-    await coalescer.supersedePending(filePath, async () => {
+    const operation = coalescer.supersedePending(filePath, async () => {
       await sleep(SHORT_WINDOW_MS + 30);
       seen = await fs.promises.readFile(filePath, "utf-8");
     });
+    await vi.advanceTimersByTimeAsync(SHORT_WINDOW_MS + 30);
+    await operation;
 
     expect(seen).toBe("first");
   });
@@ -653,7 +667,7 @@ describe("supersedePending", () => {
     await coalescer.supersedePending(filePath, async () => {
       await coalescer.writeCoalesced(filePath, "newer", "utf-8");
     });
-    await sleep(SHORT_WINDOW_MS + 30);
+    await vi.advanceTimersByTimeAsync(SHORT_WINDOW_MS + 30);
 
     expect(await fs.promises.readFile(filePath, "utf-8")).toBe("newer");
   });
@@ -665,7 +679,7 @@ describe("supersedePending", () => {
     await coalescer.supersedePending(filePath, async () => {
       await coalescer.writeCoalesced(filePath, "buffered", "utf-8");
     });
-    await sleep(SHORT_WINDOW_MS + 30);
+    await vi.advanceTimersByTimeAsync(SHORT_WINDOW_MS + 30);
 
     expect(await fs.promises.readFile(filePath, "utf-8")).toBe("buffered");
   });
