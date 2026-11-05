@@ -306,13 +306,13 @@ describe("watcher liveness rebuild", () => {
     watcher.addListener(VAULT_ID, () => {});
 
     await whenReady(dead);
-    await fs.promises.rm(vaultPath, { recursive: true, force: true });
-
-    await vi.waitFor(() => expect(countWatched(dead)).toBe(0), {
-      timeout: 5000,
-    });
-
-    await fs.promises.mkdir(vaultPath);
+    // Keep Ignis's ready entry, but deterministically remove its underlying
+    // watches. Deleting the directory can leave Chokidar tracking its parent
+    // while it waits for the directory to return, depending on event timing.
+    await dead.watcher.close();
+    expect(dead.ready).toBe(true);
+    expect(countWatched(dead)).toBe(0);
+    expect(dead.listeners.size).toBe(1);
 
     const fresh = watcher.startWatching(VAULT_ID, vaultPath);
 
