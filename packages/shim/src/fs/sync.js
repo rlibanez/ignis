@@ -7,7 +7,7 @@ import {
   resolvePathInfo,
 } from "./transforms.js";
 import { hasVirtualFile, getVirtualFile } from "./virtual-files.js";
-import { cancelPending, enqueueWrite, hasPending } from "./write-coalescer.js";
+import { cancelPending, enqueue, enqueueWrite, hasPending } from "./write-coalescer.js";
 import { createUtimes } from "./utimes.js";
 
 export function createFsSync(metadataCache, contentCache, transport, filePolicy = null) {
@@ -170,6 +170,8 @@ export function createFsSync(metadataCache, contentCache, transport, filePolicy 
           : transformed.byteLength || 0;
 
       const applyResult = (result) => {
+        // A synchronous unlink may have already removed this optimistic entry.
+        if (!metadataCache.has(resolved)) return;
         metadataCache.set(resolved, {
           type: "file",
           size: result.size || size,
@@ -199,12 +201,13 @@ export function createFsSync(metadataCache, contentCache, transport, filePolicy 
       filePolicy?.assertOrdinary(path, resolvePath(path));
       const resolved = resolvePath(path);
 
+      cancelPending(resolved);
       markSentOp(resolved);
       contentCache.delete(resolved);
       metadataCache.delete(resolved);
 
       // Fire-and-forget. suppress ENOENT (file already gone)
-      transport.unlink(resolved).catch((e) => {
+      enqueue(resolved, () => transport.unlink(resolved)).catch((e) => {
         if (e.code !== "ENOENT") {
           console.error(
             "[shim:fs] unlinkSync background delete failed:",
