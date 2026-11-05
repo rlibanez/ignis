@@ -14,7 +14,7 @@ completa debe seguir pasando mientras las implementaciones se sustituyen.
 | A06 | Contraseña local, temporal y cambio obligatorio revocan autoridad anterior | `auth/change-password.test.mjs`, `auth/password-reset.test.mjs` | 2 |
 | A07 | Host/Origin/CSRF/proxy y límites se aplican; nuevas rutas cerradas | `auth/http.test.mjs`, `auth/proxy-trust.test.mjs`, `auth/route-manifest.test.mjs`, `auth/request-limits.test.mjs` | 2–3 |
 | A08 | No confundir admin, propietario, editor y lector | `auth/vault-policy.test.mjs`, `auth/vault-access.test.mjs`, `auth/multiuser.integration.test.mjs` | 3 |
-| A09 | Crear/registrar/renombrar/eliminar conserva ID y propiedad | `auth/vault-creation.test.mjs`, `auth/vault-registration.test.mjs`, `auth/vault-rename.test.mjs`, `auth/vault-deletion.test.mjs` | 3 |
+| A09 | Crear/importar/renombrar/eliminar conserva ID y propiedad | `auth/vault-creation.test.mjs`, `auth/vault-storage.test.mjs`, `auth/vault-rename.test.mjs`, `auth/vault-deletion.test.mjs` | 3 |
 | A10 | Un fallo de lifecycle deja reserva/cuarentena, sin acceso accidental | `auth/vault-rename.test.mjs`, `auth/vault-deletion.test.mjs`, `auth/user-deletion.test.mjs` | 3–4 |
 | A11 | Árbol/bootstrap/adjuntos no revelan datos ajenos | `auth/vault-view.test.mjs`, `routes/bootstrap.private.test.mjs`, `auth/server.integration.test.mjs` | 3 |
 | A12 | Rutas, enlaces, sustituciones y operaciones recursivas seguras | `auth/resource-shares.test.mjs`, `vault/resource-policy.test.mjs`, `routes/fs.routes.test.mjs` | 3–5 |

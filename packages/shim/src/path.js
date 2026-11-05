@@ -10,7 +10,7 @@ export const pathShim = {
   basename(p, ext) {
     // Vault root "/" should return the vault name for display purposes
     if (p === "/" && window.__currentVaultId) {
-      return window.__currentVaultId;
+      return _origBasename(window.__currentVaultId);
     }
 
     return _origBasename(p, ext);

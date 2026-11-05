@@ -1,3 +1,4 @@
+const {currentVaultId} = require("./vault-identity");
 
 const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 const { setIcon } = require("obsidian");
@@ -12,7 +13,7 @@ const TOOLTIP_MAP = {
 };
 
 function initSyncStatusBar(plugin) {
-  const vaultId = plugin.app.vault.getName();
+  const vaultId = currentVaultId();
   const ws = window.__ignis.ws;
   const channel = ws.channel(CHANNEL);
 

@@ -20,8 +20,8 @@ const DATA_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "vault-route-data-"));
 process.env.VAULT_ROOT = VAULT_ROOT;
 process.env.DATA_ROOT = DATA_ROOT;
 
-const VAULT_ID = "v";
-const RENAMED_ID = "w";
+const VAULT_ID = "owner/v";
+const RENAMED_ID = "owner/w";
 const OTHER_ID = "other";
 const SETTINGS_FILE = path.join(DATA_ROOT, "server-settings.json");
 
@@ -33,7 +33,7 @@ const { watcher } = require("@ignis/server-core");
 const express = require("express");
 
 const {openDatabase}=require('../platform/persistence/database');
-const {registerExistingVault}=require('../features/vaults/adapters/vault-registration');
+const {registerExistingVault}=require('../auth/fixtures/vault.cjs');
 const {renameRegisteredVault}=require('../features/vaults/adapters/vault-rename');
 const {deleteRegisteredVault}=require('../features/vaults/adapters/vault-deletion');
 let db,registered;
@@ -81,7 +81,8 @@ beforeEach(() => {
   fs.rmSync(path.join(DATA_ROOT,'auth'),{recursive:true,force:true});
   db=openDatabase(DATA_ROOT);
   db.prepare("INSERT INTO users(id,login,role,created_at) VALUES ('owner','owner','admin',0)").run();
-  registered=registerExistingVault(db,VAULT_ROOT,VAULT_ID,'owner');
+  registered=registerExistingVault(db,VAULT_ROOT,VAULT_ID.split("/").pop(),'owner');
+  config.setRegisteredVaults(()=>Object.fromEntries(db.prepare("SELECT directory FROM vaults WHERE status='active'").all().map(v=>[v.directory,path.join(VAULT_ROOT,v.directory)])));
   config.refreshVaults();
   settings.update({ trustedVaults: [] });
   fs.rmSync(SETTINGS_FILE, { force: true });
@@ -96,7 +97,7 @@ const rename = (vault, name) =>
   fetch(`${base}/api/vault/rename`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ vault, name }),
+    body: JSON.stringify({ vault, name: name.split("/").pop() }),
   });
 
 const remove = (vault) =>
@@ -119,11 +120,12 @@ describe("manual refresh", () => {
   });
 
   it("refuses a second refresh within the cooldown", async () => {
-    fs.mkdirSync(path.join(VAULT_ROOT, OTHER_ID), { recursive: true });
-    config.refreshVaults();
+    registerExistingVault(db,VAULT_ROOT,OTHER_ID,"owner");
+    config.setRegisteredVaults(()=>Object.fromEntries(db.prepare("SELECT directory FROM vaults WHERE status='active'").all().map(v=>[v.directory,path.join(VAULT_ROOT,v.directory)])));
+  config.refreshVaults();
 
-    expect((await refresh(OTHER_ID)).status).toBe(200);
-    expect((await refresh(OTHER_ID)).status).toBe(429);
+    expect((await refresh("owner/"+OTHER_ID)).status).toBe(200);
+    expect((await refresh("owner/"+OTHER_ID)).status).toBe(429);
   });
 });
 
@@ -173,7 +175,7 @@ describe("trusted vaults through the vault routes", () => {
 });
 
 it('never falls back to a raw filesystem rename or deletion without registered lifecycle',async()=>{
- for(const [route,method,body]of [['rename','POST',{vault:VAULT_ID,name:RENAMED_ID}],['remove?vault='+VAULT_ID,'DELETE',null]]){
+ for(const [route,method,body]of [['rename','POST',{vault:VAULT_ID,name:RENAMED_ID.split("/").pop()}],['remove?vault='+VAULT_ID,'DELETE',null]]){
   const response=await fetch(base+'/api/vault/'+route,{method,headers:{'content-type':'application/json','x-without-lifecycle':'true'},...(body?{body:JSON.stringify(body)}:{})});
   expect(response.status).toBe(503);
   expect(fs.existsSync(path.join(VAULT_ROOT,VAULT_ID))).toBe(true);

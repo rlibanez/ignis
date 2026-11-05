@@ -69,8 +69,8 @@ async function withWatcherStopped(vaultId, vaultPath, mutate) {
 
 // Registered lifecycle operations keep failed vaults quarantined; do not restart
 // their watcher on failure. Closing sockets also drops per-client listeners.
-async function quiesceRegisteredVault(vaultId, vaultPath) {
-  if (wss) wss.closeVaultSockets(vaultId);
+async function quiesceRegisteredVault(vaultId, vaultPath, options) {
+  if (wss) wss.closeVaultSockets(vaultId, options);
   await drainRouterWork();
   await watcher.stopWatching(vaultId);
   await writeCoalescer.flushPendingSubtree(vaultPath);

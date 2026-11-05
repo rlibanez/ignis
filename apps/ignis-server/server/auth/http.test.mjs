@@ -22,8 +22,8 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "ignis-http-auth-"));
-  fs.mkdirSync(path.join(root, "vault"));
-  fs.writeFileSync(path.join(root, "vault", "note.md"), "private note");
+  fs.mkdirSync(path.join(root,fixtureDirectory()));
+  fs.writeFileSync(path.join(root,fixtureDirectory(), "note.md"), "private note");
   db = openDatabase(path.join(root, "data"));
   bootstrapAdmin(db, "admin", hash);
   db.prepare(
@@ -53,10 +53,10 @@ beforeEach(async () => {
   app.get("/api/bootstrap", (req, res) => res.json({configurationMode:"shared"}));
   app.get("/api/vault/list", (req, res) => res.json(["private vault"]));
   app.use("/api/vault", require("../routes/vault"));
-  app.post("/api/fs/rename", (req,res) => res.json(req.renameVaultResource("vault",req.body.oldPath,req.body.newPath)));
+  app.post("/api/fs/rename", (req,res) => res.json(req.renameVaultResource(req.query.vault,req.body.oldPath,req.body.newPath)));
   app.post("/api/fs/writeFile", (req, res) => res.json({ ok: true }));
   app.get("/api/fs/readFile", (req, res) => {
-    if (!req.authorizeVaultFile("vault", "content.read", "note.md")) return res.sendStatus(404);
+    if (!req.authorizeVaultFile(req.query.vault, "content.read", "note.md")) return res.sendStatus(404);
     beforeFileReply();
     res.send("protected bytes");
   });
@@ -76,7 +76,7 @@ beforeEach(async () => {
   app.use(boundary.errorHandler);
   server = http.createServer(app);
   wss = setupWebSocket(server, {
-    getVaultPath: (id) => (id === "vault" ? path.join(root, "vault") : null),
+    getVaultPath: (id) => (id === fixtureDirectory() ? path.join(root,fixtureDirectory()) : null),
     security: boundary.wsSecurity,
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -87,7 +87,7 @@ afterEach(async () => {
   for (const ws of wss.clients) ws.terminate();
   wss.close();
   await new Promise((resolve) => server.close(resolve));
-  watcher.stopWatching("vault");
+  watcher.stopAll();
   db.close();
   fs.rmSync(root, { recursive: true, force: true });
 });
@@ -145,10 +145,11 @@ async function csrf(jar) {
   expect(response.status).toBe(200);
   return (await response.json()).csrfToken;
 }
+function fixtureDirectory(){try{return db.prepare("SELECT directory FROM vaults WHERE name='vault'").get()?.directory || "vault";}catch{return "vault";}}
 async function login(user = "admin", password = PASSWORD) {
   // Tests using the default admin exercise an explicitly owned fixture vault.
-  if (user === "admin" && !db.prepare("SELECT 1 FROM vaults WHERE directory='vault'").get())
-    require("../features/vaults/adapters/vault-registration.js").registerExistingVault(db, root, "vault", db.prepare("SELECT id FROM users WHERE login='admin'").get().id);
+  if (user === "admin" && !db.prepare("SELECT 1 FROM vaults WHERE name='vault'").get())
+    require("./fixtures/vault.cjs").registerExistingVault(db, root, "vault", db.prepare("SELECT id FROM users WHERE login='admin'").get().id);
   const jar = {};
   const token = await csrf(jar);
   const result = await request("/api/auth/login", {
@@ -161,7 +162,7 @@ async function login(user = "admin", password = PASSWORD) {
   expect(await result.json()).not.toHaveProperty("token");
   return jar;
 }
-function connect(jar = {}, origin = ORIGIN, reference = "vault") {
+function connect(jar = {}, origin = ORIGIN, reference = fixtureDirectory()) {
   return new WebSocket(base.replace("http:", "ws:") + "/ws?vault=" + encodeURIComponent(reference), {
     headers: {
       host: "localhost:8080",
@@ -205,8 +206,8 @@ describe("HTTP boundary", () => {
       .prepare("SELECT id FROM sessions WHERE user_id = ?")
       .get(identity.user.id);
     const req = {
-      url: "/api/fs/download?vault=vault",
-      query: { vault: "vault" },
+      url: "/api/fs/download?vault=admin%2Fvault",
+      query: { vault: fixtureDirectory() },
       headers: {
         cookie: Object.entries(jar)
           .map(([k, v]) => `${k}=${v}`)
@@ -275,7 +276,7 @@ describe("HTTP boundary", () => {
     const mutation = {
       jar,
       method: "POST",
-      body: {vault:"vault"},
+      body: {vault: fixtureDirectory()},
       headers: { "x-ignis-csrf": token },
     };
     expect((await request("/api/fs/writeFile", mutation)).status).toBe(200);
@@ -422,7 +423,7 @@ describe("WebSocket boundary", () => {
     db.exec(
       "UPDATE users SET auth_version = auth_version + 1 WHERE login = 'admin'",
     );
-    wss.broadcastToVault("vault", {
+    wss.broadcastToVault(fixtureDirectory(), {
       type: "modified",
       path: "must-not-arrive.md",
     });
@@ -444,7 +445,7 @@ describe("WebSocket boundary", () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     wss
       .channel("metadata")
-      .broadcastToVault("vault", { type: "revision", etag: "ok" });
+      .broadcastToVault(fixtureDirectory(), { type: "revision", etag: "ok" });
     expect(JSON.parse((await message)[0].toString()).etag).toBe("ok");
     const closed = once(ws, "close");
     ws.send(JSON.stringify({ type: "subscribe-channel", channel: "unknown" }));
@@ -547,7 +548,7 @@ describe("startup and proxy policy", () => {
 });
 
 it("maps mounted static resources without allowing traversal or unknown API routes", () => {
-  const roots = [{ root: path.join(root, "vault"), mount: "/assets/" }];
+  const roots = [{ root: path.join(root,fixtureDirectory()), mount: "/assets/" }];
   expect(permittedResource("GET", "/assets/note.md", roots)).toBe(true);
   expect(permittedResource("GET", "/note.md", roots)).toBe(false);
   expect(permittedResource("POST", "/assets/note.md", roots)).toBe(false);
@@ -588,10 +589,10 @@ it("rejects requests and sockets carrying a previous browser session context", a
         .join("; "),
     },
     socket: { remoteAddress: "127.0.0.1" },
-    url: "/ws?vault=vault&context=old",
+    url: "/ws?vault=admin%2Fvault&context=old",
   };
   expect(boundary.wsSecurity.verify(req)).toBe(false);
-  req.url = "/ws?vault=vault&context=" + session.sessionId;
+  req.url = "/ws?vault=admin%2Fvault&context=" + session.sessionId;
   expect(boundary.wsSecurity.verify(req)).toBe(true);
 });
 it("serves login assets without exposing the app to unauthenticated clients", async () => {
@@ -746,7 +747,7 @@ describe("account status administration", () => {
     db.prepare("INSERT INTO users(id,login,role,created_at) VALUES ('second','second','admin',1)").run();
     db.prepare("INSERT INTO local_credentials VALUES ('second',?,1)").run(hash);
     const second = await login("second");
-    db.prepare("INSERT INTO memberships SELECT id, 'second', 'reader' FROM vaults WHERE directory='vault'").run();
+    db.prepare("INSERT INTO memberships SELECT id, 'second', 'reader' FROM vaults WHERE name='vault'").run();
     const ws = connect(second);
     await once(ws, "open");
     const closed = once(ws, "close");
@@ -943,11 +944,11 @@ it("reauthenticates the same administrator without changing the vault context an
   expect(current.recentAuthentication).toBe(true);
   expect((await request("/api/auth/session", { jar: old })).status).toBe(401);
   const message = once(ws, "message");
-  wss.broadcastToVault("vault", { type: "modified", path: "note.md" });
+  wss.broadcastToVault(fixtureDirectory(), { type: "modified", path: "note.md" });
   expect(JSON.parse((await message)[0].toString()).path).toBe("note.md");
   const closed = once(ws, "close");
   db.exec("UPDATE users SET auth_version=auth_version+1 WHERE login='admin'");
-  wss.broadcastToVault("vault", { type: "modified", path: "revoked.md" });
+  wss.broadcastToVault(fixtureDirectory(), { type: "modified", path: "revoked.md" });
   await closed;
 
 });
@@ -1076,7 +1077,7 @@ it("requires confirmed, recent and context-bound administrator requests to chang
   expect((await request("/api/auth/session", { jar: normal })).status).toBe(401);
   const promoted = await login("normal");
   expect((await request("/api/auth/users", { jar: promoted })).status).toBe(200);
-  db.prepare("INSERT INTO memberships SELECT id, 'normal', 'reader' FROM vaults WHERE directory='vault'").run();
+  db.prepare("INSERT INTO memberships SELECT id, 'normal', 'reader' FROM vaults WHERE name='vault'").run();
   const socket = connect(promoted); await once(socket, "open");
   const closed = once(socket, "close");
   const demotion = { ...body, role: "user", expectedRole: "admin", confirmAdmin: false };
@@ -1102,7 +1103,7 @@ it("rejects duplicate, malformed and conflicting vault selectors after parsing a
 describe("registered WebSocket vault identity", () => {
   function register() {
     const owner = db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
-    return require("../features/vaults/adapters/vault-registration.js").registerExistingVault(db, root, "vault", owner);
+    return require("./fixtures/vault.cjs").registerExistingVault(db, root, "vault", owner);
   }
   it("routes UUID and alias connections through the same watcher and broadcast key", async () => {
     const vault = register();
@@ -1111,11 +1112,11 @@ describe("registered WebSocket vault identity", () => {
     const byName = connect(jar);
     await Promise.all([once(byId, "open"), once(byName, "open")]);
     const messages = [once(byId, "message"), once(byName, "message")];
-    wss.broadcastToVault("vault", { type: "modified", path: "same-vault.md" });
+    wss.broadcastToVault(fixtureDirectory(), { type: "modified", path: "same-vault.md" });
     for (const message of await Promise.all(messages))
       expect(JSON.parse(message[0].toString()).path).toBe("same-vault.md");
     const closed = [once(byId, "close"), once(byName, "close")];
-    wss.closeVaultSockets("vault");
+    wss.closeVaultSockets(fixtureDirectory());
     expect((await Promise.all(closed)).map(event => event[0])).toEqual([4002, 4002]);
   });
   it("blocks outgoing data when the pinned vault is quarantined", async () => {
@@ -1126,7 +1127,7 @@ describe("registered WebSocket vault identity", () => {
     ws.on("message", () => { received = true; });
     const closed = once(ws, "close");
     db.prepare("UPDATE vaults SET status='quarantine' WHERE id=?").run(vault.id);
-    wss.broadcastToVault("vault", { type: "modified", path: "must-not-arrive.md" });
+    wss.broadcastToVault(fixtureDirectory(), { type: "modified", path: "must-not-arrive.md" });
     expect((await closed)[0]).toBe(4002);
     expect(received).toBe(false);
   });
@@ -1137,14 +1138,14 @@ describe("registered WebSocket vault identity", () => {
     const closed = once(ws, "close");
     db.prepare("DELETE FROM vaults WHERE id=?").run(vault.id);
     expect(register().id).not.toBe(vault.id);
-    wss.broadcastToVault("vault", { type: "modified", path: "replacement.md" });
+    wss.broadcastToVault(fixtureDirectory(), { type: "modified", path: "replacement.md" });
     expect((await closed)[0]).toBe(4002);
   });
 });
 
 it("resolves plugin and sync UUIDs before routing and keeps all operations administrator-only", async () => {
   const owner = db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
-  const vault = require("../features/vaults/adapters/vault-registration.js").registerExistingVault(db, root, "vault", owner);
+  const vault = require("./fixtures/vault.cjs").registerExistingVault(db, root, "vault", owner);
   const jar = await login();
   const normal = await login("normal");
   const token = await csrf(jar);
@@ -1154,19 +1155,19 @@ it("resolves plugin and sync UUIDs before routing and keeps all operations admin
     const body = { vaultId: vault.id };
     const response = await request(url, { jar, method: "POST", headers, body });
     expect(response.status).toBe(200);
-    expect((await response.json()).body.vaultId).toBe("vault");
+    expect((await response.json()).body.vaultId).toBe(fixtureDirectory());
     expect((await request(url, { jar: normal, method: "POST", headers, body })).status).toBe(403);
     expect((await request(url, { jar, method: "POST", body })).status).toBe(403);
   }
   for (const action of ["enable", "disable"]) {
     const response = await request("/api/plugins/headless-sync/" + action, { jar, method: "POST", headers, body: { vault: vault.id } });
     expect(response.status).toBe(200);
-    expect((await response.json()).body.vault).toBe("vault");
+    expect((await response.json()).body.vault).toBe(fixtureDirectory());
   }
   const logs = await request(`/api/ext/headless-sync/logs?vaultId=${vault.id}`, { jar });
   expect(logs.status).toBe(200);
-  expect((await logs.json()).query.vaultId).toBe("vault");
-  for (const body of [{}, { vaultId: [] }, { vaultId: "../vault" }, { vaultId: vault.id, vault: "vault" }]) {
+  expect((await logs.json()).query.vaultId).toBe(fixtureDirectory());
+  for (const body of [{}, { vaultId: [] }, { vaultId: "../vault" }, { vaultId: vault.id, vault: fixtureDirectory() }]) {
     expect((await request("/api/ext/headless-sync/start", { jar, method: "POST", headers, body })).status).toBe(400);
   }
   expect((await request("/api/ext/headless-sync/start?vaultId=other", { jar, method: "POST", headers, body: { vaultId: vault.id } })).status).toBe(400);
@@ -1177,18 +1178,18 @@ it("resolves plugin and sync UUIDs before routing and keeps all operations admin
 
 it("revalidates the pinned file decision before releasing response bytes", async () => {
   const owner = db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
-  const vault = require("../features/vaults/adapters/vault-registration.js").registerExistingVault(db, root, "vault", owner);
+  const vault = require("./fixtures/vault.cjs").registerExistingVault(db, root, "vault", owner);
   const jar = await login();
-  const permitted = await request("/api/fs/readFile?vault=vault&path=note.md", { jar });
+  const permitted = await request("/api/fs/readFile?vault=admin%2Fvault&path=note.md", { jar });
   expect(permitted.status).toBe(200);
   expect(await permitted.text()).toBe("protected bytes");
   beforeFileReply = () => db.prepare("UPDATE vaults SET status='quarantine' WHERE id=?").run(vault.id);
-  await expect(request("/api/fs/readFile?vault=vault&path=note.md", { jar })).rejects.toThrow();
+  await expect(request("/api/fs/readFile?vault=admin%2Fvault&path=note.md", { jar })).rejects.toThrow();
 });
 
 it("projects filesystem events for each real socket without exposing reserved paths or extra payload fields", async () => {
   const owner = db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
-  require("../features/vaults/adapters/vault-registration.js").registerExistingVault(db, root, "vault", owner);
+  require("./fixtures/vault.cjs").registerExistingVault(db, root, "vault", owner);
   const ws = connect(await login());
   await once(ws, "open");
   const received = [];
@@ -1199,9 +1200,9 @@ it("projects filesystem events for each real socket without exposing reserved pa
       if (message.path === "last.md") resolve();
     });
   });
-  wss.broadcastToVault("vault", { type: "modified", path: ".ignis-private/secret.md" });
-  wss.broadcastToVault("vault", { type: "rename", path: "public.md", toPath: ".ignis-private/secret.md" });
-  wss.broadcastToVault("vault", { type: "modified", path: "last.md", unexpectedSecret: "must-not-arrive", stat: { size: 5, mtime: 7, absolutePath: "/private" } });
+  wss.broadcastToVault(fixtureDirectory(), { type: "modified", path: ".ignis-private/secret.md" });
+  wss.broadcastToVault(fixtureDirectory(), { type: "rename", path: "public.md", toPath: ".ignis-private/secret.md" });
+  wss.broadcastToVault(fixtureDirectory(), { type: "modified", path: "last.md", unexpectedSecret: "must-not-arrive", stat: { size: 5, mtime: 7, absolutePath: "/private" } });
   await finished;
   expect(received).toEqual([
     { type: "deleted", path: "public.md" },
@@ -1212,25 +1213,25 @@ it("projects filesystem events for each real socket without exposing reserved pa
 
 it("allows an owner socket and file reads, then stops both after membership revocation", async () => {
   const owner = db.prepare("SELECT id FROM users WHERE login='normal'").get().id;
-  const vault = require("../features/vaults/adapters/vault-registration.js").registerExistingVault(db, root, "vault", owner);
+  const vault = require("./fixtures/vault.cjs").registerExistingVault(db, root, "vault", owner);
   const jar = await login("normal");
   const response = await request(`/api/fs/readFile?vault=${vault.id}&path=note.md`, { jar });
   expect(response.status).toBe(200);
   const ws = connect(jar, ORIGIN, vault.id);
   await once(ws, "open");
   const message = once(ws, "message");
-  wss.broadcastToVault("vault", { type: "modified", path: "visible.md" });
+  wss.broadcastToVault(fixtureDirectory(), { type: "modified", path: "visible.md" });
   expect(JSON.parse((await message)[0].toString()).path).toBe("visible.md");
   const closed = once(ws, "close");
   db.prepare("DELETE FROM memberships WHERE vault_id=? AND user_id=?").run(vault.id, owner);
-  wss.broadcastToVault("vault", { type: "modified", path: "after-revoke.md" });
+  wss.broadcastToVault(fixtureDirectory(), { type: "modified", path: "after-revoke.md" });
   await closed;
   expect((await request(`/api/fs/readFile?vault=${vault.id}&path=note.md`, { jar })).status).toBe(404);
 });
 
 it("allows reader and editor sessions to read their vault and subscribe to events", async () => {
   const owner = db.prepare("SELECT id FROM users WHERE login='normal'").get().id;
-  const vault = require("../features/vaults/adapters/vault-registration.js").registerExistingVault(db, root, "vault", owner);
+  const vault = require("./fixtures/vault.cjs").registerExistingVault(db, root, "vault", owner);
   const jar = await login("normal");
   for (const role of ["reader", "editor"]) {
     db.prepare("UPDATE memberships SET role=? WHERE vault_id=? AND user_id=?").run(role, vault.id, owner);
@@ -1244,7 +1245,7 @@ it("allows reader and editor sessions to read their vault and subscribe to event
 
 it("requires admin membership on sockets and immediately observes its revocation",async()=>{
  const owner="normal";
- const vault=require("../features/vaults/adapters/vault-registration.js").registerExistingVault(db,root,"vault",owner);
+ const vault=require("./fixtures/vault.cjs").registerExistingVault(db,root,"vault",owner);
  const jar=await login();
  expect(await rejectedSocket(jar,ORIGIN)).toBe(401);
  expect((await request(`/api/fs/readFile?vault=${vault.id}&path=note.md`,{jar})).status).toBe(404);
@@ -1254,14 +1255,14 @@ it("requires admin membership on sockets and immediately observes its revocation
  expect((await request(`/api/fs/readFile?vault=${vault.id}&path=note.md`,{jar})).status).toBe(200);
  const closed=once(ws,"close");
  db.prepare("DELETE FROM memberships WHERE user_id=? AND vault_id=?").run(admin,vault.id);
- wss.broadcastToVault("vault",{type:"modified",path:"no-access.md"});
+ wss.broadcastToVault(fixtureDirectory(),{type:"modified",path:"no-access.md"});
  await closed;
  expect((await request(`/api/fs/readFile?vault=${vault.id}&path=note.md`,{jar})).status).toBe(404);
  expect((await request("/api/auth/users",{jar})).status).toBe(200);
 });
 
 it("lets a normal owner share via HTTP, enforces CSRF and closes revoked member sockets",async()=>{
- const vault=require("../features/vaults/adapters/vault-registration.js").registerExistingVault(db,root,"vault","normal");
+ const vault=require("./fixtures/vault.cjs").registerExistingVault(db,root,"vault","normal");
  const owner=await login("normal"),admin=await login();
  const adminId=db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
  const url=`/api/vault/members?vault=${vault.id}`;
@@ -1286,7 +1287,7 @@ it("lets a normal owner share via HTTP, enforces CSRF and closes revoked member 
 
 it.each(["admin", "normal"])("accepts Traefik secure WebSockets for an authorized %s without trusting insecure forwarding",async user=>{
  const adminJar=await login();
- const vault=db.prepare("SELECT id FROM vaults WHERE directory='vault'").get();
+ const vault=db.prepare("SELECT id FROM vaults WHERE name='vault'").get();
  if(user==="normal") db.prepare("INSERT INTO memberships VALUES (?,'normal','reader')").run(vault.id);
  const jar=user==="admin"?adminJar:await login("normal");
  const session=await (await request("/api/auth/session",{jar})).json();
@@ -1307,13 +1308,13 @@ it.each(["admin", "normal"])("accepts Traefik secure WebSockets for an authorize
   expect(b.wsSecurity.verify({...req,url:`/ws?vault=${vault.id}&context=stale`})).toBe(false);
   expect(b.wsSecurity.verify({...req,headers:{...req.headers,"x-forwarded-proto":"https"}})).toBe(true);
   const listener=http.createServer(app);
-  const sockets=setupWebSocket(listener,{security:b.wsSecurity,getVaultPath:id=>id==="vault"?path.join(root,"vault"):null});
+  const sockets=setupWebSocket(listener,{security:b.wsSecurity,getVaultPath:id=>id===fixtureDirectory()?path.join(root,fixtureDirectory()):null});
   await new Promise(resolve=>listener.listen(0,"127.0.0.1",resolve));
   let ws;
   try {
    ws=new WebSocket(`ws://127.0.0.1:${listener.address().port}${req.url}`,{headers:req.headers});
    await once(ws,"open");const message=once(ws,"message");
-   sockets.broadcastToVault("vault",{type:"modified",path:"forwarded.md"});
+   sockets.broadcastToVault(fixtureDirectory(),{type:"modified",path:"forwarded.md"});
    expect(JSON.parse((await message)[0].toString()).path).toBe("forwarded.md");
    // wss is not a TLS assertion for ordinary HTTP routes.
    const response=await fetch(`http://127.0.0.1:${listener.address().port}/api/auth/status`,{headers:req.headers});
@@ -1326,7 +1327,7 @@ it.each(["admin", "normal"])("accepts Traefik secure WebSockets for an authorize
 });
 
 it("transfers ownership through the owner session without granting an admin bypass or losing the response",async()=>{
- const vault=require("../features/vaults/adapters/vault-registration.js").registerExistingVault(db,root,"vault","normal");
+ const vault=require("./fixtures/vault.cjs").registerExistingVault(db,root,"vault","normal");
  const owner=await login("normal"),admin=await login();
  const adminId=db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
  db.prepare("INSERT INTO memberships VALUES (?,?,'reader')").run(vault.id,adminId);
@@ -1347,7 +1348,7 @@ it("transfers ownership through the owner session without granting an admin bypa
 });
 
 it("enforces session context, CSRF and owner authority on resource sharing without granting vault access",async()=>{
- const {registerExistingVault:registerVault}=require("../features/vaults/adapters/vault-registration.js");const adminId=db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
+ const {registerExistingVault:registerVault}=require("./fixtures/vault.cjs");const adminId=db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
  const vault=registerVault(db,root,"vault",adminId);
  const admin=await login("admin"),normal=await login("normal");
  const adminSession=await (await request("/api/auth/session",{jar:admin})).json();
@@ -1425,13 +1426,13 @@ it('lets normal owners rename and delete via HTTP but denies other members and m
  expect((await post('rename',{vault:uuid,name:'Renamed'},{headers:{}})).status).toBe(403);
  expect((await post('remove',{vault:uuid},{headers:{...headers,origin:'https://evil.example'}})).status).toBe(403);
  const rename=await post('rename',{vault:uuid,name:'Renamed'});expect(rename.status).toBe(200);expect((await rename.json()).uuid).toBe(uuid);
- const {registerExistingVault:registerVault}=require('../features/vaults/adapters/vault-registration.js'),adminId=db.prepare("SELECT id FROM users WHERE login='admin'").get().id,foreign=registerVault(db,root,'vault',adminId);
+ const {registerExistingVault:registerVault}=require('./fixtures/vault.cjs'),adminId=db.prepare("SELECT id FROM users WHERE login='admin'").get().id,foreign=registerVault(db,root,'vault',adminId);
  db.prepare("INSERT INTO memberships VALUES (?,'normal','editor')").run(foreign.id);
  expect((await post('rename',{vault:foreign.id,name:'Stolen'})).status).toBe(404);
  expect((await post('remove',{vault:foreign.id})).status).toBe(404);
  expect((await post('remove',{vault:uuid})).status).toBe(200);
  expect(db.prepare('SELECT id FROM vaults WHERE id=?').get(uuid)).toBeUndefined();
- expect(fs.existsSync(path.join(root,'vault','note.md'))).toBe(true);
+ expect(fs.existsSync(path.join(root,fixtureDirectory(),'note.md'))).toBe(true);
 });
 
 it('guards deletion preview and confirmation with admin freshness, context, CSRF and exact scope',async()=>{
@@ -1467,8 +1468,8 @@ it('deletes an account via HTTP, invalidates its existing session and prevents r
 });
 
 it('requires context, CSRF and an exact explicit confirmation for shared subtree deletion',async()=>{
- const {registerExistingVault:registerVault}=require('../features/vaults/adapters/vault-registration.js'),adminId=db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
- const vault=registerVault(db,root,'vault',adminId);fs.mkdirSync(path.join(root,'vault','Project','sub'),{recursive:true});fs.writeFileSync(path.join(root,'vault','Project','sub','note.md'),'shared');
+ const {registerExistingVault:registerVault}=require('./fixtures/vault.cjs'),adminId=db.prepare("SELECT id FROM users WHERE login='admin'").get().id;
+ const vault=registerVault(db,root,'vault',adminId);fs.mkdirSync(path.join(root,fixtureDirectory(),'Project','sub'),{recursive:true});fs.writeFileSync(path.join(root,fixtureDirectory(),'Project','sub','note.md'),'shared');
  const admin=await login('admin'),normal=await login('normal');
  const headersFor=async jar=>({'x-ignis-context':(await (await request('/api/auth/session',{jar})).json()).sessionId,'x-ignis-csrf':(await (await request('/api/auth/csrf',{jar})).json()).csrfToken});
  const ah=await headersFor(admin),nh=await headersFor(normal);
@@ -1482,23 +1483,23 @@ it('requires context, CSRF and an exact explicit confirmation for shared subtree
  expect((await request('/api/shares',{jar:normal,method:'POST',headers:nh,body:{...body,input:{...body.input,confirm:false}}})).status).toBe(400);
  expect((await request('/api/shares',{jar:normal,method:'POST',headers:nh,body:{...body,input:{...body.input,extra:true}}})).status).toBe(400);
  expect((await request('/api/shares',{jar:normal,method:'POST',headers:nh,body})).status).toBe(200);
- expect(fs.existsSync(path.join(root,'vault','Project','sub'))).toBe(false);
+ expect(fs.existsSync(path.join(root,fixtureDirectory(),'Project','sub'))).toBe(false);
 });
 
 it('lets a normal owner trash and restore private files and revoke shares when trashing shared folders',async()=>{
- const {registerExistingVault:registerVault}=require('../features/vaults/adapters/vault-registration.js'),userId=db.prepare("SELECT id FROM users WHERE login='normal'").get().id;
+ const {registerExistingVault:registerVault}=require('./fixtures/vault.cjs'),userId=db.prepare("SELECT id FROM users WHERE login='normal'").get().id;
  const vault=registerVault(db,root,'vault',userId),jar=await login('normal');
  const session=await (await request('/api/auth/session',{jar})).json(),csrf=(await (await request('/api/auth/csrf',{jar})).json()).csrfToken;
  const headers={'x-ignis-context':session.sessionId,'x-ignis-csrf':csrf};
  const post=(route,body)=>request(route+'?vault='+vault.id,{jar,method:'POST',headers,body});
- fs.mkdirSync(path.join(root,'vault','.trash'));
+ fs.mkdirSync(path.join(root,fixtureDirectory(),'.trash'));
  expect((await post('/api/fs/rename',{oldPath:'note.md',newPath:'.trash/note.md'})).status).toBe(200);
  expect((await post('/api/fs/rename',{oldPath:'.trash/note.md',newPath:'note.md'})).status).toBe(200);
- fs.mkdirSync(path.join(root,'vault','Shared'));fs.writeFileSync(path.join(root,'vault','Shared','file.md'),'content');
+ fs.mkdirSync(path.join(root,fixtureDirectory(),'Shared'));fs.writeFileSync(path.join(root,fixtureDirectory(),'Shared','file.md'),'content');
  const created=await request('/api/shares',{jar,method:'POST',headers,body:{operation:'create',input:{vault:vault.id,path:'Shared',login:'admin',role:'editor'}}});expect(created.status).toBe(200);const {id}=await created.json();
  expect((await post('/api/fs/rename',{oldPath:'Shared',newPath:'.trash/Shared'})).status).toBe(200);
  expect(db.prepare('SELECT id FROM shared_resources WHERE id=?').get(id)).toBeUndefined();
- expect(fs.readFileSync(path.join(root,'vault','.trash','Shared','file.md'),'utf8')).toBe('content');
+ expect(fs.readFileSync(path.join(root,fixtureDirectory(),'.trash','Shared','file.md'),'utf8')).toBe('content');
 });
 
 it("forces a local-password change through the admin API and issues no vault session until completion", async () => {
@@ -1512,7 +1513,7 @@ it("forces a local-password change through the admin API and issues no vault ses
   expect((await request("/api/auth/session", { jar: user })).status).toBe(401);
   const response = await request("/api/auth/login", { jar: user, method: "POST", body: { login: "normal", password: PASSWORD }, headers: { "x-ignis-csrf": await csrf(user) } });
   expect(response.status).toBe(200); expect(await response.json()).toEqual({ passwordResetRequired: true });
-  for (const url of ["/api/auth/session", "/api/vault/list", "/api/auth/users", "/api/fs/readFile?vault=vault&path=note.md"])
+  for (const url of ["/api/auth/session", "/api/vault/list", "/api/auth/users", "/api/fs/readFile?vault=admin%2Fvault&path=note.md"])
     expect((await request(url, { jar: user })).status).toBe(401);
   const grant = await (await request("/api/auth/reset-password", { jar: user })).json();
   const resetHeaders = { "x-ignis-csrf": await csrf(user), "x-ignis-reset-context": grant.context };
@@ -1535,7 +1536,7 @@ it("allows external top-level PWA entry navigation without bypassing authenticat
   expect(share.headers.get('content-security-policy')).toContain("worker-src 'self'");
   expect((await request('/share-target', {method:'POST', headers})).status).toBe(403);
   expect((await request('/share-target', {headers:{...headers,'sec-fetch-dest':'iframe'}})).status).toBe(403);
-  for (const route of ["/api/auth/session", "/api/vault/list", "/api/fs/readFile?vault=vault&path=note.md"]) {
+  for (const route of ["/api/auth/session", "/api/vault/list", "/api/fs/readFile?vault=admin%2Fvault&path=note.md"]) {
     expect((await request(route, {headers})).status).toBe(403);
   }
   expect((await request("/", {headers:{...headers,"sec-fetch-mode":"cors","sec-fetch-dest":"empty"}})).status).toBe(403);
@@ -1593,7 +1594,7 @@ it('pushes new shares to recipients with no open vault and excludes unrelated ac
  db.prepare("INSERT INTO users(id,login,role,created_at) VALUES ('other','other','user',1)").run();db.prepare("INSERT INTO local_credentials VALUES ('other',?,1)").run(hash);
  const other=await login('other'),ws=await accountSocket(recipient),outsider=await accountSocket(other);
  const unrelated=[];outsider.on('message',data=>unrelated.push(JSON.parse(String(data))));
- const event=once(ws,'message');const vault=db.prepare("SELECT id FROM vaults WHERE directory='vault'").get();
+ const event=once(ws,'message');const vault=db.prepare("SELECT id FROM vaults WHERE name='vault'").get();
  const response=await request('/api/shares',{jar:admin,method:'POST',headers:{'x-ignis-context':(await (await request('/api/auth/session',{jar:admin})).json()).sessionId,'x-ignis-csrf':await csrf(admin)},body:{operation:'create',input:{vault:vault.id,path:'note.md',login:'normal',role:'reader'}}});
  expect(response.status).toBe(200);
  expect(JSON.parse(String((await event)[0]))).toEqual({type:'ignis-state',account:false,shares:true,vaults:false});
@@ -1604,23 +1605,23 @@ it('pushes new shares to recipients with no open vault and excludes unrelated ac
 });
 it('keeps account sockets out of file and plugin broadcasts and forbids subscriptions',async()=>{
  const ws=await accountSocket(await login('normal'));let received=false;ws.on('message',()=>{received=true;});
- wss.broadcastToVault('vault',{type:'modified',path:'secret.md'});
+ wss.broadcastToVault(fixtureDirectory(),{type:'modified',path:'secret.md'});
  const closed=once(ws,'close');ws.send(JSON.stringify({type:'subscribe-channel',channel:'metadata'}));await closed;expect(received).toBe(false);
 });
 it('pushes shared source edits while the owner has no open socket and ignores private siblings',async()=>{
  const admin=await login(),recipient=await login('normal');
  const session=(await (await request('/api/auth/session',{jar:admin})).json()).sessionId;
- const vault=db.prepare("SELECT id FROM vaults WHERE directory='vault'").get();
+ const vault=db.prepare("SELECT id FROM vaults WHERE name='vault'").get();
  await request('/api/shares',{jar:admin,method:'POST',headers:{'x-ignis-context':session,'x-ignis-csrf':await csrf(admin)},body:{operation:'create',input:{vault:vault.id,path:'note.md',login:'normal',role:'reader'}}});
  boundary.observeSharedSources(watcher,directory=>path.join(root,directory));
  const listener=(directory,event)=>boundary.sharedContentChanged(directory,event);watcher.addGlobalListener(listener);
  const ws=await accountSocket(recipient);
  try{
-  for(let i=0;i<100 && !watcher.isWatching('vault');i++)await new Promise(resolve=>setTimeout(resolve,10));
-  expect(watcher.isWatching('vault')).toBe(true);
+  for(let i=0;i<100 && !watcher.isWatching(fixtureDirectory());i++)await new Promise(resolve=>setTimeout(resolve,10));
+  expect(watcher.isWatching(fixtureDirectory())).toBe(true);
   const messages=[];ws.on('message',data=>messages.push(JSON.parse(String(data))));
-  fs.writeFileSync(path.join(root,'vault','private.md'),'not shared');await new Promise(resolve=>setTimeout(resolve,150));expect(messages).toEqual([]);
-  const event=once(ws,'message');fs.writeFileSync(path.join(root,'vault','note.md'),'changed from outside Ignis');
+  fs.writeFileSync(path.join(root,fixtureDirectory(),'private.md'),'not shared');await new Promise(resolve=>setTimeout(resolve,150));expect(messages).toEqual([]);
+  const event=once(ws,'message');fs.writeFileSync(path.join(root,fixtureDirectory(),'note.md'),'changed from outside Ignis');
   expect(JSON.parse(String((await event)[0]))).toEqual({type:'ignis-state',shares:true});
  }finally{watcher.removeGlobalListener(listener);ws.terminate();}
 });
@@ -1628,7 +1629,7 @@ it('rejects account event upgrades with foreign origin, missing context or mixed
  const jar=await login('normal'),session=(await (await request('/api/auth/session',{jar})).json()).sessionId;
  for(const [query,origin,cookie] of [
   ['events=1',ORIGIN,jar],['events=1&context=wrong',ORIGIN,jar],
-  [`events=1&context=${session}&vault=vault`,ORIGIN,jar],
+  [`events=1&context=${session}&vault=admin%2Fvault`,ORIGIN,jar],
   [`events=1&context=${session}`,'https://foreign.example',jar],
   [`events=1&context=${session}`,ORIGIN,{}],
  ]){
@@ -1709,12 +1710,12 @@ it("imports from a normal account with no existing vault membership, enforcing C
  expect((await request("/api/vault/import/commit/?id="+id,{jar:user,method:"POST",headers,body:[]})).status).toBe(400);
  const completed=await request("/api/vault/import/commit/?id="+id,{jar:user,method:"POST",headers,body:{}});expect(completed.status,await completed.text()).toBe(200);
  const replayed=await request("/api/vault/import/commit/?id="+id,{jar:user,method:"POST",headers,body:{}});expect(replayed.status).toBe(200);expect(await replayed.json()).toEqual(await completed.json());
- const result=await completed.json();expect(fs.readFileSync(path.join(root,"Imported","Note.md"),"utf8")).toBe("hello");
+ const result=await completed.json();expect(fs.readFileSync(path.join(root,"normal/Imported","Note.md"),"utf8")).toBe("hello");
  expect(db.prepare("SELECT user_id FROM memberships WHERE vault_id=?").get(result.id).user_id).toBe("normal");
 });
 
 it("exports a normal owner's vault with CSRF, without granting export to readers or instance admins",async()=>{
- const vault=require("../features/vaults/adapters/vault-registration").registerExistingVault(db,root,"vault","normal");
+ const vault=require("./fixtures/vault.cjs").registerExistingVault(db,root,"vault","normal");
  const user=await login("normal"),admin=await login();
  const body={vault:vault.id,configuration:false};
  expect((await request("/api/vault/export",{method:"POST",body})).status).toBe(401);
@@ -1771,5 +1772,5 @@ it('protects multi-vault scans/reviews/preparation with CSRF, live context and s
  expect((await request('/api/vault/import/file?id='+stage.id+'&index=1',{jar,method:'POST',headers:{...headers,'content-type':'application/octet-stream'},body:'hello'})).status).toBe(200);
  expect((await request('/api/vault/import/commit?id='+stage.id,{jar,method:'POST',headers,body:{}})).status).toBe(200);
  expect((await request('/api/vault/import/cancel-source',{jar,method:'POST',headers,body:{id:source.id}})).status).toBe(200);
- expect(fs.readFileSync(path.join(root,'Imported','Note.md'),'utf8')).toBe('hello');expect(fs.existsSync(path.join(root,'B'))).toBe(false);
+ expect(fs.readFileSync(path.join(root,'normal/Imported','Note.md'),'utf8')).toBe('hello');expect(fs.existsSync(path.join(root,'B'))).toBe(false);
 });

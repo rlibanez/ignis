@@ -15,7 +15,7 @@ const {
   restoreDatabase,
 } = require("../platform/persistence/database");
 const {bootstrapAdmin,normalizeLogin} = require("../features/identity/adapters/store.js");
-const {registerExistingVault:registerVault}=require("../features/vaults/adapters/vault-registration.js");
+const {registerExistingVault:registerVault}=require("./fixtures/vault.cjs");
 const { hashPassword } = require("../features/identity/adapters/password.js");
 const fixtureHash =
   "scrypt$131072$8$1$" + "ab".repeat(16) + "$" + "cd".repeat(64);
@@ -155,14 +155,12 @@ describe("identity persistence", () => {
   it("does not register missing owners, traversal or linked vaults", () => {
     const user = bootstrapAdmin(db, "Admin", fixtureHash);
     fs.mkdirSync(path.join(root, "Team"));
-    expect(() => registerVault(db, root, "Team", "missing")).toThrow(/active/);
-    expect(() => registerVault(db, root, "../Team", user.id)).toThrow(
-      /directory/,
-    );
+    expect(() => registerVault(db, root, "Team", "missing")).toThrow(expect.objectContaining({code:"OWNER_UNAVAILABLE"}));
+    expect(() => registerVault(db, root, "../Team", user.id)).toThrow(expect.objectContaining({code:"INVALID_VAULT_NAME"}));
     if (process.platform !== "win32") {
       fs.symlinkSync(path.join(root, "Team"), path.join(root, "Alias"));
       expect(() => registerVault(db, root, "Alias", user.id)).toThrow(
-        /real directory/,
+        /directory/,
       );
     }
     expect(db.prepare("SELECT count(*) AS n FROM vaults").get().n).toBe(0);

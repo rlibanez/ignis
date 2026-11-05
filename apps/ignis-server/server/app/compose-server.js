@@ -47,8 +47,9 @@ async function composeServer() {
     watcher.configure({ignoredPaths:settings.resolveIgnoreLines()});
     require('../obsidian-account/ob-cli').init({obHome:path.join(plugins.getPluginDataDir(config.dataRoot,'headless-sync'),'ob-home')});
     config.setVaultDirectoryAvailability(auth.vaultDirectoryAvailable);
+    config.setRegisteredVaults(auth.registeredVaults);
     config.refreshVaults();
-    disposers.push(() => config.setVaultDirectoryAvailability(() => false));
+    disposers.push(() => {config.setVaultDirectoryAvailability(() => false);config.setRegisteredVaults(()=>({}));});
     const app = express();
     auth.install(app);
     installRoutes({app,auth,authConfig,config,settings,writeCoalescer});
@@ -68,7 +69,7 @@ async function composeServer() {
         const bundled = plugins.getBundledPluginDirs();
         for (const {distDir} of bundled) { auth.staticRoots.push(distDir); app.use(express.static(distDir)); }
         app.use(auth.errorHandler);
-        await migratePluginsFromAllVaults(config.vaultRoot,[BRIDGE_PLUGIN_ID,...bundled.map(item=>item.bundledPluginId)],auth.vaultDirectoryAvailable);
+        await migratePluginsFromAllVaults(config.vaultRoot,[BRIDGE_PLUGIN_ID,...bundled.map(item=>item.bundledPluginId)],auth.vaultDirectoryAvailable,config.vaults);
         await new Promise((resolve,reject) => {
           const failed = error => {server.off('listening',listening);reject(error);};
           const listening = () => {server.off('error',failed);resolve();};

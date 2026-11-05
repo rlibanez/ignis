@@ -111,6 +111,10 @@ describe("closeVaultSockets", () => {
     await bClosed;
   });
 
+  it("announces an internal ownership relocation with a distinct close code",async()=>{
+    const client=await connect("vault-a"),closed=closeCode(client);wss.closeVaultSockets("vault-a",{relocating:true});expect(await closed).toBe(4004);
+  });
+
   it("does nothing for a vault with no clients", () => {
     expect(() => wss.closeVaultSockets("vault-never-connected")).not.toThrow();
   });

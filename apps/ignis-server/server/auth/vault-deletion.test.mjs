@@ -44,10 +44,10 @@ it("allows the old name with a new UUID and no inherited reader, never reuses th
   expect(db.prepare("SELECT user_id,role FROM memberships WHERE vault_id=?").all(replacement.id)).toEqual([{ user_id: "admin", role: "owner" }]);
   await expect(remove()).rejects.toThrow();
   expect(fs.existsSync(replacement.path)).toBe(true);
-  expect(() => createRegisteredVault(db, vaultRoot, "admin", vault.id, { isCurrent: () => true })).toThrow();
+  expect(createRegisteredVault(db, vaultRoot, "admin", vault.id, { isCurrent: () => true }).id).not.toBe(vault.id);
 });
 it("requires the stable UUID, a current owner and lifecycle callbacks", async () => {
-  await expect(deleteRegisteredVault(db, vaultRoot, "admin", "Notes", { isCurrent: () => true })).rejects.toMatchObject({ code: "VAULT_ID_REQUIRED" });
+  await expect(deleteRegisteredVault(db, vaultRoot, "admin", "admin/Notes", { isCurrent: () => true })).rejects.toMatchObject({ code: "VAULT_ID_REQUIRED" });
   await expect(deleteRegisteredVault(db, vaultRoot, "normal", vault.id, { isCurrent: () => true })).rejects.toThrow();
   await expect(remove({ isCurrent: () => false })).rejects.toThrow();
   await expect(remove({ quiesce: undefined })).rejects.toThrow();
@@ -56,16 +56,16 @@ it("requires the stable UUID, a current owner and lifecycle callbacks", async ()
 });
 it("rejects symlink aliases and plugin activity without reserving", async () => {
   await expect(remove({ assertReady() { throw new Error("plugin busy"); } })).rejects.toThrow();
-  fs.symlinkSync(vault.path, path.join(vaultRoot, "Alias"));
+  fs.symlinkSync(vault.path, path.join(vaultRoot, "admin/Alias"));
   await expect(remove()).rejects.toMatchObject({ code: "VAULT_ALIAS" });
   expect(record()).toBeUndefined();
 });
 it("hides pending deletion and rejects concurrent creation or deletion", async () => {
   await remove({ quiesce: async () => {
-    expect(directoryAvailable(db, "Notes", vaultRoot)).toBe(false);
+    expect(directoryAvailable(db, "admin/Notes", vaultRoot)).toBe(false);
     const second = openDatabase(path.join(root, "data"));
     try {
-      expect(() => createRegisteredVault(second, vaultRoot, "admin", "Notes", { isCurrent: () => true })).toThrow();
+      expect(() => createRegisteredVault(second, vaultRoot, "admin", "admin/Notes", { isCurrent: () => true })).toThrow();
       await expect(deleteRegisteredVault(second, vaultRoot, "admin", vault.id, { isCurrent: () => true })).rejects.toThrow();
     } finally { second.close(); }
   } });
@@ -105,7 +105,7 @@ it.each(["fsync", "invalidate", "audit"])("preserves staged contents on %s failu
 it("keeps failed cleanup hidden and retries only the retired directory on reopen", async () => {
   expect((await remove({ io: failPurge })).cleanupPending).toBe(true);
   expect(record().state).toBe("retired");
-  fs.symlinkSync(trashPath(), path.join(vaultRoot, "Alias"));
+  fs.symlinkSync(trashPath(), path.join(vaultRoot, "admin/Alias"));
   fs.symlinkSync(vaultRoot, path.join(vaultRoot, "RootAlias"));
   for (const name of [".ignis-trash", "Alias", "RootAlias"]) expect(directoryAvailable(db, name, vaultRoot)).toBe(false);
   const replacement = createRegisteredVault(db, vaultRoot, "admin", "Notes", { isCurrent: () => true });
@@ -148,7 +148,7 @@ it.each(["reserved", "moved", "retired", "removed"])("recovers after a real proc
   await purgeRetiredVaults(db, vaultRoot);
   if (["reserved", "moved"].includes(stage)) {
     expect(record().state).toBe("pending");
-    expect(directoryAvailable(db, "Notes", vaultRoot)).toBe(false);
+    expect(directoryAvailable(db, "admin/Notes", vaultRoot)).toBe(false);
     expect(fs.readFileSync(path.join(stage === "reserved" ? vault.path : trashPath(), "keep.md"), "utf8")).toBe("valuable");
   } else {
     expect(record().state).toBe("purged");

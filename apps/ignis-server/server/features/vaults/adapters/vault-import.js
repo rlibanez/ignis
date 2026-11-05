@@ -1,6 +1,7 @@
 const fs=require('node:fs');const fsp=fs.promises;const path=require('node:path');const {randomUUID,createHash}=require('node:crypto');
 const {transaction}=require('../../../platform/persistence/database');
 const {sessionContext,matchesSession}=require('../../../../../../packages/contracts/src/session');
+const {ownedDirectory,ensureUserDirectory,storagePath,assertAvailable}=require('./vault-storage');
 const {validVaultName}=require('../application/vault-name');const {limits,fail,manifest}=require('../application/import-policy');
 const {consume,small,ensureSpace}=require('./import-streams');const {openArchive}=require('./import-archive');const {Readable,addAbortSignal}=require('node:stream');
 function validatePreference(name,bytes){
@@ -40,7 +41,7 @@ function createVaultImport({db,root,dataRoot,sessions,now=Date.now}){
   function availableName(name){
    if(!validVaultName(name))fail('IMPORT_REQUEST');
    dirOk(root);
-   if(fs.existsSync(path.join(root,name))||db.prepare('SELECT 1 FROM vaults WHERE directory=? OR id=?').get(name,name)||db.prepare('SELECT 1 FROM vault_renames WHERE source=? OR target=?').get(name,name)||db.prepare("SELECT 1 FROM vault_deletions WHERE vault_id=? OR (state='pending' AND source=?)").get(name,name))fail('VAULT_EXISTS');
+   assertAvailable(db,root,ownedDirectory(db,context.userId,name));
   }
   async function begin(input,parent=null){
    current();await sweep();current();
@@ -120,15 +121,16 @@ function createVaultImport({db,root,dataRoot,sessions,now=Date.now}){
   async function zip(input,bytes){if(!Buffer.isBuffer(bytes))fail('IMPORT_REQUEST');return zipStream(input,Readable.from([bytes]));}
   async function commit(id){const completed=receiptFor(id);if(completed)return completed;return exclusive(id,async job=>{
    if(job.plan.entries.some((e,i)=>e.include&&e.kind==='file'&&!job.received.has(i)))fail('IMPORT_INCOMPLETE');
-   const uuid=randomUUID(),target=path.join(root,job.name);let reserved=false,created=false;
+   const uuid=randomUUID(),directory=ownedDirectory(db,context.userId,job.name);let target,reserved=false,created=false;
    try{
     transaction(db,()=>{
      current(true);dirOk(root);
      availableName(job.name);
-     db.prepare("INSERT INTO vaults(id,name,directory,status,created_at) VALUES (?,?,?,'pending',?)").run(uuid,job.name,job.name,now());
+     ensureUserDirectory(root,directory);target=storagePath(root,directory,{missingLeaf:true});
+     db.prepare("INSERT INTO vaults(id,name,directory,status,created_at) VALUES (?,?,?,'pending',?)").run(uuid,job.name,directory,now());
      db.prepare("INSERT INTO memberships VALUES (?,?,'owner')").run(uuid,context.userId);audit(context.userId,'begin-import-vault',uuid);reserved=true;
     });
-    await fsp.mkdir(target,{mode:0o700});created=true;const identity=await fsp.lstat(target),directories=new Set([target,root]);
+    await fsp.mkdir(target,{mode:0o700});created=true;const identity=await fsp.lstat(target),directories=new Set([target,path.dirname(target),root]);
     await fsp.mkdir(path.join(target,'.obsidian'),{mode:0o700});directories.add(path.join(target,'.obsidian'));
     for(const [i,entry] of job.plan.entries.entries())if(entry.include){
      current();const destination=path.join(target,entry.path),parent=entry.kind==='directory'?destination:path.dirname(destination);
@@ -141,7 +143,7 @@ function createVaultImport({db,root,dataRoot,sessions,now=Date.now}){
     }
     const disabled=await fsp.open(path.join(target,'.obsidian','community-plugins.json'),'wx',0o600);try{await disabled.writeFile('[]');await disabled.sync();}finally{await disabled.close();}
     for(const folder of [...directories].sort((a,b)=>b.length-a.length)){const fd=await fsp.open(folder,'r');try{await fd.sync();}finally{await fd.close();}}
-    transaction(db,()=>{current(true);dirOk(root);const stat=fs.lstatSync(target);if(stat.isSymbolicLink()||stat.dev!==identity.dev||stat.ino!==identity.ino||db.prepare('SELECT status FROM vaults WHERE id=?').get(uuid)?.status!=='pending')fail('IMPORT_STORAGE');db.prepare("UPDATE vaults SET status='active' WHERE id=?").run(uuid);audit(context.userId,'import-vault',uuid);});
+    transaction(db,()=>{current(true);storagePath(root,directory);const stat=fs.lstatSync(target);if(stat.isSymbolicLink()||stat.dev!==identity.dev||stat.ino!==identity.ino||db.prepare('SELECT status FROM vaults WHERE id=?').get(uuid)?.status!=='pending')fail('IMPORT_STORAGE');db.prepare("UPDATE vaults SET status='active' WHERE id=?").run(uuid);audit(context.userId,'import-vault',uuid);});
     // A lost confirmation must not create another vault or strand a successful
     // import. Receipts retain no files and remain session-bound and bounded.
     if(receipts.size>=256)receipts.delete(receipts.keys().next().value);

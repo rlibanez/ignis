@@ -9,15 +9,16 @@ function deletionLifecycle() {
       if (require("../plugin-system/manager").getDiscoveredPlugins().some(plugin => plugin.enabledVaults.includes(id)))
         throw Object.assign(new Error("Disable server plugins before deleting"), { code:"VAULT_BUSY" });
     },
-    async quiesce(id, vaultPath) {
+    async quiesce(id, vaultPath, options) {
       reconcile.cancelVault(id);
-      await require("./lifecycle").quiesceRegisteredVault(id,vaultPath);
+      await require("./lifecycle").quiesceRegisteredVault(id,vaultPath,options);
     },
-    invalidate(id) {
+    invalidate(id, next) {
       reconcile.cancelVault(id);
       cache.invalidateVault(id);
+      if(next)cache.invalidateVault(next);
       const trusted = settings.get("trustedVaults");
-      if (trusted.includes(id)) settings.update({trustedVaults:trusted.filter(value => value !== id)});
+      if (trusted.includes(id)) settings.update({trustedVaults:next ? trusted.map(value=>value===id?next:value) : trusted.filter(value => value !== id)});
     },
     refresh() { config.refreshVaults(); },
   };

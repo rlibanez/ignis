@@ -1,6 +1,6 @@
 # Operación y recuperación del monolito
 
-Esta versión de desarrollo exige una instalación nueva con esquema 2. No ejecuta
+Esta versión de desarrollo exige una instalación nueva con esquema 3. No ejecuta
 migraciones de los esquemas anteriores y no borra automáticamente datos. Los assets
 privados de Obsidian se fijan en 1.14.4; no se incluyen en el repositorio ni en la
 imagen. La rama conserva las APIs protegidas y sólo mantiene fuera de la aplicación
@@ -106,3 +106,16 @@ conexiones y bloquea upgrades hasta recuperar la vigilancia. Revisar
 La instrumentación de retraso del event loop es exclusiva del harness de carga;
 no añade endpoints de diagnóstico ni datos privados al protocolo productivo.
 Consultar phase7.md y performance.md para reproducir las puertas de aceptación.
+
+## Almacenamiento por propietario
+
+Las bóvedas nuevas se crean o importan en `VAULT_ROOT/<username>/<nombre>`.
+La identidad continúa siendo su UUID; los nombres sólo son únicos dentro de la
+cuenta propietaria. No se detectan ni registran carpetas copiadas manualmente.
+No existen las antiguas rutas de registro ni el comando `register-vault`.
+
+El esquema 3 requiere un DATA_ROOT nuevo para esta versión de desarrollo. No se
+mueven, borran ni adoptan automáticamente archivos anteriores. Para reutilizarlos,
+conservar una copia fuera de la nueva raíz e importarla mediante el asistente.
+Consultar [almacenamiento de bóvedas](vault-storage.md) antes de intervenir rutas
+manualmente. Los directorios internos `.ignis-trash` siguen reservados al servidor.

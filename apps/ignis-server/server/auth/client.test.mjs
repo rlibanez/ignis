@@ -1,4 +1,4 @@
-import { it, expect } from "vitest";
+import { it, expect, vi } from "vitest";
 import fs from "node:fs";
 import vm from "node:vm";
 const source = fs.readFileSync(
@@ -85,6 +85,7 @@ async function fixture({ storageFails = false, initialSessionStatus = 200, initi
     Event,
     Blob,
     setTimeout,
+    clearTimeout,
     setInterval() {},
     localStorage: { clear() { events.push("storage-clear"); if (storageFails) throw new Error("Storage unavailable"); expect(window.__ignisAuth.blocked).toBe(false); } },
     sessionStorage: { clear() {} },
@@ -371,4 +372,28 @@ it('retains the verified account and its storage if server logout was not confir
  const f=await fixture();const start=f.events.length;f.status(503);await f.window.__ignisAuth.logout();
  expect(f.events.slice(start)).not.toContain('storage-clear');expect(f.events.slice(start)).not.toContain('redirect');
  expect(f.events.slice(start)).not.toContain('ignis:auth-lost');expect(f.window.__ignisAuth.blocked).toBe(false);
+});
+
+it('keeps an open UUID and unsaved editor data when ownership moves its unchanged name to another user namespace',async()=>{
+ const f=await fixture();f.window.__currentVaultId='alice/Notes';f.window.__currentVaultUuid='original';
+ const view={file:{path:'draft.md'},getViewData:()=> 'unsaved draft',lastSavedData:'saved'};f.window.app={workspace:{iterateAllLeaves:cb=>cb({view})}};
+ f.catalog([{id:'bob/Notes',name:'Notes',uuid:'original',membership:'reader'}]);await f.window.__ignisAuth.check();
+ expect(f.window.__ignisAuth.blocked).toBe(false);expect(f.window.__currentVaultId).toBe('bob/Notes');expect(f.window.__currentVaultUuid).toBe('original');expect(view.getViewData()).toBe('unsaved draft');expect(f.redirects).toEqual([]);
+ f.catalog([{id:'bob/Notes',name:'Notes',uuid:'replacement'}]);await f.window.__ignisAuth.check();expect(f.window.__ignisAuth.blocked).toBe(true);
+});
+it('does not treat a different UUID under another namespace as an ownership move',async()=>{
+ const f=await fixture();f.window.__currentVaultId='alice/Notes';f.window.__currentVaultUuid='original';f.catalog([{id:'bob/Notes',uuid:'other'}]);await f.window.__ignisAuth.check();expect(f.window.__ignisAuth.blocked).toBe(true);
+});
+
+it('tolerates only a bounded server-announced relocation gap and locks if the UUID does not return',async()=>{
+ vi.useFakeTimers();
+ try{
+  const f=await fixture();f.window.__currentVaultId='alice/Notes';f.window.__currentVaultUuid='original';f.window.__ignisAuth.vaultRelocating('original');f.catalog([]);
+  await f.window.__ignisAuth.check();expect(f.window.__ignisAuth.blocked).toBe(false);
+  f.window.__ignisAuth.vaultUnavailable();expect(f.window.__ignisAuth.blocked).toBe(false);
+  await vi.advanceTimersByTimeAsync(10001);expect(f.window.__ignisAuth.blocked).toBe(true);
+ }finally{vi.useRealTimers();}
+});
+it('never applies relocation grace to another UUID or an unannounced disappearance',async()=>{
+ const f=await fixture();f.window.__currentVaultId='alice/Notes';f.window.__currentVaultUuid='original';f.window.__ignisAuth.vaultRelocating('foreign');f.catalog([]);await f.window.__ignisAuth.check();expect(f.window.__ignisAuth.blocked).toBe(true);
 });

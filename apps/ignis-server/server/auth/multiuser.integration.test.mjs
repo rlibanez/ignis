@@ -294,13 +294,11 @@ it('delivers targeted account events after commits, reconnects and observes CLI 
   const reconnected=await account(bob);
   expect((await success(bob.share('mounts',{vault:b}))).mounts[0].role).toBe('reader');
   reconnected.messages.length=0;
-  fs.writeFileSync(path.join(root,'vaults','Source','note.md'),'external change');
+  fs.writeFileSync(path.join(root,'vaults','alice','Source','note.md'),'external change');
   await until(()=>reconnected.messages.some(message=>message.shares));
   expect(Buffer.from((await success(bob.share('read',{id,path:''}))).content,'base64').toString()).toBe('external change');
-  fs.mkdirSync(path.join(root,'vaults','Extra'));
   owner.messages.length=0;
-  const command=spawn(process.execPath,[path.resolve('apps/ignis-server/server/auth/cli.js'),'register-vault','Extra','alice'],{env:{...process.env,DATA_ROOT:path.join(root,'data'),VAULT_ROOT:path.join(root,'vaults')},stdio:'ignore'});
-  expect((await once(command,'exit'))[0]).toBe(0);
+  await success(alice.call('/api/vault/create',{name:'Extra'}));
   await until(()=>owner.messages.some(message=>message.vaults));
   expect((await success(alice.call('/api/vault/list'))).some(vault=>vault.name==='Extra')).toBe(true);
   // No recipient names, paths or content are carried by any event.

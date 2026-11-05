@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 const require = createRequire(import.meta.url);
 const { openDatabase } = require("../platform/persistence/database");
-const {registerExistingVault:registerVault}=require("../features/vaults/adapters/vault-registration.js");
+const {registerExistingVault:registerVault}=require("./fixtures/vault.cjs");
 const { hashPassword } = require("../features/identity/adapters/password.js");
 const { createSessionService } = require("../features/identity/adapters/sessions.js");
 const { createVaultAccessService } = require("../features/vaults/adapters/vault-access.js");
@@ -37,7 +37,7 @@ it("derives membership from the database, isolates vaults and ignores injected r
   const decision = access.check(alice, { ...read(a.id), instanceRole: "admin", membership: "owner", userId: "bob" });
   expect(decision).toMatchObject({ allowed: true, userId: "alice", vaultId: a.id, membership: "reader", administrator: false });
   expect(Object.isFrozen(decision)).toBe(true);
-  expect(access.check(alice, read("A"))).toEqual(decision);
+  expect(access.check(alice, read("admin/A"))).toEqual(decision);
   expect(access.check(alice, read(b.id))).toEqual({ allowed: false });
   expect(access.check(alice, { ...read(a.id), capability: "content.write", membership: "owner" })).toEqual({ allowed: false });
 });
@@ -73,9 +73,9 @@ it("allows shared plugins but does not grant server Sync administration", () => 
   expect(access.check(alice, { ...read(b.id), path: ".obsidian/plugins/example/data.json" })).toEqual({ allowed: false });
 });
 it("keeps identity across rename and never transfers grants to a replacement", () => {
-  fs.renameSync(path.join(vaultRoot, "A"), path.join(vaultRoot, "Renamed"));
-  db.prepare("UPDATE vaults SET directory='Renamed',name='Renamed' WHERE id=?").run(a.id);
-  expect(access.check(alice, read(a.id))).toMatchObject({ allowed: true, directory: "Renamed", vaultId: a.id });
+  fs.renameSync(path.join(vaultRoot, "admin/A"), path.join(vaultRoot, "admin/Renamed"));
+  db.prepare("UPDATE vaults SET directory='admin/Renamed',name='Renamed' WHERE id=?").run(a.id);
+  expect(access.check(alice, read(a.id))).toMatchObject({ allowed: true, directory: "admin/Renamed", vaultId: a.id });
   db.prepare("DELETE FROM vaults WHERE id=?").run(a.id);
   const replacement = registerVault(db, vaultRoot, "Renamed", "admin");
   expect(access.check(alice, read(a.id))).toEqual({ allowed: false });
@@ -88,7 +88,7 @@ it("fails closed on storage failures without disclosing database errors", () => 
 });
 
 it("rejects aliases to protected data, including links in parent directories", () => {
-  const directory = path.join(vaultRoot, "A");
+  const directory = path.join(vaultRoot, "admin/A");
   fs.mkdirSync(path.join(directory, ".obsidian"));
   fs.writeFileSync(path.join(directory, ".obsidian", "secret.json"), "secret");
   fs.symlinkSync(path.join(directory, ".obsidian"), path.join(directory, "alias"));
@@ -113,7 +113,7 @@ it("projects a thousand paths with one session lookup and bounded SQL work",()=>
  expect(batch.project(alice,a.id,[{capability:'content.write',path:'note.md',membership:'owner',instanceRole:'admin'}]).permittedOperations).toEqual([false]);
 });
 it("does not retain membership or symlink decisions across projections",()=>{
- const folder=path.join(vaultRoot,'A','Folder');fs.mkdirSync(folder);fs.writeFileSync(path.join(folder,'note.md'),'safe');
+ const folder=path.join(vaultRoot,'admin/A','Folder');fs.mkdirSync(folder);fs.writeFileSync(path.join(folder,'note.md'),'safe');
  const operations=[{capability:'content.read',path:'Folder/note.md'}];
  expect(access.project(alice,a.id,operations).permittedOperations).toEqual([true]);
  fs.renameSync(folder,folder+'Old');fs.symlinkSync(folder+'Old',folder);

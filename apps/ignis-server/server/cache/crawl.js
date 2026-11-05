@@ -105,7 +105,7 @@ async function crawlVault(vaultId, vaultPath) {
 function buildVaultInfo(vaultId, vaultPath) {
   return {
     id: vaultId,
-    name: vaultId,
+    name: vaultId.split("/").pop(),
     path: vaultPath,
     platform: process.platform,
     version: config.obsidianVersion,
@@ -116,7 +116,7 @@ function buildVaultInfo(vaultId, vaultPath) {
 function buildVaultList() {
   return Object.entries(config.vaults).map(([id, vaultPath]) => ({
     id,
-    name: id,
+    name: id.split("/").pop(),
     path: vaultPath,
   }));
 }

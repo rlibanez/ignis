@@ -96,12 +96,14 @@ async function deleteRegisteredVault(db, root, actor, id, {
     assertReady(vault.directory);
     rejectLegacyAliases(root, vault);
     if (!sameDirectory(io.lstatSync(vault.path), record)) fail("VAULT_STATE_CHANGED");
+    require("./vault-storage").storagePath(root,vault.directory,{io});
     const trash = trashDirectory(root, io, true);
     const target = path.join(trash, record.trash_name);
     try { io.lstatSync(target); fail("VAULT_STATE_CHANGED"); }
     catch (error) { if (error.code !== "ENOENT") throw error; }
     io.renameSync(vault.path, target);
     syncDirectory(io, trash);
+    syncDirectory(io, path.dirname(vault.path));
     syncDirectory(io, root);
     invalidate(vault.directory);
     transaction(db, () => {

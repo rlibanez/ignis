@@ -51,9 +51,11 @@ function createVaultMembersService(db, root, sessions) {
       return snapshot(vault);
     });
   }
-  function transfer(token, input) {
-    return transaction(db, () => {
-      const { vault, session } = authorize(token, input?.vault);
+  async function transfer(token, input, lifecycle) {
+    const {vault,session}=transaction(db,()=>authorize(token,input?.vault));
+    const validate = () => {
+      const live=sessions.resolve(token,{withinTransaction:true});
+      if (!live || live.user.id!==session.user.id || live.id!==session.id || live.user.role!==session.user.role || live.user.authVersion!==session.user.authVersion) fail("VAULT_UNAVAILABLE");
       if (!input || Object.keys(input).sort().join(",") !== "confirm,expectedRole,revision,userId,vault" ||
           input.confirm !== true || typeof input.userId !== "string" ||
           !["reader", "editor"].includes(input.expectedRole) ||
@@ -63,16 +65,22 @@ function createVaultMembersService(db, root, sessions) {
         WHERE m.vault_id=? AND u.id=?`).get(vault.id,input.userId);
       if (!target || target.status !== "active" || target.id === session.user.id || target.role === "owner")
         fail("TRANSFER_TARGET_UNAVAILABLE");
-      if (target.role !== input.expectedRole || vault.policy_version !== input.revision ||
+      if (target.role !== input.expectedRole || db.prepare("SELECT policy_version FROM vaults WHERE id=?").get(vault.id)?.policy_version !== input.revision ||
           db.prepare("SELECT count(*) n FROM memberships WHERE vault_id=? AND role='owner'").get(vault.id).n !== 1)
         fail("MEMBERSHIP_CONFLICT");
+    };
+    validate();
+    const moved = await require("./vault-rename").renameRegisteredVault(db,root,session.user.id,vault.id,vault.name,{
+      ...lifecycle,ownerId:input.userId,action:"transfer-vault",isCurrent:()=>!!sessions.resolve(token,{withinTransaction:true}),validate,
+      apply:()=>{
       db.prepare("UPDATE memberships SET role='editor' WHERE vault_id=? AND user_id=?").run(vault.id,session.user.id);
-      db.prepare("UPDATE memberships SET role='owner' WHERE vault_id=? AND user_id=?").run(vault.id,target.id);
+      db.prepare("UPDATE memberships SET role='owner' WHERE vault_id=? AND user_id=?").run(vault.id,input.userId);
       db.prepare("UPDATE vaults SET policy_version=policy_version+1 WHERE id=?").run(vault.id);
       db.prepare("INSERT INTO audit_events VALUES (?,?,?,?,?)").run(randomUUID(),session.user.id,"transfer-vault-ownership",
-        JSON.stringify({vaultId:vault.id,from:session.user.id,to:target.id,formerOwnerRole:"editor"}),Date.now());
-      return { ok:true, vault:vault.id, ownerId:target.id, membership:"editor" };
+        JSON.stringify({vaultId:vault.id,from:session.user.id,to:input.userId,formerOwnerRole:"editor"}),Date.now());
+      },
     });
+    return {ok:true,vault:vault.id,ownerId:input.userId,membership:"editor",directory:moved.directory};
   }
   return { list, update, transfer };
 }

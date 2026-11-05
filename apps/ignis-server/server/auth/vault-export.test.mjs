@@ -15,9 +15,9 @@ const signal=()=>new AbortController().signal;
 beforeEach(()=>{
  temp=fs.mkdtempSync(path.join(os.tmpdir(),'ignis-export-'));root=path.join(temp,'vaults');fs.mkdirSync(root);db=openDatabase(path.join(temp,'data'));
  for(const [id,role] of [['alice','user'],['bob','user'],['admin','admin']])db.prepare('INSERT INTO users(id,login,role,created_at) VALUES (?,?,?,0)').run(id,id,role);
- for(const name of ['Own','Other']){fs.mkdirSync(path.join(root,name));db.prepare("INSERT INTO vaults(id,name,directory,status,created_at) VALUES (?,?,?,'active',0)").run(name,name,name);}
+ for(const name of ['Own','Other']){const directory=(name==='Own'?'alice':'bob')+'/'+name;fs.mkdirSync(path.join(root,directory),{recursive:true});db.prepare("INSERT INTO vaults(id,name,directory,status,created_at) VALUES (?,?,?,'active',0)").run(name,name,directory);}
  db.prepare("INSERT INTO memberships VALUES ('Own','alice','owner'),('Own','bob','reader'),('Other','bob','owner')").run();
- fs.writeFileSync(path.join(root,'Own','Note.md'),'owned');fs.writeFileSync(path.join(root,'Other','Secret.md'),'foreign');
+ fs.writeFileSync(path.join(root,'alice/Own','Note.md'),'owned');fs.writeFileSync(path.join(root,'bob/Other','Secret.md'),'foreign');
  active=true;sessions={resolve:token=>active&&['alice','bob','admin'].includes(token)?{id:token+'-session',user:{id:token,role:token==='admin'?'admin':'user',authVersion:1}}:null};
  vaults=createVaults({store:createVaultStore(db,root,sessions),sessions,access:createVaultAccessService(db,root,sessions),createView:createVaultView});
  flush=vi.fn(async()=>{});service=createVaultExport({vaults,dataRoot:path.join(temp,'data'),flush});
@@ -25,13 +25,13 @@ beforeEach(()=>{
 afterEach(()=>{vi.restoreAllMocks();db.close();fs.rmSync(temp,{recursive:true,force:true});});
 async function contents(result){const bytes=fs.readFileSync(result.file);const entries=readZip(bytes);return Object.fromEntries(await Promise.all(entries.filter(e=>e.kind==='file').map(async e=>[e.path,(await zipFile(bytes,e)).toString()])));}
 it('exports only physical owner content, optional configuration and no foreign vault bytes',async()=>{
- fs.mkdirSync(path.join(root,'Own','.obsidian','plugins','example'),{recursive:true});fs.writeFileSync(path.join(root,'Own','.obsidian','app.json'),'{}');fs.writeFileSync(path.join(root,'Own','.obsidian','plugins','example','main.js'),'plugin');
- fs.mkdirSync(path.join(root,'Own','Empty'));fs.mkdirSync(path.join(root,'Own','.trash'));fs.writeFileSync(path.join(root,'Own','.trash','Deleted.md'),'trash');fs.writeFileSync(path.join(root,'Own','.ignis-copy-private'),'temporary');
+ fs.mkdirSync(path.join(root,'alice/Own','.obsidian','plugins','example'),{recursive:true});fs.writeFileSync(path.join(root,'alice/Own','.obsidian','app.json'),'{}');fs.writeFileSync(path.join(root,'alice/Own','.obsidian','plugins','example','main.js'),'plugin');
+ fs.mkdirSync(path.join(root,'alice/Own','Empty'));fs.mkdirSync(path.join(root,'alice/Own','.trash'));fs.writeFileSync(path.join(root,'alice/Own','.trash','Deleted.md'),'trash');fs.writeFileSync(path.join(root,'alice/Own','.ignis-copy-private'),'temporary');
  const plain=await service.prepare('alice','Own',false,signal());
- expect(await contents(plain)).toEqual({'Note.md':'owned'});expect(plain.name).toBe('Own.zip');expect(flush).toHaveBeenCalledWith(path.join(root,'Own'));await plain.dispose();
+ expect(await contents(plain)).toEqual({'Note.md':'owned'});expect(plain.name).toBe('Own.zip');expect(flush).toHaveBeenCalledWith(path.join(root,'alice/Own'));await plain.dispose();
  const full=await service.prepare('alice','Own',true,signal());
  expect(await contents(full)).toEqual({'Note.md':'owned','.obsidian/app.json':'{}','.obsidian/plugins/example/main.js':'plugin'});
- expect(fs.readFileSync(path.join(root,'Other','Secret.md'),'utf8')).toBe('foreign');await full.dispose();expect(fs.readdirSync(path.join(temp,'data','vault-exports'))).toEqual([]);
+ expect(fs.readFileSync(path.join(root,'bob/Other','Secret.md'),'utf8')).toBe('foreign');await full.dispose();expect(fs.readdirSync(path.join(temp,'data','vault-exports'))).toEqual([]);
 });
 it.each(['bob','admin',null])('rejects non-owner %s, including an administrator without ownership',async token=>{
  await expect(service.prepare(token,'Own',false,signal())).rejects.toBeTruthy();
@@ -41,11 +41,11 @@ it('rejects traversal and ambiguous or missing vault references',async()=>{
  for(const reference of ['../Other','missing','/etc'])await expect(service.prepare('alice',reference,false,signal())).rejects.toBeTruthy();
 });
 it('skips symlinks, linked directories and hardlinks to files outside the vault',async()=>{
- fs.symlinkSync(path.join(root,'Other'),path.join(root,'Own','Link'));fs.symlinkSync(path.join(root,'Other','Secret.md'),path.join(root,'Own','Link.md'));fs.linkSync(path.join(root,'Other','Secret.md'),path.join(root,'Own','Hard.md'));
+ fs.symlinkSync(path.join(root,'bob/Other'),path.join(root,'alice/Own','Link'));fs.symlinkSync(path.join(root,'bob/Other','Secret.md'),path.join(root,'alice/Own','Link.md'));fs.linkSync(path.join(root,'bob/Other','Secret.md'),path.join(root,'alice/Own','Hard.md'));
  const result=await service.prepare('alice','Own',false,signal());expect(await contents(result)).toEqual({'Note.md':'owned'});await result.dispose();
 });
 it('rejects an oversized sparse file before archive creation',async()=>{
- const file=path.join(root,'Own','large');fs.writeFileSync(file,'');fs.truncateSync(file,limits.fileBytes+1);
+ const file=path.join(root,'alice/Own','large');fs.writeFileSync(file,'');fs.truncateSync(file,limits.fileBytes+1);
  await expect(service.prepare('alice','Own',false,signal())).rejects.toMatchObject({code:'EXPORT_LIMIT'});expect(fs.readdirSync(path.join(temp,'data','vault-exports'))).toEqual([]);
 });
 it('revalidates ownership after flushing pending edits and does not grant a durable export permit',async()=>{
@@ -54,11 +54,11 @@ it('revalidates ownership after flushing pending edits and does not grant a dura
  expect(fs.readdirSync(path.join(temp,'data','vault-exports'))).toEqual([]);
 });
 it('rechecks authorization during archive reads and removes partial output',async()=>{
- const open=fs.promises.open;vi.spyOn(fs.promises,'open').mockImplementation(async(...args)=>{const result=await open(...args);if(args[0]===path.join(root,'Own','Note.md'))active=false;return result;});
+ const open=fs.promises.open;vi.spyOn(fs.promises,'open').mockImplementation(async(...args)=>{const result=await open(...args);if(args[0]===path.join(root,'alice/Own','Note.md'))active=false;return result;});
  await expect(service.prepare('alice','Own',false,signal())).rejects.toBeTruthy();expect(fs.readdirSync(path.join(temp,'data','vault-exports'))).toEqual([]);
 });
 it('pins the root directory inode across asynchronous work',async()=>{
- flush.mockImplementation(async()=>{fs.renameSync(path.join(root,'Own'),path.join(root,'Old'));fs.mkdirSync(path.join(root,'Own'));fs.writeFileSync(path.join(root,'Own','Injected.md'),'changed');});
+ flush.mockImplementation(async()=>{fs.renameSync(path.join(root,'alice/Own'),path.join(root,'alice/Old'));fs.mkdirSync(path.join(root,'alice/Own'));fs.writeFileSync(path.join(root,'alice/Own','Injected.md'),'changed');});
  await expect(service.prepare('alice','Own',false,signal())).rejects.toMatchObject({code:'EXPORT_CHANGED'});
 });
 it('cancels safely, releases capacity and retains no archive',async()=>{
@@ -71,11 +71,11 @@ it('holds the per-actor lease until the finished archive is disposed',async()=>{
  active=false;expect(()=>result.validate()).toThrow();await result.dispose();
 });
 it('startup removes orphan exports without touching vault content',async()=>{
- fs.mkdirSync(path.join(temp,'data','vault-exports','export-orphan'));await service.cleanup();expect(fs.readdirSync(path.join(temp,'data','vault-exports'))).toEqual([]);expect(fs.readFileSync(path.join(root,'Own','Note.md'),'utf8')).toBe('owned');
+ fs.mkdirSync(path.join(temp,'data','vault-exports','export-orphan'));await service.cleanup();expect(fs.readdirSync(path.join(temp,'data','vault-exports'))).toEqual([]);expect(fs.readFileSync(path.join(root,'alice/Own','Note.md'),'utf8')).toBe('owned');
 });
 
 it('excludes a real incoming virtual mount even when it is located inside the exported vault',async()=>{
- const st=fs.statSync(path.join(root,'Other','Secret.md'));
+ const st=fs.statSync(path.join(root,'bob/Other','Secret.md'));
  db.prepare("INSERT INTO shared_resources(id,vault_id,path,kind,device,inode) VALUES ('received','Other','Secret.md','file',?,?)").run(String(st.dev),`${st.ino}:${st.birthtimeMs}`);
  db.prepare("INSERT INTO resource_grants VALUES ('received','alice','reader')").run();
  db.prepare("INSERT INTO resource_destinations VALUES ('received','alice','Own','From Bob.md')").run();
@@ -86,28 +86,28 @@ it('excludes a real incoming virtual mount even when it is located inside the ex
 });
 it('bounds incompressible ZIP output and releases the failed export lease',async()=>{
  const bytes=randomBytes(24*1024*1024);
- for(let i=0;i<3;i++)fs.writeFileSync(path.join(root,'Own',`random-${i}`),bytes);
+ for(let i=0;i<3;i++)fs.writeFileSync(path.join(root,'alice/Own',`random-${i}`),bytes);
  await expect(service.prepare('alice','Own',false,signal())).rejects.toMatchObject({code:'EXPORT_LIMIT'});
  expect(fs.readdirSync(path.join(temp,'data','vault-exports'))).toEqual([]);
- for(let i=0;i<3;i++)fs.unlinkSync(path.join(root,'Own',`random-${i}`));
+ for(let i=0;i<3;i++)fs.unlinkSync(path.join(root,'alice/Own',`random-${i}`));
  const result=await service.prepare('alice','Own',false,signal());await result.dispose();
 },15000);
 
 it.each(['C:','bad\\name','con','Note.MD'])('rejects unsafe portable names or case collisions: %s',async name=>{
- fs.writeFileSync(path.join(root,'Own',name),'bad');
+ fs.writeFileSync(path.join(root,'alice/Own',name),'bad');
  await expect(service.prepare('alice','Own',false,signal())).rejects.toMatchObject({code:'EXPORT_PATH'});
  expect(fs.readdirSync(path.join(temp,'data','vault-exports'))).toEqual([]);
 });
 
 it('round-trips a vault containing only one top-level folder without flattening that folder',async()=>{
- fs.mkdirSync(path.join(root,'Own','Folder'));fs.mkdirSync(path.join(root,'Own','Folder','Empty'));fs.renameSync(path.join(root,'Own','Note.md'),path.join(root,'Own','Folder','Note.md'));
+ fs.mkdirSync(path.join(root,'alice/Own','Folder'));fs.mkdirSync(path.join(root,'alice/Own','Folder','Empty'));fs.renameSync(path.join(root,'alice/Own','Note.md'),path.join(root,'alice/Own','Folder','Note.md'));
  const result=await service.prepare('alice','Own',false,signal());
  const importer=require('../features/vaults/adapters/vault-import').createVaultImport({db,root,dataRoot:path.join(temp,'data'),sessions});
  try{
   const scope=importer.scope('alice'),job=await scope.zip({name:'Restored',configuration:false},fs.readFileSync(result.file));await scope.commit(job.id);
-  expect(fs.existsSync(path.join(root,'Restored','Folder','Note.md'))).toBe(true);
-  expect(fs.readFileSync(path.join(root,'Restored','Folder','Note.md'),'utf8')).toBe('owned');
-  expect(fs.existsSync(path.join(root,'Restored','Note.md'))).toBe(false);expect(fs.statSync(path.join(root,'Restored','Folder','Empty')).isDirectory()).toBe(true);expect(fs.readdirSync(path.join(root,'Restored','Folder','Empty'))).toEqual([]);
+  expect(fs.existsSync(path.join(root,'alice/Restored','Folder','Note.md'))).toBe(true);
+  expect(fs.readFileSync(path.join(root,'alice/Restored','Folder','Note.md'),'utf8')).toBe('owned');
+  expect(fs.existsSync(path.join(root,'alice/Restored','Note.md'))).toBe(false);expect(fs.statSync(path.join(root,'alice/Restored','Folder','Empty')).isDirectory()).toBe(true);expect(fs.readdirSync(path.join(root,'alice/Restored','Folder','Empty'))).toEqual([]);
  }finally{importer.close();await result.dispose();}
 });
 it('retains cleanup failures for startup recovery without rejecting or blocking later exports',async()=>{

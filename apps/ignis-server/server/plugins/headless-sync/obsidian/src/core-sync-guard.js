@@ -1,3 +1,4 @@
+const {currentVaultId} = require("./vault-identity");
 
 const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 const { Notice } = require("obsidian");
@@ -36,7 +37,7 @@ function showConflictWarning(title, message) {
 
 function startCoreSyncGuard(plugin, api) {
   const app = plugin.app;
-  const vaultId = app.vault.getName();
+  const vaultId = currentVaultId();
 
   // Monkey-patch syncPlugin.enable() to clear the shim flag before Obsidian writes core-plugins.json.
   // This ensures the read transform doesn't block a user-initiated core sync enable.

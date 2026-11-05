@@ -40,11 +40,6 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
   let createRequest = 0;
   let createForm;
   let createNameInput;
-  let registrationOwners = [];
-  let registrationOwner = "";
-  let registrationSnapshot = null;
-  let registrationError = "";
-  let registrationBusy = false;
   let version = "";
 
   const menuItems = [
@@ -84,6 +79,7 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
   async function refreshVaults() {
     try {
       vaults = await vaultService.listVaults();
+      currentVaultId=vaultService.getCurrentVaultId();
     } catch {
       vaults = [];
     }
@@ -109,56 +105,12 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
     openMenuId = null;
     if (item.id === "access") {
       targetVault = vault; activeDialog = "access";
-    } else if (item.id === "register") {
-      showRegistrationDialog(vault);
     } else if (item.id === "export") {
       openVaultExport(vault);
     } else if (item.id === "rename") {
       showRenameDialog(vault);
     } else if (item.id === "delete") {
       showDeleteDialog(vault);
-    }
-  }
-
-  async function showRegistrationDialog(vault) {
-    targetVault = vault;
-    activeDialog = "register";
-    registrationOwner = "";
-    registrationOwners = [];
-    registrationSnapshot = null;
-    registrationError = "";
-    registrationBusy = true;
-    try {
-      const options = await vaultService.registrationOptions();
-      if (activeDialog !== "register" || targetVault !== vault) return;
-      registrationOwners = options.owners;
-      const candidate = options.vaults.find(entry => entry.directory === vault.id);
-      if (!candidate?.eligible) {
-        registrationError = candidate?.reason || translateIgnis("This vault is no longer available for registration. Refresh the vault list.");
-      } else {
-        registrationSnapshot = candidate.identity;
-        if (!registrationOwners.length) registrationError = translateIgnis("An active user is required to own this vault.");
-      }
-    } catch (error) {
-      if (activeDialog === "register" && targetVault === vault) registrationError = translateIgnis(error.message);
-    } finally {
-      if (activeDialog === "register" && targetVault === vault) registrationBusy = false;
-    }
-  }
-
-  async function onRegisterConfirm() {
-    if (registrationBusy || !registrationOwner || !registrationSnapshot) return;
-    const selected = targetVault;
-    registrationBusy = true;
-    registrationError = "";
-    try {
-      await vaultService.registerVault(selected.id, registrationOwner, registrationSnapshot);
-      if (activeDialog === "register" && targetVault === selected) closeDialog();
-      await refreshVaults();
-    } catch (error) {
-      if (activeDialog === "register" && targetVault === selected) registrationError = translateIgnis(error.message);
-    } finally {
-      if (activeDialog === "register" && targetVault === selected) registrationBusy = false;
     }
   }
 
@@ -241,6 +193,7 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
       closeDialog();
 
       vaults = await vaultService.listVaults();
+      currentVaultId=vaultService.getCurrentVaultId();
 
       if (cleanupPending) {
         deletedCurrentVault = wasCurrentVault;
@@ -334,7 +287,7 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
             <svelte:fragment slot="action">
               {#if vault.membership === "owner"}<PopoverMenu
                 open={openMenuId === vault.id}
-                items={!vault.uuid && window.__ignisAuth ? [{ id: "register", label: translateIgnis("Register vault") }] : menuItems}
+                items={menuItems}
                 on:toggle={() => toggleMenu(vault.id)}
                 on:select={(e) => onMenuSelect(vault, e.detail)}
               />{/if}
@@ -425,36 +378,6 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
       <Check size="0.875rem" />
     </svelte:fragment>
   </ConfirmDialog>
-{/if}
-
-{#if activeDialog === "register" && targetVault}
-  <Modal
-    title={translateIgnis("Register vault ") + targetVault.name}
-    width="500px"
-    closeOnOverlayClick={false}
-    on:escape={closeDialog}
-    on:close={closeDialog}
-  >
-    <div class="registration-body">
-      <p>{translateIgnis("Register this existing folder without moving or changing its files.")}</p>
-      <label for="vault-owner">{translateIgnis("Initial owner")}</label>
-      <select id="vault-owner" bind:value={registrationOwner} disabled={registrationBusy || !registrationSnapshot}>
-        <option value="" disabled>{translateIgnis("Select a user")}</option>
-        {#each registrationOwners as owner (owner.id)}
-          <option value={owner.id}>{owner.login}</option>
-        {/each}
-      </select>
-      {#if registrationError}<p class="registration-error" role="alert">{registrationError}</p>{/if}
-    </div>
-    <svelte:fragment slot="footer">
-      <div class="registration-actions">
-        <Button variant="secondary" on:click={closeDialog}>{translateIgnis("Cancel")}</Button>
-        <Button variant="primary" disabled={registrationBusy || !registrationOwner || !registrationSnapshot} on:click={onRegisterConfirm}>
-          {registrationBusy ? translateIgnis("Please wait…") : translateIgnis("Register vault")}
-        </Button>
-      </div>
-    </svelte:fragment>
-  </Modal>
 {/if}
 
 {#if activeDialog === "cleanup"}

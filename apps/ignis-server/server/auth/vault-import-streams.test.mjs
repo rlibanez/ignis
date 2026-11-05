@@ -28,7 +28,7 @@ it('rejects a source archive modified after its handle was pinned',async()=>{
 it('cleans a failed streaming upload and accepts only identical acknowledged retries',async()=>{
  const scope=service.scope('alice'),stage=await scope.begin({name:'Imported',configuration:false,files:[{path:'Note.md',size:5}]});
  await expect(scope.putStream(stage.id,0,Readable.from((async function*(){yield Buffer.from('he');throw Object.assign(Error('I/O failure'),{code:'EIO'});})()))).rejects.toMatchObject({code:'EIO'});expect(fs.existsSync(path.join(temp,'data','vault-imports',stage.id,'0'))).toBe(false);
- await scope.putStream(stage.id,0,Readable.from([Buffer.from('he'),Buffer.from('llo')]));await scope.putStream(stage.id,0,Readable.from([Buffer.from('hello')]));await expect(scope.putStream(stage.id,0,Readable.from([Buffer.from('other')]))).rejects.toMatchObject({code:'IMPORT_REQUEST'});await scope.commit(stage.id);expect(fs.readFileSync(path.join(root,'Imported','Note.md'),'utf8')).toBe('hello');
+ await scope.putStream(stage.id,0,Readable.from([Buffer.from('he'),Buffer.from('llo')]));await scope.putStream(stage.id,0,Readable.from([Buffer.from('hello')]));await expect(scope.putStream(stage.id,0,Readable.from([Buffer.from('other')]))).rejects.toMatchObject({code:'IMPORT_REQUEST'});await scope.commit(stage.id);expect(fs.readFileSync(path.join(root,'alice/Imported','Note.md'),'utf8')).toBe('hello');
 });
 it('rejects oversized/truncated bodies, oversized preferences and revocation without publishing',async()=>{
  const scope=service.scope('alice'),stage=await scope.begin({name:'Imported',configuration:true,files:[{path:'Note.md',size:5},{path:'.obsidian/app.json',size:1024*1024+1}]});
@@ -36,7 +36,7 @@ it('rejects oversized/truncated bodies, oversized preferences and revocation wit
 });
 it('streams a ZIP into private storage, preserves per-source authority and removes failed scans',async()=>{
  const scope=service.scope('alice'),attempt='30000000-0000-4000-8000-000000000001';await expect(scope.scanStream({attempt},Readable.from([Buffer.from('bad ZIP')]))).rejects.toMatchObject({code:'IMPORT_ZIP'});expect(fs.readdirSync(path.join(temp,'data','vault-imports'))).toEqual([]);
- const bytes=await archiveBytes(),source=await scope.scanStream({attempt},Readable.from([bytes.subarray(0,20),bytes.subarray(20)])),input={id:source.id,root:'',name:'Imported',configuration:false,selected:[]};const stage=await scope.prepareSource(input);await scope.commit(stage.id);expect(fs.readFileSync(path.join(root,'Imported','Note.md'),'utf8')).toBe('hello');await scope.cancelSource({id:source.id});expect(fs.readdirSync(path.join(temp,'data','vault-imports'))).toEqual([]);
+ const bytes=await archiveBytes(),source=await scope.scanStream({attempt},Readable.from([bytes.subarray(0,20),bytes.subarray(20)])),input={id:source.id,root:'',name:'Imported',configuration:false,selected:[]};const stage=await scope.prepareSource(input);await scope.commit(stage.id);expect(fs.readFileSync(path.join(root,'alice/Imported','Note.md'),'utf8')).toBe('hello');await scope.cancelSource({id:source.id});expect(fs.readdirSync(path.join(temp,'data','vault-imports'))).toEqual([]);
 });
 it('rejects oversized sparse archives and declared totals without allocating their payload',async()=>{
  const file=path.join(temp,'large.zip'),fd=fs.openSync(file,'w');fs.ftruncateSync(fd,limits.zipBytes+1);fs.closeSync(fd);await expect(openArchive(file,{size:limits.zipBytes+1,hash:'unused'})).rejects.toMatchObject({code:'IMPORT_ZIP'});
@@ -45,7 +45,7 @@ it('rejects oversized sparse archives and declared totals without allocating the
 it('keeps filesystem headroom during upload and recovers after space becomes available',async()=>{
  const scope=service.scope('alice'),stage=await scope.begin({name:'Imported',configuration:false,files:[{path:'Note.md',size:5}]});
  const statfs=fs.promises.statfs;fs.promises.statfs=async()=>({bavail:0n,bsize:4096n});try{await expect(scope.putStream(stage.id,0,Readable.from([Buffer.from('hello')]))).rejects.toMatchObject({code:'IMPORT_SPACE'});}finally{fs.promises.statfs=statfs;}
- expect(fs.existsSync(path.join(temp,'data','vault-imports',stage.id,'0'))).toBe(false);await scope.putStream(stage.id,0,Readable.from([Buffer.from('hello')]));await scope.commit(stage.id);expect(fs.readFileSync(path.join(root,'Imported','Note.md'),'utf8')).toBe('hello');
+ expect(fs.existsSync(path.join(temp,'data','vault-imports',stage.id,'0'))).toBe(false);await scope.putStream(stage.id,0,Readable.from([Buffer.from('hello')]));await scope.commit(stage.id);expect(fs.readFileSync(path.join(root,'alice/Imported','Note.md'),'utf8')).toBe('hello');
 });
 
 it('preserves valid long UTF-8 paths while bounding the index read size',async()=>{

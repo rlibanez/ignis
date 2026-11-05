@@ -1,3 +1,4 @@
+const {currentVaultId} = require("./vault-identity");
 
 const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 const { PluginSettingTab, Notice } = require("obsidian");
@@ -213,7 +214,7 @@ class HeadlessSyncSettingTab extends PluginSettingTab {
       return [syncGroup(translateIgnis("Vault sync"), [])];
     }
 
-    const vaultId = this.app.vault.getName();
+    const vaultId = currentVaultId();
     const vaultState = vaults.find((v) => v.vaultId === vaultId);
 
     if (!vaultState) {

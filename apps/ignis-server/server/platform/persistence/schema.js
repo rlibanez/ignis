@@ -1,5 +1,5 @@
 // Initial schema for the modular application. Development migration histories are not supported.
-module.exports = Object.freeze({version: 2, sql: `
+module.exports = Object.freeze({version: 3, sql: `
 CREATE TABLE schema_info (
   singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
   version INTEGER NOT NULL,

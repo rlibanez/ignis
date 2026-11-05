@@ -72,7 +72,7 @@ it('retains disabled account and persistent progress after partial failure; resu
  expect(db.prepare("SELECT count(*) n FROM vault_deletions WHERE state='purged'").get().n).toBe(1);
  expect(()=>db.exec("UPDATE users SET status='active' WHERE id='target'")).toThrow();
  const retired=db.prepare("SELECT source FROM vault_deletions WHERE state='purged'").get().source;
- const replacement=vault('other',retired);
+ const replacement=vault('other',path.basename(retired));
  db.close();db=openDatabase(path.join(root,'data'));
  service=createUserDeletionService(db,path.join(root,'vaults'),{quiesce:async()=>{},invalidate:()=>{}});
  expect((await service.remove('admin',input(true),live)).ok).toBe(true);

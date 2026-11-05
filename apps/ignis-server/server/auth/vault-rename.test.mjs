@@ -30,7 +30,7 @@ it("preserves UUID, owner, reader and contents across rename and reopen", async 
   expect(fs.existsSync(vault.path)).toBe(false);
   db.close(); db = openDatabase(path.join(root, "data"));
   expect(db.prepare("SELECT * FROM memberships ORDER BY user_id").all()).toEqual(before);
-  expect(db.prepare("SELECT directory,status FROM vaults WHERE id=?").get(vault.id)).toEqual({ directory: "Renamed", status: "active" });
+  expect(db.prepare("SELECT directory,status FROM vaults WHERE id=?").get(vault.id)).toEqual({ directory: "admin/Renamed", status: "active" });
   expect(db.prepare("SELECT count(*) n FROM vault_renames").get().n).toBe(0);
 });
 it.each(["../escape", ".hidden", "x/y", "con", " trailing ", "x\0", "é".repeat(128)])("rejects invalid target %j without reserving or moving", async name => {
@@ -44,17 +44,17 @@ it("requires a current owner even for a no-op", async () => {
   expect((await rename("Notes")).id).toBe(vault.id);
 });
 it("rejects existing directories, dangling symlinks and another vault UUID", async () => {
-  fs.mkdirSync(path.join(vaultRoot, "Exists"));
+  fs.mkdirSync(path.join(vaultRoot, "admin/Exists"));
   await expect(rename("Exists")).rejects.toMatchObject({ code: "VAULT_EXISTS" });
-  fs.symlinkSync(path.join(root, "missing"), path.join(vaultRoot, "Alias"));
+  fs.symlinkSync(path.join(root, "missing"), path.join(vaultRoot, "admin/Alias"));
   await expect(rename("Alias")).rejects.toMatchObject({ code: "VAULT_EXISTS" });
   const other = createRegisteredVault(db, vaultRoot, "admin", "Other", { isCurrent: () => true });
-  await expect(rename(other.id)).rejects.toMatchObject({ code: "VAULT_EXISTS" });
+  expect((await rename(other.id)).id).toBe(vault.id);
 });
 it("reserves both names during shutdown, rejecting creation and concurrent rename", async () => {
   await rename("Renamed", { quiesce: async () => {
-    expect(directoryAvailable(db, "Notes", vaultRoot)).toBe(false);
-    expect(directoryAvailable(db, "Renamed", vaultRoot)).toBe(false);
+    expect(directoryAvailable(db, "admin/Notes", vaultRoot)).toBe(false);
+    expect(directoryAvailable(db, "admin/Renamed", vaultRoot)).toBe(false);
     const second = openDatabase(path.join(root, "data"));
     try {
       expect(() => createRegisteredVault(second, vaultRoot, "admin", "Renamed", { isCurrent: () => true })).toThrow();
@@ -76,17 +76,17 @@ it("quarantines after revocation during shutdown, without moving files", async (
   expect(fs.existsSync(path.join(vault.path, "keep.md"))).toBe(true);
 });
 it("preserves both directories if the destination appears during shutdown", async () => {
-  await expect(rename("Renamed", { quiesce: async () => { fs.mkdirSync(path.join(vaultRoot, "Renamed")); } })).rejects.toThrow();
+  await expect(rename("Renamed", { quiesce: async () => { fs.mkdirSync(path.join(vaultRoot, "admin/Renamed")); } })).rejects.toThrow();
   expect(fs.existsSync(path.join(vault.path, "keep.md"))).toBe(true);
-  expect(fs.existsSync(path.join(vaultRoot, "Renamed"))).toBe(true);
+  expect(fs.existsSync(path.join(vaultRoot, "admin/Renamed"))).toBe(true);
 });
 it("keeps both aliases blocked after final audit failure", async () => {
   db.exec("CREATE TRIGGER fail_rename BEFORE INSERT ON audit_events WHEN NEW.action='rename-vault' BEGIN SELECT RAISE(ABORT, 'failure'); END");
   await expect(rename()).rejects.toThrow();
-  expect(db.prepare("SELECT directory,status FROM vaults").get()).toEqual({ directory: "Notes", status: "quarantine" });
-  expect(fs.readFileSync(path.join(vaultRoot, "Renamed", "keep.md"), "utf8")).toBe("valuable");
-  fs.symlinkSync(path.join(vaultRoot, "Renamed"), path.join(vaultRoot, "Alias"));
-  for (const name of ["Notes", "Renamed", "Alias"]) expect(directoryAvailable(db, name, vaultRoot)).toBe(false);
+  expect(db.prepare("SELECT directory,status FROM vaults").get()).toEqual({ directory: "admin/Notes", status: "quarantine" });
+  expect(fs.readFileSync(path.join(vaultRoot, "admin/Renamed", "keep.md"), "utf8")).toBe("valuable");
+  fs.symlinkSync(path.join(vaultRoot, "admin/Renamed"), path.join(vaultRoot, "admin/Alias"));
+  for (const name of ["Notes", "Renamed", "Alias"]) expect(directoryAvailable(db, "admin/"+name, vaultRoot)).toBe(false);
 });
 it.each(["reserved", "moved"])("recovers conservatively after a real process exit at %s", stage => {
   const script = `const {openDatabase}=require(${JSON.stringify(require.resolve("../platform/persistence/database"))});
@@ -100,12 +100,12 @@ it.each(["reserved", "moved"])("recovers conservatively after a real process exi
   db.close(); db = openDatabase(path.join(root, "data"));
   expect(quarantinePendingVaults(db)).toBe(1);
   expect(quarantinePendingVaults(db)).toBe(0);
-  for (const name of ["Notes", "Renamed"]) expect(directoryAvailable(db, name, vaultRoot)).toBe(false);
-  expect(fs.readFileSync(path.join(vaultRoot, stage === "moved" ? "Renamed" : "Notes", "keep.md"), "utf8")).toBe("valuable");
+  for (const name of ["Notes", "Renamed"]) expect(directoryAvailable(db, "admin/"+name, vaultRoot)).toBe(false);
+  expect(fs.readFileSync(path.join(vaultRoot, stage === "moved" ? "admin/Renamed" : "admin/Notes", "keep.md"), "utf8")).toBe("valuable");
 });
 
 it("rejects legacy aliases before reserving, preserving the active vault", async () => {
-  fs.symlinkSync(vault.path, path.join(vaultRoot, "Alias"));
+  fs.symlinkSync(vault.path, path.join(vaultRoot, "admin/Alias"));
   await expect(rename()).rejects.toMatchObject({ code: "VAULT_ALIAS" });
   expect(db.prepare("SELECT status FROM vaults").get().status).toBe("active");
   expect(db.prepare("SELECT count(*) n FROM vault_renames").get().n).toBe(0);
@@ -115,8 +115,8 @@ it.each(["fsync", "invalidate"])("quarantines rather than publishing after %s fa
     : { invalidate() { throw new Error("cache failure"); } };
   await expect(rename("Renamed", options)).rejects.toThrow();
   expect(db.prepare("SELECT status FROM vaults").get().status).toBe("quarantine");
-  expect(directoryAvailable(db, "Renamed", vaultRoot)).toBe(false);
-  expect(fs.readFileSync(path.join(vaultRoot, "Renamed", "keep.md"), "utf8")).toBe("valuable");
+  expect(directoryAvailable(db, "admin/Renamed", vaultRoot)).toBe(false);
+  expect(fs.readFileSync(path.join(vaultRoot, "admin/Renamed", "keep.md"), "utf8")).toBe("valuable");
 });
 it("does not reserve a vault whose plugin readiness check fails", async () => {
   await expect(rename("Renamed", { assertReady() { throw new Error("plugin enabled"); } })).rejects.toThrow();

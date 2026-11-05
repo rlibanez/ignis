@@ -1,3 +1,4 @@
+const {currentVaultId} = require("./vault-identity");
 
 const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 const { Plugin } = require("obsidian");
@@ -33,7 +34,7 @@ class IgnisHeadlessSyncPlugin extends Plugin {
       name: translateIgnis("Start server-side sync"),
       callback: async () => {
         try {
-          await api.startSync(this.app.vault.getName());
+          await api.startSync(currentVaultId());
         } catch (e) {
           console.error("[ignis-headless-sync] Start failed:", e.message);
         }
@@ -45,7 +46,7 @@ class IgnisHeadlessSyncPlugin extends Plugin {
       name: translateIgnis("Stop server-side sync"),
       callback: async () => {
         try {
-          await api.stopSync(this.app.vault.getName());
+          await api.stopSync(currentVaultId());
         } catch (e) {
           console.error("[ignis-headless-sync] Stop failed:", e.message);
         }

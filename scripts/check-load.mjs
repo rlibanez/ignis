@@ -29,7 +29,7 @@ if(options.output){fs.mkdirSync(path.dirname(path.resolve(options.output)),{recu
 const require=createRequire(import.meta.url);
 const {openDatabase}=require('../apps/ignis-server/server/platform/persistence/database');
 const {bootstrapAdmin} = require("../apps/ignis-server/server/features/identity/adapters/store.js");
-const {registerExistingVault:registerVault}=require("../apps/ignis-server/server/features/vaults/adapters/vault-registration.js");
+const {registerExistingVault:registerVault}=require("../apps/ignis-server/server/auth/fixtures/vault.cjs");
 const {hashPassword}=require('../apps/ignis-server/server/features/identity/adapters/password.js');
 const {createResourceSharesService}=require("../apps/ignis-server/server/features/sharing/adapters/resource-shares.js");
 function launch(root, env = {}) {
@@ -135,8 +135,8 @@ async function scenario(fileCount,shareCount,run){
  try{
   fs.mkdirSync(path.join(root,'assets'));fs.writeFileSync(path.join(root,'assets/index.html'),'<script src="app.js"></script>');
   const vaultRoot=path.join(root,'vaults');
-  for(const name of ['Owner','Receiver'])fs.mkdirSync(path.join(vaultRoot,name),{recursive:true});
-  const ownerPath=path.join(vaultRoot,'Owner');
+  for(const name of ['Owner','Receiver'])fs.mkdirSync(path.join(vaultRoot,name==='Owner'?'owner/Owner':'receiver/Receiver'),{recursive:true});
+  const ownerPath=path.join(vaultRoot,'owner/Owner');
   for(let i=0;i<fileCount;i++){
    const directory=path.join(ownerPath,'Folder'+Math.floor(i/100));fs.mkdirSync(directory,{recursive:true});
    fs.writeFileSync(path.join(directory,`note${i}.md`),'# Synthetic note\n'+('x'.repeat(1000)));

@@ -50,14 +50,12 @@ function createVaults({store,sessions,access,createView}){
    state:reference=>{guard();return store.state(reference);},
    uuid,
    owners:()=>{admin();return store.owners();},
-   registrationOptions:()=>{admin();return store.registrationOptions();},
-   register:(directory,owner,identity)=>{admin();return store.register(context.userId,directory,owner,identity,current);},
    create:name=>{guard();return store.create(context.userId,name,current);},
    rename:(reference,name,lifecycle)=>{guard();return store.rename(context.userId,reference,name,lifecycle,current);},
    delete:(reference,lifecycle)=>{guard();return store.delete(context.userId,reference,lifecycle,current);},
-   members:(operation,input)=>{
+   members:(operation,input,lifecycle)=>{
     guard();if(!['list','update','transfer'].includes(operation))unavailable();
-    return store.members[operation](token,input);
+    return store.members[operation](token,input,lifecycle);
    },
    logDetails:(operation,input)=>{
     const reference=operation==='list'?input:input.vault;

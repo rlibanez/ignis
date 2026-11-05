@@ -17,7 +17,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     csrf = null,
     csrfAt = 0,
     refresh = null;
-  let vaultCatalog = null, renaming = null;
+  let vaultCatalog = null, renaming = null, relocation = null, relocationTimer;
   const pending = new Set();
   const xhrs = new Set();
   const requests = new WeakMap();
@@ -37,6 +37,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     vaultLost = false,
   ) {
     if (blocked) return;
+    clearTimeout(relocationTimer);relocation=null;
     blocked = true;
     document.title = vaultLost ? translateIgnis("Vault unavailable") : translateIgnis("Sign in to Ignis");
     csrf = null;
@@ -101,6 +102,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   }
   function vaultUnavailable() {
     if(renaming){renaming.unavailable=true;return;}
+    if(relocation && relocation.uuid===window.__currentVaultUuid && Date.now()<relocation.until){void check();return;}
     lock(translateIgnis("This vault was removed, renamed or made unavailable. Saving has stopped. Download any unconfirmed changes before returning to the Vault Manager."), true);
   }
   function hasPendingVaultChanges() {
@@ -141,6 +143,14 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     finally { renaming=null; }
     if(operation.unavailable) vaultUnavailable();
   }
+  function vaultRelocating(uuid) {
+    if(blocked || renaming || !uuid || uuid!==window.__currentVaultUuid)return;
+    clearTimeout(relocationTimer);
+    relocation={uuid,until:Date.now()+10000};
+    // A single bounded follow-up, not polling. Authorization remains server-side.
+    relocationTimer=setTimeout(()=>{relocation=null;void check();},10000);
+    relocationTimer.unref?.();
+  }
   async function checkVault() {
     if(renaming)return;
     const response = await nativeFetch("/api/vault/list", {
@@ -155,8 +165,15 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       const before = window.__currentVaultUuid
         ? { id, uuid: window.__currentVaultUuid }
         : vaultCatalog.find(v => v.id === id);
-      const now = list.find(v => v.id === id);
-      if (before && (!now || (before.uuid && before.uuid !== now.uuid))) vaultUnavailable();
+      const now = before?.uuid ? list.find(v=>v.uuid===before.uuid) : list.find(v=>v.id===id);
+      if(!now && relocation && relocation.uuid===before?.uuid && Date.now()<relocation.until)return;
+      // Ownership moves preserve the name and UUID. Keep the editor's stable
+      // identity and dirty buffers; only its server-owned location changes.
+      if(now && before?.uuid && now.id!==id && now.id.split('/').pop()===id.split('/').pop()) {
+        clearTimeout(relocationTimer);relocation=null;
+        window.__currentVaultId=now.id;window.__vaultList=list;vaultCatalog=list;return;
+      }
+      if (before && (!now || now.id!==id || (before.uuid && before.uuid !== now.uuid))) vaultUnavailable();
     }
     if (!vaultCatalog) vaultCatalog = list;
   }
@@ -359,6 +376,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     lock,
     logout,
     vaultUnavailable,
+    vaultRelocating,
     beginVaultRename,
     finishVaultRename,
     beginVaultDelete: beginVaultRename,

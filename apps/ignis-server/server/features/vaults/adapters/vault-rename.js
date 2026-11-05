@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
 const { transaction } = require("../../../platform/persistence/database");
+const {ownedDirectory,ensureUserDirectory,storagePath,assertAvailable}=require("./vault-storage");
 const { validVaultName } = require("../application/vault-name");
 const { resolveRegisteredVault } = require("./vault-catalog.js");
 const fail = code => { throw Object.assign(new Error("Vault rename failed"), { code }); };
@@ -14,10 +15,12 @@ function absent(io, target) {
   fail("VAULT_EXISTS");
 }
 function rejectLegacyAliases(root, vault) {
-  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+  const folders=[root];
+  for(const entry of fs.readdirSync(root,{withFileTypes:true}))if(entry.isDirectory()&&!entry.name.startsWith('.'))folders.push(path.join(root,entry.name));
+  for(const folder of folders)for (const entry of fs.readdirSync(folder, { withFileTypes: true })) {
     if (!entry.isSymbolicLink() || entry.name.startsWith(".")) continue;
     let real;
-    try { real = fs.realpathSync(path.join(root, entry.name)); }
+    try { real = fs.realpathSync(path.join(folder, entry.name)); }
     catch { continue; }
     if (real === vault.path || real.startsWith(vault.path + path.sep) || vault.path.startsWith(real + path.sep))
       fail("VAULT_ALIAS");
@@ -28,6 +31,7 @@ function rejectLegacyAliases(root, vault) {
 // guesses which directory is authoritative and never reverses a filesystem move.
 async function renameRegisteredVault(db, root, actor, reference, name, {
   isCurrent, quiesce, invalidate, assertReady = () => {}, io = fs,
+  ownerId = actor, validate = () => {}, apply = () => {}, action = "rename-vault",
 } = {}) {
   if (!validVaultName(name)) fail("INVALID_VAULT_NAME");
   const authorize = () => {
@@ -36,57 +40,66 @@ async function renameRegisteredVault(db, root, actor, reference, name, {
     if (!db.prepare("SELECT 1 FROM memberships WHERE vault_id=? AND user_id=? AND role='owner'").get(vault.id, actor))
       fail("VAULT_UNAVAILABLE");
   };
-  let vault, identity;
+  let vault, identity, directory, target;
   transaction(db, () => {
     vault = resolveRegisteredVault(db, root, reference);
     authorize();
-    if (name === vault.directory) return;
+    validate(vault);
+    directory=ownedDirectory(db,ownerId,name);
+    if (directory === vault.directory) return;
     // Legacy aliases have independent watchers/plugin state. Until that catalog
     // is migrated, do not move their underlying directory behind those clients.
     rejectLegacyAliases(root, vault);
     assertReady(vault.directory);
     if (typeof quiesce !== "function" || typeof invalidate !== "function") fail("VAULT_STATE_CHANGED");
-    if (db.prepare("SELECT 1 FROM vault_deletions WHERE vault_id=? OR (state='pending' AND source=?)").get(name, name) ||
-        db.prepare("SELECT 1 FROM vaults WHERE directory=? OR id=?").get(name, name) ||
-        db.prepare("SELECT 1 FROM vault_renames WHERE source=? OR target=?").get(name, name)) fail("VAULT_EXISTS");
-    absent(io, path.join(root, name));
+    assertAvailable(db,root,directory);
+    ensureUserDirectory(root,directory,io);
+    target=storagePath(root,directory,{io,missingLeaf:true});
     identity = io.lstatSync(vault.path);
-    db.prepare("INSERT INTO vault_renames VALUES (?,?,?,?)").run(vault.id, vault.directory, name, Date.now());
+    db.prepare("INSERT INTO vault_renames VALUES (?,?,?,?)").run(vault.id, vault.directory, directory, Date.now());
     db.prepare("UPDATE vaults SET status='pending' WHERE id=?").run(vault.id);
-    audit(db, actor, "begin-rename-vault", vault.id);
+    audit(db, actor, "begin-"+action, vault.id);
   });
-  if (name === vault.directory) return { ...vault, previousDirectory: vault.directory, path: vault.path };
-  const target = path.join(root, name);
+  if (directory === vault.directory) return { ...vault, previousDirectory: vault.directory, path: vault.path };
   try {
     // Reservation precedes the async watcher shutdown: neither name is routable.
-    await quiesce(vault.directory, vault.path);
+    await quiesce(vault.directory, vault.path, {relocating:ownerId!==actor});
     transaction(db, () => {
       authorize();
+      validate(vault);
       if (db.prepare("SELECT status FROM vaults WHERE id=?").get(vault.id)?.status !== "pending") fail("VAULT_STATE_CHANGED");
     });
     assertReady(vault.directory);
     rejectLegacyAliases(root, vault);
+    try {storagePath(root,vault.directory,{io});storagePath(root,directory,{io,missingLeaf:true});}
+    catch {fail("VAULT_STATE_CHANGED");}
     const current = io.lstatSync(vault.path);
     if (!current.isDirectory() || current.isSymbolicLink() || current.dev !== identity.dev || current.ino !== identity.ino) fail("VAULT_STATE_CHANGED");
     // A host administrator modifying these paths concurrently is outside the
     // single-process lifecycle contract. Never overwrite an observed destination.
     absent(io, target);
     io.renameSync(vault.path, target);
-    const fd = io.openSync(root, "r");
-    try { io.fsyncSync(fd); } finally { io.closeSync(fd); }
-    invalidate(vault.directory, name);
+    for(const folder of new Set([path.dirname(vault.path),path.dirname(target),root])) {
+      const fd=io.openSync(folder,"r");try {io.fsyncSync(fd);}finally {io.closeSync(fd);}
+    }
+    invalidate(vault.directory, directory);
     transaction(db, () => {
       authorize();
+      validate(vault);
       if (db.prepare("SELECT status FROM vaults WHERE id=?").get(vault.id)?.status !== "pending") fail("VAULT_STATE_CHANGED");
-      db.prepare("UPDATE vaults SET name=?, directory=?, status='active' WHERE id=?").run(name, name, vault.id);
+      storagePath(root,directory,{io});
+      const published=io.lstatSync(target);
+      if(published.dev!==identity.dev || published.ino!==identity.ino)fail("VAULT_STATE_CHANGED");
+      db.prepare("UPDATE vaults SET name=?, directory=?, status='active' WHERE id=?").run(name, directory, vault.id);
       db.prepare("DELETE FROM vault_renames WHERE vault_id=?").run(vault.id);
-      audit(db, actor, "rename-vault", vault.id);
+      apply(vault);
+      audit(db, actor, action, vault.id);
     });
-    return { ...vault, previousDirectory: vault.directory, name, directory: name, status: "active", path: target };
+    return { ...vault, previousDirectory: vault.directory, name, directory, status: "active", path: target };
   } catch (error) {
     transaction(db, () => {
       db.prepare("UPDATE vaults SET status='quarantine' WHERE id=?").run(vault.id);
-      audit(db, actor, "quarantine-rename-vault", vault.id);
+      audit(db, actor, "quarantine-"+action, vault.id);
     });
     throw error;
   }

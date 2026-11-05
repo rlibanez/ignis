@@ -138,6 +138,8 @@ export function createWsClient() {
       if (event?.code === 4002) {
         manuallyClosed = true;
         window.__ignisAuth?.vaultUnavailable?.();
+      } else if(event?.code===4004) {
+        window.__ignisAuth?.vaultRelocating?.(vaultId);
       } else {
         window.__ignisAuth?.check();
       }

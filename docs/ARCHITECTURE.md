@@ -154,7 +154,7 @@ The bridge contributes:
 
 ## Vaults
 
-Any subdirectory under the vault root is treated as a vault. The active vault is selected via a `?vault=` URL parameter. Without the queryparam, the last active vault is loaded (from `localStorage.last-vault`), or the first discovered.
+Registered vaults live under `VAULT_ROOT/<username>/<vault-name>`. Names are unique per owner; UUIDs remain the stable identities used by permissions, sharing and browser storage. Creation and device import are the only incorporation paths: folders copied into the server are not adopted or shown automatically. Renaming and ownership transfer move the directory with durable reservations and watcher shutdown; transfer refuses a namesake at the destination. The active vault is selected by UUID via `?vault=` or the account-scoped remembered selection. An authorized initial request can choose the first accessible registered vault. See [vault storage](architecture/vault-storage.md).
 
 ## Server
 

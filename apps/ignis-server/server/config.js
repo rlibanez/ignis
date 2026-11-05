@@ -5,7 +5,7 @@ const { toVaultRel } = require("@ignis/server-core");
 const REPO_ROOT = path.join(__dirname, "..", "..", "..");
 
 // VAULT_ROOT: a directory that contains vault folders.
-// Each subdirectory is a vault. New vaults are created as new subdirs.
+// Authenticated runtime uses the registered catalog: user/vault directories only.
 const vaultRoot = process.env.VAULT_ROOT || path.join(REPO_ROOT, "vaults");
 
 const dataRoot = process.env.DATA_ROOT || path.join(REPO_ROOT, "data");
@@ -24,8 +24,10 @@ try {
 }
 
 let vaultDirectoryAvailable = () => true;
+let registeredVaults = null;
 
 function discoverVaults() {
+  if (registeredVaults) return Object.assign(Object.create(null),registeredVaults());
   // clean object. TODO: refactor to Map for more idiomatic code.
   const vaults = Object.create(null);
 
@@ -56,24 +58,6 @@ function discoverVaults() {
     require("@ignis/server-core/src/logger").emit("error", "server.config.vault_scan_failed", { errorCode: e?.code });
   }
 
-  // Optionally create a default vault if none exist
-  if (
-    Object.keys(vaults).length === 0 &&
-    process.env.AUTO_CREATE_DEFAULT === "true" &&
-    vaultDirectoryAvailable("My Vault") &&
-    !fs.existsSync(path.join(vaultRoot, "My Vault"))
-  ) {
-    const defaultPath = path.join(vaultRoot, "My Vault");
-
-    try {
-      fs.mkdirSync(path.join(defaultPath, ".obsidian"), { recursive: true });
-      vaults["My Vault"] = defaultPath;
-
-      require("@ignis/server-core/src/logger").emit("info", "server.config.default_vault_created");
-    } catch (e) {
-      require("@ignis/server-core/src/logger").emit("error", "server.config.default_vault_failed", { errorCode: e?.code });
-    }
-  }
   return vaults;
 }
 
@@ -90,6 +74,7 @@ module.exports = {
   port: process.env.PORT || 8080,
   vaultRoot,
   dataRoot,
+  setRegisteredVaults(list) { registeredVaults = list; },
   setVaultDirectoryAvailability(check) { vaultDirectoryAvailable = check; },
   get vaults() {
     return Object.assign(Object.create(null), Object.fromEntries(Object.entries(vaults).filter(([id]) => vaultDirectoryAvailable(id))));

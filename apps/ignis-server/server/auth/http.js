@@ -530,8 +530,9 @@ function createAuthBoundary({
         req.copyVaultContent=(reference,source,destination)=>content.copyOriginal(cookies.read(req.headers.cookie),reference,source,destination);
         req.writeVaultContent = (reference, relative, bytes, expectedHash) =>
           content.writeOriginal(cookies.read(req.headers.cookie), reference, relative, bytes, expectedHash);
-        req.vaultMembers = (operation, input) => {
-          const result=scope.members(operation,input);
+        req.vaultMembers = async (operation, input) => {
+          const result=await scope.members(operation,input,require("../vault/deletion-lifecycle").deletionLifecycle());
+          if(operation==='transfer')require("../config").refreshVaults();
           const details=scope.logDetails(operation,input);
           req.ignisLogVaultName=details.directory;
           if(details.username)req.ignisLogTargetUsername=normalizeLogin(details.username);
@@ -545,15 +546,13 @@ function createAuthBoundary({
         req.vaultView=scope.view;
         req.canReadVault=directory=>req.authorizeVaultFile(directory,"content.list","");
         req.vaultOwners=scope.owners;
-        req.vaultRegistrationOptions=scope.registrationOptions;
-        req.registerExistingVault=scope.register;
         req.vaultUUID=scope.uuid;
         if(['/api/vault/rename','/api/vault/remove'].includes(pathname)){
           const reference=require('../features/vaults/application/vault-selection').selectVaultReference(req.query,req.body);
           const state=scope.state(reference);
           if(state.registered && !scope.check(state.registered,pathname.endsWith('/remove')?'vault.delete':'vault.rename'))
             return safe(res,404,'Vault unavailable');
-          if(!state.registered && !state.deletion)return safe(res,409,'Register this vault before renaming or deleting it');
+          if(!state.registered && !state.deletion)return safe(res,404,'Vault unavailable');
           if(pathname.endsWith('/remove')){
             if(state.deletion && state.deletion!=='pending')return safe(res,410,'Vault already removed');
             if(state.registered)req.deleteRegisteredVault=lifecycle=>scope.delete(reference,lifecycle);
@@ -635,7 +634,10 @@ function createAuthBoundary({
     resolveVaultDirectory: reference => vaultStore.resolve(reference).directory,
     close,
     staticRoots,
-    vaultDirectoryAvailable: directory => vaultStore.directoryAvailable(directory),
+    vaultDirectoryAvailable: directory => {
+      try { return vaultStore.resolve(directory).status==='active'; } catch { return false; }
+    },
+    registeredVaults: () => vaultStore.catalog(),
   };
 }
 

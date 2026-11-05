@@ -6,14 +6,14 @@ import {spawn} from 'node:child_process';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
 const {openDatabase}=require('../platform/persistence/database');
-const {registerExistingVault:registerVault}=require("../features/vaults/adapters/vault-registration.js");
+const {registerExistingVault:registerVault}=require("./fixtures/vault.cjs");
 const {createResourceSharesService}=require("../features/sharing/adapters/resource-shares.js");
 const sessions={resolve:id=>({user:{id,authVersion:1}})};
 function fixture(base=os.tmpdir()){
  const root=fs.mkdtempSync(path.join(base,'ignis-recovery-'));
- fs.mkdirSync(path.join(root,'Notes/Project'),{recursive:true});
- fs.writeFileSync(path.join(root,'Notes/Project/note.md'),'original bytes');
- fs.writeFileSync(path.join(root,'Notes/source.md'),'complete replacement');
+ fs.mkdirSync(path.join(root,'owner/Notes/Project'),{recursive:true});
+ fs.writeFileSync(path.join(root,'owner/Notes/Project/note.md'),'original bytes');
+ fs.writeFileSync(path.join(root,'owner/Notes/source.md'),'complete replacement');
  const data=fs.mkdtempSync(path.join(os.tmpdir(),'ignis-recovery-db-'));
  const db=openDatabase(data);
  for(const id of ['owner','recipient'])db.prepare('INSERT INTO users(id,login,role,created_at) VALUES (?,?,?,0)').run(id,id,'user');
@@ -59,12 +59,12 @@ it.each(['rename','delete'])('fails closed after SIGKILL during %s publication',
  try{
  await crash(f,operation,'after');reopened=openDatabase(f.data);
  const s=createResourceSharesService(reopened,f.root,sessions);
- expect(fs.existsSync(path.join(f.root,'Notes/Project/note.md'))).toBe(false);
+ expect(fs.existsSync(path.join(f.root,'owner/Notes/Project/note.md'))).toBe(false);
  await expect(s.read('recipient',{id:f.file,path:''})).rejects.toThrow();
- fs.writeFileSync(path.join(f.root,'Notes/Project/note.md'),'unrelated replacement');
+ fs.writeFileSync(path.join(f.root,'owner/Notes/Project/note.md'),'unrelated replacement');
  await expect(s.read('recipient',{id:f.file,path:''})).rejects.toThrow();
- const surviving=fs.readdirSync(path.join(f.root,'Notes/Project')).find(n=>operation==='rename'?n==='Renamed.md':n.startsWith('.ignis-delete-'));
- expect(fs.readFileSync(path.join(f.root,'Notes/Project',surviving),'utf8')).toBe('original bytes');
+ const surviving=fs.readdirSync(path.join(f.root,'owner/Notes/Project')).find(n=>operation==='rename'?n==='Renamed.md':n.startsWith('.ignis-delete-'));
+ expect(fs.readFileSync(path.join(f.root,'owner/Notes/Project',surviving),'utf8')).toBe('original bytes');
  if(operation==='delete')await expect(s.read('recipient',{id:f.folder,path:surviving})).rejects.toThrow();
  }finally{reopened?.close();fs.rmSync(f.root,{recursive:true,force:true});fs.rmSync(f.data,{recursive:true,force:true});}
 },15000);
@@ -76,7 +76,7 @@ it.each(['rename','delete'])('preserves bytes and grants before interrupted %s p
 },15000);
 it.skipIf(process.getuid?.()===0)('preserves the original and publishes no copy after real filesystem EACCES',async()=>{
  expect(process.getuid()).not.toBe(0);
- const f=fixture(),directory=path.join(f.root,'Notes/Project');
+ const f=fixture(),directory=path.join(f.root,'owner/Notes/Project');
  try{const old=await f.service.read('recipient',{id:f.folder,path:'note.md'});fs.chmodSync(directory,0o500);
  await expect(f.service.mutate('recipient',{id:f.folder,path:'note.md',action:'write',etag:old.etag,content:Buffer.from('changed').toString('base64')})).rejects.toThrow();
  await expect(f.service.copy('recipient',{from:{id:f.file,vault:null,path:''},to:{id:f.folder,vault:null,path:'Copy.md'}})).rejects.toMatchObject({code:'EACCES'});
@@ -87,14 +87,14 @@ it.skipIf(process.getuid?.()===0)('preserves the original and publishes no copy 
 it.each(['before','after'])('keeps copies complete or unpublished after SIGKILL %s publication',async phase=>{
  const f=fixture();f.db.close();let reopened;
  try{await crash(f,'copy',phase);reopened=openDatabase(f.data);const s=createResourceSharesService(reopened,f.root,sessions);
- expect(fs.readFileSync(path.join(f.root,'Notes/Project/note.md'),'utf8')).toBe('original bytes');
- const destination=path.join(f.root,'Notes/Project/Copy.md');
+ expect(fs.readFileSync(path.join(f.root,'owner/Notes/Project/note.md'),'utf8')).toBe('original bytes');
+ const destination=path.join(f.root,'owner/Notes/Project/Copy.md');
  expect(fs.existsSync(destination)).toBe(phase==='after');
  if(phase==='after'){
  expect(fs.readFileSync(destination,'utf8')).toBe('original bytes');
  await expect(s.copy('recipient',{from:{id:f.folder,vault:null,path:'note.md'},to:{id:f.folder,vault:null,path:'Copy.md'}})).rejects.toThrow();
  }
- for(const name of fs.readdirSync(path.join(f.root,'Notes/Project')).filter(n=>n.startsWith('.ignis-copy-')))
+ for(const name of fs.readdirSync(path.join(f.root,'owner/Notes/Project')).filter(n=>n.startsWith('.ignis-copy-')))
  await expect(s.read('recipient',{id:f.folder,path:name})).rejects.toThrow();
  }finally{reopened?.close();fs.rmSync(f.root,{recursive:true,force:true});fs.rmSync(f.data,{recursive:true,force:true});}
 },15000);
@@ -111,11 +111,11 @@ it.skipIf(!process.env.IGNIS_TEST_FAULT_ROOT)('preserves originals and removes s
  expect(error.code).toBe('ENOSPC');fs.closeSync(fd);fd=undefined;
  await expect(f.service.mutate('recipient',{id:f.folder,path:'note.md',action:'write',etag:old.etag,content:Buffer.alloc(8192,2).toString('base64')})).rejects.toMatchObject({code:'ENOSPC'});
  await expect(f.service.copy('recipient',{from:{id:f.file,vault:null,path:''},to:{id:f.folder,vault:null,path:'Copy.md'}})).rejects.toMatchObject({code:'ENOSPC'});
- expect(fs.readdirSync(path.join(f.root,'Notes/Project'))).toEqual(['note.md']);
- expect(fs.readFileSync(path.join(f.root,'Notes/Project/note.md'),'utf8')).toBe('original bytes');
+ expect(fs.readdirSync(path.join(f.root,'owner/Notes/Project'))).toEqual(['note.md']);
+ expect(fs.readFileSync(path.join(f.root,'owner/Notes/Project/note.md'),'utf8')).toBe('original bytes');
  fs.unlinkSync(path.join(f.root,'filler'));
  await f.service.mutate('recipient',{id:f.folder,path:'note.md',action:'write',etag:old.etag,content:Buffer.from('recovered').toString('base64')});
- expect(fs.readFileSync(path.join(f.root,'Notes/Project/note.md'),'utf8')).toBe('recovered');
+ expect(fs.readFileSync(path.join(f.root,'owner/Notes/Project/note.md'),'utf8')).toBe('recovered');
  }finally{if(fd!==undefined)fs.closeSync(fd);f.db.close();fs.rmSync(f.root,{recursive:true,force:true});fs.rmSync(f.data,{recursive:true,force:true});}
 });
 
@@ -124,10 +124,10 @@ it.each(['sharedWrite','originalWrite','append','originalCopy'].flatMap(operatio
  try{
   await crash(f,operation,phase);reopened=openDatabase(f.data);
   const service=createResourceSharesService(reopened,f.root,sessions);
-  expect(fs.readFileSync(path.join(f.root,'Notes/Project/note.md'),'utf8')).toBe(phase==='after'?(operation==='append'?'original bytes tail':'complete replacement'):'original bytes');
+  expect(fs.readFileSync(path.join(f.root,'owner/Notes/Project/note.md'),'utf8')).toBe(phase==='after'?(operation==='append'?'original bytes tail':'complete replacement'):'original bytes');
   if(phase==='after')await expect(service.read('recipient',{id:f.file,path:''})).rejects.toThrow();
   else expect(Buffer.from((await service.read('recipient',{id:f.file,path:''})).content,'base64').toString()).toBe('original bytes');
-  for(const name of fs.readdirSync(path.join(f.root,'Notes/Project')).filter(n=>n.startsWith('.ignis-content-')))
+  for(const name of fs.readdirSync(path.join(f.root,'owner/Notes/Project')).filter(n=>n.startsWith('.ignis-content-')))
    await expect(service.read('recipient',{id:f.folder,path:name})).rejects.toThrow();
  }finally{reopened?.close();fs.rmSync(f.root,{recursive:true,force:true});fs.rmSync(f.data,{recursive:true,force:true});}
 },15000);

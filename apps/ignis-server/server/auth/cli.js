@@ -6,7 +6,6 @@ const readline = require("node:readline");
 const { Writable } = require("node:stream");
 const { openDatabase, backupDatabase, restoreDatabase } = require("../platform/persistence/database");
 const {bootstrapAdmin,normalizeLogin} = require("../features/identity/adapters/store.js");
-const {registerExistingVault:registerVault}=require("../features/vaults/adapters/vault-registration.js");
 const { readPasswordPolicy } = require("../features/identity/adapters/password-policy.js");
 const { setUserEmail } = require("../features/identity/adapters/email.js");
 const { hashPassword } = require("../features/identity/adapters/password.js");
@@ -56,14 +55,13 @@ async function main(args = process.argv.slice(2)) {
     "list-vaults": 0,
     "resolve-vault": 1,
     "reset-password": 1,
-    "register-vault": 2,
     "set-email": 3,
     backup: 1,
     restore: 1,
   };
   if (!Object.hasOwn(arity, command) || rest.length !== arity[command]) {
     throw new Error(
-      "Usage: npm run auth -- init|bootstrap|status|create-user|list-users|list-vaults|resolve-vault <id-or-directory>|reset-password <login>|set-email <login> <email|-> <unverified|admin_confirmed>|register-vault <directory> <owner-login>|backup <absolute-file>|restore <absolute-file>",
+      "Usage: npm run auth -- init|bootstrap|status|create-user|list-users|list-vaults|resolve-vault <id-or-directory>|reset-password <login>|set-email <login> <email|-> <unverified|admin_confirmed>|backup <absolute-file>|restore <absolute-file>",
     );
   }
   const root = path.resolve(__dirname, "../../../..");
@@ -141,18 +139,6 @@ async function main(args = process.argv.slice(2)) {
       if (!user) throw new Error("User not found");
       setUserEmail(db, user.id, rest[1] === "-" ? null : rest[1], rest[2]);
       console.log("User email updated; existing sessions revoked if changed.");
-    } else if (command === "register-vault") {
-      const owner = db
-        .prepare("SELECT id FROM users WHERE login = ?")
-        .get(normalizeLogin(rest[1]));
-      if (!owner) throw new Error("Owner does not exist");
-      const vault = registerVault(
-        db,
-        process.env.VAULT_ROOT || path.join(root, "vaults"),
-        rest[0],
-        owner.id,
-      );
-      console.log(`Vault registered: ${vault.name} (${vault.id})`);
     } else if (command === "backup") {
       backupDatabase(db, rest[0]);
       console.log(

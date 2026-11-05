@@ -13,8 +13,8 @@ it('publishes only complete imports, assigns a fresh identity to the caller, pre
  expect(db.prepare('SELECT * FROM vaults').all()).toEqual([]);
  await expect(scope.commit(start.id)).rejects.toMatchObject({code:'IMPORT_INCOMPLETE'});
  await scope.put(start.id,0,Buffer.from('hello'));const result=await scope.commit(start.id);
- expect(result.id).toMatch(/^[a-f0-9-]{36}$/);expect(fs.readFileSync(path.join(root,'Imported','Note.md'),'utf8')).toBe('hello');
- expect(JSON.parse(fs.readFileSync(path.join(root,'Imported','.obsidian','community-plugins.json')))).toEqual([]);
+ expect(result.id).toMatch(/^[a-f0-9-]{36}$/);expect(fs.readFileSync(path.join(root,'alice/Imported','Note.md'),'utf8')).toBe('hello');
+ expect(JSON.parse(fs.readFileSync(path.join(root,'alice/Imported','.obsidian','community-plugins.json')))).toEqual([]);
  expect(db.prepare('SELECT user_id,role FROM memberships WHERE vault_id=?').get(result.id)).toEqual(expect.objectContaining({user_id:'alice',role:'owner'}));
  expect(db.prepare('SELECT status FROM vaults').get().status).toBe('active');
 });
@@ -33,7 +33,7 @@ it('binds stages to the original principal and live session; expiration and logo
 it('excludes executable/configuration/hidden state even for imported Obsidian vaults',async()=>{
  const bytes=await zip([['Old/Note.md','hello'],['Old/.obsidian/app.json','{"vimMode":true}'],['Old/.obsidian/plugins/evil/main.js','throw 1'],['Old/.obsidian/community-plugins.json','["evil"]'],['Old/.git/config','secret'],['Old/.ignis-auth.json','secret']]);
  const scope=service.scope('alice'),start=await scope.zip({name:'Imported',configuration:true},bytes);expect(start.excluded).toBe(4);await scope.commit(start.id);
- expect(fs.readFileSync(path.join(root,'Imported','.obsidian','app.json'),'utf8')).toBe('{"vimMode":true}');expect(fs.existsSync(path.join(root,'Imported','.obsidian','plugins'))).toBe(false);expect(fs.existsSync(path.join(root,'Imported','.git'))).toBe(false);
+ expect(fs.readFileSync(path.join(root,'alice/Imported','.obsidian','app.json'),'utf8')).toBe('{"vimMode":true}');expect(fs.existsSync(path.join(root,'alice/Imported','.obsidian','plugins'))).toBe(false);expect(fs.existsSync(path.join(root,'alice/Imported','.git'))).toBe(false);
 });
 it('does not preserve preferences unless selected and rejects malformed preference data',async()=>{
  const scope=service.scope('alice'),start=await scope.begin(options([{path:'Note.md',size:5},{path:'.obsidian/app.json',size:1}]));await expect(scope.put(start.id,1,Buffer.from('{'))).rejects.toMatchObject({code:'IMPORT_CONFIGURATION'});await scope.cancel(start.id);
@@ -42,14 +42,14 @@ it('does not preserve preferences unless selected and rejects malformed preferen
 it('enforces byte limits, keeps uploads immutable and does not overwrite an existing directory',async()=>{
  const scope=service.scope('alice');await expect(scope.begin(options([{path:'big',size:limits.fileBytes+1}]))).rejects.toMatchObject({code:'IMPORT_LIMIT'});
  const start=await scope.begin(options());await expect(scope.put(start.id,0,Buffer.from('xx'))).rejects.toMatchObject({code:'IMPORT_REQUEST'});await scope.put(start.id,0,Buffer.from('hello'));await expect(scope.put(start.id,0,Buffer.from('other'))).rejects.toMatchObject({code:'IMPORT_REQUEST'});
- fs.mkdirSync(path.join(root,'Imported'));fs.writeFileSync(path.join(root,'Imported','original'),'preserved');await expect(scope.commit(start.id)).rejects.toMatchObject({code:'VAULT_EXISTS'});expect(fs.readFileSync(path.join(root,'Imported','original'),'utf8')).toBe('preserved');
+ fs.mkdirSync(path.join(root,'alice/Imported'),{recursive:true});fs.writeFileSync(path.join(root,'alice/Imported','original'),'preserved');await expect(scope.commit(start.id)).rejects.toMatchObject({code:'VAULT_EXISTS'});expect(fs.readFileSync(path.join(root,'alice/Imported','original'),'utf8')).toBe('preserved');
 });
 it('cancels without publishing and bounds concurrent request memory leases',async()=>{
  const scope=service.scope('alice'),start=await scope.begin(options());const release=scope.claim('upload');expect(()=>scope.claim('upload')).toThrow();release();await scope.cancel(start.id);expect(fs.readdirSync(path.join(temp,'data','vault-imports'))).toEqual([]);expect(fs.readdirSync(root)).toEqual([]);
 });
 it('quarantines partial output on I/O failure instead of exposing it',async()=>{
  const scope=service.scope('alice'),start=await scope.begin(options());await scope.put(start.id,0,Buffer.from('hello'));
- const original=fs.promises.open;vi.spyOn(fs.promises,'open').mockImplementation(async(file,...args)=>{if(file===path.join(root,'Imported','Note.md'))throw Object.assign(Error('failure'),{code:'EACCES'});return original(file,...args);});
+ const original=fs.promises.open;vi.spyOn(fs.promises,'open').mockImplementation(async(file,...args)=>{if(file===path.join(root,'alice/Imported','Note.md'))throw Object.assign(Error('failure'),{code:'EACCES'});return original(file,...args);});
  await expect(scope.commit(start.id)).rejects.toMatchObject({code:'EACCES'});expect(db.prepare('SELECT status FROM vaults').get().status).toBe('quarantine');
 });
 it('rejects symlink ZIP entries, encryption, forged lengths and CRC corruption',async()=>{
@@ -66,7 +66,7 @@ it('cancels a lost-response attempt without allowing another user to cancel it',
 });
 it('revocation during output publication cannot activate a vault',async()=>{
  const scope=service.scope('alice'),job=await scope.begin(options());await scope.put(job.id,0,Buffer.from('hello'));
- const open=fs.promises.open;vi.spyOn(fs.promises,'open').mockImplementation(async(file,...args)=>{const fd=await open(file,...args);if(file!==path.join(root,'Imported','Note.md'))return fd;return {write:(...args)=>fd.write(...args),close:()=>fd.close(),sync:async()=>{await fd.sync();active=false;}};});
+ const open=fs.promises.open;vi.spyOn(fs.promises,'open').mockImplementation(async(file,...args)=>{const fd=await open(file,...args);if(file!==path.join(root,'alice/Imported','Note.md'))return fd;return {write:(...args)=>fd.write(...args),close:()=>fd.close(),sync:async()=>{await fd.sync();active=false;}};});
  await expect(scope.commit(job.id)).rejects.toMatchObject({code:'SESSION_CHANGED'});expect(db.prepare('SELECT status FROM vaults').get().status).toBe('quarantine');
 });
 it.each(['../evil','/x/evil','aa\\evil'])('rejects traversal/absolute aliases in actual ZIP headers: %s',async unsafe=>{
@@ -118,13 +118,13 @@ it('acknowledges an identical retry after a lost upload response without overwri
  const scope=service.scope('alice'),job=await scope.begin(options());await scope.put(job.id,0,Buffer.from('hello'));
  expect(await scope.put(job.id,0,Buffer.from('hello'))).toEqual({ok:true});
  await expect(scope.put(job.id,0,Buffer.from('other'))).rejects.toMatchObject({code:'IMPORT_REQUEST'});
- await scope.commit(job.id);expect(fs.readFileSync(path.join(root,'Imported','Note.md'),'utf8')).toBe('hello');
+ await scope.commit(job.id);expect(fs.readFileSync(path.join(root,'alice/Imported','Note.md'),'utf8')).toBe('hello');
 });
 it('does not acknowledge cancellation after final publication has started',async()=>{
  const scope=service.scope('alice'),attempt='33333333-3333-4333-8333-333333333333',job=await scope.begin({...options(),attempt});await scope.put(job.id,0,Buffer.from('hello'));
  let resume,entered;const waiting=new Promise(resolve=>{resume=resolve;}),started=new Promise(resolve=>{entered=resolve;});
  const open=fs.promises.open;
- vi.spyOn(fs.promises,'open').mockImplementation(async(file,...args)=>{const fd=await open(file,...args);if(file===path.join(root,'Imported','Note.md')){const write=fd.write.bind(fd);fd.write=async(...data)=>{entered();await waiting;return write(...data);};}return fd;});
+ vi.spyOn(fs.promises,'open').mockImplementation(async(file,...args)=>{const fd=await open(file,...args);if(file===path.join(root,'alice/Imported','Note.md')){const write=fd.write.bind(fd);fd.write=async(...data)=>{entered();await waiting;return write(...data);};}return fd;});
  const publishing=scope.commit(job.id);publishing.catch(()=>{});await started;
  try{
   await expect(service.scope('alice').cancel(job.id)).rejects.toMatchObject({code:'IMPORT_BUSY'});
@@ -137,7 +137,7 @@ it('removes a partially failed upload before accepting its retry',async()=>{
  const open=fs.promises.open;let first=true;
  vi.spyOn(fs.promises,'open').mockImplementation(async(filename,...args)=>{const fd=await open(filename,...args);if(filename===file){const write=fd.write.bind(fd);fd.write=async(bytes,...data)=>{if(first){first=false;await write(bytes,0,2,null);throw Object.assign(Error('disk full'),{code:'ENOSPC'});}return write(bytes,...data);};}return fd;});
  await expect(scope.put(job.id,0,Buffer.from('hello'))).rejects.toMatchObject({code:'ENOSPC'});expect(fs.existsSync(file)).toBe(false);
- await scope.put(job.id,0,Buffer.from('hello'));await scope.commit(job.id);expect(fs.readFileSync(path.join(root,'Imported','Note.md'),'utf8')).toBe('hello');
+ await scope.put(job.id,0,Buffer.from('hello'));await scope.commit(job.id);expect(fs.readFileSync(path.join(root,'alice/Imported','Note.md'),'utf8')).toBe('hello');
 });
 it('does not publish a staged file whose bytes changed after its upload was acknowledged',async()=>{
  const scope=service.scope('alice'),job=await scope.begin(options());await scope.put(job.id,0,Buffer.from('hello'));
@@ -154,30 +154,30 @@ it('repeats a successful commit after a lost response without creating another v
 it('expires successful import receipts without deleting the published vault',async()=>{
  const scope=service.scope('alice'),job=await scope.begin(options());await scope.put(job.id,0,Buffer.from('hello'));const result=await scope.commit(job.id);
  time=limits.ttl;await scope.prepare();await expect(scope.commit(job.id)).rejects.toMatchObject({code:'IMPORT_UNAVAILABLE'});
- expect(db.prepare('SELECT status FROM vaults WHERE id=?').get(result.id).status).toBe('active');expect(fs.readFileSync(path.join(root,'Imported','Note.md'),'utf8')).toBe('hello');
+ expect(db.prepare('SELECT status FROM vaults WHERE id=?').get(result.id).status).toBe('active');expect(fs.readFileSync(path.join(root,'alice/Imported','Note.md'),'utf8')).toBe('hello');
 });
 it('preserves explicit empty directories in a local manifest without accepting uploads into directory entries',async()=>{
  const scope=service.scope('alice'),job=await scope.begin(options([{path:'Empty',kind:'directory',size:0},{path:'Nested/Empty',kind:'directory',size:0},{path:'Note.md',size:5}]));
  expect(job.upload).toEqual([2]);expect(job.files).toBe(1);expect(job.directories).toBe(2);
  await expect(scope.put(job.id,0,Buffer.alloc(0))).rejects.toMatchObject({code:'IMPORT_REQUEST'});
  await scope.put(job.id,2,Buffer.from('hello'));await scope.commit(job.id);
- for(const folder of ['Empty','Nested/Empty']){expect(fs.statSync(path.join(root,'Imported',folder)).isDirectory()).toBe(true);expect(fs.readdirSync(path.join(root,'Imported',folder))).toEqual([]);}
+ for(const folder of ['Empty','Nested/Empty']){expect(fs.statSync(path.join(root,'alice/Imported',folder)).isDirectory()).toBe(true);expect(fs.readdirSync(path.join(root,'alice/Imported',folder))).toEqual([]);}
 });
 it('removes only the sole ZIP vault wrapper and preserves all empty subfolders',async()=>{
  const bytes=await zip([['Original/',''],['Original/Empty/',''],['Original/Deep/Empty/',''],['Original/Note.md','hello']]);
  const scope=service.scope('alice'),job=await scope.zip({name:'Imported',configuration:false},bytes);await scope.commit(job.id);
- expect(fs.existsSync(path.join(root,'Imported','Original'))).toBe(false);
- expect(fs.readFileSync(path.join(root,'Imported','Note.md'),'utf8')).toBe('hello');
- for(const folder of ['Empty','Deep/Empty'])expect(fs.readdirSync(path.join(root,'Imported',folder))).toEqual([]);
+ expect(fs.existsSync(path.join(root,'alice/Imported','Original'))).toBe(false);
+ expect(fs.readFileSync(path.join(root,'alice/Imported','Note.md'),'utf8')).toBe('hello');
+ for(const folder of ['Empty','Deep/Empty'])expect(fs.readdirSync(path.join(root,'alice/Imported',folder))).toEqual([]);
 });
 it('retains independent empty top-level ZIP directories when there is no single wrapper',async()=>{
  const scope=service.scope('alice'),job=await scope.zip({name:'Imported',configuration:false},await zip([['First/',''],['Second/','']]));await scope.commit(job.id);
- for(const folder of ['First','Second'])expect(fs.readdirSync(path.join(root,'Imported',folder))).toEqual([]);
+ for(const folder of ['First','Second'])expect(fs.readdirSync(path.join(root,'alice/Imported',folder))).toEqual([]);
 });
 it('imports an empty selected folder or a directory-only ZIP as an empty vault',async()=>{
  const scope=service.scope('alice'),folder=await scope.begin({...options(),files:[]});await scope.commit(folder.id);
- expect(fs.readdirSync(path.join(root,'Imported'))).toEqual(['.obsidian']);
- const zipped=await scope.zip({name:'Empty ZIP',configuration:false},await zip([['Original/','']]));await scope.commit(zipped.id);expect(fs.readdirSync(path.join(root,'Empty ZIP'))).toEqual(['.obsidian']);
+ expect(fs.readdirSync(path.join(root,'alice/Imported'))).toEqual(['.obsidian']);
+ const zipped=await scope.zip({name:'Empty ZIP',configuration:false},await zip([['Original/','']]));await scope.commit(zipped.id);expect(fs.readdirSync(path.join(root,'alice/Empty ZIP'))).toEqual(['.obsidian']);
 });
 it.each([
  [{path:'../outside',kind:'directory',size:0}],
@@ -217,12 +217,12 @@ it('selects excluded preferences for folder uploads and preserves selection in t
  expect(job.upload).toEqual([0,1]);expect(job.excluded).toBe(1);
  expect(job.excludedEntries.find(e=>e.path.endsWith('workspace.json'))).toMatchObject({selected:true,selectable:true});
  await scope.put(job.id,0,Buffer.alloc(0));await scope.put(job.id,1,Buffer.from('{}'));await scope.commit(job.id);
- expect(fs.readFileSync(path.join(root,'Imported','.obsidian/workspace.json'),'utf8')).toBe('{}');expect(fs.existsSync(path.join(root,'Imported','.obsidian/app.json'))).toBe(false);
+ expect(fs.readFileSync(path.join(root,'alice/Imported','.obsidian/workspace.json'),'utf8')).toBe('{}');expect(fs.existsSync(path.join(root,'alice/Imported','.obsidian/app.json'))).toBe(false);
 });
 it('imports selected ZIP preferences but still excludes unselected preferences',async()=>{
  const bytes=await zip([['Old/Note.md','hello'],['Old/.obsidian/workspace.json','{}'],['Old/.obsidian/app.json','{}']]);
  const scope=service.scope('alice'),job=await scope.zip({name:'Imported',configuration:false,selected:['.obsidian/workspace.json']},bytes);
- await scope.commit(job.id);expect(fs.readFileSync(path.join(root,'Imported','.obsidian/workspace.json'),'utf8')).toBe('{}');expect(fs.existsSync(path.join(root,'Imported','.obsidian/app.json'))).toBe(false);
+ await scope.commit(job.id);expect(fs.readFileSync(path.join(root,'alice/Imported','.obsidian/workspace.json'),'utf8')).toBe('{}');expect(fs.existsSync(path.join(root,'alice/Imported','.obsidian/app.json'))).toBe(false);
 });
 it.each(['.obsidian/plugins/evil/main.js','.obsidian/community-plugins.json','.obsidian/appearance.json','.obsidian/core-plugins.json','.ignis-auth.json','.git/config','../outside','.obsidian/not-present.json'])('rejects forged import selections: %s',async selected=>{
  const files=[{path:'Note.md',size:0},...['.obsidian/plugins/evil/main.js','.obsidian/community-plugins.json','.obsidian/appearance.json','.obsidian/core-plugins.json','.ignis-auth.json','.git/config'].map(path=>({path,size:0}))];
@@ -237,7 +237,7 @@ it('allows administrators to explicitly restore appearance and core plugin prefe
  try{
   const bytes=await zip([['Old/Note.md','hello'],['Old/.obsidian/appearance.json','{}'],['Old/.obsidian/core-plugins.json','["file-explorer"]'],['Old/.obsidian/plugins/evil/main.js','throw 1']]);
   const scope=adminService.scope('admin'),job=await scope.zip({name:'Imported',configuration:false,selected:['.obsidian/appearance.json','.obsidian/core-plugins.json']},bytes);
-  await scope.commit(job.id);expect(JSON.parse(fs.readFileSync(path.join(root,'Imported','.obsidian/core-plugins.json')))).toEqual(['file-explorer']);expect(fs.existsSync(path.join(root,'Imported','.obsidian/plugins'))).toBe(false);
+  await scope.commit(job.id);expect(JSON.parse(fs.readFileSync(path.join(root,'alice/Imported','.obsidian/core-plugins.json')))).toEqual(['file-explorer']);expect(fs.existsSync(path.join(root,'alice/Imported','.obsidian/plugins'))).toBe(false);
   await expect(scope.begin({...options([{path:'Note.md',size:0},{path:'.obsidian/plugins/evil/main.js',size:0}]),selected:['.obsidian/plugins/evil/main.js']})).rejects.toMatchObject({code:'IMPORT_REQUEST'});
  }finally{adminService.close();}
 });
@@ -246,13 +246,13 @@ it('updates a ZIP draft in place, supports deselection after upload and only pub
  const scope=service.scope('alice'),job=await scope.zip({name:'Imported',configuration:false},bytes);
  const selected=await scope.select(job.id,['.obsidian/workspace.json']);expect(selected.id).toBe(job.id);expect(selected.excluded).toBe(0);
  const deselected=await scope.select(job.id,[]);expect(deselected.excluded).toBe(1);
- await scope.commit(job.id);expect(fs.existsSync(path.join(root,'Imported','.obsidian/workspace.json'))).toBe(false);expect(fs.existsSync(path.join(root,'Imported','source.zip'))).toBe(false);
+ await scope.commit(job.id);expect(fs.existsSync(path.join(root,'alice/Imported','.obsidian/workspace.json'))).toBe(false);expect(fs.existsSync(path.join(root,'alice/Imported','source.zip'))).toBe(false);
 });
 it('keeps the original ZIP plan after a failed selection and never publishes malformed configuration',async()=>{
  const bytes=await zip([['Old/Note.md','hello'],['Old/.obsidian/workspace.json','invalid']]);
  const scope=service.scope('alice'),job=await scope.zip({name:'Imported',configuration:false},bytes);
  await expect(scope.select(job.id,['.obsidian/workspace.json'])).rejects.toMatchObject({code:'IMPORT_CONFIGURATION'});
- await scope.commit(job.id);expect(fs.existsSync(path.join(root,'Imported','.obsidian/workspace.json'))).toBe(false);
+ await scope.commit(job.id);expect(fs.existsSync(path.join(root,'alice/Imported','.obsidian/workspace.json'))).toBe(false);
 });
 it('binds selection to the draft owner, original session and fixed expiration',async()=>{
  const scope=service.scope('alice'),job=await scope.begin(options([{path:'Note.md',size:0},{path:'.obsidian/workspace.json',size:2}]));
@@ -275,7 +275,7 @@ it.each([[['file-explorer','workspaces']],[{'file-explorer':true,workspaces:fals
   const scope=adminService.scope('admin'),job=await scope.zip({name:'Imported',configuration:false},await zip(files));
   const selection=await scope.select(job.id,files.slice(1).map(([name])=>name.slice(4)));expect(selection.excluded).toBe(0);
   await scope.commit(job.id);
-  for(const [name,contents] of files)expect(fs.readFileSync(path.join(root,'Imported',name.slice(4)),'utf8')).toBe(contents);
+  for(const [name,contents] of files)expect(fs.readFileSync(path.join(root,'alice/Imported',name.slice(4)),'utf8')).toBe(contents);
  }finally{adminService.close();}
 });
 it.each([null,true,1,'file-explorer',{'file-explorer':'true'},{'file-explorer':1},{'file-explorer':{}},{'../plugin':true},['file-explorer',false],JSON.parse('{"__proto__":true}')].map(core=>[core]))('rejects malformed core-plugin preferences: %j',async core=>{
@@ -286,14 +286,14 @@ it.each([null,true,1,'file-explorer',{'file-explorer':'true'},{'file-explorer':1
  }finally{adminService.close();}
 });
 it('rejects an existing vault name during preparation without creating private staging or changing existing content',async()=>{
- fs.mkdirSync(path.join(root,'Imported'));fs.writeFileSync(path.join(root,'Imported','Original.md'),'keep');
+ fs.mkdirSync(path.join(root,'alice/Imported'),{recursive:true});fs.writeFileSync(path.join(root,'alice/Imported','Original.md'),'keep');
  const scope=service.scope('alice');
  await expect(scope.begin(options())).rejects.toMatchObject({code:'VAULT_EXISTS'});
  await expect(scope.zip({name:'Imported',configuration:false},Buffer.from('not a zip'))).rejects.toMatchObject({code:'VAULT_EXISTS'});
- expect(fs.readdirSync(path.join(temp,'data','vault-imports'))).toEqual([]);expect(fs.readFileSync(path.join(root,'Imported','Original.md'),'utf8')).toBe('keep');
+ expect(fs.readdirSync(path.join(temp,'data','vault-imports'))).toEqual([]);expect(fs.readFileSync(path.join(root,'alice/Imported','Original.md'),'utf8')).toBe('keep');
 });
 it('checks durable name reservations during preparation even when the directory is absent',async()=>{
- db.prepare("INSERT INTO vaults(id,name,directory,status,created_at) VALUES ('reserved','Imported','Imported','pending',0)").run();
+ db.prepare("INSERT INTO vaults(id,name,directory,status,created_at) VALUES ('reserved','Imported','alice/Imported','pending',0)").run();
  await expect(service.scope('alice').begin(options())).rejects.toMatchObject({code:'VAULT_EXISTS'});expect(fs.readdirSync(root)).toEqual([]);
 });
 
@@ -307,12 +307,12 @@ it('imports sibling ZIP vaults independently with per-vault exclusions and idemp
  const first=await scope.prepareSource(a);expect((await scope.prepareSource(a)).id).toBe(first.id);const result=await scope.commit(first.id);expect(await scope.prepareSource(a)).toEqual({completed:result});expect(await scope.commit(first.id)).toEqual(result);
  await expect(scope.prepareSource({...a,name:'Duplicate'})).rejects.toMatchObject({code:'IMPORT_REQUEST'});
  const second=await scope.prepareSource(b);await scope.commit(second.id);await scope.cancelSource({id:source.id});
- expect(fs.readFileSync(path.join(root,'First','Note.md'),'utf8')).toBe('alpha');expect(fs.readFileSync(path.join(root,'Second','Note.md'),'utf8')).toBe('beta');expect(fs.existsSync(path.join(root,'First','.obsidian','workspace.json'))).toBe(true);expect(fs.existsSync(path.join(root,'Second','.obsidian','workspace.json'))).toBe(false);expect(fs.existsSync(path.join(root,'First','Loose.md'))).toBe(false);expect(db.prepare("SELECT COUNT(*) n FROM memberships WHERE user_id='alice' AND role='owner'").get().n).toBe(2);expect(fs.readdirSync(path.join(temp,'data','vault-imports'))).toEqual([]);
+ expect(fs.readFileSync(path.join(root,'alice/First','Note.md'),'utf8')).toBe('alpha');expect(fs.readFileSync(path.join(root,'alice/Second','Note.md'),'utf8')).toBe('beta');expect(fs.existsSync(path.join(root,'alice/First','.obsidian','workspace.json'))).toBe(true);expect(fs.existsSync(path.join(root,'alice/Second','.obsidian','workspace.json'))).toBe(false);expect(fs.existsSync(path.join(root,'alice/First','Loose.md'))).toBe(false);expect(db.prepare("SELECT COUNT(*) n FROM memberships WHERE user_id='alice' AND role='owner'").get().n).toBe(2);expect(fs.readdirSync(path.join(temp,'data','vault-imports'))).toEqual([]);
 });
 it('maps local manifest indexes back to the original source and supports an empty vault',async()=>{
  const scope=service.scope('alice'),source=await scope.scan({attempt,files:[{path:'A/.obsidian',kind:'directory',size:0},{path:'A/Note.md',size:5},{path:'B/.obsidian',kind:'directory',size:0}]});
  const a=await scope.prepareSource(sourceInput(source.id,'A','First'));expect(a.sourceIndexes).toEqual([0,1]);expect(a.upload).toEqual([1]);await scope.put(a.id,1,Buffer.from('hello'));await scope.commit(a.id);
- const b=await scope.prepareSource(sourceInput(source.id,'B','Empty'));expect(b.upload).toEqual([]);await scope.commit(b.id);expect(fs.readdirSync(path.join(root,'Empty'))).toEqual(['.obsidian']);
+ const b=await scope.prepareSource(sourceInput(source.id,'B','Empty'));expect(b.upload).toEqual([]);await scope.commit(b.id);expect(fs.readdirSync(path.join(root,'alice/Empty'))).toEqual(['.obsidian']);
 });
 it('binds scanned origins and child drafts to the original principal/session, validates roots and rejects forged selections',async()=>{
  const alice=service.scope('alice'),bob=service.scope('bob'),source=await alice.scan({attempt,files:[{path:'A/.obsidian/workspace.json',size:2}]});const input=sourceInput(source.id,'A','Imported');
@@ -325,14 +325,14 @@ it('allows only one scanned source per actor, applies aggregate limits and cance
  await expect(scope.scan({attempt,files:Array.from({length:9},(_,i)=>({path:`V${i}/Note.md`,size:limits.fileBytes}))})).rejects.toMatchObject({code:'IMPORT_LIMIT'});expect(fs.readdirSync(path.join(temp,'data','vault-imports'))).toEqual([]);
 });
 it('reports name collisions and malformed selected ZIP preferences before publication',async()=>{
- const scope=service.scope('alice'),source=await scope.scan({attempt},await zip([['A/.obsidian/workspace.json','{'],['A/Note.md','hello'],['B/.obsidian/app.json','{}']]));fs.mkdirSync(path.join(root,'Taken'));
+ const scope=service.scope('alice'),source=await scope.scan({attempt},await zip([['A/.obsidian/workspace.json','{'],['A/Note.md','hello'],['B/.obsidian/app.json','{}']]));fs.mkdirSync(path.join(root,'alice/Taken'),{recursive:true});
  await expect(scope.reviewSource(sourceInput(source.id,'A','Taken'))).rejects.toMatchObject({code:'VAULT_EXISTS'});
  await expect(scope.reviewSource(sourceInput(source.id,'A','Good',['.obsidian/workspace.json']))).rejects.toMatchObject({code:'IMPORT_CONFIGURATION'});expect(db.prepare('SELECT * FROM vaults').all()).toEqual([]);
  expect((await scope.reviewSource(sourceInput(source.id,'A','Good'))).excluded).toBe(1);
 });
 it('retains completed vaults when a later vault fails or the source is cancelled',async()=>{
  const scope=service.scope('alice'),source=await scope.scan({attempt},await zip([['A/.obsidian/', ''],['A/Note.md','first'],['B/.obsidian/', ''],['B/Note.md','second']]));
- const first=await scope.prepareSource(sourceInput(source.id,'A','First'));await scope.commit(first.id);const second=await scope.prepareSource(sourceInput(source.id,'B','Second'));fs.mkdirSync(path.join(root,'Second'));await expect(scope.commit(second.id)).rejects.toMatchObject({code:'VAULT_EXISTS'});await scope.cancelSource({id:source.id});expect(fs.readFileSync(path.join(root,'First','Note.md'),'utf8')).toBe('first');expect(db.prepare("SELECT COUNT(*) n FROM vaults WHERE status='active'").get().n).toBe(1);
+ const first=await scope.prepareSource(sourceInput(source.id,'A','First'));await scope.commit(first.id);const second=await scope.prepareSource(sourceInput(source.id,'B','Second'));fs.mkdirSync(path.join(root,'alice/Second'));await expect(scope.commit(second.id)).rejects.toMatchObject({code:'VAULT_EXISTS'});await scope.cancelSource({id:source.id});expect(fs.readFileSync(path.join(root,'alice/First','Note.md'),'utf8')).toBe('first');expect(db.prepare("SELECT COUNT(*) n FROM vaults WHERE status='active'").get().n).toBe(1);
 });
 it('rejects tampered or replaced private source archives before reading child content',async()=>{
  const scope=service.scope('alice'),source=await scope.scan({attempt},await zip([['A/.obsidian/', ''],['A/Note.md','hello']]));fs.writeFileSync(path.join(temp,'data','vault-imports',source.id,'source.zip'),'changed');await expect(scope.prepareSource(sourceInput(source.id,'','Imported'))).rejects.toMatchObject({code:'IMPORT_STORAGE'});expect(db.prepare('SELECT * FROM vaults').all()).toEqual([]);
@@ -346,9 +346,9 @@ it('denies a scanned source after session revocation and rejects unsafe optional
 it('refuses source cancellation once a child publication has begun and never removes the published vault',async()=>{
  const scope=service.scope('alice'),source=await scope.scan({attempt,files:[]}),stage=await scope.prepareSource(sourceInput(source.id,'','Imported'));
  let resume,entered;const waiting=new Promise(resolve=>{resume=resolve;}),started=new Promise(resolve=>{entered=resolve;}),mkdir=fs.promises.mkdir;
- const spy=vi.spyOn(fs.promises,'mkdir').mockImplementation(async(...args)=>{const result=await mkdir(...args);if(args[0]===path.join(root,'Imported')){entered();await waiting;}return result;});
+ const spy=vi.spyOn(fs.promises,'mkdir').mockImplementation(async(...args)=>{const result=await mkdir(...args);if(args[0]===path.join(root,'alice/Imported')){entered();await waiting;}return result;});
  const pending=scope.commit(stage.id);try{await started;await expect(scope.cancelSource({id:source.id})).rejects.toMatchObject({code:'IMPORT_BUSY'});}finally{resume();spy.mockRestore();}
- await pending;await scope.cancelSource({id:source.id});expect(fs.existsSync(path.join(root,'Imported','.obsidian','community-plugins.json'))).toBe(true);expect(db.prepare("SELECT status FROM vaults WHERE name='Imported'").get().status).toBe('active');
+ await pending;await scope.cancelSource({id:source.id});expect(fs.existsSync(path.join(root,'alice/Imported','.obsidian','community-plugins.json'))).toBe(true);expect(db.prepare("SELECT status FROM vaults WHERE name='Imported'").get().status).toBe('active');
 });
 it('counts scanned origins and child drafts together towards the global actor capacity',async()=>{
  service.close();service=createVaultImport({db,root,dataRoot:path.join(temp,'data'),now:()=>time,sessions:{resolve:token=>({id:token+'-session',user:{id:token,role:'user',authVersion:1}})}});
@@ -362,7 +362,7 @@ it.each(['node_modules','__MACOSX'])('does not unwrap generated outer ZIP direct
  const scope=service.scope('alice'),source=await scope.scan({attempt},await zip([[folder+'/A/.obsidian/',''],[folder+'/A/Note.md','hello']]));expect(source.vaults.map(v=>v.root)).toEqual(['']);await expect(scope.reviewSource(sourceInput(source.id,'','Imported'))).rejects.toMatchObject({code:'IMPORT_EMPTY'});expect(db.prepare('SELECT * FROM vaults').all()).toEqual([]);
 });
 it('replaces only idle unpublished children when changing root or options after a lost preparation response',async()=>{
- const scope=service.scope('alice'),source=await scope.scan({attempt,files:[{path:'A/.obsidian',kind:'directory',size:0},{path:'B/.obsidian',kind:'directory',size:0}]}),a=sourceInput(source.id,'A','First');const lost=await scope.prepareSource(a);const b=await scope.prepareSource(sourceInput(source.id,'B','Second'));await expect(scope.commit(lost.id)).rejects.toMatchObject({code:'IMPORT_UNAVAILABLE'});await scope.commit(b.id);const renamed=await scope.prepareSource({...a,name:'Renamed'});await scope.commit(renamed.id);expect(fs.existsSync(path.join(root,'First'))).toBe(false);expect(fs.existsSync(path.join(root,'Renamed'))).toBe(true);expect(db.prepare("SELECT COUNT(*) n FROM vaults WHERE status='active'").get().n).toBe(2);
+ const scope=service.scope('alice'),source=await scope.scan({attempt,files:[{path:'A/.obsidian',kind:'directory',size:0},{path:'B/.obsidian',kind:'directory',size:0}]}),a=sourceInput(source.id,'A','First');const lost=await scope.prepareSource(a);const b=await scope.prepareSource(sourceInput(source.id,'B','Second'));await expect(scope.commit(lost.id)).rejects.toMatchObject({code:'IMPORT_UNAVAILABLE'});await scope.commit(b.id);const renamed=await scope.prepareSource({...a,name:'Renamed'});await scope.commit(renamed.id);expect(fs.existsSync(path.join(root,'alice/First'))).toBe(false);expect(fs.existsSync(path.join(root,'alice/Renamed'))).toBe(true);expect(db.prepare("SELECT COUNT(*) n FROM vaults WHERE status='active'").get().n).toBe(2);
 });
 it('expires abandoned import sources earlier than the hard cap and never revives them',async()=>{
  const scope=service.scope('alice'),source=await scope.scan({attempt,files:[]});time=limits.idle;await expect(scope.reviewSource(sourceInput(source.id,'','Imported'))).rejects.toMatchObject({code:'IMPORT_UNAVAILABLE'});await scope.prepare();expect(fs.readdirSync(path.join(temp,'data','vault-imports'))).toEqual([]);

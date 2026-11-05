@@ -947,6 +947,8 @@
   "The folder must be empty before removing it.": "La carpeta debe estar vacía antes de eliminarla.",
   "Invalid request": "Solicitud no válida",
   "Too many requests": "Demasiadas solicitudes",
+  "The new owner already has a vault with that name.": "El nuevo propietario ya tiene una bóveda con ese nombre.",
+  "Disable server plugins for this vault before transferring ownership.": "Desactiva los complementos de servidor de esta bóveda antes de transferir su propiedad.",
   "Vault already exists": "La bóveda ya existe",
   "Invalid vault name": "Nombre de bóveda no válido",
   "Vault not found": "Bóveda no encontrada",

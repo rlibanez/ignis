@@ -127,3 +127,9 @@ describe("vault lifecycle closure", () => {
     expect(client.isOpen()).toBe(false);
   });
 });
+
+it('reconnects a server-announced relocation using the same UUID without declaring the vault lost',()=>{
+ const relocating=vi.fn(),unavailable=vi.fn();window.__ignisAuth={vaultRelocating:relocating,vaultUnavailable:unavailable};
+ const client=createWsClient();client.connect('stable-uuid');sockets[0].onopen();sockets[0].onclose({code:4004});
+ expect(relocating).toHaveBeenCalledWith('stable-uuid');expect(unavailable).not.toHaveBeenCalled();vi.advanceTimersByTime(2001);expect(sockets).toHaveLength(2);expect(sockets[1].url).toContain('vault=stable-uuid');
+});

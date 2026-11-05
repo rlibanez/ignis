@@ -7,9 +7,10 @@ function selectVaultReference(query, body, { defaultVault = null, resolveIdentit
     if (!source || !Object.hasOwn(source, "vault")) continue;
     const value = source.vault;
     // Reject arrays/objects, empty selectors and duplicate query parameters.
-    if (typeof value !== "string" || !value || value.length > 255 ||
+    if (typeof value !== "string" || !value || value.length > 321 ||
         // eslint-disable-next-line no-control-regex
-        /[/\\\x00-\x1f\x7f]/.test(value) || value === "." || value === "..") invalid();
+        /[\\\x00-\x1f\x7f]/.test(value) || value === "." || value === ".." ||
+        (value.includes("/") && !require("./vault-name").validDirectory(value))) invalid();
     values.push(value);
   }
   if (!values.length) {

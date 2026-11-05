@@ -25,15 +25,6 @@ it("keeps the name selector only for an unregistered legacy vault", async () => 
   expect(fetch.mock.calls[0][0]).toBe("/api/vault/remove?vault=Legacy");
 });
 
-it("sends the explicit owner and inspected folder identity without silently retrying conflicts", async () => {
-  const fetch = vi.fn().mockResolvedValue({ ok: false, json: async () => ({ error: "The directory changed" }) });
-  vi.stubGlobal("fetch", fetch);
-  await expect(vaultService.registerVault("Notes", "selected-owner", "selected-identity")).rejects.toThrow("directory changed");
-  expect(fetch).toHaveBeenCalledTimes(1);
-  expect(fetch.mock.calls[0][0]).toBe("/api/vault/register");
-  expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ directory: "Notes", ownerId: "selected-owner", identity: "selected-identity" });
-});
-
 it("sends only a name when creating a vault", async () => {
   vi.stubGlobal("window", {});
   vi.stubGlobal("localStorage", { setItem: vi.fn() });
@@ -125,11 +116,12 @@ it("coordinates active-vault rename with the authentication boundary", async () 
   vi.stubGlobal("history", { replaceState: vi.fn() });
   vi.stubGlobal("fetch", vi.fn(async url => {
     order.push(url);
-    return { ok: true, json: async () => url.endsWith("/list") ? [{ id: "Renamed", uuid: "original" }] : { ok: true } };
+    return { ok: true, json: async () => url.endsWith("/list") ? [{ id: "alice/Renamed", uuid: "original" }] : { ok: true,id:"alice/Renamed" } };
   }));
   await vaultService.renameVault("Notes", "Renamed");
   expect(order).toEqual(["prepare:original", "/api/vault/rename", "/api/vault/list", "finish:true"]);
   expect(window.__currentVaultUuid).toBe("original");
+  expect(window.__currentVaultId).toBe("alice/Renamed");
 });
 
 
@@ -153,4 +145,15 @@ it("does not delete while preparation refuses pending writes", async () => {
   const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
   await expect(vaultService.deleteVault("Notes", "original")).rejects.toThrow("Pending writes");
   expect(fetch).not.toHaveBeenCalled();
+});
+
+it.each([true,false])('coordinates active ownership transfer and preserves UUID on success=%s',async ok=>{
+ const order=[];vi.stubGlobal('window',{__currentVaultId:'alice/Notes',__currentVaultUuid:'stable',__ignisAuth:{beginVaultRename:async id=>order.push('prepare:'+id),finishVaultRename:async success=>order.push('finish:'+success)}});
+ vi.stubGlobal('fetch',vi.fn(async()=>{order.push('transfer');return {ok,json:async()=>ok?{ok:true,vault:'stable',directory:'bob/Notes'}:{error:'Name occupied'}};}));
+ if(ok){await vaultService.transferVaultOwnership('stable','bob','reader',1);expect(window.__currentVaultId).toBe('bob/Notes');}else{await expect(vaultService.transferVaultOwnership('stable','bob','reader',1)).rejects.toThrow('Name occupied');expect(window.__currentVaultId).toBe('alice/Notes');}
+ expect(window.__currentVaultUuid).toBe('stable');expect(order).toEqual(['prepare:stable','transfer','finish:'+ok]);
+});
+it('does not send ownership transfer while active editor writes are unconfirmed',async()=>{
+ vi.stubGlobal('window',{__currentVaultUuid:'stable',__ignisAuth:{beginVaultRename:async()=>{throw Error('Pending writes');}}});const fetch=vi.fn();vi.stubGlobal('fetch',fetch);
+ await expect(vaultService.transferVaultOwnership('stable','bob','reader',1)).rejects.toThrow('Pending writes');expect(fetch).not.toHaveBeenCalled();
 });

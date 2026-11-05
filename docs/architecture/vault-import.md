@@ -8,6 +8,10 @@ al confirmar. Incluye progreso, Atrás, Cancelar y Abrir bóveda al terminar.
 El gestor abierto actualiza su catálogo al publicarse la bóveda. Su pie ofrece
 Importar bóveda junto a Crear bóveda, reutilizando el mismo asistente de Cuenta.
 
+La publicación usa `VAULT_ROOT/<username>/<nombre>` y reserva el nombre sólo
+para la cuenta que importa. Una cuenta puede importar un nombre que ya exista en
+otra cuenta; nunca se reutiliza su UUID ni se heredan sus permisos.
+
 ## Alcance del contenido
 
 La carpeta se selecciona mediante showDirectoryPicker y se enumeran sus handles,

@@ -91,9 +91,12 @@ const syncHandlers = {
     const vault = (window.__vaultList || []).find((v) => v.id === id);
 
     if (!vault && id) {
-      if (!vaultService.createVaultSync(id)) {
+      const created=vaultService.createVaultSync(id);
+      if (!created) {
         return "Failed to create vault";
       }
+      vaultService.openVault(created.uuid);
+      return true;
     }
 
     vaultService.openVault(id);

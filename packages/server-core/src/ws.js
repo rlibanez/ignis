@@ -99,7 +99,7 @@ function setupWebSocket(server, opts = {}) {
     }
   };
 
-  wss.closeVaultSockets = function (vaultId) {
+  wss.closeVaultSockets = function (vaultId, {relocating=false} = {}) {
     const clients = clientsByVault.get(vaultId);
 
     if (!clients) {
@@ -107,7 +107,7 @@ function setupWebSocket(server, opts = {}) {
     }
 
     for (const ws of Array.from(clients)) {
-      ws.close(4002, "Vault changed");
+      ws.close(relocating ? 4004 : 4002, relocating ? "Vault relocating" : "Vault changed");
     }
   };
 

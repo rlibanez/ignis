@@ -102,3 +102,16 @@ describe("vault plugin availability policy",()=>{
   expect(ipcRenderer.sendSync("policy").plugins).toBe(false);
  });
 });
+
+it('opens a newly created native vault by its returned UUID instead of its unqualified name',async()=>{
+ const {vaultService}=await import('@ignis/services');window.__vaultList=[];
+ vi.spyOn(vaultService,'createVaultSync').mockReturnValue({id:'alice/Notes',uuid:'new-vault'});
+ const open=vi.spyOn(vaultService,'openVault').mockImplementation(()=>{});
+ expect(ipcRenderer.sendSync('vault-open','/Notes')).toBe(true);
+ expect(vaultService.createVaultSync).toHaveBeenCalledWith('Notes');expect(open).toHaveBeenCalledWith('new-vault');
+});
+it('does not recreate or adopt a known owner-scoped vault when opening it natively',async()=>{
+ const {vaultService}=await import('@ignis/services');window.__vaultList=[{id:'alice/Notes',uuid:'existing'}];
+ const create=vi.spyOn(vaultService,'createVaultSync');const open=vi.spyOn(vaultService,'openVault').mockImplementation(()=>{});
+ expect(ipcRenderer.sendSync('vault-open','/alice/Notes')).toBe(true);expect(create).not.toHaveBeenCalled();expect(open).toHaveBeenCalledWith('alice/Notes');
+});

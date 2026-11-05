@@ -3,6 +3,7 @@ const path = require("node:path");
 const { randomUUID } = require("node:crypto");
 const { transaction } = require("../../../platform/persistence/database");
 const fail = code => { throw Object.assign(new Error("Vault creation failed"), { code }); };
+const {ownedDirectory,ensureUserDirectory,storagePath,assertAvailable}=require("./vault-storage");
 const {validVaultName}=require('../application/vault-name');
 function audit(db, actor, action, id) {
   db.prepare("INSERT INTO audit_events VALUES (?, ?, ?, ?, ?)").run(randomUUID(), actor, action, id, Date.now());
@@ -11,7 +12,7 @@ function createRegisteredVault(db, root, actor, name, { isCurrent, ownerId = act
   if (!validVaultName(name) || !path.isAbsolute(root)) fail("INVALID_VAULT_NAME");
   const rootStat = io.lstatSync(root);
   if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) fail("INVALID_VAULT_ROOT");
-  const target = path.join(root, name), id = randomUUID();
+  let directory, target; const id = randomUUID();
   const authorize = () => {
     const user=typeof actor === "string" && db.prepare("SELECT role FROM users WHERE id=? AND status='active'").get(actor);
     if (!user || !["admin","user"].includes(user.role) ||
@@ -22,10 +23,11 @@ function createRegisteredVault(db, root, actor, name, { isCurrent, ownerId = act
   // Durable reservation before touching disk. Pending entries are hidden from discovery.
   transaction(db, () => {
     authorize();
-    if (db.prepare("SELECT 1 FROM vault_deletions WHERE vault_id=? OR (state='pending' AND source=?)").get(name, name) ||
-        db.prepare("SELECT 1 FROM vault_renames WHERE source=? OR target=?").get(name, name) ||
-        db.prepare("SELECT 1 FROM vaults WHERE directory=? OR id=? OR directory=?").get(name, name, id)) fail("VAULT_EXISTS");
-    db.prepare("INSERT INTO vaults(id,name,directory,status,created_at) VALUES (?,?,?,'pending',?)").run(id, name, name, Date.now());
+    directory=ownedDirectory(db,ownerId,name);
+    assertAvailable(db,root,directory);
+    ensureUserDirectory(root,directory,io);
+    target=storagePath(root,directory,{io,missingLeaf:true});
+    db.prepare("INSERT INTO vaults(id,name,directory,status,created_at) VALUES (?,?,?,'pending',?)").run(id, name, directory, Date.now());
     db.prepare("INSERT INTO memberships VALUES (?,?,'owner')").run(id, ownerId);
     audit(db, actor, "begin-create-vault", id);
   });
@@ -34,17 +36,18 @@ function createRegisteredVault(db, root, actor, name, { isCurrent, ownerId = act
     io.mkdirSync(target, { mode: 0o700 }); created = true;
     identity = io.lstatSync(target);
     io.mkdirSync(path.join(target, ".obsidian"), { mode: 0o700 });
-    for (const directory of [path.join(target, ".obsidian"), target, root]) {
+    for (const directory of [path.join(target, ".obsidian"), target, path.dirname(target), root]) {
       const fd = io.openSync(directory, "r");
       try { io.fsyncSync(fd); } finally { io.closeSync(fd); }
     }
     transaction(db, () => {
       authorize();
+      storagePath(root,directory,{io});
       if (db.prepare("SELECT status FROM vaults WHERE id=?").get(id)?.status !== "pending") fail("VAULT_STATE_CHANGED");
       db.prepare("UPDATE vaults SET status='active' WHERE id=?").run(id);
       audit(db, actor, "create-vault", id);
     });
-    return { id, name, directory: name, path: target };
+    return { id, name, directory, path: target };
   } catch (error) {
     let cleaned = !created;
     if (created && identity) {
@@ -79,6 +82,7 @@ function quarantinePendingVaults(db) {
   });
 }
 function directoryAvailable(db, directory, root) {
+  if(!require("./vault-storage").validDirectory(directory))return false;
   if (directory === ".ignis-trash" || db.prepare("SELECT 1 FROM vault_deletions WHERE vault_id=? OR (state='pending' AND source=?)").get(directory, directory)) return false;
   if (db.prepare("SELECT 1 FROM vault_renames WHERE source=? OR target=?").get(directory, directory)) return false;
   const row = db.prepare("SELECT status FROM vaults WHERE directory=?").get(directory);

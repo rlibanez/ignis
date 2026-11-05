@@ -69,17 +69,6 @@ export const vaultService = {
     return [];
   },
 
-  async registrationOptions() {
-    return fetchJson(API_BASE + "/registration");
-  },
-
-  async registerVault(directory, ownerId, identity) {
-    return fetchJson(API_BASE + "/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ directory, ownerId, identity }),
-    });
-  },
 
   async vaultMembers(uuid) {
     return fetchJson(API_BASE + "/members?vault=" + encodeURIComponent(uuid));
@@ -93,10 +82,17 @@ export const vaultService = {
   },
 
   async transferVaultOwnership(vault, userId, expectedRole, revision) {
-    return fetchJson(API_BASE + "/transfer-ownership", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ vault, userId, expectedRole, revision, confirm: true }),
-    });
+    const current=!!window.__currentVaultUuid && vault===this.getCurrentVaultReference();
+    if(current)await window.__ignisAuth?.beginVaultRename?.(vault);
+    let success=false;
+    try {
+      const result=await fetchJson(API_BASE + "/transfer-ownership", {
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({vault,userId,expectedRole,revision,confirm:true}),
+      });
+      if(current)window.__currentVaultId=result.directory;
+      success=true;return result;
+    }finally{if(current)await window.__ignisAuth?.finishVaultRename?.(success);}
   },
 
   async vaultOwners() {
@@ -104,14 +100,14 @@ export const vaultService = {
   },
 
   async createVault(name) {
-    await fetchJson(API_BASE + "/create", {
+    const created=await fetchJson(API_BASE + "/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     });
 
     const list = await this.listVaults();
-    this.setVaultTrust(name);
+    this.setVaultTrust(created.uuid);
     return list;
   },
 
@@ -126,7 +122,7 @@ export const vaultService = {
       return null;
     }
 
-    return true;
+    try {return JSON.parse(xhr.responseText);}catch {return null;}
   },
 
   async refreshVault(id) {
@@ -142,16 +138,16 @@ export const vaultService = {
     if(current) await window.__ignisAuth?.beginVaultRename?.(window.__currentVaultUuid);
     let success=false;
     try {
-      await fetchJson(API_BASE + "/rename", {
+      const renamed=await fetchJson(API_BASE + "/rename", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ vault: this.referenceFor(id), name: newName }),
       });
 
-      this._migrateLocalStorage(id, newName);
+      this._migrateLocalStorage(id, renamed.id);
 
       if (id === this.getCurrentVaultId()) {
-        window.__currentVaultId = newName;
+        window.__currentVaultId = renamed.id;
 
         if (window.__vaultConfig) {
           window.__vaultConfig.id = this.browserVaultId(this.getCurrentVaultReference());

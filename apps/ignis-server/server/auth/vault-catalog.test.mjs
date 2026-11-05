@@ -5,14 +5,14 @@ import path from "node:path";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { openDatabase } = require("../platform/persistence/database");
-const {registerExistingVault:registerVault}=require("../features/vaults/adapters/vault-registration.js");
+const {registerExistingVault:registerVault}=require("./fixtures/vault.cjs");
 const { resolveRegisteredVault, listRegisteredVaults } = require("../features/vaults/adapters/vault-catalog.js");
 const { selectVaultReference } = require("../features/vaults/application/vault-selection.js");
 let root, vaultRoot, db, registered;
 beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "ignis-catalog-"));
   vaultRoot = path.join(root, "vaults"); fs.mkdirSync(vaultRoot);
-  fs.mkdirSync(path.join(vaultRoot, "Notes"));
+  fs.mkdirSync(path.join(vaultRoot, "admin/Notes"),{recursive:true});
   db = openDatabase(path.join(root, "data"));
   db.exec("INSERT INTO users(id,login,role,created_at) VALUES ('admin','admin','admin',0)");
   registered = registerVault(db, vaultRoot, "Notes", "admin");
@@ -20,11 +20,11 @@ beforeEach(() => {
 afterEach(() => { db.close(); fs.rmSync(root, { recursive: true, force: true }); });
 it("resolves UUID and directory alias to one stable registered identity after reopening", () => {
   const byId = resolveRegisteredVault(db, vaultRoot, registered.id);
-  expect(resolveRegisteredVault(db, vaultRoot, "Notes")).toEqual(byId);
+  expect(resolveRegisteredVault(db, vaultRoot, "admin/Notes")).toEqual(byId);
   expect(Object.isFrozen(byId)).toBe(true);
   db.close(); db = openDatabase(path.join(root, "data"));
-  expect(resolveRegisteredVault(db, vaultRoot, "Notes").id).toBe(registered.id);
-  expect(listRegisteredVaults(db)).toEqual([{ id: registered.id, name: "Notes", directory: "Notes", status: "active" }]);
+  expect(resolveRegisteredVault(db, vaultRoot, "admin/Notes").id).toBe(registered.id);
+  expect(listRegisteredVaults(db)).toEqual([{ id: registered.id, name: "Notes", directory: "admin/Notes", status: "active" }]);
 });
 it("does not discover or authorize unregistered directories", () => {
   fs.mkdirSync(path.join(vaultRoot, "Private"));
@@ -37,9 +37,9 @@ it.each(["pending", "quarantine"])("rejects %s vaults even through their aliases
   for (const reference of [registered.id, "Notes"]) expect(() => resolveRegisteredVault(db, vaultRoot, reference)).toThrow();
 });
 it("rejects missing paths, symlinks and corrupt directory traversal entries", () => {
-  fs.rmdirSync(path.join(vaultRoot, "Notes"));
+  fs.rmdirSync(path.join(vaultRoot, "admin/Notes"));
   expect(() => resolveRegisteredVault(db, vaultRoot, registered.id)).toThrow();
-  fs.mkdirSync(path.join(root, "outside")); fs.symlinkSync(path.join(root, "outside"), path.join(vaultRoot, "Notes"));
+  fs.mkdirSync(path.join(root, "outside")); fs.symlinkSync(path.join(root, "outside"), path.join(vaultRoot, "admin/Notes"));
   expect(() => resolveRegisteredVault(db, vaultRoot, registered.id)).toThrow();
   db.prepare("UPDATE vaults SET directory='../outside'").run();
   expect(() => resolveRegisteredVault(db, vaultRoot, registered.id)).toThrow();
@@ -48,29 +48,29 @@ it("rejects root symlinks and ID/alias collisions, including preexisting inconsi
   const alias = path.join(root, "linked-root"); fs.symlinkSync(vaultRoot, alias);
   expect(() => resolveRegisteredVault(db, alias, registered.id)).toThrow();
   fs.mkdirSync(path.join(vaultRoot, registered.id));
-  expect(() => registerVault(db, vaultRoot, registered.id, "admin")).toThrow("registered or reserved");
+  expect(registerVault(db, vaultRoot, registered.id, "admin").id).not.toBe(registered.id);
   db.prepare("INSERT INTO vaults(id,name,directory,status,created_at) VALUES ('other','Other',?,'active',0)").run(registered.id);
   expect(() => resolveRegisteredVault(db, vaultRoot, registered.id)).toThrow();
 });
 it("selects no default unless explicitly requested and accepts equivalent UUID/alias references", () => {
   expect(selectVaultReference({}, {})).toBeNull();
-  expect(selectVaultReference({}, {}, { defaultVault: "Notes" })).toBe("Notes");
+  expect(selectVaultReference({}, {}, { defaultVault: "admin/Notes" })).toBe("admin/Notes");
   const resolveIdentity = reference => resolveRegisteredVault(db, vaultRoot, reference).id;
-  expect(selectVaultReference({ vault: "Notes" }, { vault: registered.id }, { resolveIdentity })).toBe(registered.id);
-  expect(() => selectVaultReference({ vault: "Notes" }, { vault: "Other" })).toThrow();
+  expect(selectVaultReference({ vault: "admin/Notes" }, { vault: registered.id }, { resolveIdentity })).toBe(registered.id);
+  expect(() => selectVaultReference({ vault: "admin/Notes" }, { vault: "Other" })).toThrow();
 });
 it.each(["", null, [], ["Notes", "Notes"], {}, 7, "../Notes", "Notes/child", "Notes\\child", "Notes\0", ".", ".."])("rejects invalid selector %j instead of falling back to a default", value => {
-  expect(() => selectVaultReference({ vault: value }, {}, { defaultVault: "Notes" })).toThrow();
+  expect(() => selectVaultReference({ vault: value }, {}, { defaultVault: "admin/Notes" })).toThrow();
   expect(() => selectVaultReference({}, { vault: value })).toThrow();
 });
 
 it("normalizes registered UUID/directory selectors and rejects unregistered names without a default", () => {
   const { resolveVaultRequest } = require("../features/vaults/adapters/vault-request.js");
-  expect(resolveVaultRequest(db, vaultRoot, { vault: registered.id }, { vault: "Notes" })).toBe("Notes");
+  expect(resolveVaultRequest(db, vaultRoot, { vault: registered.id }, { vault: "admin/Notes" })).toBe("admin/Notes");
   expect(() => resolveVaultRequest(db, vaultRoot, { vault: "Legacy" }, null)).toThrow();
   expect(resolveVaultRequest(db, vaultRoot, {}, {})).toBeNull();
   expect(() => resolveVaultRequest(db, vaultRoot, { vault: registered.id }, { vault: "Legacy" })).toThrow();
   db.prepare("UPDATE vaults SET status='quarantine'").run();
   expect(() => resolveVaultRequest(db, vaultRoot, { vault: registered.id }, null)).toThrow();
-  expect(() => resolveVaultRequest(db, vaultRoot, { vault: "Notes" }, null)).toThrow();
+  expect(() => resolveVaultRequest(db, vaultRoot, { vault: "admin/Notes" }, null)).toThrow();
 });

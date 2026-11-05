@@ -47,19 +47,19 @@ router.get("/list", (req, res) => {
 
   const list = Object.entries(config.vaults).map(([id, vaultPath]) => ({
     id,
-    name: id,
+    name: id.split("/").pop(),
     path: vaultPath,
   }));
 
   res.json(req.vaultView ? req.vaultView.list(list) : list);
 });
 
-function membersRequest(req, res, operation) {
+async function membersRequest(req, res, operation) {
   if (!req.vaultMembers) return res.status(503).json({ error: "Access management unavailable" });
   if ((operation === "list" && (Object.keys(req.query).length !== 1 || typeof req.query.vault !== "string")) ||
       (operation !== "list" && (Object.keys(req.query).length || !req.body || Array.isArray(req.body))))
     return res.status(400).json({ error: "Invalid access request" });
-  try { res.json(req.vaultMembers(operation, operation === "list" ? req.query.vault : req.body)); }
+  try { res.json(await req.vaultMembers(operation, operation === "list" ? req.query.vault : req.body)); }
   catch (error) {
     const errors = {
       VAULT_UNAVAILABLE: [404, "Vault unavailable or you are no longer its owner."],
@@ -68,6 +68,8 @@ function membersRequest(req, res, operation) {
       INVALID_TRANSFER: [400, "Confirm the ownership transfer and select an existing member."],
       TRANSFER_TARGET_UNAVAILABLE: [409, "Select another active member as the new owner."],
       OWNER_PROTECTED: [409, "The owner cannot be changed here."],
+      VAULT_EXISTS: [409, "The new owner already has a vault with that name."],
+      VAULT_BUSY: [409, "Disable server plugins for this vault before transferring ownership."],
       MEMBERSHIP_CONFLICT: [409, "Access changed in another window. Reload members before trying again."],
     };
     const [status, message] = errors[error.code] || [503, "Unable to manage vault access."];
@@ -82,34 +84,6 @@ router.get("/owners", (req, res) => {
   if (!req.vaultOwners) return res.status(503).json({ error: "Vault owners unavailable" });
   try { res.json({ owners: req.vaultOwners() }); }
   catch { res.status(503).json({ error: "Unable to list vault owners" }); }
-});
-
-// Administrative inspection does not create directories, identities or memberships.
-router.get("/registration", (req, res) => {
-  if (!req.vaultRegistrationOptions) return res.status(503).json({ error: "Vault registration unavailable" });
-  try { res.json(req.vaultRegistrationOptions()); }
-  catch { res.status(503).json({ error: "Unable to inspect existing vaults" }); }
-});
-
-router.post("/register", (req, res) => {
-  const body = req.body;
-  if (Object.keys(req.query).length || !body || Array.isArray(body) || Object.keys(body).length !== 3 ||
-      Object.keys(body).some(key => !["directory", "ownerId", "identity"].includes(key)) ||
-      typeof body.directory !== "string" || typeof body.ownerId !== "string" ||
-      typeof body.identity !== "string" || !/^[a-f0-9]{64}$/.test(body.identity))
-    return res.status(400).json({ error: "Select an existing vault and its owner" });
-  if (!req.registerExistingVault) return res.status(503).json({ error: "Vault registration unavailable" });
-  try {
-    const vault = req.registerExistingVault(body.directory, body.ownerId, body.identity);
-    config.refreshVaults();
-    bootstrapCache.invalidateVault(vault.name);
-    return res.json({ ok: true, id: vault.name, uuid: vault.id });
-  } catch (error) {
-    const statuses = { INVALID_DIRECTORY: 400, INVALID_ROOT: 409, INVALID_VAULT: 409, VAULT_ALIAS: 409,
-      VAULT_RESERVED: 409, OWNER_UNAVAILABLE: 409, SESSION_CHANGED: 401, DIRECTORY_CHANGED: 409 };
-    const messages = require("../features/vaults/application/registration-errors").messages;
-    return res.status(statuses[error.code] || 503).json({ error: messages[error.code] || "Vault registration could not be completed" });
-  }
 });
 
 // GET /api/vault/info?vault=<id> - returns info for a specific vault
@@ -176,10 +150,10 @@ router.post("/create", async (req, res) => {
   try {
     const vault = req.createRegisteredVault(name);
     config.refreshVaults();
-    bootstrapCache.invalidateVault(name);
+    bootstrapCache.invalidateVault(vault.directory);
     req.ignisLogVaultName = name;
     // Keep the directory ID used by the current editor; UUID is its stable identity.
-    res.json({ ok: true, id: name, uuid: vault.id, path: vault.path });
+    res.json({ ok: true, id: vault.directory, uuid: vault.id, path: vault.path });
   } catch (e) {
     const statuses = { OWNER_FORBIDDEN: 403, OWNER_UNAVAILABLE: 409, INVALID_VAULT_NAME: 400, INVALID_VAULT_ROOT: 503, VAULT_EXISTS: 409, SESSION_CHANGED: 401, VAULT_STATE_CHANGED: 409 };
     return res.status(statuses[e.code] || 503).json({ error: e.code === "VAULT_EXISTS" ? "Vault already exists" : e.code === "OWNER_UNAVAILABLE" ? "Select an active user as the vault owner" : "Vault creation could not be completed" });

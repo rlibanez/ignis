@@ -178,6 +178,7 @@ it("protects real server routes, persists auth and does not log request secrets"
       expect((await request(port, route, jar)).status).toBe(404);
     expect((await request(port, "/api/vault/list", jar)).status).toBe(200);
     const visibleVaults = JSON.parse((await request(port, "/api/vault/list", jar)).text);
+    expect(visibleVaults).toEqual([]);
     expect(visibleVaults.some(vault => ["Interrupted", "Alias", ".ignis-trash", "TrashAlias"].includes(vault.id))).toBe(false);
     expect((await request(port, "/vault-files/Alias/.obsidian/plugins/ignis-bridge/keep", jar)).status).toBe(404);
     expect((await request(port, "/api/vault/info?vault=Interrupted", jar)).status).toBe(404);
@@ -188,26 +189,25 @@ it("protects real server routes, persists auth and does not log request secrets"
     expect((await request(port, "/api/fs/readFile?vault=TrashAlias&path=keep", jar)).status).toBe(404);
     expect(fs.readFileSync(path.join(root, "vaults", ".ignis-trash", "preserved", "keep"), "utf8")).toBe("staged-private-marker");
     const createCsrf = JSON.parse((await request(port, "/api/auth/csrf", jar)).text).csrfToken;
-    expect((await request(port, "/api/vault/rename", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { vault: "Team", name: "Moved" } })).status).toBe(409);
-    expect((await request(port, "/api/vault/remove?vault=Team", jar, { method: "DELETE", headers: { "x-ignis-csrf": createCsrf } })).status).toBe(409);
-    const registration = JSON.parse((await request(port, "/api/vault/registration", jar)).text);
-    const candidate = registration.vaults.find(vault => vault.directory === "Team");
-    expect(candidate.eligible).toBe(true);
-    const registerBody = { directory: "Team", ownerId: "normal-owner", identity: candidate.identity };
-    expect((await request(port, "/api/vault/register", jar, { method: "POST", body: registerBody })).status).toBe(403);
-    expect((await request(port, "/api/vault/register", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { ...registerBody, role: "owner" } })).status).toBe(400);
-    expect((await request(port, "/api/vault/register", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { ...registerBody, identity: "0".repeat(64) } })).status).toBe(409);
-    const registered = await request(port, "/api/vault/register", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: registerBody });
-    expect(registered.status).toBe(200);
+    expect((await request(port, "/api/vault/rename", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { vault: "Team", name: "Moved" } })).status).toBe(404);
+    expect((await request(port, "/api/vault/remove?vault=Team", jar, { method: "DELETE", headers: { "x-ignis-csrf": createCsrf } })).status).toBe(404);
+    expect((await request(port,"/api/vault/registration",jar)).status).toBe(404);
+    const registerBody={directory:"Team",ownerId:"normal-owner",identity:"0".repeat(64)};
+    expect((await request(port,"/api/vault/register",jar,{method:"POST",headers:{"x-ignis-csrf":createCsrf},body:registerBody})).status).toBe(404);
+    // Test setup emulates a completed import; no HTTP or CLI registration exists.
+    const fixtureDb=openDatabase(path.join(root,"data"));
+    const fixture=require("./fixtures/vault.cjs").registerExistingVault(fixtureDb,path.join(root,"vaults"),"Team","normal-owner");fixtureDb.close();
+    const registered={text:JSON.stringify({ok:true,id:fixture.directory,uuid:fixture.id})};
+    const teamId=fixture.id;
     // Registration for someone else does not grant the administrator membership.
-    expect((await request(port, "/api/fs/readFile?vault=Team&path=note.md", jar)).status).toBe(404);
+    expect((await request(port, "/api/fs/readFile?vault=normal-owner%2FTeam&path=note.md", jar)).status).toBe(404);
     expect(JSON.parse((await request(port, "/api/vault/list", jar)).text)).toEqual([]);
-    for (const route of ["/api/vault/info?vault=Team", "/api/bootstrap?vault=Team", "/api/fs/tree?vault=Team", "/api/fs/batch-read?vault=Team", "/api/fs/download-zip?vault=Team&path=", "/vault-files/Team/note.md"]) {
+    for (const route of ["/api/vault/info?vault=normal-owner%2FTeam", "/api/bootstrap?vault=normal-owner%2FTeam", "/api/fs/tree?vault=normal-owner%2FTeam", "/api/fs/batch-read?vault=normal-owner%2FTeam", "/api/fs/download-zip?vault=normal-owner%2FTeam&path=", "/vault-files/"+teamId+"/note.md"]) {
       const options = route.includes("batch-read") ? {method:"POST",headers:{"x-ignis-csrf":createCsrf},body:{paths:["note.md"]}} : {};
       expect((await request(port,route,jar,options)).status).toBe(404);
     }
     for (const [route,method,body] of [
-      ["/api/fs/writeFile?vault=Team","POST",{path:"note.md",content:"forbidden"}],
+      ["/api/fs/writeFile?vault=normal-owner%2FTeam","POST",{path:"note.md",content:"forbidden"}],
       ["/api/vault/refresh","POST",{vault:"Team"}],
       ["/api/plugins/headless-sync/enable","POST",{vault:"Team"}],
       ["/api/ext/headless-sync/start","POST",{vaultId:"Team"}],
@@ -217,20 +217,20 @@ it("protects real server routes, persists auth and does not log request secrets"
     const grants = openDatabase(path.join(root,"data"));
     grants.prepare("INSERT INTO memberships SELECT ?,id,'editor' FROM users WHERE login='admin'").run(JSON.parse(registered.text).uuid);
     grants.prepare("UPDATE memberships SET role='reader' WHERE user_id IN (SELECT id FROM users WHERE login='admin')").run();
-    expect((await request(port,"/api/fs/readFile?vault=Team&path=note.md",jar)).status).toBe(200);
-    expect((await request(port,"/api/fs/writeFile?vault=Team",jar,{method:"POST",headers:{"x-ignis-csrf":createCsrf},body:{path:"note.md",content:"forbidden"}})).status).toBe(404);
-    expect(fs.readFileSync(path.join(root,"vaults/Team/note.md"),"utf8")).toBe("private-note-marker");
+    expect((await request(port,"/api/fs/readFile?vault=normal-owner%2FTeam&path=note.md",jar)).status).toBe(200);
+    expect((await request(port,"/api/fs/writeFile?vault=normal-owner%2FTeam",jar,{method:"POST",headers:{"x-ignis-csrf":createCsrf},body:{path:"note.md",content:"forbidden"}})).status).toBe(404);
+    expect(fs.readFileSync(path.join(root,"vaults/normal-owner/Team/note.md"),"utf8")).toBe("private-note-marker");
     grants.prepare("UPDATE memberships SET role='editor' WHERE user_id IN (SELECT id FROM users WHERE login='admin')").run();
     grants.close();
     expect(
-      (await request(port, "/api/fs/readFile?vault=Team&path=note.md", jar))
+      (await request(port, "/api/fs/readFile?vault=normal-owner%2FTeam&path=note.md", jar))
         .text,
     ).toBe("private-note-marker");
-    expect((await request(port, "/vault-files/Team/note.md", jar)).text).toBe(
+    expect((await request(port, "/vault-files/"+teamId+"/note.md", jar)).text).toBe(
       "private-note-marker",
     );
     for (const filename of ["active.html", "active.js", "active.svg", "image.png"]) {
-      const media = await request(port, `/vault-files/Team/${filename}`, jar);
+      const media = await request(port, `/vault-files/${teamId}/${filename}`, jar);
       expect(media.status).toBe(200);
       expect(media.headers["content-type"]).toBe(filename === "image.png" ? "image/png" : "application/octet-stream");
       expect(media.headers["content-disposition"]).toBe(filename === "image.png" ? "inline" : "attachment");
@@ -238,30 +238,30 @@ it("protects real server routes, persists auth and does not log request secrets"
       expect(media.headers["x-content-type-options"]).toBe("nosniff");
       expect(media.headers["cache-control"]).toBe("no-store");
     }
-    expect((await request(port, "/vault-files/Team/", jar)).status).toBe(404);
-    expect((await request(port, "/vault-files/Team/index.html", jar)).status).toBe(404);
-    expect((await request(port, "/api/bootstrap?vault=Team", jar)).status).toBe(
+    expect((await request(port, "/vault-files/"+teamId+"/", jar)).status).toBe(404);
+    expect((await request(port, "/vault-files/"+teamId+"/index.html", jar)).status).toBe(404);
+    expect((await request(port, "/api/bootstrap?vault=normal-owner%2FTeam", jar)).status).toBe(
       200,
     );
 
-    for (const route of ["/api/fs/rm?vault=Team&path=.&recursive=true", "/api/fs/rmdir?vault=Team&path="]) {
+    for (const route of ["/api/fs/rm?vault=normal-owner%2FTeam&path=.&recursive=true", "/api/fs/rmdir?vault=normal-owner%2FTeam&path="]) {
       expect((await request(port, route, jar, { method: "DELETE", headers: { "x-ignis-csrf": createCsrf } })).status).toBe(403);
     }
-    expect((await request(port, "/api/fs/rename", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { vault: "Team", oldPath: ".", newPath: "moved" } })).status).toBe(403);
-    expect((await request(port, "/api/fs/stat?vault=Team&path=", jar)).status).toBe(200);
+    expect((await request(port, "/api/fs/rename", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { vault: "normal-owner/Team", oldPath: ".", newPath: "moved" } })).status).toBe(403);
+    expect((await request(port, "/api/fs/stat?vault=normal-owner%2FTeam&path=", jar)).status).toBe(200);
 
     const ownerJar = {};
     const ownerChallenge = JSON.parse((await request(port, "/api/auth/csrf", ownerJar)).text).csrfToken;
     expect((await request(port, "/api/auth/login", ownerJar, { method: "POST", headers: { "x-ignis-csrf": ownerChallenge }, body: { login: "normal-owner", password } })).status).toBe(200);
     expect((await request(port, "/api/vault/registration", ownerJar)).status).toBe(403);
     expect((await request(port, "/api/vault/register", ownerJar, { method: "POST", body: registerBody })).status).toBe(403);
-    expect((await request(port, "/api/fs/readFile?vault=Team&path=note.md", ownerJar)).status).toBe(200);
+    expect((await request(port, "/api/fs/readFile?vault=normal-owner%2FTeam&path=note.md", ownerJar)).status).toBe(200);
 
     const ownerCsrf = JSON.parse((await request(port, "/api/auth/csrf", ownerJar)).text).csrfToken;
     const ownUuid = JSON.parse(registered.text).uuid;
     const ownerList = JSON.parse((await request(port, "/api/vault/list", ownerJar)).text);
-    expect(ownerList.map(v => v.id)).toEqual(["Team"]);
-    expect(ownerList[0].path).toBe(path.join(root, "vaults/Team"));
+    expect(ownerList.map(v => v.id)).toEqual(["normal-owner/Team"]);
+    expect(ownerList[0].path).toBe(path.join(root, "vaults/normal-owner/Team"));
     const ownBoot = await request(port, `/api/bootstrap?vault=${ownUuid}`, ownerJar);
     expect(ownBoot.status).toBe(200);
     expect(JSON.parse(ownBoot.text)).toMatchObject({ plugins: [], virtualPlugins: [] });
@@ -279,7 +279,7 @@ it("protects real server routes, persists auth and does not log request secrets"
     expect((await request(port, "/api/fs/writeFile", ownerJar, {
       method: "POST", headers: { "x-ignis-csrf": ownerCsrf }, body: { path: "implicit.md", content: "forbidden" },
     })).status).toBe(404);
-    expect(JSON.parse(registered.text)).toMatchObject({ id: "Team", ok: true });
+    expect(JSON.parse(registered.text)).toMatchObject({ id: "normal-owner/Team", ok: true });
     // Editing notes does not grant code administration; admin alone has no content access.
     const pluginHeaders = { "x-ignis-csrf": ownerCsrf };
     const adminHeaders = { "x-ignis-csrf": createCsrf };
@@ -309,13 +309,13 @@ it("protects real server routes, persists auth and does not log request secrets"
       expect((await request(port, `/api/fs/rm?vault=${ownUuid}&path=.obsidian/plugins/demo&recursive=true`, jar, {method:"DELETE",headers:adminHeaders})).status).toBe(200);
 
     } finally { permissionsDb.close(); }
-    expect(fs.existsSync(path.join(root,"vaults","Team",".obsidian","plugins","demo"))).toBe(false);
+    expect(fs.existsSync(path.join(root,"vaults","normal-owner","Team",".obsidian","plugins","demo"))).toBe(false);
     const registrationDb = openDatabase(path.join(root, "data"));
     try {
       expect(registrationDb.prepare("SELECT user_id,role FROM memberships WHERE vault_id=? AND role='owner'").get(JSON.parse(registered.text).uuid)).toEqual({ user_id: "normal-owner", role: "owner" });
     } finally { registrationDb.close(); }
-    expect((await request(port, "/api/vault/register", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: registerBody })).status).toBe(409);
-    expect(fs.readFileSync(path.join(root, "vaults", "Team", "note.md"), "utf8")).toBe("private-note-marker");
+    expect((await request(port, "/api/vault/register", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: registerBody })).status).toBe(404);
+    expect(fs.readFileSync(path.join(root, "vaults", "normal-owner", "Team", "note.md"), "utf8")).toBe("private-note-marker");
 
     expect((await request(port, "/api/vault/create", jar, { method: "POST", body: { name: "Created" } })).status).toBe(403);
     expect((await request(port, "/api/vault/create", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { name: "Created", ownerId: "other" } })).status).toBe(400);
@@ -331,10 +331,10 @@ it("protects real server routes, persists auth and does not log request secrets"
     const created = await request(port, "/api/vault/create", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { name: "Created" } });
     expect(created.status).toBe(200);
     const result = JSON.parse(created.text);
-    expect(result.id).toBe("Created"); expect(result.uuid).toMatch(/^[a-f0-9-]{36}$/);
+    expect(result.id).toBe("admin/Created"); expect(result.uuid).toMatch(/^[a-f0-9-]{36}$/);
     expect((await request(port, `/api/fs/readFile?vault=${result.uuid}&path=.obsidian/plugins/demo/main.js`, ownerJar)).status).toBe(404);
     expect((await request(port, `/api/fs/writeFile?vault=${result.uuid}`, ownerJar, {method:"POST",headers:pluginHeaders,body:{path:".obsidian/plugins/demo/main.js",content:"forbidden"}})).status).toBe(404);
-    const mixedDir = path.join(root, "vaults", "Created", "Mixed");
+    const mixedDir = path.join(root, "vaults", "admin", "Created", "Mixed");
     fs.mkdirSync(path.join(mixedDir, ".ignis-secret"), { recursive: true });
     fs.writeFileSync(path.join(mixedDir, "public.md"), "public data");
     fs.writeFileSync(path.join(mixedDir, ".ignis-secret", "unique-private.md"), "secret data");
@@ -344,12 +344,12 @@ it("protects real server routes, persists auth and does not log request secrets"
       expect(checkDb.prepare("SELECT v.status,u.login,m.role FROM vaults v JOIN memberships m ON m.vault_id=v.id JOIN users u ON u.id=m.user_id WHERE v.id=?").get(result.uuid))
         .toEqual({ status: "active", login: "admin", role: "owner" });
     } finally { checkDb.close(); }
-    expect(fs.existsSync(path.join(root, "vaults", "Created", ".obsidian"))).toBe(true);
+    expect(fs.existsSync(path.join(root, "vaults", "admin", "Created", ".obsidian"))).toBe(true);
     expect((await request(port, `/api/vault/info?vault=${result.uuid}`, jar)).status).toBe(200);
     const uuidBootstrap = await request(port, `/api/bootstrap?vault=${result.uuid}`, jar);
     expect(uuidBootstrap.status).toBe(200);
-    expect(JSON.parse(uuidBootstrap.text).vault).toMatchObject({ id: "Created", uuid: result.uuid });
-    expect(JSON.parse(uuidBootstrap.text).vaultList.find(v => v.id === "Created").uuid).toBe(result.uuid);
+    expect(JSON.parse(uuidBootstrap.text).vault).toMatchObject({ id: "admin/Created", uuid: result.uuid });
+    expect(JSON.parse(uuidBootstrap.text).vaultList.find(v => v.id === "admin/Created").uuid).toBe(result.uuid);
     expect(JSON.parse(uuidBootstrap.text).tree).toHaveProperty("Mixed/public.md");
     expect(Object.keys(JSON.parse(uuidBootstrap.text).tree).some(p => p.includes(".ignis-secret"))).toBe(false);
     const treeResult = await request(port, `/api/fs/tree?vault=${result.uuid}`, jar);
@@ -368,7 +368,7 @@ it("protects real server routes, persists auth and does not log request secrets"
     const move = await request(port, `/api/fs/rename?vault=${result.uuid}`, jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { oldPath: "Mixed", newPath: "Moved" } });
     expect(move.status).toBe(404);
     expect(fs.readFileSync(path.join(mixedDir, "public.md"), "utf8")).toBe("public data");
-    expect(fs.existsSync(path.join(root, "vaults", "Created", "Moved"))).toBe(false);
+    expect(fs.existsSync(path.join(root, "vaults", "admin", "Created", "Moved"))).toBe(false);
 
     // Registered file routes run the capability evaluator, including admin requests.
     for (const endpoint of ["writeFile", "appendFile", "utimes"]) {
@@ -378,28 +378,28 @@ it("protects real server routes, persists auth and does not log request secrets"
       });
       expect(deniedFile.status).toBe(404);
     }
-    expect(fs.existsSync(path.join(root, "vaults", "Created", ".ignis-private"))).toBe(false);
+    expect(fs.existsSync(path.join(root, "vaults", "admin", "Created", ".ignis-private"))).toBe(false);
     for (const endpoint of ["readFile", "download"])
       expect((await request(port, `/api/fs/${endpoint}?vault=${result.uuid}&path=.ignis-private/secret.md`, jar)).status).toBe(404);
 
     expect((await request(port, `/api/fs/tree?vault=${result.uuid}`, ownerJar)).status).toBe(404);
     expect((await request(port, `/api/fs/writeFile?vault=${result.uuid}`, jar, {
       method: "POST", headers: { "x-ignis-csrf": createCsrf },
-      body: { vault: "Created", path: "identity.md", content: "stable identity", expectedHash: null },
+      body: { vault: "admin/Created", path: "identity.md", content: "stable identity", expectedHash: null },
     })).status).toBe(200);
     expect((await request(port, `/api/fs/writeFile?vault=${result.uuid}`, jar, {
       method: "POST", headers: { "x-ignis-csrf": createCsrf },
-      body: { vault: "Team", path: "conflict.md", content: "must not write" },
+      body: { vault: "normal-owner/Team", path: "conflict.md", content: "must not write" },
     })).status).toBe(400);
-    expect(fs.existsSync(path.join(root, "vaults", "Team", "conflict.md"))).toBe(false);
+    expect(fs.existsSync(path.join(root, "vaults", "normal-owner", "Team", "conflict.md"))).toBe(false);
 
     expect((await request(port, "/api/vault/create", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { name: "Created" } })).status).toBe(409);
-    expect((await request(port, "/api/vault/rename", jar, { method: "POST", body: { vault: "Created", name: "Renamed" } })).status).toBe(403);
-    const renamed = await request(port, "/api/vault/rename", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { vault: "Created", name: "Renamed" } });
+    expect((await request(port, "/api/vault/rename", jar, { method: "POST", body: { vault: "admin/Created", name: "Renamed" } })).status).toBe(403);
+    const renamed = await request(port, "/api/vault/rename", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { vault: "admin/Created", name: "Renamed" } });
     expect(renamed.status).toBe(200);
-    expect(JSON.parse(renamed.text)).toMatchObject({ id: "Renamed", uuid: result.uuid });
-    expect(fs.existsSync(path.join(root, "vaults", "Renamed", ".obsidian"))).toBe(true);
-    expect(fs.existsSync(path.join(root, "vaults", "Created"))).toBe(false);
+    expect(JSON.parse(renamed.text)).toMatchObject({ id: "admin/Renamed", uuid: result.uuid });
+    expect(fs.existsSync(path.join(root, "vaults", "admin", "Renamed", ".obsidian"))).toBe(true);
+    expect(fs.existsSync(path.join(root, "vaults", "admin", "Created"))).toBe(false);
     const byUuid = await request(port, `/api/fs/readFile?vault=${result.uuid}&path=identity.md`, jar);
     expect(byUuid.status).toBe(200);
     expect(byUuid.text).toContain("stable identity");
@@ -411,15 +411,15 @@ it("protects real server routes, persists auth and does not log request secrets"
     expect(attachment.headers["content-security-policy"]).toContain("sandbox;");
     expect((await request(port, "/api/fs/tree?vault=Created", jar)).status).toBe(404);
 
-    expect((await request(port, "/api/vault/remove?vault=Renamed", jar, { method: "DELETE", headers: { "x-ignis-csrf": createCsrf } })).status).toBe(409);
+    expect((await request(port, "/api/vault/remove?vault=admin%2FRenamed", jar, { method: "DELETE", headers: { "x-ignis-csrf": createCsrf } })).status).toBe(409);
     const listed = JSON.parse((await request(port, "/api/vault/list", jar)).text);
-    expect(listed.find(vault => vault.id === "Renamed").uuid).toBe(result.uuid);
+    expect(listed.find(vault => vault.id === "admin/Renamed").uuid).toBe(result.uuid);
     const removeUrl = "/api/vault/remove?vault=" + result.uuid;
     expect((await request(port, removeUrl, jar, { method: "DELETE" })).status).toBe(403);
     const removed = await request(port, removeUrl, jar, { method: "DELETE", headers: { "x-ignis-csrf": createCsrf } });
     expect(removed.status).toBe(200);
     expect(JSON.parse(removed.text)).toMatchObject({ uuid: result.uuid, cleanupPending: false });
-    expect(fs.existsSync(path.join(root, "vaults", "Renamed"))).toBe(false);
+    expect(fs.existsSync(path.join(root, "vaults", "admin", "Renamed"))).toBe(false);
     const replacement = await request(port, "/api/vault/create", jar, { method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { name: "Renamed" } });
     expect(replacement.status).toBe(200);
     expect(JSON.parse(replacement.text).uuid).not.toBe(result.uuid);
@@ -428,11 +428,11 @@ it("protects real server routes, persists auth and does not log request secrets"
     expect((await request(port, `/api/fs/writeFile?vault=${result.uuid}`, jar, {
       method: "POST", headers: { "x-ignis-csrf": createCsrf }, body: { path: "old.md", content: "must not write" },
     })).status).toBe(404);
-    expect(fs.existsSync(path.join(root, "vaults", "Renamed", "old.md"))).toBe(false);
+    expect(fs.existsSync(path.join(root, "vaults", "admin", "Renamed", "old.md"))).toBe(false);
     expect((await request(port, `/vault-files/${result.uuid}/identity.md`, jar)).status).toBe(404);
 
     expect((await request(port, removeUrl, jar, { method: "DELETE", headers: { "x-ignis-csrf": createCsrf } })).status).toBe(410);
-    expect(fs.existsSync(path.join(root, "vaults", "Renamed"))).toBe(true);
+    expect(fs.existsSync(path.join(root, "vaults", "admin", "Renamed"))).toBe(true);
 
 
     const csrf = JSON.parse(
@@ -441,10 +441,10 @@ it("protects real server routes, persists auth and does not log request secrets"
     const write = await request(port, "/api/fs/writeFile", jar, {
       method: "POST",
       headers: { "x-ignis-csrf": csrf },
-      body: { vault: "Team", path: "new.md", content: "authorized", expectedHash: null },
+      body: { vault: "normal-owner/Team", path: "new.md", content: "authorized", expectedHash: null },
     });
     expect(write.status).toBe(200);
-    expect(fs.readFileSync(path.join(root, "vaults/Team/new.md"), "utf8")).toBe(
+    expect(fs.readFileSync(path.join(root, "vaults/normal-owner/Team/new.md"), "utf8")).toBe(
       "authorized",
     );
     const logout = await request(port, "/api/auth/logout", jar, {
