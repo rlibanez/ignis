@@ -44,7 +44,19 @@ function createResourceSharesRouter(service) {
   });
   router.get("/api/shares/content",async(req,res)=>{
     try {
-      if(Object.keys(req.query).sort().join(",")!=="context,id,path" || typeof req.query.id!=="string" || typeof req.query.path!=="string") return res.status(400).end();
+      const archive = req.query.archive === "1";
+      if(Object.keys(req.query).sort().join(",")!==(archive?"archive,context,id,path":"context,id,path") || typeof req.query.id!=="string" || typeof req.query.path!=="string") return res.status(400).end();
+      if (archive) {
+        const controller = new AbortController();
+        const cancel = () => controller.abort();
+        res.once("close",cancel);
+        let file;
+        try {
+          file = await require("./download").sharedArchive(service,req.shareToken,{id:req.query.id,path:req.query.path},{signal:controller.signal});
+          await new Promise((resolve,reject)=>res.download(file.file,file.name,error=>error?reject(error):resolve()));
+        } finally {res.off("close",cancel);await file?.dispose();}
+        return;
+      }
       const file=await service.read(req.shareToken,{id:req.query.id,path:req.query.path});
       if(file.kind!=="file")return res.status(404).end();
       const extension=file.name.split(".").pop().toLowerCase();
@@ -52,7 +64,7 @@ function createResourceSharesRouter(service) {
       res.set("Content-Security-Policy","sandbox; default-src 'none'; frame-ancestors 'none'");
       res.set("Content-Disposition",types[extension]?"inline":"attachment");
       res.type(types[extension] || "application/octet-stream").send(Buffer.from(file.content,"base64"));
-    } catch {res.status(404).end();}
+    } catch(error) {if(!res.headersSent){if(error.code === "SHARE_DOWNLOAD_BUSY")res.set("Retry-After","1");res.status(error.code === "SHARE_DOWNLOAD_LIMIT" ? 413 : error.code === "SHARE_DOWNLOAD_BUSY" ? 429 : 404).end();}else res.destroy();}
   });
   return router;
 }

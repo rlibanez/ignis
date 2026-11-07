@@ -57,7 +57,7 @@ installIgnisApi(wsClient, {
   retryAll,
   getDetail,
   snapshotPending: () => [...snapshotPending(), ...snapshotBuffered(), ...(editorSaves?.snapshotPending() || [])],
-});
+}, fsShim._sharedFiles);
 window.addEventListener("ignis:auth-lost", () => {
   suspendWrites();
   suspendCoalescer();

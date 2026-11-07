@@ -112,6 +112,7 @@ export function applyVaultInfo(info) {
   if (!browserId) throw new Error("Authenticated vault identity required");
   window.__currentVaultId = info.id;
   window.__currentVaultUuid = info.uuid || null;
+  window.__currentVaultMembership = info.membership || null;
   vaultService.rememberVault(vaultService.getCurrentVaultReference());
   if (info.uuid && window.history?.replaceState) {
     const url = new URL(window.location.href);
@@ -188,18 +189,18 @@ function initMetadataCacheFallback() {
 // this prevents headless sync from being disabled as a result of a different device syncing "Active core plugins list".
 // i.e ensure Ignis always has sync: false if headless sync is active.
 // This may be somewhat overengineered. Could revisit later.
-function applyCoreSyncGuard(plugins) {
+export function applyCoreSyncGuard(plugins, active = false) {
   const vaultId = window.__currentVaultId;
 
-  if (!vaultId || !plugins) {
+  if (!vaultId) {
     return;
   }
 
-  const headlessSync = plugins.find(
+  const headlessSync = (plugins || []).find(
     (p) => p.id === "headless-sync" && p.bundledPluginId,
   );
 
-  if (!headlessSync || !headlessSync.enabledVaults.includes(vaultId)) {
+  if (!active && (!headlessSync || !headlessSync.enabledVaults.includes(vaultId))) {
     return;
   }
 
@@ -293,7 +294,7 @@ export function initialize() {
     catch (error) { window.__ignisBootstrapFailed = true; throw error; }
     applyTree(tree);
     fsShim._watcherClient.setTreeEtag(bootstrap.etag);
-    applyCoreSyncGuard(bootstrap.plugins);
+    applyCoreSyncGuard(bootstrap.plugins, bootstrap.vault.headlessSyncActive === true);
     bootstrapVirtualPlugins = bootstrap.virtualPlugins || [];
     applyServerSettings(bootstrap.settings);
 

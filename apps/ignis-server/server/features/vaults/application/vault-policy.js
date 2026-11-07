@@ -26,7 +26,7 @@ function classifyVaultPath(value) {
   const lower = parts.map(part => part.toLowerCase());
   if (lower.some(part => part.startsWith(".ignis"))) return "reserved";
   if (lower[0] === ".obsidian") {
-    if (lower.length === 2 && (personalCandidates.has(lower[1]) || /^workspace\.[a-z0-9_-]+\.json$/.test(lower[1])))
+    if (lower.length === 2 && (personalCandidates.has(lower[1]) || /^workspace\.[a-z0-9 _.-]{1,64}\.json$/.test(lower[1])))
       return "personal-candidate";
     return "configuration";
   }

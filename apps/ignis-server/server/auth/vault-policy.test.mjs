@@ -85,3 +85,10 @@ it.each(['reader','editor','owner'])('requires admin plus writable membership to
  for(const path of ['.obsidian/app.json','.obsidian/workspace.json','.obsidian/hotkeys.json','.obsidian/graph.json'])
   expect(allowed({...principal,membership,path,capability:'content.write'})).toBe(membership!=='reader');
 });
+it.each(["My Work","Work.v2","Desk - 2","Work_2"])("allows reviewed workspace state for %s without opening other config paths",name=>{
+ const input={status:"active",instanceRole:"user",membership:"owner",capability:"content.write"};
+ expect(classifyVaultPath(`.obsidian/workspace.${name}.json`)).toBe("personal-candidate");
+ expect(allowed({...input,path:`.obsidian/workspace.${name}.json`})).toBe(true);
+ for(const path of [".obsidian/workspace.../plugins/x/main.js",".obsidian/workspace../app.json",".obsidian/plugins/x/data.json"])
+  expect(allowed({...input,path})).toBe(false);
+});

@@ -34,11 +34,11 @@ describe("resolveVaultId", () => {
     XMLHttpRequest: FakeXHR,
   };
 
-  let resolveVaultId, applyVaultInfo;
+  let resolveVaultId, applyVaultInfo, applyCoreSyncGuard;
 
   beforeAll(async () => {
     Object.assign(globalThis, stubs);
-    ({ resolveVaultId, applyVaultInfo } = await import("./init.js"));
+    ({ resolveVaultId, applyVaultInfo, applyCoreSyncGuard } = await import("./init.js"));
   });
 
   afterAll(() => {
@@ -99,4 +99,14 @@ describe("resolveVaultId", () => {
 
     expect(globalThis.__currentVaultId).toBe("");
   });
+  it("protects core Sync without exposing server plugin metadata", async () => {
+    const {applyReadTransform,removeReadTransform}=await import("./fs/transforms.js");
+    globalThis.__currentVaultId="owner/Notes";
+    globalThis.__ignisHeadlessSyncActive=false;
+    try {
+      applyCoreSyncGuard([],true);
+      expect(JSON.parse(applyReadTransform(".obsidian/core-plugins.json",'{"sync":true,"workspaces":true}'))).toEqual({sync:false,workspaces:true});
+    } finally {removeReadTransform(".obsidian/core-plugins.json");delete globalThis.__ignisHeadlessSyncActive;}
+  });
+
 });

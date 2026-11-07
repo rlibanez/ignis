@@ -35,12 +35,16 @@ function createVaultView({ administrator, authorize, uuid, membership }) {
       path: "/",
       platform: item.platform,
       version: item.version,
-      trustPlugins: true,
+      trustPlugins: item.trustPlugins === true,
     };
   }
 
   function bootstrap(response) {
     const vault = info(response.vault);
+    // Only expose the active vault's safety flag, not server plugin metadata.
+    vault.headlessSyncActive = (response.plugins || []).some(plugin =>
+      plugin?.id === "headless-sync" && plugin.bundledPluginId &&
+      Array.isArray(plugin.enabledVaults) && plugin.enabledVaults.includes(response.vault.id));
     if (administrator) return {
       ...response, vault, vaultList: list(response.vaultList),
       plugins: (response.plugins || []).map(plugin => typeof plugin === "object" && Array.isArray(plugin.enabledVaults)

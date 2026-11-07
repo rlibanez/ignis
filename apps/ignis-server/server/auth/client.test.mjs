@@ -443,3 +443,20 @@ it.each([
   if(status===200 && expected!==undefined)expect(target).toBe("/?vault=confirmed-uuid");
   if(status===503)expect(loaded).toEqual([]);
 });
+it("writes plugin trust to the same account storage before and after Obsidian starts",async()=>{
+ const {scopedStorage}=await import('../../../../packages/shim/src/account-storage.js');
+ const values=new Map(),f=await fixture({storageValues:values});
+ const native={getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value)};
+ const scoped=scopedStorage(native,'admin-id',()=>f.window.__ignisAuth.userId);
+ const key='enable-plugin-ignis-v1:admin-id:vault';
+ f.window.__ignisAuth.setVaultTrust('vault',true);
+ expect(scoped.getItem(key)).toBe('true');
+ f.window.localStorage=scoped;
+ f.window.__ignisAuth.setVaultTrust('vault',false);
+ expect(scoped.getItem(key)).toBe('false');
+ const other=await fixture({storageValues:values,initialUser:'other'});
+ other.window.__ignisAuth.setVaultTrust('vault',true);
+ expect(scoped.getItem(key)).toBe('false');
+ f.window.__ignisAuth.lock();f.window.__ignisAuth.setVaultTrust('vault',true);
+ expect(values.get('ignis-account-v1:admin-id:'+key)).toBe('false');
+});

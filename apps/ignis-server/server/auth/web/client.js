@@ -16,6 +16,13 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     if (blocked || !userId || typeof reference !== "string" || !reference) return;
     try { preferenceStorage?.setItem(vaultPreferenceKey(), reference); } catch { /* Authorization remains on the server. */ }
   }
+  function setVaultTrust(reference, trusted = true) {
+    if (blocked || !userId || typeof reference !== "string" || !reference) return;
+    const account = encodeURIComponent(userId);
+    const browserId = "ignis-v1:" + account + ":" + encodeURIComponent(reference);
+    const key = "ignis-account-v1:" + account + ":enable-plugin-" + browserId;
+    try { preferenceStorage?.setItem(key, String(trusted === true)); } catch { /* Storage is optional. */ }
+  }
   const nativeFetch = window.fetch.bind(window);
   const XHR = window.XMLHttpRequest;
   const nativeOpen = XHR.prototype.open;
@@ -389,6 +396,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     ready,
     rememberedVault,
     rememberVault,
+    setVaultTrust,
     check,
     lock,
     logout,

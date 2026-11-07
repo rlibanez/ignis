@@ -209,6 +209,8 @@ export const vaultService = {
   },
 
   setVaultTrust(vaultId, trusted = true) {
+    const auth = window.__ignisAuth;
+    if (auth?.setVaultTrust) { auth.setVaultTrust(this.referenceFor(vaultId), trusted); return; }
     const storageId = this.browserVaultId(this.referenceFor(vaultId));
     if (!storageId) return;
     localStorage.setItem("enable-plugin-" + storageId, String(trusted));

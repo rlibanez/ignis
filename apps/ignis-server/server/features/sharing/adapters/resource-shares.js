@@ -243,7 +243,7 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
   }
   async function read(token,input) {
     const access=resource(token,input.id,input.path || ""),item=target(access);
-    if(item.stat.isDirectory()) return {...listing(item),kind:"directory",role:access.role,etag:directoryTag(item.stat)};
+    if(item.stat.isDirectory()) return {...listing(item),kind:"directory",name:path.basename(item.filename),role:access.role,etag:directoryTag(item.stat)};
     await writeCoalescer.flushPending(item.filename);
     const current=resource(token,input.id,input.path || ""),bytes=readFile(target(current),maxFileBytes);
     return {kind:"file",role:current.role,name:path.basename(item.filename),content:bytes.toString("base64"),etag:digest(bytes)};

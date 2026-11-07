@@ -165,3 +165,9 @@ it("uses the authenticated preference store after Obsidian storage is scoped", (
   vaultService.rememberVault("next-uuid");
   expect(rememberVault).toHaveBeenCalledWith("next-uuid");
 });
+it("delegates trust writes to the unchanging authenticated preference store",()=>{
+ const setVaultTrust=vi.fn();vi.stubGlobal('window',{__ignisAuth:{userId:'alice',setVaultTrust},__vaultList:[{id:'alice/Notes',uuid:'stable'}]});
+ vi.stubGlobal('localStorage',{setItem(){throw Error('wrong store');}});
+ vaultService.setVaultTrust('alice/Notes',false);
+ expect(setVaultTrust).toHaveBeenCalledWith('stable',false);
+});

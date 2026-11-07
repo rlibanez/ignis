@@ -27,6 +27,10 @@ try{
  const owner=createRegisteredVault(db,vaultRoot,ownerId,'Owner',{isCurrent:()=>true}),receiver=createRegisteredVault(db,vaultRoot,'receiver','Receiver',{isCurrent:()=>true});
  fs.writeFileSync(path.join(vaultRoot,'owner/Owner','Shared.md'),'# Shared\ninitial\n');
  const service=require('../apps/ignis-server/server/features/sharing/adapters/resource-shares').createResourceSharesService(db,vaultRoot,{resolve:login=>{const user=db.prepare('SELECT id,auth_version FROM users WHERE login=?').get(login);return {user:{id:user.id,authVersion:user.auth_version}};}});
+ fs.mkdirSync(path.join(vaultRoot,'owner/Owner','DownloadFolder','Empty'),{recursive:true});
+ fs.writeFileSync(path.join(vaultRoot,'owner/Owner','DownloadFolder','Note.md'),'archive content');
+ const folderResource=service.create('owner',{vault:owner.id,path:'DownloadFolder',login:'receiver',role:'reader'});
+ service.destination('receiver',{id:folderResource.id,vault:receiver.id,localPath:'DownloadFolder'});
  const resource=service.create('owner',{vault:owner.id,path:'Shared.md',login:'receiver',role:'editor'});service.destination('receiver',{id:resource.id,vault:receiver.id,localPath:'Shared.md'});db.close();db=null;
  const reservation=net.createServer();await new Promise(r=>reservation.listen(0,'127.0.0.1',r));const port=reservation.address().port;await new Promise(r=>reservation.close(r));
  const origin='http://localhost:'+port;
@@ -42,6 +46,16 @@ try{
   try{await client.wait(`!!window.app?.workspace && !!window.app?.vault`,'real Obsidian workspace',30000);}catch(error){console.error(JSON.stringify({user,errors:client.errors,page:await client.run(`({url:location.href,body:document.body.innerText.slice(0,3000),hasApp:!!window.app})`)}));throw error;}await client.run(`new Promise(resolve=>app.workspace.onLayoutReady(resolve))`);assert.equal(await client.run(`app.vault.getName()`),vault.name,'native vault name excludes the owner namespace');const labels=await client.run(`Array.from(document.querySelectorAll('.workspace-drawer-vault-name')).map(el=>el.textContent)`);for(const label of labels)assert.equal(label,vault.name,'native switcher displays only the vault name');return client;
  }
  const alice=await login('owner',owner),bob=await login('receiver',receiver);
+ // Exercise upstream behavior through real Obsidian and the authenticated transport.
+ for(const client of [alice,bob]) {
+  assert.equal(await client.run(`Object.keys(app.commands.commands).some(id=>id.endsWith(':open-workspace-in-new-tab'))`),true,'workspace command available to ordinary owners');
+  assert.equal(await client.run(`Object.keys(app.commands.commands).some(id=>id.endsWith(':refresh-vault-from-disk'))`),true,'refresh command available to ordinary owners');
+  assert.equal(await client.run(`(async()=>{const fs=require('fs').promises;for(const name of ['My Work','Work.v2']){const file=app.vault.adapter.getBasePath()+'/.obsidian/workspace.'+name+'.json';await fs.writeFile(file,'{"main":{}}');if(await fs.readFile(file,'utf8')!=='{"main":{}}')return false;}return true;})()`),true,'workspace names with spaces and dots persist');
+ }
+ await bob.wait(`!!window.__ignis?.sharedFiles?.downloadUrl('Shared.md')`,'shared download URL');
+ assert.equal(await bob.run(`(async()=>{const response=await fetch(window.__ignis.sharedFiles.downloadUrl('Shared.md'));return response.ok && (await response.text())==='# Shared\\ninitial\\n';})()`),true,'received file downloads through its authorized sharing endpoint');
+ await bob.wait(`!!window.__ignis?.sharedFiles?.downloadUrl('DownloadFolder',true)`,'shared folder download URL');
+ assert.equal(await bob.run(`(async()=>{const url=window.__ignis.sharedFiles.downloadUrl('DownloadFolder',true),response=await fetch(url),bytes=new Uint8Array(await response.arrayBuffer());return response.ok && response.headers.get('content-type').includes('zip') && bytes[0]===80 && bytes[1]===75;})()`),true,'received folder downloads as an authorized ZIP');
  if(process.argv.includes('--remember-vault')) {
   const created=await alice.run(`(async()=>{const result=[];for(const name of ['A','C']){const response=await fetch('/api/vault/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});if(!response.ok)throw Error('create failed');result.push(await response.json());}return result;})()`);
   const last=created[1];assert.ok(last.uuid);
@@ -106,7 +120,7 @@ try{
  await alice.wait(`!document.querySelector('#administration') && !!app.workspace`,'browser back closes management without leaving the vault');
  if((process.argv.includes('--management-parity')||process.argv.includes('--management-notices')))await managementParity({native:alice,shell:await login('empty'),origin,vault:owner.id,mobile:process.argv.includes('--mobile'),noticesOnly:process.argv.includes('--management-notices')});
  if(process.argv.includes('--vault-transfers')||process.argv.includes('--vault-ownership')){await vaultOwnershipUi({owner:alice,member:bob,vault:owner,origin});assert.equal(fs.readFileSync(path.join(vaultRoot,'receiver/Owner/Shared.md'),'utf8'),'saved after ownership transfer');}
- console.log(JSON.stringify({status:'passed',runtime:'1.14.4',mobile:process.argv.includes('--mobile'),checks:['two isolated accounts','real workspace and editor','recipient save reaches original bytes','native management host and browser back','single PWA manifest with Android reception','no stale Obsidian probes','read-only edit denied','live read/write restoration in same editor','live revocation']}));
+ console.log(JSON.stringify({status:'passed',runtime:'1.14.4',mobile:process.argv.includes('--mobile'),checks:['upstream commands and workspace names','authorized shared file and ZIP downloads','two isolated accounts','real workspace and editor','recipient save reaches original bytes','native management host and browser back','single PWA manifest with Android reception','no stale Obsidian probes','read-only edit denied','live read/write restoration in same editor','live revocation']}));
 }finally{
  for(const client of clients)await client.close();db?.close();if(child){child.kill('SIGTERM');await Promise.race([new Promise(r=>child.once('exit',r)),new Promise(r=>setTimeout(r,3000))]);if(child.exitCode===null)child.kill('SIGKILL');}fs.rmSync(root,{recursive:true,force:true});
 }

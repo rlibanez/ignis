@@ -37,3 +37,15 @@ it("filters foreign vault references in server-plugin metadata for administrator
  const result=view.bootstrap({vault,vaultList:[vault,other],plugins:[{id:"sync",enabledVaults:["Own","Other"]}]});
  expect(result.plugins[0].enabledVaults).toEqual(["Own"]);
 });
+it.each([true,false])("preserves the configured plugin trust value %s",trust=>{
+ const view=createVaultView({administrator:true,authorize:()=>true,uuid:()=>"id"});
+ expect(view.info({...vault,trustPlugins:trust}).trustPlugins).toBe(trust);
+});
+it("exposes only a per-vault headless safety flag to ordinary members",()=>{
+ const view=createVaultView({administrator:false,authorize:id=>id==="Own",uuid:()=>"own-id"});
+ const plugin={id:"headless-sync",bundledPluginId:"headless",enabledVaults:["Own"],privateOption:"secret"};
+ const result=view.bootstrap({vault,vaultList:[vault],tree:{},plugins:[plugin]});
+ expect(result.vault.headlessSyncActive).toBe(true);expect(result.plugins).toEqual([]);expect(result.virtualPlugins).toEqual([]);
+ expect(JSON.stringify(result)).not.toContain("secret");
+ expect(view.bootstrap({vault,vaultList:[vault],tree:{},plugins:[{...plugin,enabledVaults:["Other"]}]}).vault.headlessSyncActive).toBe(false);
+});

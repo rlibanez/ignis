@@ -8,7 +8,8 @@ function getVaultId() {
 
 function triggerDownload(endpoint, filePath, downloadName) {
   const vaultId = getVaultId();
-  const url =
+  const sharedUrl = window.__ignis?.sharedFiles?.downloadUrl(filePath, endpoint === "download-zip");
+  const url = sharedUrl ||
     `/api/fs/${endpoint}` +
     `?vault=${encodeURIComponent(vaultId)}` +
     `&path=${encodeURIComponent(filePath)}`;
