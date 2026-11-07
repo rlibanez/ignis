@@ -5,8 +5,8 @@ const source = fs.readFileSync(
   new URL("./web/client.js", import.meta.url),
   "utf8",
 );
-async function fixture({ storageFails = false, initialSessionStatus = 200, initialOffline = false } = {}) {
-  let userId = "admin-id", sessionStatus = initialSessionStatus, offline = initialOffline;
+async function fixture({ storageFails = false, initialSessionStatus = 200, initialOffline = false, initialUser = "admin-id", storageValues = new Map() } = {}) {
+  let userId = initialUser, sessionStatus = initialSessionStatus, offline = initialOffline;
   let catalog = [{ id: "Notes", uuid: "original" }];
   const elements = [], redirects = [];
   let download;
@@ -87,7 +87,7 @@ async function fixture({ storageFails = false, initialSessionStatus = 200, initi
     setTimeout,
     clearTimeout,
     setInterval() {},
-    localStorage: { clear() { events.push("storage-clear"); if (storageFails) throw new Error("Storage unavailable"); expect(window.__ignisAuth.blocked).toBe(false); } },
+    localStorage: { getItem(key) { if(storageFails)throw Error("Storage unavailable"); return storageValues.get(key) ?? null; }, setItem(key,value) { if(storageFails)throw Error("Storage unavailable"); storageValues.set(key,value); }, clear() { events.push("storage-clear"); if (storageFails) throw new Error("Storage unavailable"); expect(window.__ignisAuth.blocked).toBe(false); } },
     sessionStorage: { clear() {} },
     Date,
   };
@@ -396,4 +396,50 @@ it('tolerates only a bounded server-announced relocation gap and locks if the UU
 });
 it('never applies relocation grace to another UUID or an unannounced disappearance',async()=>{
  const f=await fixture();f.window.__currentVaultId='alice/Notes';f.window.__currentVaultUuid='original';f.window.__ignisAuth.vaultRelocating('foreign');f.catalog([]);await f.window.__ignisAuth.check();expect(f.window.__ignisAuth.blocked).toBe(true);
+});
+
+it("remembers a stable vault across page loads and account storage installation", async () => {
+  const storageValues = new Map();
+  const first = await fixture({storageValues});
+  first.window.__ignisAuth.rememberVault("vault-c-uuid");
+  first.window.localStorage = {getItem() {throw Error("scoped facade must not be used");}, setItem() {throw Error("scoped facade must not be used");}};
+  expect(first.window.__ignisAuth.rememberedVault()).toBe("vault-c-uuid");
+  first.window.__ignisAuth.rememberVault("renamed-same-uuid");
+  const reopened = await fixture({storageValues});
+  expect(reopened.window.__ignisAuth.rememberedVault()).toBe("renamed-same-uuid");
+  const other = await fixture({storageValues, initialUser:"other-account"});
+  expect(other.window.__ignisAuth.rememberedVault()).toBeNull();
+  other.window.__ignisAuth.rememberVault("other-vault");
+  first.window.__ignisAuth.lock();
+  first.window.__ignisAuth.rememberVault("blocked-write");
+  expect(first.window.__ignisAuth.rememberedVault()).toBeNull();
+  expect(reopened.window.__ignisAuth.rememberedVault()).toBe("renamed-same-uuid");
+});
+it("keeps remembering optional when browser storage is unavailable", async () => {
+  const f=await fixture({storageFails:true});
+  expect(()=>f.window.__ignisAuth.rememberVault("vault")).not.toThrow();
+  expect(f.window.__ignisAuth.rememberedVault()).toBeNull();
+});
+it.each([
+  ["", "saved-uuid", 200, "saved-uuid"],
+  ["?vault=explicit-uuid", "saved-uuid", 200, "explicit-uuid"],
+  ["", null, 200, null],
+  ["", "removed-uuid", 404, "removed-uuid"],
+  ["", "saved-uuid", 503, "saved-uuid"],
+  ["?manager=1", "saved-uuid", 200, undefined],
+])("selects remembered vault safely on startup (%s, %s, %s)",async(search,saved,status,expected)=>{
+  const html=fs.readFileSync(new URL("../assets/index.html",import.meta.url),"utf8");
+  const script=html.match(/<script>\s*(\(async function[\s\S]*?)<\/script>/)[1];
+  const calls=[],loaded=[];let manager=false,target;
+  await vm.runInNewContext(script,{
+    window:{__ignisAuth:{ready:Promise.resolve(),role:"user",rememberedVault:()=>saved,lock(){}},IgnisUI:{showVaultManager(){manager=true;},openRequestedManagement(){}}},
+    location:{search,pathname:"/"},URLSearchParams,
+    history:{state:{ignisVirtualEntry:true},replaceState(state,_title,url){expect(state.ignisVirtualEntry).toBe(true);target=url;}},
+    fetch:async url=>{calls.push(url);return {status,ok:status===200,json:async()=>({id:"owner/C",uuid:"confirmed-uuid"})};},
+    document:{createElement:()=>({}),getElementById:()=>({remove(){}}),head:{appendChild(script){loaded.push(script.src);if(script.src==="__IGNIS_UI_SRC__")script.onload();else script.onerror(Error("stop before Obsidian"));}}},
+  });
+  expect(calls).toEqual(expected===undefined?[]:["/api/vault/info"+(expected?"?vault="+expected:"")]);
+  expect(manager).toBe(status===404 || expected===undefined);
+  if(status===200 && expected!==undefined)expect(target).toBe("/?vault=confirmed-uuid");
+  if(status===503)expect(loaded).toEqual([]);
 });

@@ -42,6 +42,23 @@ try{
   try{await client.wait(`!!window.app?.workspace && !!window.app?.vault`,'real Obsidian workspace',30000);}catch(error){console.error(JSON.stringify({user,errors:client.errors,page:await client.run(`({url:location.href,body:document.body.innerText.slice(0,3000),hasApp:!!window.app})`)}));throw error;}await client.run(`new Promise(resolve=>app.workspace.onLayoutReady(resolve))`);assert.equal(await client.run(`app.vault.getName()`),vault.name,'native vault name excludes the owner namespace');const labels=await client.run(`Array.from(document.querySelectorAll('.workspace-drawer-vault-name')).map(el=>el.textContent)`);for(const label of labels)assert.equal(label,vault.name,'native switcher displays only the vault name');return client;
  }
  const alice=await login('owner',owner),bob=await login('receiver',receiver);
+ if(process.argv.includes('--remember-vault')) {
+  const created=await alice.run(`(async()=>{const result=[];for(const name of ['A','C']){const response=await fetch('/api/vault/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});if(!response.ok)throw Error('create failed');result.push(await response.json());}return result;})()`);
+  const last=created[1];assert.ok(last.uuid);
+  const open=async reference=>{await alice.call('Page.navigate',{url:origin+(reference?'/?vault='+encodeURIComponent(reference):'/')});await alice.wait(`window.__currentVaultUuid===${JSON.stringify(last.uuid)} && !!window.app?.workspace?.layoutReady`,'remembered vault C workspace');};
+  await open(last.uuid);
+  await open(null);
+  assert.equal(await alice.run(`app.vault.getName()`),'C','reopening root restores C instead of alphabetical A');
+  // A UUID that no longer exists must lead to the manager, never a same-named replacement.
+  assert.equal(await alice.run(`(async()=>{await window.__ignisAuth.beginVaultDelete(${JSON.stringify(last.uuid)});const response=await fetch('/api/vault/remove?vault='+${JSON.stringify(last.uuid)},{method:'DELETE'});return response.status;})()`),200);
+  await alice.run(`void window.__ignisAuth.finishVaultDelete(true)`);
+  await alice.wait(`!!window.IgnisUI && !window.app?.workspace`,'coordinated deletion returns to manager');
+  await alice.call('Page.navigate',{url:origin+'/'});
+  await alice.wait(`!!window.IgnisUI && !window.app?.workspace`,'manager for removed remembered vault');
+  await alice.call('Page.navigate',{url:origin+'/?vault='+encodeURIComponent(owner.id)});
+  await alice.wait(`window.__currentVaultUuid===${JSON.stringify(owner.id)} && !!window.app?.workspace?.layoutReady`,'explicit link overrides remembered vault');
+  console.log(JSON.stringify({rememberedVault:'passed',mobile:process.argv.includes('--mobile'),checks:['reopen C instead of A','removed remembered UUID opens manager','explicit link overrides remembered selection']}));
+ }
  const manifest=await(await fetch(origin+'/manifest.webmanifest')).json();
  assert.equal(manifest.share_target.action,'/share-target','upstream PWA integration preserves Android reception');
  for(const client of [alice,bob])assert.equal(await client.run(`document.querySelectorAll('link[rel="manifest"]').length`),1,'one authoritative PWA manifest');

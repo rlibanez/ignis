@@ -20,6 +20,7 @@ export const vaultService = {
   rememberedVault() {
     const auth = window.__ignisAuth;
     if (auth?.blocked || !auth?.userId) return null;
+    if (auth.rememberedVault) return auth.rememberedVault();
     try { return localStorage.getItem("ignis:last-vault:" + encodeURIComponent(auth.userId)); }
     catch { return null; }
   },
@@ -27,6 +28,7 @@ export const vaultService = {
   rememberVault(reference) {
     const auth = window.__ignisAuth;
     if (auth?.blocked || !auth?.userId) return;
+    if (auth.rememberVault) { auth.rememberVault(reference); return; }
     try { localStorage.setItem("ignis:last-vault:" + encodeURIComponent(auth.userId), reference); }
     catch { /* Browser storage is optional; authorization stays on the server. */ }
   },

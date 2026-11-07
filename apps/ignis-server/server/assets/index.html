@@ -68,7 +68,7 @@
     const params = new URLSearchParams(location.search);
     let showManager = params.get("manager") === "1";
     if (!showManager) {
-      const reference = params.get("vault");
+      const reference = params.get("vault") || window.__ignisAuth.rememberedVault?.();
       const response = await fetch("/api/vault/info" + (reference ? "?vault=" + encodeURIComponent(reference) : ""), { cache: "no-store" });
       if (response.status === 404) showManager = true;
       else {
@@ -78,7 +78,7 @@
         const selected = info.uuid || info.id;
         if (!selected) throw new Error("Vault identity required");
         params.set("vault", selected);
-        history.replaceState(null, "", location.pathname + "?" + params.toString());
+        history.replaceState(history.state, "", location.pathname + "?" + params.toString());
       }
     }
     if (showManager) {

@@ -157,3 +157,11 @@ it('does not send ownership transfer while active editor writes are unconfirmed'
  vi.stubGlobal('window',{__currentVaultUuid:'stable',__ignisAuth:{beginVaultRename:async()=>{throw Error('Pending writes');}}});const fetch=vi.fn();vi.stubGlobal('fetch',fetch);
  await expect(vaultService.transferVaultOwnership('stable','bob','reader',1)).rejects.toThrow('Pending writes');expect(fetch).not.toHaveBeenCalled();
 });
+it("uses the authenticated preference store after Obsidian storage is scoped", () => {
+  const rememberVault=vi.fn(),rememberedVault=vi.fn(()=>"stable-uuid");
+  vi.stubGlobal("window",{__ignisAuth:{userId:"alice",rememberVault,rememberedVault}});
+  vi.stubGlobal("localStorage",{getItem(){throw Error("wrong storage");},setItem(){throw Error("wrong storage");}});
+  expect(vaultService.rememberedVault()).toBe("stable-uuid");
+  vaultService.rememberVault("next-uuid");
+  expect(rememberVault).toHaveBeenCalledWith("next-uuid");
+});

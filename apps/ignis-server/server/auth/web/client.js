@@ -1,6 +1,21 @@
 (() => {
 var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 
+  // Capture before Obsidian receives its account-scoped Storage facade.
+  let preferenceStorage;
+  try { preferenceStorage = window.localStorage || localStorage; } catch { /* Storage is optional. */ }
+  function rememberedVault() {
+    if (blocked || !userId) return null;
+    try { return preferenceStorage?.getItem(vaultPreferenceKey()) || null; } catch { return null; }
+  }
+  function vaultPreferenceKey() {
+    const account = encodeURIComponent(userId);
+    return "ignis-account-v1:" + account + ":ignis:last-vault:" + account;
+  }
+  function rememberVault(reference) {
+    if (blocked || !userId || typeof reference !== "string" || !reference) return;
+    try { preferenceStorage?.setItem(vaultPreferenceKey(), reference); } catch { /* Authorization remains on the server. */ }
+  }
   const nativeFetch = window.fetch.bind(window);
   const XHR = window.XMLHttpRequest;
   const nativeOpen = XHR.prototype.open;
@@ -372,6 +387,8 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   })();
   window.__ignisAuth = {
     ready,
+    rememberedVault,
+    rememberVault,
     check,
     lock,
     logout,

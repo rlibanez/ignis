@@ -9,4 +9,4 @@ export { default as ExcludedFoldersEditor } from "./components/settings/Excluded
 export { default as IgnoreRulesEditor } from "./components/settings/IgnoreRulesEditor.svelte";
 export { default as RecordEditor } from "./components/settings/RecordEditor.svelte";
 
-export {openAccount,openRequestedManagement} from "./management.js";
+export {BrowserModal,openAccount,openRequestedManagement} from "./management.js";
