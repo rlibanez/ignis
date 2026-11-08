@@ -1,3 +1,4 @@
+import {createUiElement} from "./ui-controls.js";
 const t = text => globalThis.IgnisI18n?.t(text) ?? text;
 
 // Presentation only: retain the existing controller's elements and handlers.
@@ -6,14 +7,14 @@ export function arrangeSharedManagement(frame) {
   const workspace = frame.querySelector("#workspace");
   const toolbar = workspace.querySelector(".page-actions");
   const create = frame.querySelector("#new-share");
-  const tabs = document.createElement("div");
+  const tabs = createUiElement(document,"div");
   tabs.className = "share-tabs";
   tabs.setAttribute("role", "tablist");
   tabs.setAttribute("aria-label", t("Shared resources"));
   const panels = ["owned", "received"].map(id => frame.querySelector(`#${id}`).closest("section"));
   const buttons = panels.map((panel, index) => {
     const heading = panel.querySelector("h2");
-    const button = document.createElement("button");
+    const button = createUiElement(document,"button");
     button.type = "button";
     button.id = `share-tab-${index}`;
     button.textContent = t(heading.dataset.i18n);
@@ -51,7 +52,6 @@ export function arrangeSharedManagement(frame) {
 }
 
 export const sharedManagementStyles = `
-  .native-shares:not(.native-management-mobile) :is(#create-dialog,#manage-dialog){padding:20px}
   .native-shares #create-form label{font-size:var(--font-ui-medium);font-weight:var(--font-normal);line-height:1.5}
   .native-shares .share-tabs{display:flex;gap:4px;border-bottom:1px solid var(--background-modifier-border);margin-bottom:20px}
   .native-shares .share-tabs button{flex:1;white-space:normal;border:0;border-radius:var(--radius-s);box-shadow:none;background:transparent;color:var(--text-muted);padding:10px 12px}
@@ -80,8 +80,7 @@ export const sharedManagementStyles = `
   .native-shares #picker{margin-top:16px}
   .native-shares #share-search{margin-top:16px}
   .native-shares #location-search{margin-bottom:10px}
-  .native-shares dialog{box-shadow:var(--shadow-l);border-radius:var(--modal-radius);background:var(--modal-background,var(--background-primary))}
-  .native-shares dialog.ignis-confirm{font-size:var(--font-ui-medium);line-height:var(--line-height-normal,1.5)}
+  .native-shares .ui-dialog.ignis-confirm{font-size:var(--font-ui-medium);line-height:var(--line-height-normal,1.5)}
   @media(max-width:600px){
     .native-shares .page-actions{flex-direction:column;align-items:stretch;gap:12px}
     .native-shares .page-actions>button{width:100%;margin:0;min-height:var(--input-height,44px)}

@@ -38,7 +38,7 @@ async function composeServer() {
     const repo = path.resolve(__dirname,'../../../..');
     const staticRoots = [{root:path.join(__dirname,'../assets'),mount:'/assets/'},
       path.join(repo,'packages/ui/dist'),path.join(repo,'packages/shim/dist'),config.obsidianAssetsPath];
-    auth = createSecurity({dataRoot:config.dataRoot,vaultRoot:config.vaultRoot,config:authConfig,staticRoots});
+    auth = createSecurity({dataRoot:config.dataRoot,vaultRoot:config.vaultRoot,config:authConfig,staticRoots,nativeCssPath:path.join(config.obsidianAssetsPath,'app.css')});
     disposers.push(() => auth.close());
     disposers.push(() => writeCoalescer.flushAll());
     disposers.push(() => plugins.shutdownPlugins());

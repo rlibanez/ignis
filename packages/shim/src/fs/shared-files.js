@@ -1,3 +1,4 @@
+import {confirmSharedAction} from "../shared-ui.js";
 import {openCopyDialog} from "../copy-dialog.js";
 import { normalize } from "../util/path.js";
 import { resolvePath } from "./transforms.js";
@@ -7,7 +8,13 @@ const under = (path,root) => path===root || path.startsWith(root+"/");
 function wire(input){const value={...input};delete value.role;return value;}
 const base64 = bytes => {let binary="";for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(binary);};
 const bytes = value => Uint8Array.from(atob(value),character=>character.charCodeAt(0));
-export function createSharedFiles({metadataCache,watch,currentContext,request=fetch,createXHR=()=>new XMLHttpRequest(),onFailure=()=>{},onNotice=()=>{},onRemoved=()=>{}}) {
+const translateIgnis = (text,values={})=>globalThis.IgnisI18n?.t(text,values) ?? text.replace(/\{(p\d+)\}/g,(match,key)=>Object.hasOwn(values,key)?String(values[key]):match);
+function confirmReceivedRemoval(message) {
+  const host=globalThis.window,runtime=host?.__ignisUiRuntime;
+  if(!runtime)return Promise.resolve(false); // Fail closed before the UI is ready.
+  return confirmSharedAction(runtime,runtime.app,host,translateIgnis("Delete shared content"),message,translateIgnis("Delete"));
+}
+export function createSharedFiles({metadataCache,watch,currentContext,request=fetch,createXHR=()=>new XMLHttpRequest(),onFailure=()=>{},onNotice=()=>{},onRemoved=()=>{},confirmRemoval=confirmReceivedRemoval}) {
   let scope=null, enabled=false, outgoing=[], mounted=new Map(), tree=Object.create(null), listening=false, refreshing=false, refreshPending=false, retryTimer=null, retryDelay=2000, maxBytes=0,generation=0;
   const states=new Map(),reserved=new Set(),subscribers=new Set();
   function context(){const value=currentContext();if(!scope?.sessionId || value?.sessionId!==scope.sessionId || value?.vault!==scope.vault)fail("AUTH_CONTEXT_CHANGED","Session or vault changed");}
@@ -218,11 +225,12 @@ export function createSharedFiles({metadataCache,watch,currentContext,request=fe
   async function removeReceived(path) {
     const check=fence();check();const destination=target(path);
     if(!destination.path || destination.role!=="editor")fail("EACCES","A received root cannot be deleted. Remove its destination in Shared instead. Read-only resources cannot be deleted.");
-    for(const [name,value] of states)if(under(name,path)&&(value.busy||value.blocked))fail("SHARE_CONFLICT","Save or download pending changes before deleting this resource.");
+    const checkPending=()=>{for(const [name,value] of states)if(under(name,path)&&(value.busy||value.blocked))fail("SHARE_CONFLICT","Save or download pending changes before deleting this resource.");};
+    checkPending();
     const input={id:destination.id,path:destination.path};
     const preview=await exchange("previewRemoval",input);
-    check();if(!globalThis.confirm(`Permanently delete “${path}” and its contents (${preview.files} files, ${preview.folders} folders) for everyone? This deletes the original, bypasses the trash and cannot be undone.`))fail("ECANCELED","Deletion canceled");
-    check();
+    check();if(!await confirmRemoval(translateIgnis("Permanently delete “{p0}” and its contents ({p1} files, {p2} folders) for everyone? This deletes the original, bypasses the trash and cannot be undone.",{p0:path,p1:preview.files,p2:preview.folders})))fail("ECANCELED","Deletion canceled");
+    check();checkPending();
     await exchange("removeConfirmed",{...input,confirm:true,revision:preview.revision});
     check();for(const name of states.keys())if(under(name,path))states.delete(name);
     await refresh();

@@ -1,3 +1,4 @@
+import {uiComponents} from "./lib/ui-components.mjs";
 // Run after node build.js. Uses a fresh Chrome profile and synthetic API data.
 // node scripts/check-management-ui.mjs [--mobile]
 import http from 'node:http';
@@ -16,12 +17,13 @@ const viewport=process.argv.includes('--landscape')?[844,390]:process.argv.inclu
 const screenshotDirectory=process.env.IGNIS_UI_SCREENSHOTS;
 const nativeCss=process.env.IGNIS_OBSIDIAN_CSS;
 (async()=>{
- const harness=await build({stdin:{contents:`import {BrowserModal} from './packages/ui/src/management.js';import {createManagementModal} from './packages/management/src/management-modal.js';const ResourceModal=createManagementModal(BrowserModal,(target)=>{target.textContent='×';});window.testIndividualResource=()=>new ResourceModal(null,'shares',{initialResource:{id:'r',session:'s'}}).open();`,resolveDir:repo},bundle:true,write:false,format:'iife',platform:'browser',loader:{'.css':'text'},mainFields:['svelte','browser','module','main'],conditions:['svelte','browser'],plugins:[sveltePlugin({compilerOptions:{}})],logLevel:'silent'});
+ const harness=await build({stdin:{contents:`import {BrowserModal} from './packages/ui/src/management.js';import {createManagementModal} from './packages/management/src/management-modal.js';const ResourceModal=createManagementModal(BrowserModal,(target)=>{target.textContent='×';});window.testIndividualResource=(initialResource={id:'r',session:'s'})=>new ResourceModal(null,'shares',{initialResource}).open();`,resolveDir:repo},bundle:true,write:false,format:'iife',platform:'browser',loader:{'.css':'text'},mainFields:['svelte','browser','module','main'],conditions:['svelte','browser'],plugins:[sveltePlugin({compilerOptions:{}})],logLevel:'silent'});
  const requests=[],errors=[];let hasLocalPassword=true;
  const server=http.createServer((req,res)=>{
   requests.push(req.url);res.setHeader('Content-Type','application/json');
   const json=value=>res.end(JSON.stringify(value));
   if(req.url==='/native.css' && nativeCss){res.setHeader('Content-Type','text/css');return res.end(fs.readFileSync(nativeCss));}
+  if(req.url==='/auth/entry.css'){res.setHeader('Content-Type','text/css');return res.end(fs.readFileSync(repo+'/apps/ignis-server/server/auth/web/entry.css'));}
   if(req.url==='/overrides.css'){res.setHeader('Content-Type','text/css');return res.end(fs.readFileSync(repo+'/apps/ignis-server/server/assets/overrides.css'));}
   if(req.url==='/test-harness.js'){res.setHeader('Content-Type','text/javascript');return res.end(harness.outputFiles[0].text);}
   if(req.url==='/bundle.js'){res.setHeader('Content-Type','text/javascript');return res.end(fs.readFileSync(repo+'/packages/ui/dist/ignis-ui.js'));}
@@ -106,10 +108,11 @@ const nativeCss=process.env.IGNIS_OBSIDIAN_CSS;
   if(!await run(`{const rect=document.querySelector('#create-dialog .tooltip').getBoundingClientRect();rect.top>=0 && rect.bottom<=innerHeight}`))throw Error('Help falls outside the viewport');
   await run(`document.querySelector('#cancel-create').click();document.querySelector('#users button[aria-label="Edit bob"]').click()`);await new Promise(r=>setTimeout(r,150));
   if(!await run(`document.querySelector('#edit-dialog').open`))throw Error('Edit user failed');
+  if(!await run(`(()=>{const catalog=document.querySelector('#users'),parent=catalog.closest('.modal-container'),edit=document.querySelector('#edit-dialog').closest('.modal-container');return !parent.hidden && getComputedStyle(parent).display!=='none' && parent!==edit;})()`))throw Error('Editing a user must preserve the visible catalog behind the child modal');
   await run(`document.querySelector('#revoke-sessions').click()`);
   if(await run(`document.querySelector('#revoke-warning').textContent`)!=='Close all sessions for bob?')throw Error('Session confirmation lost its target');
   await screenshot('confirm-sessions');
-  await run(`document.querySelector('#cancel-revoke').click();document.querySelector('#edit-dialog .native-management-close').click()`);
+  await run(`document.querySelector('#cancel-revoke').click();document.querySelector('#edit-dialog').closest('.modal').querySelector('.modal-header-button:not(.mod-start)').click()`);
   if(await run(`document.querySelector('#edit-dialog').open`))throw Error('Edit close button failed');
   await run(`document.querySelector('[data-ignis-close]').click();sessionStorage.setItem('ignis-admin-reauth',JSON.stringify({userId:'a',target:'b',deleting:false}));history.replaceState(null,'','/?manage=users&reauth=success');IgnisUI.openRequestedManagement()`);await new Promise(r=>setTimeout(r,250));
   if(!await run(`document.querySelector('#edit-dialog').open && document.querySelector('#edit-user-name').textContent==='bob'`))throw Error('Reauthentication return intent was lost while cleaning the URL');
@@ -126,13 +129,19 @@ const nativeCss=process.env.IGNIS_OBSIDIAN_CSS;
   await run(`document.querySelector('[data-ignis-close]').click()`);hasLocalPassword=false;
   await run(`IgnisUI.openAccount('password');`);await new Promise(r=>setTimeout(r,250));
   if(!await run(`document.querySelector('#password-dialog').open`))throw Error('Password return failed: '+await run('document.body.innerText'));
-  await run(`document.querySelector('#cancel-password').click();document.querySelector('[data-ignis-close]').click();testIndividualResource()`);await new Promise(r=>setTimeout(r,200));
-  if(!await run(`document.querySelector('#manage-dialog').open && getComputedStyle(document.querySelector('#workspace')).display==='none'`))throw Error('Individual resource exposed a catalog behind it');
+  await run(`document.querySelector('#cancel-password').click();testIndividualResource()`);await new Promise(r=>setTimeout(r,200));
+  if(!await run(`document.querySelector('#manage-dialog')?.open && !document.querySelector('#workspace').getClientRects().length`))throw Error('Individual resource exposed a catalog behind it: '+await run('document.body.innerText'));
   await screenshot('individual-resource');
   await run(`document.querySelector('[data-close="manage-dialog"]').click()`);await new Promise(r=>setTimeout(r,50));
   if(await run(`document.querySelectorAll('.ignis-shell-modal').length`))throw Error('Individual resource did not dispose its host');
   const retained=await run(`(async()=>{const Native=BroadcastChannel,active=new Set();window.BroadcastChannel=class extends Native{constructor(name){super(name);active.add(this);}close(){active.delete(this);super.close();}};try{for(let i=0;i<100;i++){const modal=testIndividualResource();await new Promise(r=>setTimeout(r,0));modal.close();}await new Promise(r=>setTimeout(r,50));return {channels:active.size,modals:document.querySelectorAll('.ignis-shell-modal').length};}finally{window.BroadcastChannel=Native;}})()`);
   if(retained.channels || retained.modals)throw Error('Closing 100 components retained resources: '+JSON.stringify(retained));
+  await run(`testIndividualResource({id:'missing',session:'s'})`);await new Promise(resolve=>setTimeout(resolve,150));
+  if(!await run(`(()=>{const status=document.querySelector('#status');return status && !!status.textContent && !!status.getClientRects().length;})()`))throw Error('Individual resource error was hidden');
+  await run(`document.querySelector('[data-ignis-close]').click();window.guardedUi=testIndividualResource()`);await new Promise(resolve=>setTimeout(resolve,150));
+  await run(`guardedUi.requestClose=()=>false;window.dispatchEvent(new Event('ignis:auth-lost'))`);
+  if(!await run(`guardedUi.abort.signal.aborted && !document.querySelector('.ignis-shell-modal')`))throw Error('Session loss did not force disposal of a guarded form');
+  await uiComponents([{run,wait:async(expression,label)=>{for(let i=0;i<100;i++){if(await run(expression))return;await new Promise(resolve=>setTimeout(resolve,50));}throw Error('Timed out: '+label);}}]);
   if(requests.some(url=>['/account','/shares','/admin/users'].includes(url)))throw Error('Standalone page requested');
   if(errors.length)throw Error('Runtime errors: '+errors);
   console.log(`PASS (${mobile?'mobile':'desktop'}): zero-vault account, email, users, sharing and OIDC password setup; no standalone HTML fetches or runtime errors`);

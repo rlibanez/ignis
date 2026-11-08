@@ -1,3 +1,5 @@
+import {showManagementNotice} from "../../management/src/ui-notice.js";
+import {createUiElement,setUiOptions} from "../../management/src/ui-controls.js";
 import resourceTree from "../../management/src/resource-tree.cjs";
 
 const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
@@ -40,23 +42,22 @@ export function openCopyDialog(obsidian,app,file,describe,copy,options={}) {
     onClose(){this.closed=true;}
     async onOpen() {
       this.closed=false;
-      this.modalEl.classList.add('ignis-management-modal', 'mod-lg', 'mod-form');
+      this.modalEl.classList.add('ignis-management-modal', 'ignis-ui-form', 'mod-lg', 'mod-form');
       this.setTitle(options.title || translateIgnis("Copy ")+file.name);
       if(options.load){
-        const loading=document.createElement('p');loading.textContent=translateIgnis("Loading vault…");this.contentEl.append(loading);
+        const loading=createUiElement(document,'p');loading.textContent=translateIgnis("Loading vault…");this.contentEl.append(loading);
         try{destinationVault=await options.load();}catch(error){loading.textContent=translateIgnis(error.message);return;}
         if(this.closed)return;loading.remove();
       }
       let folder='',busy=false,loading=false,destinationId=options.currentVault;const expanded=new Set(['']);
-      const create=(tag,text)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=text;return el;};
+      const create=(tag,text)=>{const el=createUiElement(document,tag);if(text!==undefined)el.textContent=text;return el;};
       const content=this.contentEl;
       let vaultSelect;
       if(options.listVaults){
         const vaultLabel=create('label',translateIgnis('Vault'));content.append(vaultLabel);
-        const dropdown=new obsidian.DropdownComponent(vaultLabel);
-        vaultSelect=dropdown.selectEl;
+        vaultSelect=create('select');vaultSelect.classList.add('dropdown');vaultLabel.append(vaultSelect);
         vaultSelect.style.cssText='display:block;width:100%;margin:8px 0 16px';
-        try{for(const vault of await options.listVaults())dropdown.addOption(vault.uuid,vault.name);if(this.closed)return;dropdown.setValue(destinationId);}
+        try{const vaults=await options.listVaults();if(this.closed)return;setUiOptions(vaultSelect,vaults.map(vault=>({value:vault.uuid,label:vault.name})));vaultSelect.value=destinationId;}
         catch(e){content.append(create('p',translateIgnis(e.message)));return;}
       }
 
@@ -95,7 +96,7 @@ export function openCopyDialog(obsidian,app,file,describe,copy,options={}) {
           const destination=copyDestinationPath(folder,name.value);
           if(destinationVault.getAbstractFileByPath(destination))throw new Error(translateIgnis("An item with that name already exists. Choose another name or folder."));
           busy=true;submit.disabled=true;cancel.disabled=true;name.disabled=true;submit.textContent=translateIgnis("Copying…");render();
-          await copy(file.path,destination,destinationId);this.close();new obsidian.Notice(translateIgnis("Copy complete"));
+          await copy(file.path,destination,destinationId);this.close();showManagementNotice(obsidian.Notice,translateIgnis("Copy complete"));
         }catch(e){error.textContent=translateIgnis(e.message) || translateIgnis("Copy failed");}
         finally{busy=false;submit.disabled=false;cancel.disabled=false;name.disabled=false;submit.textContent=(options.submit || translateIgnis("Copy here"));render();}
       };

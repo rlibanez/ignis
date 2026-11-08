@@ -267,7 +267,7 @@ describe("setup HTTP boundary", () => {
     expect(JSON.parse(manifest.text)).toMatchObject({id:"/",start_url:"/",scope:"/",display:"standalone"});
     expect((await request("/pwa/icon-512.png")).status).toBe(200);
     expect((await request("/login")).headers["content-security-policy"]).toContain("manifest-src 'self'");
-    for (const route of ["/share-target", "/share-worker.js", "/auth/share-store.js", "/auth/share-target.js", "/auth/share-target.css", "/setup", "/auth/setup.js", "/auth/setup.css", "/manifest.webmanifest", "/auth/pwa.js", "/pwa/icon-192.svg", "/pwa/icon-maskable.svg"]) {
+    for (const route of ["/share-target", "/share-worker.js", "/auth/share-store.js", "/auth/share-target.js", "/auth/share-target.css", "/setup", "/auth/setup.js", "/auth/entry.css", "/manifest.webmanifest", "/auth/pwa.js", "/pwa/icon-192.svg", "/pwa/icon-maskable.svg"]) {
       const result = await request(route);
       expect(result.status).toBe(200);
       expect(result.text).not.toContain(KEY);

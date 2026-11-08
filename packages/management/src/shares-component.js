@@ -1,3 +1,4 @@
+import {createUiElement} from "./ui-controls.js";
 import resourceTree from "./resource-tree.cjs";
 export function mountShares(scope) {
   const {root, window, location, fetch, channel: openChannel, listen, onDispose, decorate} = scope;
@@ -7,8 +8,8 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
 
   const $=id=>byId(id);
   let context, catalog, managed, draft, placed, busy=false, locked=false, selectedPath="", pickerGeneration=0;
-  const node=(tag,text)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=text;return el;};
-  function lock(){locked=true;for(const dialog of root.querySelectorAll("dialog"))dialog.close();$("workspace").hidden=true;$("status").textContent=translateIgnis("Your session has ended or changed. Return to Account to sign in again.");}
+  const node=(tag,text)=>{const el=createUiElement(document,tag);if(text!==undefined)el.textContent=text;return el;};
+  function lock(){locked=true;for(const dialog of root.querySelectorAll("[data-ui-dialog]"))dialog.close();$("workspace").hidden=true;$("status").textContent=translateIgnis("Your session has ended or changed. Return to Account to sign in again.");}
   async function api(operation,input){
     if(locked)throw new Error(translateIgnis("Session unavailable"));
     const headers={"X-Ignis-Context":context};
@@ -19,14 +20,12 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   }
   function confirmAction(title, message, action, opened) {
     return new Promise(resolve => {
-      const dialog=node("dialog");dialog.className="ignis-confirm";
+      const dialog=node("section");dialog.setAttribute("data-ui-dialog", "");dialog.className="ignis-confirm";
       const heading=node("h2",title),description=node("p",message),actions=node("div");actions.className="dialog-actions";
       dialog.setAttribute("aria-label",title);
       const cancel=button(translateIgnis("Cancel"),()=>dialog.close(),false),accept=button(action,()=>dialog.close("confirmed"),false);
       cancel.className="account-button secondary";accept.className="account-button danger";
-      const close=iconButton(translateIgnis("Close"),["M18 6 6 18","m6 6 12 12"],()=>dialog.close());
-      close.className="share-dialog-close";
-      actions.append(cancel,accept);dialog.append(close,heading,description,actions);root.append(dialog);
+      actions.append(cancel,accept);dialog.append(heading,description,actions);root.append(dialog);
       dialog.addEventListener("close",()=>{const accepted=dialog.returnValue==="confirmed" && !locked;dialog.remove();resolve(accepted);},{once:true});
       decorate(dialog);dialog.showModal();opened?.(dialog);cancel.focus();
     });
@@ -108,7 +107,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     $("grants").replaceChildren(rows.length?table([translateIgnis("User"),translateIgnis("Permission"),translateIgnis("Actions")],rows):node("p",translateIgnis("No direct recipients.")));
   }
   for(const el of root.querySelectorAll("[data-close]"))el.onclick=()=>{if(!busy)$(el.dataset.close).close();};
-  for(const dialog of root.querySelectorAll("dialog"))dialog.addEventListener("cancel",event=>{if(busy)event.preventDefault();});
+  for(const dialog of root.querySelectorAll("[data-ui-dialog]"))dialog.addEventListener("cancel",event=>{if(busy)event.preventDefault();});
   let locationFolder="",locationTree={},locationGeneration=0,locationReady=false;
   const locationExpanded=new Set();
   const parentPath=path=>path.includes("/")?path.slice(0,path.lastIndexOf("/")):"";
@@ -260,7 +259,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   let externalRefresh=false;
   const refreshExternal=()=>{
     if(locked)return;
-    if(busy || [...root.querySelectorAll("dialog")].some(dialog=>dialog.open)){externalRefresh=true;return;}
+    if(busy || [...root.querySelectorAll("[data-ui-dialog]")].some(dialog=>dialog.open)){externalRefresh=true;return;}
     externalRefresh=false;void run(reload);
   };
   listen(window, "ignis:state-changed",event=>{if(event.detail?.shares)refreshExternal();});

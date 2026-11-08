@@ -20,8 +20,10 @@ export async function vaultImportUi({native,shell}){
    await client.run(`Array.from(document.querySelectorAll('.vault-manager-overlay .footer-right button')).find(el=>el.textContent.trim()==='Import vault').click()`);
   }
   await client.wait(`!!document.querySelector('.ignis-import-wizard')`,'import wizard');
-  const picture=async step=>{const {data}=await client.call('Page.captureScreenshot',{format:'png'});fs.writeFileSync('/tmp/ignis-import-'+(client===native?'native':kind==='legacy'?'shell-folder':'shell')+'-'+(process.argv.includes('--mobile')?'mobile':'desktop')+'-'+step+'.png',Buffer.from(data,'base64'));};
+  const picture=async step=>{await client.run(`Promise.allSettled(document.getAnimations().map(animation=>animation.finished))`);const {data}=await client.call('Page.captureScreenshot',{format:'png'});fs.writeFileSync('/tmp/ignis-import-'+(client===native?'native':kind==='legacy'?'shell-folder':'shell')+'-'+(process.argv.includes('--mobile')?'mobile':'desktop')+'-'+step+'.png',Buffer.from(data,'base64'));};
+  await client.wait(`document.querySelector('.ignis-import-wizard').getBoundingClientRect().top<=2 || !document.body.classList.contains('is-mobile')`,'import sheet reaches mobile safe-area top');
   await picture('source');
+  if(client===native)assert.equal(await client.run(`(()=>{const runtime=window.__ignisUiRuntime;return [...document.querySelector('.ignis-import-wizard').querySelectorAll('input:not([type=checkbox]):not([type=file]),select,button')].filter(el=>!el.classList.contains('modal-close-button')).every(el=>runtime.componentFor(el) instanceof runtime[el.dataset.uiComponent]);})()`),true,'all import text fields and actions are actual native controls');
   assert.equal(await client.run(`document.querySelector('[data-import-next]').disabled`),true,'Next is disabled without a selection');
   assert.deepEqual(await client.run(`Array.from(document.querySelector('.ignis-import-wizard select').options).map(option=>option.value)`),['zip','folder'],'ZIP is the first source option');
   assert.equal(await client.run(`document.querySelector('.ignis-import-wizard select').value`),'zip','ZIP is selected by default');

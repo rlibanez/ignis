@@ -164,10 +164,10 @@ it('checks fresh destinations again before saving rather than trusting the initi
 it('shows the received title above a shared link as plain text',async()=>{
  const title='<img src=x onerror=alert(1)> Video title';
  const f=await fixture({title,text:'https://youtube.com/watch?v=example'});
- expect(f.$('preview-title').textContent).toBe(title);expect(f.$('preview-title').hidden).toBe(false);
+ expect(f.$('preview-title').value).toBe(title);expect(f.$('preview-title').hidden).toBe(false);
  expect(f.$('preview-title').children).toEqual([]);
- expect(f.$('preview').textContent).toBe('https://youtube.com/watch?v=example');
- await f.$('cancel').onclick();expect(f.$('preview-title').textContent).toBe('');expect(f.$('preview-title').hidden).toBe(true);
+ expect(f.$('preview').value).toBe('https://youtube.com/watch?v=example');
+ await f.$('cancel').onclick();expect(f.$('preview-title').value).toBe('');expect(f.$('preview-title').hidden).toBe(true);
 });
 it.each([
  ['', 'https://example.com'],
@@ -175,5 +175,40 @@ it.each([
  ['https://example.com', 'https://example.com'],
  ['Video title', '  Video title  \r\nhttps://example.com'],
 ])('does not repeat an empty title or one already in the shared text: %s',async(title,text)=>{
- const f=await fixture({title,text});expect(f.$('preview-title').hidden).toBe(true);expect(f.$('preview-title').textContent).toBe('');expect(f.$('preview').textContent).toBe(text);
+ const f=await fixture({title,text});expect(f.$('preview-title').hidden).toBe(true);expect(f.$('preview-title').value).toBe(title);expect(f.$('preview').value).toBe(text);
+});
+
+it('saves edited link and title, including safe new-note naming',async()=>{
+ const f=await fixture({title:'Old title',text:'https://example.com'});
+ f.$('preview-title').value='Edited/title';f.$('preview').value='https://example.org/new';
+ f.$('capture').onsubmit({preventDefault(){}});await f.settle();
+ const write=f.calls.find(c=>c.url.startsWith('/api/fs/writeFile'));
+ expect(new URL(write.url,'https://ignis.test').searchParams.get('path')).toBe('Edited title.md');
+ expect(await write.init.body.text()).toBe('https://example.org/new\n');
+});
+it('appends edited text and title with the existing version precondition',async()=>{
+ const f=await fixture();f.$('preview-title').value='Edited title';f.$('preview').value='Edited text';
+ f.$('destination-tree').querySelectorAll('[data-path]').find(e=>e.dataset.path==='existing.md').onclick();
+ f.$('capture').onsubmit({preventDefault(){}});await f.settle();
+ const write=f.calls.find(c=>c.url.startsWith('/api/fs/writeFile'));
+ expect(await write.init.body.text()).toBe('original\n\nEdited title\n\nEdited text\n');
+});
+it('keeps edited content for retry after a failed write and rejects empty text',async()=>{
+ const f=await fixture({conflict:true});f.$('preview').value='Edited text';
+ f.$('capture').onsubmit({preventDefault(){}});await f.settle();
+ expect(f.stored().text).toBe('Edited text');expect(f.$('preview').value).toBe('Edited text');
+ const empty=await fixture();empty.$('preview').value='  ';
+ empty.$('capture').onsubmit({preventDefault(){}});await empty.settle();
+ expect(empty.calls.some(c=>c.init.method==='POST')).toBe(false);expect(empty.stored()).not.toBeNull();
+});
+
+it('retains the edited suggested filename across failed saves and retries',async()=>{
+ const f=await fixture({conflict:true,title:'Original',text:'https://example.com'});
+ f.$('preview-title').value='Edited';
+ for(let attempt=0;attempt<2;attempt++){
+  f.$('capture').onsubmit({preventDefault(){}});await f.settle();
+ }
+ const writes=f.calls.filter(c=>c.url.startsWith('/api/fs/writeFile'));
+ expect(writes).toHaveLength(2);
+ expect(writes.map(write=>new URL(write.url,'https://ignis.test').searchParams.get('path'))).toEqual(['Edited.md','Edited.md']);
 });

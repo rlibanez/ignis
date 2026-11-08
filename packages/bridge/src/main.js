@@ -25,8 +25,11 @@ import { initImageRetry } from "./image-retry.js";
 import { installReadingLock } from "./reading-lock.js";
 import { installRenameKeyboard } from "./rename-keyboard.js";
 
+import {installUiRuntime} from "./ui-runtime.js";
+
 class IgnisBridgePlugin extends Plugin {
   async onload() {
+    this._uiRuntimeDispose = installUiRuntime(this.app);
     console.log("[ignis-bridge] Plugin loaded");
 
     if (window.__ignisAuth?.role === "admin") {
@@ -78,6 +81,7 @@ class IgnisBridgePlugin extends Plugin {
   }
 
   onunload() {
+    this._uiRuntimeDispose?.();
     if (this._statusBarUnsub) {
       this._statusBarUnsub();
     }

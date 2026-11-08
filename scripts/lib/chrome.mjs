@@ -18,6 +18,7 @@ export async function browser({mobile=false}={}){
   const run=async expression=>{const data=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(data.exceptionDetails)throw Error(data.exceptionDetails.exception?.description || data.exceptionDetails.text);return data.result.value;};
   const wait=async(expression,label,timeout=30000)=>{const until=Date.now()+timeout;while(Date.now()<until){if(await run(expression))return;await new Promise(r=>setTimeout(r,100));}throw Error('Timed out: '+label);};
   await call('Network.enable');await call('Runtime.enable');await call('Page.enable');await call('Emulation.setFocusEmulationEnabled',{enabled:true});
+  if(mobile)await call('Emulation.setTouchEmulationEnabled',{enabled:true});
   if(mobile)await call('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
   return {call,run,wait,errors,close};
  }catch(error){await close();throw error;}

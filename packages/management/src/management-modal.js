@@ -8,11 +8,18 @@ const t = text => globalThis.IgnisI18n?.t(text) ?? text;
 const titles = {users:"Manage users",shares:"Shared resources",password:"Set local password"};
 
 export function createManagementModal(Modal, setIcon) {
+class DialogModal extends Modal {
+  close(){if(this.requestClose)return this.requestClose();super.close();}
+  forceClose(){super.close();}
+}
+
 return class ManagementModal extends Modal {
   constructor(app, kind, options = {}) { super(app); this.options = options; this.kind = kind; this.abort = new AbortController(); this.channels = []; this.cleanups = []; }
+  close(){if(this.requestClose)return this.requestClose();super.close();}
+  forceClose(){this.onClose();super.close();}
   async onOpen() {
     const title = titles[this.kind];
-    const lost = () => this.close();
+    const lost = () => this.forceClose();
     window.addEventListener("ignis:auth-lost", lost);
     this.cleanups.push(() => window.removeEventListener("ignis:auth-lost", lost));
     const resourceOnly = this.kind === "shares" && !!this.options.initialResource;
@@ -42,23 +49,14 @@ return class ManagementModal extends Modal {
     frame.textContent = t("Loading…");
     try {
       const dialogs=createManagementView({frame,host,modal:this.modalEl,setIcon,kind:this.kind,resourceOnly,
-        onDispose:fn=>this.cleanups.push(fn)});
+        onDispose:fn=>this.cleanups.push(fn),owner:this,createModal:()=>new DialogModal(this.app)});
       const signal = this.abort.signal;
-      const scope = createComponentScope(frame, {...this.options,
+      const scope = createComponentScope(dialogs.root, {...this.options,
         signal, cleanups:this.cleanups, channels:this.channels,
         decorate:dialogs.decorate,
         onResourceActionFinished: resourceOnly ? () => this.close() : undefined,
         onResourceDialogOpened: resourceOnly ? dialog => {
-          // Native dialogs live in the top layer. Hide only the otherwise empty
-          // host, retaining its scoped styles and controller lifecycle.
-          if (document.body.classList.contains("is-mobile") && dialog.classList.contains("native-direct-resource")) {
-            this.setTitle(dialog.querySelector("h2")?.textContent || t("Manage resource"));
-          } else {
-            this.modalEl.style.visibility = "hidden";
-            const backdrop = this.containerEl.querySelector(".modal-bg");
-            if (backdrop) backdrop.style.visibility = "hidden";
-          }
-          if (this.options.initialResource?.action !== "revoke") dialog.addEventListener("close", () => this.close(), {once:true, signal});
+          if(this.options.initialResource?.action!=="revoke")dialog.addEventListener("close",()=>this.close(),{once:true,signal});
         } : undefined,
       });
       ({users:mountUsers,shares:mountShares,password:mountAccountSecurity})[this.kind](scope);

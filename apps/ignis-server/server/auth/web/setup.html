@@ -5,18 +5,20 @@
     <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title data-i18n="Set up Ignis">Set up Ignis</title>
-    <link rel="stylesheet" href="/auth/setup.css" />
     <script src="/auth/i18n.js" defer></script>
     <script src="/auth/setup.js" defer></script>
     <script src="/auth/password-visibility.js" defer></script>
-    <link rel="stylesheet" href="/auth/components.css">
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#f4f5f8" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#17191e" media="(prefers-color-scheme: dark)">
 <link rel="apple-touch-icon" href="/pwa/icon-512.png">
 <script src="/auth/pwa.js" defer></script>
+<link rel="stylesheet" href="/auth/native.css">
+<link rel="stylesheet" href="/auth/entry.css">
+<script src="/auth/ui-environment.js" defer></script>
+<script src="/auth/entry.js" defer></script>
 </head>
-  <body>
+  <body class="ignis-entry ignis-access-entry">
     <main>
       <p class="brand" data-ignis-app-name>IGNIS</p>
       <h1 data-i18n="Create the first administrator">Create the first administrator</h1>
@@ -56,6 +58,7 @@
         </div>
         <input
           id="login"
+          type="text"
           name="login"
           required
           minlength="3"
@@ -65,7 +68,6 @@
           spellcheck="false"
           aria-describedby="login-help"
         />
-
         <div class="setup-field-heading">
           <label for="password" data-i18n="Password">Password</label>
           <span class="setup-field-help">
@@ -83,7 +85,6 @@
           autocomplete="new-password"
           aria-describedby="password-help"
         />
-
         <label for="confirmation" data-i18n="Confirm password">Confirm password</label>
         <input
           id="confirmation"
@@ -94,7 +95,7 @@
           maxlength="1024"
           autocomplete="new-password"
         />
-        <button type="submit" data-i18n="Create administrator">Create administrator</button>
+        <button class="mod-cta" type="submit" data-i18n="Create administrator">Create administrator</button>
       </form>
     </main>
   </body>

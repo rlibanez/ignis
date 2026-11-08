@@ -31,8 +31,10 @@ beforeEach(async () => {
   ).run();
   db.prepare("INSERT INTO local_credentials VALUES ('normal',?,1)").run(hash);
   clock = Date.now();
+  fs.writeFileSync(path.join(root,"native.css"),"/* installed native stylesheet */ body { --input-height: 30px; }");
   const app = express();
   boundary = createSecurity({
+    nativeCssPath: path.join(root,"native.css"),
     dataRoot: path.join(root, "data"),
     vaultRoot: root,
     config: readAuthConfig({
@@ -1773,4 +1775,26 @@ it('protects multi-vault scans/reviews/preparation with CSRF, live context and s
  expect((await request('/api/vault/import/commit?id='+stage.id,{jar,method:'POST',headers,body:{}})).status).toBe(200);
  expect((await request('/api/vault/import/cancel-source',{jar,method:'POST',headers,body:{id:source.id}})).status).toBe(200);
  expect(fs.readFileSync(path.join(root,'normal/Imported','Note.md'),'utf8')).toBe('hello');expect(fs.existsSync(path.join(root,'B'))).toBe(false);
+});
+
+it('serves only the installed native CSS publicly and all entry pages share the same presentation', async () => {
+  const css = await request('/auth/native.css');
+  expect(css.status).toBe(200);
+  expect(css.headers.get('content-type')).toContain('text/css');
+  expect(await css.text()).toContain('/* installed native stylesheet */');
+  for (const route of ['/setup','/login','/reset-password','/share-target']) {
+    const response = await request(route);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-security-policy')).toContain("font-src 'self' data:");
+    const html = await response.text();
+    expect(html).toContain('/auth/native.css');
+    expect(html).toContain('/auth/entry.css');
+    expect(html).toContain('/auth/entry.js');
+    expect(html).not.toContain('/auth/setup.css');
+    expect(html).not.toContain('/auth/account.css');
+    expect(html).not.toContain('/auth/components.css');
+  }
+  expect((await request('/auth/entry.css')).status).toBe(200);
+  expect((await request('/auth/entry.js')).status).toBe(200);
+  expect((await request('/auth/native.css/../private.css')).status).not.toBe(200);
 });

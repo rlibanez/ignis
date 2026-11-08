@@ -13,7 +13,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       input.before(wrapper);
       wrapper.append(input);
     }
-    const button = document.createElement("button");
+    const button = document.defaultView?.__ignisUiRuntime?.createElement(document,"button") || document.createElement("button");
     button.type = "button";
     button.className = "password-toggle";
     button.setAttribute("aria-controls", input.id);

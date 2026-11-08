@@ -1,6 +1,8 @@
 // Shared English/Spanish UI catalog. Never apply to notes, names or protocol fields.
 (() => {
   const catalog = {
+  "Delete shared content": "Eliminar contenido compartido",
+  "Permanently delete “{p0}” and its contents ({p1} files, {p2} folders) for everyone? This deletes the original, bypasses the trash and cannot be undone.": "¿Eliminar permanentemente «{p0}» y su contenido ({p1} archivos, {p2} carpetas) para todos? Esto elimina el original, omite la papelera y no se puede deshacer.",
   "Not enough free space to import the vault.": "No hay suficiente espacio libre para importar la bóveda.",
   "Import vaults": "Importar bóvedas",
   "These items are outside the detected vaults and will not be imported.": "Estos elementos están fuera de las bóvedas detectadas y no se importarán.",
@@ -135,6 +137,8 @@
   "Some files are already saved. Keep the original destination to finish this share.": "Algunos archivos ya están guardados. Mantén el destino original para completar este envío.",
   "Shared image": "Imagen compartida",
   "Shared images": "Imágenes compartidas",
+  "Title": "Título",
+  "Content": "Contenido",
   "Shared text": "Texto compartido",
   "Shared link": "Link compartido",
   "Shared file": "Archivo compartido",

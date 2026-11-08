@@ -54,9 +54,7 @@ body {
   /* Keep native mobile modal dimensions and safe-area positioning. */
   .ignis-management-modal .modal-content { overflow-y:auto; overscroll-behavior:contain; scroll-padding-block:1rem; }
   .ignis-management-modal .modal-title { overflow-wrap:anywhere; }
-  .ignis-management-modal .ignis-ui-actions { display:grid; grid-template-columns:1fr; }
-  .ignis-management-modal .ignis-ui-actions > button { width:100%; height:auto; min-height:44px; white-space:normal; }
-  .ignis-management-modal :is(input,select) { font-size:16px; max-width:100%; min-width:0; scroll-margin-block:1rem; }
+  .ignis-management-modal :is(input,select) { max-width:100%; min-width:0; scroll-margin-block:1rem; }
   .ignis-folder-picker { max-height:min(240px,40dvh) !important; overscroll-behavior:contain; }
   .ignis-folder-row { padding-left:min(calc(var(--tree-depth,0) * 10px),32px) !important; }
   .ignis-folder-toggle { width:44px !important; min-width:44px; height:44px; flex-shrink:0; }
@@ -65,9 +63,3 @@ body {
 }
 
 @media (max-width:600px) { .ignis-management-heading { flex-wrap:wrap; } .ignis-management-modal .ignis-ui-icon { min-width:44px; min-height:44px; } }
-
-/* Primary copy action precedes Cancel in the mobile vertical layout. */
-body.is-mobile .ignis-copy-actions { display:flex;flex-direction:column;align-items:stretch; }
-body.is-mobile .ignis-copy-actions > .mod-cta { order:-1; }
-body.is-mobile .ignis-copy-actions > button { width:100%; }
-@media(max-width:600px) { .ignis-copy-actions > .mod-cta { order:-1; } }

@@ -43,13 +43,16 @@ async function fixture({ storageFails = false, initialSessionStatus = 200, initi
       this.aborted = true;
     }
   }
-  const element = () => { const el = {
+  const element = tag => { const classes=new Set();const el = {
+    tag,attrs:{},classList:{add:(...values)=>values.forEach(value=>classes.add(value)),contains:value=>classes.has(value)},
+    setAttribute(key,value){this.attrs[key]=value;},focus(){this.focused=true;},
     style: {},
     append() {},
     replaceChildren() {},
     click() {},
+    remove(){this.removed=true;},
   }; elements.push(el); return el; };
-  const document = { body: element(), createElement: element };
+  const document = { body: element("body"), head: element("head"), createElement: element, getElementById:id=>elements.find(el=>el.id===id&&!el.removed) };
   const window = {
     document,
     XMLHttpRequest: XHR,
@@ -459,4 +462,48 @@ it("writes plugin trust to the same account storage before and after Obsidian st
  expect(scoped.getItem(key)).toBe('false');
  f.window.__ignisAuth.lock();f.window.__ignisAuth.setVaultTrust('vault',true);
  expect(values.get('ignis-account-v1:admin-id:'+key)).toBe('false');
+});
+
+it('renders the terminal lock with the shared entry shell, preserves the active theme and keeps requests blocked',async()=>{
+ const f=await fixture();const document=f.window.document;
+ document.body.classList.add('theme-dark');
+ f.window.getComputedStyle=()=>({getPropertyValue:()=> 'Existing theme font'});
+ f.window.__ignisAuth.lock();
+ expect(document.body.classList.contains('ignis-entry')).toBe(true);
+ expect(document.body.classList.contains('ignis-lock-screen')).toBe(true);
+ expect(document.body.classList.contains('theme-dark')).toBe(true);
+ expect(document.body.classList.contains('theme-light')).toBe(false);
+ expect(f.elements.find(el=>el.id==='ignis-entry-css').href).toBe('/auth/entry.css');
+ expect(f.elements.some(el=>el.id==='ignis-lock-native-css')).toBe(false);
+ const panel=f.elements.find(el=>el.tag==='main');expect(panel.focused).toBe(true);
+ expect(panel.attrs['aria-labelledby']).toBe('ignis-lock-title');expect(panel.style.cssText).toBeUndefined();
+ expect(f.elements.find(el=>el.textContent==='Sign in').className).toBe('account-button mod-cta');
+ const count=f.elements.length;f.window.__ignisAuth.lock();expect(f.elements).toHaveLength(count);
+ await expect(f.window.fetch('/api/fs/writeFile',{method:'POST'})).rejects.toThrow('locked');
+});
+it('loads the installed native stylesheet if locking before the editor styles are available',async()=>{
+ const f=await fixture();f.window.__ignisAuth.lock();
+ expect(f.elements.find(el=>el.id==='ignis-lock-native-css').href).toBe('/auth/native.css');
+ expect(f.elements.find(el=>el.id==='ignis-entry-css').rel).toBe('stylesheet');
+});
+
+it.each(['native','shell'])('uses our %s notice host instead of a browser alert when logout fails',async host=>{
+ const f=await fixture(),show=vi.fn();f.window.alert=vi.fn(()=>{throw Error('Unexpected browser alert');});
+ if(host==='native')f.window.__ignisUiRuntime={showNotice:show};else f.window.IgnisUI={showManagementMessage:show};
+ f.status(503);await f.window.__ignisAuth.logout();
+ expect(show).toHaveBeenCalledWith('Unable to sign out. Please try again.');expect(f.window.alert).not.toHaveBeenCalled();
+ expect(f.window.__ignisAuth.blocked).toBe(false);expect(f.events).not.toContain('storage-clear');
+});
+it('keeps unconfirmed writes and the active account when sign-out is prevented, with a styled fallback notice',async()=>{
+ const f=await fixture();f.window.__ignis={writes:{snapshotPending:()=>[{path:'note.md',data:'draft'}]}};
+ await f.window.__ignisAuth.logout();expect(f.window.__ignisAuth.blocked).toBe(false);expect(f.calls).toEqual([]);
+ expect(f.elements.some(el=>el.className==='notice-container ignis-boundary-notices')).toBe(true);
+ expect(f.elements.some(el=>el.textContent?.includes('Some writes were')||el.textContent?.includes('Some writes are'))).toBe(true);
+});
+
+it('does not render a late logout failure over the terminal lock screen',async()=>{
+ const f=await fixture(),show=vi.fn();f.window.__ignisUiRuntime={showNotice:show};f.status(503);
+ const pending=f.window.__ignisAuth.logout();f.window.__ignisAuth.lock();await pending;
+ expect(f.window.__ignisAuth.blocked).toBe(true);expect(show).not.toHaveBeenCalled();
+ expect(f.window.document.body.classList.contains('ignis-lock-screen')).toBe(true);
 });

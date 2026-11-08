@@ -76,3 +76,9 @@ preferencias permitidas y publicación aislada por usuario.
 
 [Exportación ZIP para el propietario](vault-export.md): contenido físico,
 configuración opcional, exclusión de recursos recibidos y descarga acotada.
+
+[Unificación de vistas y componentes](ui-unification.md): alcance de vistas propias,
+componentes originales excluidos, adaptadores O/Z/E y criterios de aceptación.
+
+[Implementación de interfaces comunes](ui-unification-delivery.md): componentes
+nativos, excepciones justificadas, ciclo de vida y verificación de la migración.

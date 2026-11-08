@@ -5,7 +5,7 @@ export default String.raw`<main><p id="status" role="alert"></p>
     <section class="share-panel" aria-labelledby="received-heading"><header><div><h2 id="received-heading" data-i18n="Shared with me">Shared with me</h2></div></header><div id="received"></div></section>
     <section class="share-panel" aria-labelledby="owned-heading"><header><div><h2 id="owned-heading" data-i18n="Shared by me">Shared by me</h2></div></header><div id="owned"></div></section>
   </section>
-  <dialog id="create-dialog" aria-labelledby="create-heading">
+  <section data-ui-dialog id="create-dialog" aria-labelledby="create-heading">
     <h2 id="create-heading" data-i18n="Share a resource">Share a resource</h2>
     <form id="create-form">
       <label for="vault" data-i18n="Vault">Vault</label><select id="vault" required></select>
@@ -18,8 +18,8 @@ export default String.raw`<main><p id="status" role="alert"></p>
       <p class="error" role="alert"></p>
       <div class="dialog-actions"><button type="button" data-close="create-dialog" class="account-button secondary" data-i18n="Cancel">Cancel</button><button id="create-submit" type="submit" class="account-button" disabled data-i18n="Share">Share</button></div>
     </form>
-  </dialog>
-  <dialog id="location-dialog" aria-labelledby="location-heading">
+  </section>
+  <section data-ui-dialog id="location-dialog" aria-labelledby="location-heading">
     <h2 id="location-heading">Resource location</h2>
     <form id="location-form">
       <label for="destination-vault" data-i18n="Vault">Vault</label><select id="destination-vault"></select>
@@ -34,8 +34,8 @@ export default String.raw`<main><p id="status" role="alert"></p>
       <p class="error" role="alert"></p>
       <div class="dialog-actions"><button type="button" data-close="location-dialog" class="account-button secondary" data-i18n="Cancel">Cancel</button><button type="submit" class="account-button" data-i18n="Save location">Save location</button></div>
     </form>
-  </dialog>
-  <dialog id="manage-dialog" aria-labelledby="manage-heading">
+  </section>
+  <section data-ui-dialog id="manage-dialog" aria-labelledby="manage-heading">
     <h2 id="manage-heading">Manage resource</h2>
     <section class="share-panel access-section" aria-labelledby="access-heading">
       <header><h3 id="access-heading" data-i18n="People with access">People with access</h3><button id="add-access" type="button" class="account-button" data-i18n="Add access">Add access</button></header>
@@ -43,8 +43,8 @@ export default String.raw`<main><p id="status" role="alert"></p>
     </section>
     <p class="error" role="alert"></p>
     <div class="dialog-actions"><button type="button" data-close="manage-dialog" class="account-button secondary" data-i18n="Cancel">Cancel</button><button id="save-resource" type="button" class="account-button" data-i18n="Save">Save</button></div>
-  </dialog>
-  <dialog id="grant-dialog" aria-labelledby="grant-heading">
+  </section>
+  <section data-ui-dialog id="grant-dialog" aria-labelledby="grant-heading">
     <h2 id="grant-heading" data-i18n="Add access">Add access</h2>
     <form id="grant-form">
       <label for="grant-login" data-i18n="Username">Username</label><input id="grant-login" required maxlength="64" autocomplete="off">
@@ -52,5 +52,5 @@ export default String.raw`<main><p id="status" role="alert"></p>
       <p class="error" role="alert"></p>
       <div class="dialog-actions"><button type="button" data-close="grant-dialog" class="account-button secondary" data-i18n="Cancel">Cancel</button><button type="submit" class="account-button" data-i18n="Add access">Add access</button></div>
     </form>
-  </dialog>
+  </section>
 </main>`;

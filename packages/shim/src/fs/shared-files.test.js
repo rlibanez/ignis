@@ -6,6 +6,7 @@ function fixture(role='editor',initial={},mountPath='Project',control={}) {
  const id='12345678-1234-1234-1234-123456789abc',folder=mountPath,file=folder+'/note.md';
  const ctx={sessionId:'session',vault:'vault'},cache=new MetadataCache(),failure=vi.fn(),notice=vi.fn(),removed=vi.fn(),watch={_dispatch:vi.fn()},ordinary={readFile:vi.fn(),writeFile:vi.fn(),rename:vi.fn(),readdir:vi.fn(),stat:vi.fn(),mkdir:vi.fn(),unlink:vi.fn(),appendFile:vi.fn()};
  let mountStatus=200,offline=false,loseResponse=false,outgoing=[],content='original',etag=contentHash('original'),revoked=false,sharedId=id,localPath=folder,notePath='note.md';
+ const confirmRemoval=vi.fn(async()=>true);
  const calls=[];
  const serve=body=>{const {operation,input}=JSON.parse(body);calls.push({operation,input});
   if(operation==='mounts')return {status:mountStatus,data:{limits:{maxFileBytes:1000},outgoing,mounts:revoked?[]:[{id:sharedId,localPath,name:'Project',kind:'directory',role,tree:{'':{type:'directory'},[notePath]:{type:'file',size:content.length,mtime:1}}}]}};
@@ -18,9 +19,9 @@ function fixture(role='editor',initial={},mountPath='Project',control={}) {
   if(operation==='read')return {status:200,data:{kind:'file',content:btoa(content),etag}};
   if(operation==='write'){if(input.etag!==etag)return {status:409,data:{code:'SHARE_CONFLICT'}};content=atob(input.content);etag=contentHash(content);return {status:200,data:{etag}};}
  };
- const shared=createSharedFiles({metadataCache:cache,watch,currentContext:()=>ctx,onFailure:failure,onNotice:notice,onRemoved:removed,request:async(url,options)=>{if(offline)throw new Error("Network unavailable");const r=serve(options.body);if(control.wait)await control.wait(JSON.parse(options.body).operation);if(loseResponse && JSON.parse(options.body).operation==='write')throw new Error("Response lost");return {status:r.status,json:async()=>r.data};},createXHR:()=>({open(){},setRequestHeader(){},send(body){const r=serve(body);this.status=r.status;this.responseText=JSON.stringify(r.data);}})});
+ const shared=createSharedFiles({confirmRemoval:control.nativeConfirmation?undefined:confirmRemoval,metadataCache:cache,watch,currentContext:()=>ctx,onFailure:failure,onNotice:notice,onRemoved:removed,request:async(url,options)=>{if(offline)throw new Error("Network unavailable");const r=serve(options.body);if(control.wait)await control.wait(JSON.parse(options.body).operation);if(loseResponse && JSON.parse(options.body).operation==='write')throw new Error("Response lost");return {status:r.status,json:async()=>r.data};},createXHR:()=>({open(){},setRequestHeader(){},send(body){const r=serve(body);this.status=r.status;this.responseText=JSON.stringify(r.data);}})});
  cache.populate(shared.configure(initial));
- return {notice,removed,setLocation:value=>localPath=value,setMountStatus:value=>mountStatus=value,setRole:value=>role=value,setOffline:value=>offline=value,loseResponse:()=>loseResponse=true,setOutgoing:value=>outgoing=value,shared,fs:shared.wrap(ordinary),ordinary,cache,ctx,calls,file,folder,failure,watch,revoke:()=>revoked=true,replace:()=>{sharedId='87654321-1234-1234-1234-123456789abc';},change:()=>{content='remote';etag=contentHash('remote');}};
+ return {confirmRemoval,notice,removed,setLocation:value=>localPath=value,setMountStatus:value=>mountStatus=value,setRole:value=>role=value,setOffline:value=>offline=value,loseResponse:()=>loseResponse=true,setOutgoing:value=>outgoing=value,shared,fs:shared.wrap(ordinary),ordinary,cache,ctx,calls,file,folder,failure,watch,revoke:()=>revoked=true,replace:()=>{sharedId='87654321-1234-1234-1234-123456789abc';},change:()=>{content='remote';etag=contentHash('remote');}};
 }
 it('mounts metadata without ordinary filesystem reads or copies',async()=>{const f=fixture();expect(await f.fs.readdir(f.folder)).toEqual(['note.md']);expect(await f.fs.readFile(f.file,'utf8')).toBe('original');expect(f.ordinary.readFile).not.toHaveBeenCalled();expect(f.calls.at(-1).input).toEqual({id:'12345678-1234-1234-1234-123456789abc',path:'note.md'});});
 it('writes the original with an etag and does not forward into the active vault',async()=>{const f=fixture();await f.fs.readFile(f.file);await f.fs.writeFile(f.file,'edited');expect(await f.fs.readFile(f.file,'utf8')).toBe('edited');expect(f.ordinary.writeFile).not.toHaveBeenCalled();});
@@ -123,26 +124,26 @@ function adapterFixture(f) {
  f.shared.installAdapter({vault:{adapter}});return adapter;
 }
 it('routes Obsidian local trash to confirmed permanent deletion without moving outside the share',async()=>{
- const f=fixture(),adapter=adapterFixture(f);vi.stubGlobal('confirm',vi.fn(()=>true));
- try{await adapter.trashLocal(f.file);expect(globalThis.confirm).toHaveBeenCalledWith(expect.stringContaining('for everyone'));
+ const f=fixture(),adapter=adapterFixture(f);
+ try{await adapter.trashLocal(f.file);expect(f.confirmRemoval).toHaveBeenCalledWith(expect.stringContaining('for everyone'));
  expect(f.calls.find(c=>c.operation==='removeConfirmed').input).toEqual({id:'12345678-1234-1234-1234-123456789abc',path:'note.md',confirm:true,revision:'snapshot'});
  expect(f.ordinary.rename).not.toHaveBeenCalled();expect(adapter.reconcileInternalFile).toHaveBeenCalledWith(f.file);
  }finally{vi.unstubAllGlobals();}
 });
 it('does not delete or reconcile after cancellation',async()=>{
- const f=fixture(),adapter=adapterFixture(f);vi.stubGlobal('confirm',()=>false);
+ const f=fixture(),adapter=adapterFixture(f);f.confirmRemoval.mockResolvedValue(false);
  try{await expect(adapter.trashSystem(f.file)).rejects.toMatchObject({code:'ECANCELED'});
  expect(f.calls.some(c=>c.operation==='removeConfirmed')).toBe(false);expect(adapter.reconcileInternalFile).not.toHaveBeenCalled();
  }finally{vi.unstubAllGlobals();}
 });
 it.each(['reader','editor'])('protects received roots from adapter deletion (%s)',async role=>{
- const f=fixture(role),adapter=adapterFixture(f);vi.stubGlobal('confirm',vi.fn(()=>true));
- try{await expect(adapter.rmdir(f.folder,true)).rejects.toMatchObject({code:'EACCES'});expect(globalThis.confirm).not.toHaveBeenCalled();
+ const f=fixture(role),adapter=adapterFixture(f);
+ try{await expect(adapter.rmdir(f.folder,true)).rejects.toMatchObject({code:'EACCES'});expect(f.confirmRemoval).not.toHaveBeenCalled();
  if(role==='reader')await expect(adapter.remove(f.file)).rejects.toMatchObject({code:'EACCES'});
  }finally{vi.unstubAllGlobals();}
 });
 it('keeps ordinary trash behavior and refuses deletion after a context change during confirmation',async()=>{
- const f=fixture(),adapter=adapterFixture(f);vi.stubGlobal('confirm',()=>{f.ctx.sessionId='changed';return true;});
+ const f=fixture(),adapter=adapterFixture(f);f.confirmRemoval.mockImplementation(async()=>{f.ctx.sessionId='changed';return true;});
  try{await adapter.trashLocal('local.md');expect(f.calls.some(c=>c.operation==='previewRemoval')).toBe(false);
  await expect(adapter.trashLocal(f.file)).rejects.toMatchObject({code:'AUTH_CONTEXT_CHANGED'});expect(f.calls.some(c=>c.operation==='removeConfirmed')).toBe(false);
  }finally{vi.unstubAllGlobals();}
@@ -241,4 +242,30 @@ it('does not apply an old rename acknowledgement to new mount metadata',async()=
 
 it('does not expose mount descriptions after its session changes before teardown',()=>{
  const f=fixture();expect(f.shared.describe(f.file)).toBeTruthy();f.ctx.sessionId='other';expect(f.shared.describe(f.file)).toBe(null);f.shared.stop();
+});
+
+it('does not delete after the session changes while the asynchronous confirmation is open',async()=>{
+ const f=fixture(),adapter=adapterFixture(f);let accept;
+ f.confirmRemoval.mockImplementation(()=>new Promise(resolve=>{accept=resolve;}));
+ try{
+  const pending=adapter.trashLocal(f.file);await vi.waitFor(()=>expect(accept).toBeTypeOf('function'));
+  f.ctx.sessionId='another-session';accept(true);
+  await expect(pending).rejects.toMatchObject({code:'AUTH_CONTEXT_CHANGED'});
+  expect(f.calls.some(call=>call.operation==='removeConfirmed')).toBe(false);
+ }finally{vi.unstubAllGlobals();}
+});
+
+it('fails closed without a native confirmation host instead of invoking a browser confirm',async()=>{
+ const f=fixture('editor',{},'Project',{nativeConfirmation:true}),adapter=adapterFixture(f);vi.stubGlobal('window',{});vi.stubGlobal('confirm',vi.fn(()=>true));
+ try{await expect(adapter.trashLocal(f.file)).rejects.toMatchObject({code:'ECANCELED'});expect(globalThis.confirm).not.toHaveBeenCalled();expect(f.calls.some(call=>call.operation==='removeConfirmed')).toBe(false);}finally{vi.unstubAllGlobals();}
+});
+
+it('preserves recovery if an unconfirmed save appears while the native confirmation is open',async()=>{
+ const f=fixture(),adapter=adapterFixture(f);let accept;await f.fs.readFile(f.file);
+ f.confirmRemoval.mockImplementation(()=>new Promise(resolve=>{accept=resolve;}));
+ try{
+  const pending=adapter.trashLocal(f.file);await vi.waitFor(()=>expect(accept).toBeTypeOf('function'));
+  f.setOffline(true);await expect(f.fs.writeFile(f.file,'pending draft')).rejects.toThrow('connection temporarily unavailable');f.setOffline(false);accept(true);
+  await expect(pending).rejects.toMatchObject({code:'SHARE_CONFLICT'});expect(f.calls.some(call=>call.operation==='removeConfirmed')).toBe(false);
+ }finally{vi.unstubAllGlobals();}
 });

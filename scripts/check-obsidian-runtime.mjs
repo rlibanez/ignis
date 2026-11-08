@@ -1,3 +1,4 @@
+import {uiIsolation} from "./lib/ui-isolation.mjs";
 // Opt-in real Obsidian E2E. Never writes to or distributes the supplied assets.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';import os from 'node:os';import path from 'node:path';
@@ -22,7 +23,7 @@ try{
  db=openDatabase(path.join(root,'data'));const password='synthetic e2e password!',hash=await hashPassword(password);
  require('../apps/ignis-server/server/features/identity/adapters/store').bootstrapAdmin(db,'owner',hash);
  db.prepare("INSERT INTO users(id,login,role,created_at) VALUES ('receiver','receiver','user',0)").run();db.prepare('INSERT INTO local_credentials VALUES (?,?,0)').run('receiver',hash);
- if((process.argv.includes('--management-parity')||process.argv.includes('--management-notices')||process.argv.includes('--vault-transfers'))){db.prepare("INSERT INTO users(id,login,role,created_at) VALUES ('empty','empty',?,0)").run(process.argv.includes('--vault-transfers')?'user':'admin');db.prepare('INSERT INTO local_credentials VALUES (?,?,0)').run('empty',hash);}
+ if((process.argv.includes('--ui-isolation')||process.argv.includes('--management-parity')||process.argv.includes('--management-notices')||process.argv.includes('--vault-transfers'))){db.prepare("INSERT INTO users(id,login,role,created_at) VALUES ('empty','empty',?,0)").run(process.argv.includes('--vault-transfers')?'user':'admin');db.prepare('INSERT INTO local_credentials VALUES (?,?,0)').run('empty',hash);}
  const ownerId=db.prepare("SELECT id FROM users WHERE login='owner'").get().id;
  const owner=createRegisteredVault(db,vaultRoot,ownerId,'Owner',{isCurrent:()=>true}),receiver=createRegisteredVault(db,vaultRoot,'receiver','Receiver',{isCurrent:()=>true});
  fs.writeFileSync(path.join(vaultRoot,'owner/Owner','Shared.md'),'# Shared\ninitial\n');
@@ -52,6 +53,16 @@ try{
   assert.equal(await client.run(`Object.keys(app.commands.commands).some(id=>id.endsWith(':refresh-vault-from-disk'))`),true,'refresh command available to ordinary owners');
   assert.equal(await client.run(`(async()=>{const fs=require('fs').promises;for(const name of ['My Work','Work.v2']){const file=app.vault.adapter.getBasePath()+'/.obsidian/workspace.'+name+'.json';await fs.writeFile(file,'{"main":{}}');if(await fs.readFile(file,'utf8')!=='{"main":{}}')return false;}return true;})()`),true,'workspace names with spaces and dots persist');
  }
+ // The real file-menu path must use the same form category and mobile order.
+ await alice.run(`{const menu=new (require('obsidian').Menu)();app.workspace.trigger('file-menu',menu,app.vault.getAbstractFileByPath('Shared.md'));menu.showAtPosition({x:20,y:20});void 0;}`);
+ await alice.run(`[...document.querySelectorAll('.menu-item')].find(item=>item.textContent.trim()==='Copy to…').click()`);
+ await alice.wait(`!!document.querySelector('.ignis-copy-actions')`,'native copy form');
+ await alice.run(`Promise.allSettled(document.getAnimations().map(animation=>animation.finished))`);
+ const copyLayout=await alice.run(`(()=>{const actions=document.querySelector('.ignis-copy-actions'),modal=actions.closest('.modal'),runtime=window.__ignisUiRuntime,r=modal.getBoundingClientRect(),buttons=[...actions.querySelectorAll('button')];return {width:r.width,top:r.top,native:[...modal.querySelectorAll('input,select,button')].filter(el=>!el.matches('.modal-close-button,.modal-header-button')).every(el=>runtime.componentFor(el) instanceof runtime[el.dataset.uiComponent]),primary:buttons[1].getBoundingClientRect().top,cancel:buttons[0].getBoundingClientRect().top};})()`);
+ assert.equal(copyLayout.native,true,'Copy to uses actual native controls');
+ if(process.argv.includes('--mobile')){assert.ok(copyLayout.top<=2,'copy modal starts at the safe-area top');assert.ok(copyLayout.primary<copyLayout.cancel,'Copy here precedes Cancel');}else assert.ok(copyLayout.width<=400,'copy uses the shared native form width');
+ await alice.run(`document.querySelector('.ignis-copy-actions').closest('.modal').querySelector('.modal-close-button,.modal-header-button:not(.mod-start)').click()`);
+ await alice.wait(`!document.querySelector('.ignis-copy-actions')`,'copy form dismissed');
  await bob.wait(`!!window.__ignis?.sharedFiles?.downloadUrl('Shared.md')`,'shared download URL');
  assert.equal(await bob.run(`(async()=>{const response=await fetch(window.__ignis.sharedFiles.downloadUrl('Shared.md'));return response.ok && (await response.text())==='# Shared\\ninitial\\n';})()`),true,'received file downloads through its authorized sharing endpoint');
  await bob.wait(`!!window.__ignis?.sharedFiles?.downloadUrl('DownloadFolder',true)`,'shared folder download URL');
@@ -104,6 +115,13 @@ try{
  const restoredUntil=Date.now()+10000;while(Date.now()<restoredUntil&&!fs.readFileSync(path.join(vaultRoot,'owner/Owner','Shared.md'),'utf8').includes('confirmed after restoring write'))await new Promise(r=>setTimeout(r,100));
  assert.equal(fs.readFileSync(path.join(vaultRoot,'owner/Owner','Shared.md'),'utf8'),'confirmed after restoring write');
  await grant(null);await bob.wait(`require('fs')._sharedFiles.describe('Shared.md')===null`,'live revocation');
+ // A direct sidebar confirmation must not abort its own revoke request on close.
+ const directResource=await alice.run(`(async()=>{const catalog=await(await fetch('/api/shares')).json(),resource=catalog.resources.find(item=>item.name==='Shared.md'&&item.owned);window.__ignisOpenResourceSharing({initialResource:{id:resource.id,session:window.__ignisAuth.sessionId,action:'revoke'}});return resource.id;})()`);
+ await alice.wait(`!!document.querySelector('.ui-dialog.ignis-confirm[open]')`,'direct stop-sharing confirmation');
+ await alice.run(`document.querySelector('.ui-dialog.ignis-confirm[open] .danger').click()`);
+ await alice.wait(`!document.querySelector('.ignis-management-root')`,'direct action finished and disposed');
+ assert.equal(await alice.run(`(async()=>!(await(await fetch('/api/shares')).json()).resources.some(item=>item.id===${JSON.stringify(directResource)}))()`),true,'confirmed direct action reaches the real sharing API');
+
  const denied=await bob.run(`(async()=>{const session=await(await fetch('/api/auth/session')).json(),csrf=await(await fetch('/api/auth/csrf')).json();return (await fetch('/api/shares',{method:'POST',headers:{'Content-Type':'application/json','X-Ignis-Context':session.sessionId,'X-Ignis-Csrf':csrf.csrfToken},body:JSON.stringify({operation:'read',input:{id:${JSON.stringify(resource.id)},path:''}})})).status;})()`);assert.equal(denied,404);
 
  if(process.argv.includes('--vault-transfers')){const shell=await login('empty');await vaultBatchUi({native:alice,shell});await vaultImportUi({native:alice,shell});}
@@ -118,9 +136,28 @@ try{
  assert.ok(historyEntries.currentIndex>0,'browser history has a previous entry');
  await alice.call('Page.navigateToHistoryEntry',{entryId:historyEntries.entries[historyEntries.currentIndex-1].id});
  await alice.wait(`!document.querySelector('#administration') && !!app.workspace`,'browser back closes management without leaving the vault');
+ if(process.argv.includes('--terminal-ui')){
+  const changed=await alice.run(`(async()=>{const session=await(await fetch('/api/auth/session')).json(),csrf=await(await fetch('/api/auth/csrf')).json(),catalog=await(await fetch('/api/shares')).json(),resource=catalog.resources.find(item=>item.name==='DownloadFolder');const result=await fetch('/api/shares',{method:'POST',headers:{'Content-Type':'application/json','X-Ignis-Context':session.sessionId,'X-Ignis-Csrf':csrf.csrfToken},body:JSON.stringify({operation:'grants',input:{id:resource.id,revision:resource.revision,changes:[{login:'receiver',role:'editor'}]}})});return result.ok;})()`);assert.equal(changed,true);
+  await bob.wait(`require('fs')._sharedFiles.describe('DownloadFolder/Note.md')?.role==='editor'`,'received folder write permission');
+  const begin=()=>bob.run(`{window.removalResult=null;app.vault.adapter.trashLocal('DownloadFolder/Note.md').then(()=>{removalResult='done';},error=>{removalResult=error.code;});void 0;}`);
+  await begin();await bob.wait(`[...document.querySelectorAll('.modal-title')].some(el=>el.textContent==='Delete shared content')`,'native deletion confirmation');
+  assert.equal(await bob.run(`(()=>{const modal=[...document.querySelectorAll('.modal')].find(el=>el.querySelector('.modal-title')?.textContent==='Delete shared content'),runtime=__ignisUiRuntime;return [...modal.querySelectorAll('.ignis-ui-actions button')].every(el=>runtime.componentFor(el) instanceof runtime.ButtonComponent);})()`),true);
+  await bob.run(`document.querySelector('.ignis-ui-actions button:not(.mod-warning)').click()`);await bob.wait(`removalResult==='ECANCELED'`,'cancelled received deletion');assert.equal(fs.existsSync(path.join(vaultRoot,'owner/Owner/DownloadFolder/Note.md')),true);
+  await begin();await bob.wait(`!!document.querySelector('.ignis-ui-actions .mod-warning')`,'second deletion confirmation');await bob.run(`document.querySelector('.ignis-ui-actions .mod-warning').click()`);await bob.wait(`removalResult==='done'`,'confirmed original deletion');assert.equal(fs.existsSync(path.join(vaultRoot,'owner/Owner/DownloadFolder/Note.md')),false);
+  for(const client of [alice,bob]){
+   await client.run(`document.body.style.setProperty('--interactive-accent','rgb(11, 22, 33)');__ignisAuth.lock()`);
+   await client.wait(`!!document.querySelector('.ignis-lock-panel') && !!document.querySelector('#ignis-entry-css')?.sheet`,'real editor terminal view');
+   assert.equal(await client.run(`getComputedStyle(document.querySelector('.lock-actions a')).backgroundColor`),'rgb(11, 22, 33)','active theme survives terminal rendering');
+   assert.equal(await client.run(`!!document.querySelector('#ignis-lock-native-css')`),false,'native CSS is not appended over the active theme');
+   assert.equal(await client.run(`!!document.querySelector('.workspace')`),false);
+   assert.equal(await client.run(`fetch('/api/fs/writeFile',{method:'POST'}).then(()=>false,()=>true)`),true);
+  }
+  console.log(JSON.stringify({terminalRuntime:'passed',mobile:process.argv.includes('--mobile'),checks:['native shared deletion confirmation','cancel preserves original','explicit confirmation deletes original','real editor lock','theme preserved','writes remain blocked']}));
+ }
+ if(process.argv.includes('--ui-isolation'))await uiIsolation([alice,await login('empty')]);
  if((process.argv.includes('--management-parity')||process.argv.includes('--management-notices')))await managementParity({native:alice,shell:await login('empty'),origin,vault:owner.id,mobile:process.argv.includes('--mobile'),noticesOnly:process.argv.includes('--management-notices')});
  if(process.argv.includes('--vault-transfers')||process.argv.includes('--vault-ownership')){await vaultOwnershipUi({owner:alice,member:bob,vault:owner,origin});assert.equal(fs.readFileSync(path.join(vaultRoot,'receiver/Owner/Shared.md'),'utf8'),'saved after ownership transfer');}
- console.log(JSON.stringify({status:'passed',runtime:'1.14.4',mobile:process.argv.includes('--mobile'),checks:['upstream commands and workspace names','authorized shared file and ZIP downloads','two isolated accounts','real workspace and editor','recipient save reaches original bytes','native management host and browser back','single PWA manifest with Android reception','no stale Obsidian probes','read-only edit denied','live read/write restoration in same editor','live revocation']}));
+ console.log(JSON.stringify({status:'passed',runtime:'1.14.4',mobile:process.argv.includes('--mobile'),checks:['upstream commands and workspace names','authorized shared file and ZIP downloads','two isolated accounts','real workspace and editor','recipient save reaches original bytes','native management host and browser back','single PWA manifest with Android reception','no stale Obsidian probes','read-only edit denied','live read/write restoration in same editor','live revocation','direct resource confirmation reaches server']}));
 }finally{
  for(const client of clients)await client.close();db?.close();if(child){child.kill('SIGTERM');await Promise.race([new Promise(r=>child.once('exit',r)),new Promise(r=>setTimeout(r,3000))]);if(child.exitCode===null)child.kill('SIGKILL');}fs.rmSync(root,{recursive:true,force:true});
 }

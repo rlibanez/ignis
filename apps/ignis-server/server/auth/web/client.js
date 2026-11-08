@@ -54,6 +54,27 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       !url.pathname.startsWith("/api/auth/")
     );
   }
+  function installBoundaryStyles() {
+    const stylesheet = (id, href) => {
+      if (document.getElementById(id)) return;
+      const link = document.createElement("link");link.id = id;link.rel = "stylesheet";link.href = href;document.head.append(link);
+    };
+    // Do not append base CSS over an active vault theme when it is already loaded.
+    if (!window.getComputedStyle?.(document.body).getPropertyValue("--font-interface").trim()) stylesheet("ignis-lock-native-css", "/auth/native.css");
+    stylesheet("ignis-entry-css", "/auth/entry.css");
+  }
+  function boundaryMessage(message) {
+    if (blocked) return; // A late response must not add UI over the terminal lock.
+    if (window.__ignisUiRuntime?.showNotice) return window.__ignisUiRuntime.showNotice(message);
+    if (window.IgnisUI?.showManagementMessage) return window.IgnisUI.showManagementMessage(message);
+    installBoundaryStyles();
+    document.getElementById("ignis-boundary-notice")?.remove();
+    const layer=document.createElement("div");layer.id="ignis-boundary-notice";layer.className="notice-container ignis-boundary-notices";
+    const notice=document.createElement("div");notice.className="notice";notice.setAttribute("role","alert");
+    const text=document.createElement("p");text.textContent=message;
+    const close=document.createElement("button");close.type="button";close.textContent=translateIgnis("Close");close.onclick=()=>layer.remove();
+    notice.append(text,close);layer.append(notice);document.body.append(layer);
+  }
   function lock(
     message = translateIgnis("Your session has ended or changed. Sign in again to continue."),
     vaultLost = false,
@@ -80,21 +101,29 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     for (const xhr of xhrs) xhr.abort();
     document.body.replaceChildren();
     document.body.style.visibility = "visible";
+    // This is a terminal security screen: never depend on a live editor runtime.
+    // Reuse the independent entry shell, preserving the theme already selected.
+    document.body.classList.add("ignis-entry", "ignis-lock-screen");
+    if (!document.body.classList.contains("theme-dark") && !document.body.classList.contains("theme-light")) {
+      document.body.classList.add(window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "theme-dark" : "theme-light");
+    }
+    if (window.innerWidth < 600 || window.matchMedia?.("(pointer: coarse)").matches) document.body.classList.add("is-mobile", "is-phone");
+    installBoundaryStyles();
     const panel = document.createElement("main");
-    panel.style.cssText =
-      "max-width:32rem;margin:3rem auto;padding:2rem;font:16px system-ui";
+    panel.className = "ignis-lock-panel";
+    panel.setAttribute("aria-labelledby", "ignis-lock-title");
+    panel.setAttribute("tabindex", "-1");
     const heading = document.createElement("h1");
+    heading.id = "ignis-lock-title";
     heading.textContent = vaultLost ? translateIgnis("Vault unavailable") : translateIgnis("Session locked");
     const text = document.createElement("p");
     text.textContent = message;
     const link = document.createElement("a");
     link.href = vaultLost ? "/?manager=1" : "/login";
     link.textContent = vaultLost ? translateIgnis("Open Vault Manager") : translateIgnis("Sign in");
-    const actionStyle =
-      "box-sizing:border-box;display:flex;align-items:center;justify-content:center;width:100%;height:auto;min-height:2.75rem;padding:0.625rem 1rem;border:1px solid var(--background-modifier-border,#555);border-radius:6px;background:var(--interactive-normal,#333);color:var(--text-normal,#eee);font:inherit;font-weight:600;text-align:center;text-decoration:none;white-space:normal;cursor:pointer;box-shadow:none";
-    link.style.cssText = actionStyle;
+    link.className = "account-button mod-cta";
     const actions = document.createElement("div");
-    actions.style.cssText = "display:flex;flex-direction:column;gap:0.75rem;margin-top:1.5rem";
+    actions.className = "lock-actions";
     panel.append(heading, text);
     if (snapshot.length) {
       const warning = document.createElement("p");
@@ -102,7 +131,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
         translateIgnis("Some writes were not confirmed. Download them before leaving this page; they will not be sent under a different session.");
       const save = document.createElement("button");
       save.textContent = translateIgnis("Download unconfirmed writes");
-      save.style.cssText = actionStyle;
+      save.type = "button";
       save.onclick = () => {
         const url = URL.createObjectURL(
           new Blob([JSON.stringify(snapshot, null, 2)], {
@@ -121,6 +150,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     actions.append(link);
     panel.append(actions);
     document.body.append(panel);
+    panel.focus();
   }
   function vaultUnavailable() {
     if(renaming){renaming.unavailable=true;return;}
@@ -356,7 +386,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   async function logout() {
     const unsaved = window.__ignis?.writes?.snapshotPending?.() || [];
     if (unsaved.length) {
-      window.alert(
+      boundaryMessage(
         translateIgnis("Some writes are not confirmed. Wait for saving to finish or resolve failed writes before signing out."),
       );
       return;
@@ -379,7 +409,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       lock(translateIgnis("You have signed out."));
       location.replace("/login");
     } catch {
-      window.alert(translateIgnis("Unable to sign out. Please try again."));
+      boundaryMessage(translateIgnis("Unable to sign out. Please try again."));
     }
   }
   const ready = (async () => {

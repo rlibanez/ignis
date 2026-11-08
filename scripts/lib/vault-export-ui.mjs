@@ -9,12 +9,15 @@ export async function vaultExportUi(client,vault,{native,file=native?'Note.md':'
   await client.call('Browser.setDownloadBehavior',{behavior:'allow',downloadPath:directory});
   if(!existed)await client.run(`IgnisUI.showVaultManager()`);
   await client.wait(`Array.from(document.querySelectorAll('.vault-manager-overlay .list-item')).some(el=>el.innerText.includes(${JSON.stringify(vault.name)}))`,'export vault listed');
+  assert.equal(await client.run(`!!document.querySelector('.vault-manager-overlay .modal-shell') && !document.querySelector('.vault-manager-overlay .modal.ignis-ui-form')`),true,'original vault manager shell is preserved');
   await client.run(`Array.from(document.querySelectorAll('.vault-manager-overlay .list-item')).find(el=>el.innerText.includes(${JSON.stringify(vault.name)})).querySelector('.popover-trigger').click()`);
   await client.run(`Array.from(document.querySelectorAll('.popover-item')).find(el=>el.textContent.trim()==='Export vault').click()`);
   await client.wait(`!!document.querySelector('.ignis-export-options')`,'export dialog');
+  await client.run(`Promise.allSettled(document.getAnimations().map(animation=>animation.finished))`);
   const layout=await client.run(`(()=>{const root=document.querySelector('.ignis-export-options').closest('.modal'),r=root.getBoundingClientRect(),buttons=[...root.querySelectorAll('.modal-button-container button')].map(b=>{const r=b.getBoundingClientRect();return {text:b.textContent,y:r.y,width:r.width};});return {width:r.width,left:r.left,top:r.top,overflow:root.scrollWidth>root.clientWidth+1,buttons};})()`);
+  assert.equal(await client.run(`(()=>{const root=document.querySelector('.ignis-export-options').closest('.modal'),button=root.querySelector('.mod-cta'),r=button.getBoundingClientRect();return document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.closest('.modal')===root;})()`),true,'our export actions remain above the original manager');
   assert.equal(layout.overflow,false);assert.ok(layout.left>=0&&layout.top>=0);
-  if(process.argv.includes('--mobile')){assert.ok(layout.buttons[1].y<layout.buttons[0].y,'mobile action precedes cancel');assert.ok(layout.buttons.every(b=>b.width>300),'mobile full width');}
+  if(process.argv.includes('--mobile')){assert.ok(layout.top<=2,'export sheet starts at the mobile safe-area top: '+JSON.stringify({native,layout}));assert.ok(layout.buttons[1].y<layout.buttons[0].y,'mobile action precedes cancel');assert.ok(layout.buttons.every(b=>b.width>300),'mobile full width');}
   else assert.ok(layout.width<=500,'native form width');
   const {data}=await client.call('Page.captureScreenshot',{format:'png'});fs.writeFileSync('/tmp/ignis-export-'+(native?'native':'shell')+'-'+(process.argv.includes('--mobile')?'mobile':'desktop')+'.png',Buffer.from(data,'base64'));
   await client.run(`{const root=document.querySelector('.ignis-export-options').closest('.modal');root.querySelector('input[type=checkbox]').checked=true;root.querySelector('.mod-cta').click();}`);

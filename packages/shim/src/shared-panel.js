@@ -1,3 +1,4 @@
+import {createUiElement} from "../../management/src/ui-controls.js";
 import {resourceActionStyles} from "../../management/src/resource-action-style.js";
 import {nativeTooltip} from './native-tooltip.js';
 
@@ -86,7 +87,7 @@ export function createSharedUnread(read, write) {
 export function installSharedPanel(obsidian, app, sharedFiles, host = window) {
   const type = "ignis-shared-resources";
   const api = createSharedPanelApi(() => host.__ignisAuth?.blocked ? null : host.__ignisAuth?.sessionId);
-  const element = (tag, text) => {const el=host.document.createElement(tag);if(text!==undefined)el.textContent=text;return el;};
+  const element = (tag, text) => {const el=createUiElement(host.document,tag);if(text!==undefined)el.textContent=text;return el;};
   let stopped = false;
   const storageKey = "ignis-shared-seen:" + host.__ignisAuth?.userId;
   const unread = createSharedUnread(() => host.localStorage.getItem(storageKey), value => host.localStorage.setItem(storageKey, value));

@@ -1,3 +1,5 @@
+import {showManagementNotice} from "../../management/src/ui-notice.js";
+import {createUiElement,uiRuntime} from "../../management/src/ui-controls.js";
 import {X, Eye, EyeOff, User, ArrowLeft} from 'lucide-svelte';
 import settingsShellStyles from './settings-shell.css';
 import {createManagementModal} from '../../management/src/management-modal.js';
@@ -9,7 +11,7 @@ const t=text=>globalThis.IgnisI18n?.t(text) ?? text;
 // Small DOM host for the same account forms/controllers when no Obsidian vault
 // exists. No fake app, Obsidian module or global DOM prototype patches.
 function element(tag,options={}) {
-  const el=document.createElement(tag);
+  const el=createUiElement(document,tag,options);
   if(options.cls)el.className=options.cls;
   if(options.text!==undefined)el.textContent=options.text;
   for(const key of ['type'])if(options[key])el[key]=options[key];
@@ -31,7 +33,7 @@ export class BrowserModal {
   constructor(){
     if(!window.app?.workspace)document.body.classList.add('styled-scrollbars');
     this.containerEl=element('div',{cls:'modal-container ignis-shell-modal'});
-    // The Svelte vault manager is at 99999; preserve native layer ordering above it.
+    // Keep our windows above the original vault manager without changing its layer.
     this.containerEl.style.cssText='position:fixed;inset:0;z-index:calc(100000 + var(--layer-modal,50));display:flex;align-items:center;justify-content:center';
     const backdrop=this.containerEl.createDiv({cls:'modal-bg'});
     backdrop.style.cssText='position:absolute;inset:0';
@@ -55,22 +57,22 @@ export class BrowserModal {
       const rect=button.getBoundingClientRect();
       this.tooltip.style.cssText=`position:fixed;z-index:calc(100000 + var(--layer-tooltip,70));transform:none;margin:0;max-height:calc(100dvh - 16px);overflow:auto;max-width:min(320px,calc(100vw - 16px));white-space:normal;left:${Math.max(8,Math.min(rect.left,window.innerWidth-328))}px;top:${rect.bottom+8}px`;
       // A dialog is in the browser top layer: help must belong to that layer too.
-      (button.closest('dialog[open]') || this.containerEl).append(this.tooltip);
+      (button.closest('.ui-dialog[open]') || this.containerEl).append(this.tooltip);
       const height=this.tooltip.getBoundingClientRect().height;
       const top=rect.bottom+8+height>window.innerHeight-8?rect.top-height-8:rect.bottom+8;
       this.tooltip.style.top=`${Math.max(8,Math.min(top,window.innerHeight-height-8))}px`;
     });
     this.containerEl.addEventListener('pointerout',hideHelp);
-    this.lost=()=>this.close();
+    this.lost=()=>{if(this.forceClose)this.forceClose();else this.close();};
     this.keydown=event=>{
-      if([...document.querySelectorAll('.ignis-shell-modal')].at(-1)!==this.containerEl || this.containerEl.querySelector('dialog[open]'))return;
+      if([...document.querySelectorAll('.modal-container')].filter(el=>!el.hidden && el.getClientRects().length).at(-1)!==this.containerEl || this.containerEl.querySelector('.ui-dialog[open]'))return;
       if(event.key==='Tab'){
         const fields=[...this.containerEl.querySelectorAll('button,input,select,textarea,a[href],[tabindex]')].filter(el=>!el.disabled && el.tabIndex>=0 && el.getClientRects().length);
         const first=fields[0],last=fields.at(-1);
         if(event.shiftKey && document.activeElement===first){event.preventDefault();last?.focus();}
         else if(!event.shiftKey && document.activeElement===last){event.preventDefault();first?.focus();}
       }
-      if(event.key==='Escape' && [...document.querySelectorAll('.ignis-shell-modal')].at(-1)===this.containerEl && !this.containerEl.querySelector('dialog[open]')){event.preventDefault();this.close();}
+      if(event.key==='Escape' && [...document.querySelectorAll('.ignis-shell-modal')].at(-1)===this.containerEl && !this.containerEl.querySelector('.ui-dialog[open]')){event.preventDefault();this.close();}
     };
   }
   setTitle(title){this.titleEl.textContent=title;}
@@ -95,6 +97,7 @@ export class BrowserModal {
 let sequence=0;
 class Notice {
   constructor(message){
+    const runtime=uiRuntime();if(runtime)return showManagementNotice(runtime.Notice,message);
     let container=document.querySelector('.ignis-shell-notices');
     if(!container){container=element('div',{cls:'notice-container ignis-shell-notices'});container.style.zIndex='calc(100000 + var(--layer-notice,60))';document.body.append(container);}
     const el=container.createDiv({cls:'notice',attr:{role:'alert'}});
@@ -187,11 +190,13 @@ export function openAccount(kind='account') {
 export function openRequestedManagement(){consumeManagementIntent(window,openAccount);}
 
 const ExportModal=createExportModal(BrowserModal,Notice);
-export function openVaultExport(vault){new ExportModal(null,vault).open();}
+export function openVaultExport(vault){const runtime=uiRuntime();const Type=runtime?createExportModal(runtime.Modal,runtime.Notice):ExportModal;new Type(runtime?.app || null,vault).open();}
 
 const ImportModal=createImportModal(BrowserModal,Notice);
 export function openVaultImport(){
  const sessionId=window.__ignisAuth?.sessionId;
  if(!sessionId||window.__ignisAuth?.blocked){new Notice(t('Session unavailable'));return;}
- if(!document.querySelector('.ignis-import-wizard'))new ImportModal(null,{sessionId}).open();
+ if(!document.querySelector('.ignis-import-wizard')){const runtime=uiRuntime();const Type=runtime?createImportModal(runtime.Modal,runtime.Notice):ImportModal;new Type(runtime?.app || null,{sessionId}).open();}
 }
+
+export function showManagementMessage(message){return new Notice(message);}

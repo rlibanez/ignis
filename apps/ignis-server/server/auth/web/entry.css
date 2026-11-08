@@ -1,0 +1,78 @@
+/* Layout only. Typography, controls, colors and theme tokens come from app.css. */
+html:has(> body.ignis-entry) { overflow-x:hidden; overflow-y:auto; height:auto; min-height:100%; contain:none; touch-action:auto; }
+body.ignis-entry {
+  position: static; display: block; overflow: visible; contain: none; height: auto; min-height: 100dvh;
+  margin: 0; box-sizing: border-box;
+  padding: max(24px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  background: var(--background-secondary, #202020); color: var(--text-normal, #dadada);
+  font-family: var(--font-interface, system-ui, sans-serif); font-size: var(--font-ui-medium, 16px);
+  line-height: var(--line-height-normal, 1.5); user-select: text;
+}
+.ignis-entry *, .ignis-entry *::before, .ignis-entry *::after { box-sizing: border-box; }
+.ignis-entry main {
+  width: min(400px, 100%); margin: 32px auto; padding: 24px;
+  background: var(--background-primary); border: 1px solid var(--background-modifier-border);
+  border-radius: var(--modal-radius, 12px); box-shadow: var(--shadow-l);
+}
+.ignis-entry.ignis-access-entry main { width: min(400px, 100%); }
+.ignis-entry main :is(p,h1,h2,label,pre) { font-family: var(--font-interface); }
+.ignis-entry .brand { margin: 0 0 8px; color: var(--text-muted); font-size: var(--font-ui-small, 13px); font-weight: var(--font-semibold, 600); letter-spacing: .12em; }
+.ignis-entry h1, .ignis-entry h2 { margin: 0 0 24px; color: var(--text-normal); font-size: var(--font-ui-large, 18px); font-weight: var(--font-semibold, 600); line-height: 1.4; overflow-wrap: anywhere; }
+.ignis-entry p { line-height: var(--line-height-normal, 1.5); overflow-wrap: anywhere; }
+.ignis-entry label { display: block; margin: 20px 0 8px; font-weight: var(--font-normal, 400); }
+.ignis-entry input:not([type=checkbox]):not([type=hidden]), .ignis-entry select, .ignis-entry textarea { width: 100%; max-width: 100%; min-width: 0; }
+.ignis-entry button, .ignis-entry .account-button { font-size: var(--font-ui-small, 14px); }
+.ignis-entry form > button, .ignis-entry .login-submit > button, .ignis-entry .login-actions > button { width: 100%; margin-top: 24px; }
+.ignis-entry .login-actions { display: grid; gap: 12px; }
+.ignis-entry .login-actions:has(> :not([hidden])) { margin-top: 12px; }
+.ignis-entry .login-actions button { margin: 0; }
+.ignis-entry .remember-choice { display: flex; align-items: center; gap: 8px; font-size: var(--font-ui-small, 14px); }
+.ignis-entry .remember-choice input { flex: none; margin: 0; }
+.ignis-entry .help { color: var(--text-muted); font-size: var(--font-ui-small, 13px); }
+.ignis-entry [hidden], .ignis-entry #status:empty { display: none !important; }
+.ignis-entry :is(.form-error,.field-error,#status.auth-error,#resource-error):not(:empty) { color: var(--text-error); }
+.ignis-entry input[aria-invalid=true] { border-color: var(--text-error); }
+.ignis-entry .password-control { position: relative; }
+.ignis-entry .password-control input { padding-inline-end: 44px; }
+.ignis-entry .password-toggle { position: absolute; inset-inline-end: 2px; top: 50%; transform: translateY(-50%); width: 32px; height: 32px; padding: 6px; margin: 0; display: grid; place-items: center; background: transparent; color: var(--text-muted); border: 0; box-shadow: none; }
+.ignis-entry .password-toggle:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.ignis-entry .password-toggle svg { width: 18px; height: 18px; }
+.ignis-entry input.masked-text { -webkit-text-security: disc; }
+.ignis-entry .setup-field-heading { position: relative; display: flex; align-items: center; gap: 8px; margin: 20px 0 8px; }
+.ignis-entry .setup-field-heading label { margin: 0; }
+.ignis-entry .setup-field-help { display: inline-flex; }
+.ignis-entry .setup-help-toggle { display: grid; place-items: center; width: 22px; height: 22px; min-height: 0; padding: 0; margin: 0; border-radius: 50%; background: var(--background-modifier-hover); color: var(--text-muted); box-shadow: none; }
+.ignis-entry .setup-help-tooltip { position: absolute; z-index: 10; top: calc(100% + 8px); inset-inline-start: 0; width: 100%; padding: 8px 12px; border-radius: var(--radius-m, 8px); background: var(--background-modifier-message); color: var(--text-on-accent); box-shadow: var(--shadow-s); font-size: var(--font-ui-small, 13px); }
+.ignis-entry .login-submit { position: relative; }
+.ignis-entry #login-error { position: absolute; bottom: calc(100% - 16px); inset-inline-start: 0; z-index: 10; max-width: 100%; margin: 0; padding: 8px 12px; border-radius: var(--radius-s, 4px); background: var(--background-secondary); border: 1px solid var(--text-error); color: var(--text-error); box-shadow: var(--shadow-s); font-size: var(--font-ui-small, 13px); }
+.ignis-entry .account-button { display: flex; align-items: center; justify-content: center; text-decoration: none; }
+.ignis-entry a.account-button { margin-top: 12px; min-height: var(--input-height, 30px); border-radius: var(--button-radius, 5px); background: var(--interactive-normal); color: var(--text-normal); box-shadow: var(--input-shadow); }
+.ignis-entry .ignis-language { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 24px; color: var(--text-muted); font-size: var(--font-ui-small, 13px); }
+.ignis-entry .ignis-language select { width: auto; max-width: 60%; }
+.ignis-entry dialog { width: min(400px, calc(100% - 32px)); max-height: calc(100dvh - 48px); overflow: auto; padding: 24px; border: 1px solid var(--background-modifier-border); border-radius: var(--modal-radius, 12px); background: var(--background-primary); color: var(--text-normal); box-shadow: var(--shadow-l); }
+.ignis-entry dialog::backdrop { background: var(--background-modifier-cover, #0009); }
+.ignis-entry dialog h2 { padding-inline-end: 32px; }
+.ignis-entry .share-dialog-close { position: absolute; top: 12px; right: 12px; width: 28px; height: 28px; padding: 4px; border: 0; background: transparent; box-shadow: none; color: var(--text-muted); }
+.ignis-entry .share-dialog-close svg { width: 18px; height: 18px; }
+.ignis-entry .dialog-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
+@media (max-width: 767px) {
+  body.ignis-entry { background: var(--modal-background, var(--background-primary)); padding-inline: max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-right)); }
+  .ignis-entry main { margin: 0 auto; padding: 16px 8px; border: 0; border-radius: 0; box-shadow: none; background: transparent; }
+  .ignis-entry .dialog-actions { flex-direction: column; }
+  .ignis-entry .dialog-actions > button { width: 100%; }
+}
+
+/* Mobile entry headers use one top inset, rather than body plus main padding. */
+body.ignis-entry.is-mobile { padding-top:max(16px, env(safe-area-inset-top)); }
+body.ignis-entry.is-mobile main { margin-top:0; padding-top:0; }
+
+/* Terminal session/vault screens share the entry shell, never the live editor. */
+.ignis-lock-screen .lock-actions { display:flex; flex-direction:column; gap:var(--size-4-3,12px); margin-top:var(--size-4-6,24px); }
+.ignis-lock-screen .lock-actions > :is(button,a.account-button) { width:100%; margin:0; white-space:normal; }
+.ignis-entry a.account-button.mod-cta { background:var(--interactive-accent); color:var(--text-on-accent); }
+.ignis-lock-panel:focus { outline:none; }
+
+/* Fallback only before either application UI host is available. */
+.notice-container.ignis-boundary-notices { z-index:calc(100000 + var(--layer-notice,60)); }
+.ignis-boundary-notices .notice { font:var(--font-ui-small) var(--font-interface); }
+.ignis-boundary-notices p { margin:0 0 var(--size-4-3,12px); }

@@ -1,10 +1,11 @@
 <script>
+  import Field from "../components/input/Field.svelte";
 const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 
   import { onMount, onDestroy, createEventDispatcher } from "svelte";
   import { Users, Trash2 } from "lucide-svelte";
-  import Modal from "../components/layout/Modal.svelte";
-  import Button from "../components/input/Button.svelte";
+  import Modal from "../components/management/NativeModal.svelte";
+  import Button from "../components/management/NativeButton.svelte";
   export let vault;
   export let vaultService;
   const dispatch = createEventDispatcher();
@@ -60,14 +61,12 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
                 <td><strong>{member.login}</strong>{#if member.status !== "active"}<small>{translateIgnis("Disabled")}</small>{/if}</td>
                 <td>
                   {#if member.role === "owner"}<span class="owner">{translateIgnis("Owner")}</span>
-                  {:else}<select aria-label={translateIgnis("Permission for ") + member.login} bind:value={member.selected} disabled={busy || member.status !== "active"}>
-                    <option value="reader">{translateIgnis("Read")}</option><option value="editor">{translateIgnis("Read / Write")}</option>
-                  </select>{/if}
+                  {:else}<Field type="select" aria-label={translateIgnis("Permission for ") + member.login} bind:value={member.selected} disabled={busy || member.status !== "active"} options={[{value:'reader',label:translateIgnis('Read')},{value:'editor',label:translateIgnis('Read / Write')}]} />{/if}
                 </td>
                 <td><div class="row-actions">
                   {#if member.role !== "owner"}
                     <Button variant="secondary" disabled={busy || member.selected === member.role || member.status !== "active"} on:click={() => save(member.login,member.selected,member.role)}>{translateIgnis("Save")}</Button>
-                    <button class="remove" title={translateIgnis("Remove access for ") + member.login} aria-label={translateIgnis("Remove access for ") + member.login} disabled={busy} on:click={() => {removal = member;}}><Trash2 size="1rem" /></button>
+                    <Button variant="secondary" class="remove" title={translateIgnis("Remove access for ") + member.login} aria-label={translateIgnis("Remove access for ") + member.login} disabled={busy} on:click={() => {removal = member;}}><Trash2 size="1rem" /></Button>
                   {/if}
                 </div></td>
               </tr>
@@ -78,8 +77,8 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
       <form on:submit|preventDefault={() => save(login.trim(),role,null)}>
         <h3>{translateIgnis("Add member")}</h3>
         <div class="add-fields">
-          <label>{translateIgnis("Username")}<input bind:value={login} required minlength="3" maxlength="64" pattern="[a-zA-Z0-9][a-zA-Z0-9._-]{2,63}" autocomplete="off" disabled={busy} placeholder="{translateIgnis("Exact username")}" /></label>
-          <label>{translateIgnis("Permission")}<select bind:value={role} disabled={busy}><option value="reader">{translateIgnis("Read")}</option><option value="editor">{translateIgnis("Read / Write")}</option></select></label>
+          <label for="vault-access-login">{translateIgnis("Username")}<Field id="vault-access-login" bind:value={login} required minlength="3" maxlength="64" pattern="[a-zA-Z0-9][a-zA-Z0-9._-]{2,63}" autocomplete="off" disabled={busy} placeholder="{translateIgnis("Exact username")}" /></label>
+          <label for="vault-access-role">{translateIgnis("Permission")}<Field id="vault-access-role" type="select" bind:value={role} disabled={busy} options={[{value:'reader',label:translateIgnis('Read')},{value:'editor',label:translateIgnis('Read / Write')}]} /></label>
           <Button type="submit" disabled={busy || !login.trim()}>{translateIgnis("Add")}</Button>
         </div>
         <p class="hint">{translateIgnis("Write access includes shared plugins and their settings. Only add people you trust.")}</p>
@@ -104,12 +103,10 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
 {#if transferOpen}
   <Modal title={translateIgnis("Transfer ownership · ") + vault.name} width="500px" closeOnOverlayClick={false} on:escape={() => {transferOpen=false;}} on:close={() => {transferOpen=false;}}>
     <div class="access-body">
-      <label>{translateIgnis("New owner")}<select bind:value={transferTarget} disabled={busy} on:change={() => {transferConfirmed=false;}}>
-        <option value="" disabled>{translateIgnis("Select a member")}</option>
-        {#each candidates as member (member.id)}<option value={member.id}>{member.login}</option>{/each}
-      </select></label>
+      <label for="vault-transfer-owner">{translateIgnis("New owner")}<Field id="vault-transfer-owner" type="select" bind:value={transferTarget} disabled={busy} on:change={() => {transferConfirmed=false;}}
+        options={[{value:'',label:translateIgnis('Select a member'),disabled:true},...candidates.map(member=>({value:member.id,label:member.login}))]} /></label>
       <p class="hint">{translateIgnis("The new owner will control access to this vault. You will keep Read / Write access and will no longer manage its members.")}</p>
-      <label class="confirmation"><input type="checkbox" bind:checked={transferConfirmed} disabled={busy || !recipient} />
+      <label class="confirmation" for="vault-transfer-confirm"><Field id="vault-transfer-confirm" type="checkbox" bind:checked={transferConfirmed} disabled={busy || !recipient} />
         <span>{translateIgnis("I confirm the transfer")}{recipient ? " to " + recipient.login : ""}. Only the new owner can transfer it back.</span>
       </label>
     </div>
@@ -122,8 +119,7 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
 
 <style>
   .confirmation { flex-direction:row; align-items:flex-start; margin-top:1rem; }
-  .confirmation input { appearance:auto; width:1rem; height:1rem; padding:0; flex-shrink:0; margin:.2rem 0 0; accent-color:var(--interactive-accent); }
-  .access-body { padding: 1.25rem 1.5rem; }
+  .access-body { padding: 0; }
   .table-scroll { overflow-x: auto; max-height: 300px; }
   table { width: 100%; border-collapse: collapse; }
   th { text-align: left; color: var(--text-muted); font-size: .8rem; font-weight: 600; }
@@ -132,15 +128,11 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
   small { display:block; color:var(--text-muted); }
   .owner { color: var(--interactive-accent); font-weight:600; }
   .row-actions,.footer { display:flex; gap:.5rem; justify-content:flex-end; align-items:center; }
-  .remove { display:flex; align-items:center; padding:.4rem; color:var(--text-error); background:transparent; border:1px solid var(--background-modifier-border); border-radius:.375rem; }
-  .footer { padding:1rem 1.5rem; }
   h3 { margin:1.25rem 0 .75rem; font-size:1rem; }
   .add-fields { display:flex; gap:.75rem; align-items:flex-end; }
-  label { display:flex; flex-direction:column; gap:.4rem; font-size:.875rem; min-width:0; flex:1; }
-  input,select { box-sizing:border-box; width:100%; height:var(--input-height,2.25rem); padding:0 .65rem; font:inherit; line-height:normal; color:var(--text-normal); background:var(--background-primary); border:1px solid var(--background-modifier-border); border-radius:.375rem; }
-  select { appearance:auto; }
-  .hint { color:var(--text-muted); font-size:.8rem; margin:.75rem 0 0; }
+  label { display:flex; flex-direction:column; gap:.4rem; font-size:var(--font-ui-medium); min-width:0; flex:1; }
+  .hint { color:var(--text-muted); font-size:var(--font-ui-small); margin:.75rem 0 0; }
   .access-error { border:1px solid var(--text-error); color:var(--text-error); border-radius:.375rem; padding:.75rem; margin:0 0 1rem; }
   .sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
-  @media(max-width:520px) { .access-body {padding:1rem;} .add-fields {flex-wrap:wrap;} .add-fields label {flex-basis:40%;} }
+  @media(max-width:520px) { .add-fields {flex-wrap:wrap;} .add-fields label {flex-basis:40%;} }
 </style>

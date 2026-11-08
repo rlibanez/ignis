@@ -1,5 +1,5 @@
 export default String.raw`<main><p id="status" role="status"></p><section id="account-security" hidden><button id="set-own-password" type="button" class="account-button" data-i18n="Set local password">Set local password</button></section>
-      <dialog id="password-dialog" aria-labelledby="password-heading">
+      <section data-ui-dialog id="password-dialog" aria-labelledby="password-heading">
         <h2 id="password-heading" data-i18n="Set local password">Set local password</h2>
         <p id="set-password-help" data-i18n="Setting a local password closes all your Ignis sessions. Your linked provider account is kept.">Setting a local password closes all your Ignis sessions. Your linked provider account is kept.</p>
         <form id="password-form">
@@ -22,5 +22,5 @@ export default String.raw`<main><p id="status" role="status"></p><section id="ac
             <button id="cancel-password" class="account-button secondary" type="button" data-i18n="Cancel">Cancel</button>
           </div>
         </form>
-      </dialog>
+      </section>
 </main>`;

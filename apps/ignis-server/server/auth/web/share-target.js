@@ -83,17 +83,26 @@
     let ancestor=selected;while(ancestor){destinationExpanded.add(ancestor);ancestor=parent(ancestor);}
     selectDestination(selected); renderTree();
   }
+  function suggestedName(title) {
+    // eslint-disable-next-line no-control-regex
+    const name = (title || '').replace(/[\\/\u0000-\u001f\u007f]/g, ' ').replace(/^\.+|[. ]+$/g, '').slice(0,220).trim();
+    return (name || t('Shared note')) + '.md';
+  }
   function clearPreview() {
-    $('preview').textContent = '';
-    $('preview-title').textContent = ''; $('preview-title').hidden = true;
+    $('preview').value = '';
+    $('preview-title').value = ''; $('preview-title').hidden = true; $('preview-title-field').hidden = true;
   }
   function renderPreview() {
     const title = (item.title || '').trim();
     const text = item.text || '';
     const alreadyIncluded = text.trim() === title || text.split(/\r?\n/).some(line => line.trim() === title);
-    $('preview-title').textContent = title && !alreadyIncluded ? title : '';
-    $('preview-title').hidden = !$('preview-title').textContent;
-    $('preview').textContent = text; $('preview').hidden = !text;
+    $('preview-title').value = title;
+    $('preview-title').hidden = !title || alreadyIncluded || !text;
+    $('preview-title-field').hidden = $('preview-title').hidden;
+    $('preview').value = text; $('preview').hidden = !text;
+    $('preview-text-field').hidden = !text;
+    $('preview').rows = /^https?:\/\/\S+$/.test(text.trim()) ? 3 : 5;
+    $('preview').disabled = $('preview-title').disabled = item.completed.includes('text');
   }
   function renderContentHeading() {
     let heading = 'Shared text';
@@ -144,9 +153,7 @@
     if (item.state !== 'pending') { status('The save could not be confirmed. Check the destination in Ignis before sharing again.'); return; }
     renderContentHeading();
     renderPreview();
-    // eslint-disable-next-line no-control-regex
-    const title = (item.title || '').replace(/[\\/\u0000-\u001f\u007f]/g, ' ').replace(/^\.+|[. ]+$/g, '').slice(0, 220).trim();
-    $('note-name').value = (title || t('Shared note')) + '.md';
+    $('note-name').value = suggestedName(item.title);
     renderFiles();
     const vaults = await (await api('/api/vault/list')).json();
     $('vault').replaceChildren(...vaults.filter(v => v.uuid && ['owner', 'editor'].includes(v.membership)).map(v => option(v.uuid, v.name)));
@@ -208,15 +215,18 @@
     event.preventDefault();
     const returnAfterSaving = event.submitter?.value === 'return';
     run(async () => {
+    const text = $('preview').value, title = $('preview-title').value.trim();
+    if (!text.trim() && !item.files.length) throw new Error(t('No shared content was received.'));
     const names = [...$('files').querySelectorAll('input')].map(el => el.value);
     if (names.some(name => !IgnisIncoming.safeName(name)) || new Set(names).size !== names.length)
       throw new Error(t('Use a different valid name for each file.'));
     let notePath = $('note').value;
-    if (item.text && !notePath) {
+    if (text && !notePath) {
       let name = $('note-name').value.trim();
+      if (name === suggestedName(item.title)) { name = suggestedName(title); $('note-name').value = name; }
       if (!/\.(md|markdown|txt)$/i.test(name)) name += '.md';
       if (!IgnisIncoming.safeName(name)) throw new Error(t('Enter a valid name without slashes or hidden path segments.'));
-      // The suggested title is hidden in this UI. A second share with the
+      // The suggested filename is hidden in this UI. A second share with the
       // same title must create another note, never repeatedly target an
       // existing note with the 'new' write precondition.
       if (item.completed.length && item.destination?.note) notePath = item.destination.note;
@@ -239,14 +249,14 @@
       const label = name.replace(/[\\[\]]/g, '\\$&');
       return image ? '![](' + url + ')' : '[' + label + '](' + url + ')';
     }) : [];
-    const addition = [item.text, ...attachments].filter(Boolean).join('\n\n');
+    const addition = [text, ...attachments].filter(Boolean).join('\n\n');
     await update(existing => {
       if (existing.state !== 'pending') throw new Error(t('This content is already being saved.'));
       if (existing.completed.length && (existing.destination?.vault !== vault() ||
           existing.destination?.folder !== $('folder').value || existing.destination?.note !== notePath ||
           existing.completed.some(index => typeof index === 'number' && existing.names[index] !== names[index])))
         throw new Error(t('Some files are already saved. Keep the original destination to finish this share.'));
-      return {...existing, names, state: 'saving', destination: {vault: vault(), folder: $('folder').value, note: notePath}};
+      return {...existing, text, title, names, state: 'saving', destination: {vault: vault(), folder: $('folder').value, note: notePath}};
     });
     let unrecordedWrite = false;
     try {
@@ -263,8 +273,7 @@
         if ($('note').value) {
           // A selected note keeps its own filename, so preserve the incoming title
           // in the appended text instead. Avoid repeating titles already supplied.
-          const title = (item.title || '').trim();
-          if (item.text && title && !item.text.split(/\r?\n/).some(line => line.trim() === title))
+          if (text && title && !text.split(/\r?\n/).some(line => line.trim() === title))
             content = title + '\n\n' + content;
           const bytes = await (await api('/api/fs/readFile?vault=' + encodeURIComponent(vault()) + '&path=' + encodeURIComponent(notePath))).arrayBuffer();
           expected = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(value => value.toString(16).padStart(2, '0')).join('');

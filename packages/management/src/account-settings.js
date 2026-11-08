@@ -1,3 +1,6 @@
+import {showManagementNotice} from "./ui-notice.js";
+import {installUiLayout} from "./ui-layout.js";
+import {appendUiControl} from "./ui-controls.js";
 import {createImportModal} from "./import-vault.js";
 import {createManagementClient} from "./client.js";
 import accountStyles from "./account.css";
@@ -7,23 +10,26 @@ const t = (text, values = {}) => globalThis.IgnisI18n?.t(text, values) ?? text.r
 
 export function createAccountSettings({Modal, Notice, setIcon, ManagementModal}) {
   const createButton=(parent,options)=>{
-    const button=parent.createEl("button",options);
+    const button=appendUiControl(parent,"button",options);
     // Obsidian createEl applies `type` to inputs, not buttons. Be explicit in both hosts.
     button.type=options.type || "button";
     return button;
   };
   const ImportModal=createImportModal(Modal,Notice);
   const doc=globalThis.document;
+  if(doc?.head)installUiLayout(doc);
   if(doc?.head && !doc.getElementById('ignis-account-form-styles')){
     const style=doc.createElement('style');style.id='ignis-account-form-styles';style.textContent=accountStyles;doc.head.append(style);
   }
 class AccountFormModal extends Modal {
   constructor(app) {
     super(app);
+    this.modalEl.addClass("ignis-ui-form");
     this.abort=new AbortController();
     this.request=createManagementClient({signal:this.abort.signal});
-    window.addEventListener("ignis:auth-lost",()=>this.close(),{signal:this.abort.signal});
+    window.addEventListener("ignis:auth-lost",()=>this.forceClose(),{signal:this.abort.signal});
   }
+  forceClose() { this.onClose(); super.close(); }
   onClose() {
     this.abort.abort();
     this.contentEl.querySelectorAll("input").forEach(input=>{input.value="";});
@@ -59,7 +65,7 @@ class PasswordModal extends AccountFormModal {
         }), {help: true});
       }
       const control = field.createSpan({cls: "ignis-password-control"});
-      const input = control.createEl("input", {type: "password"});
+      const input = appendUiControl(control,"input", {type: "password"});
       if (key === "currentPassword") { this.currentPasswordInput=input; input.autofocus=true; }
       input.placeholder = t(placeholder);
       input.autocomplete = key === "currentPassword" ? "current-password" : "new-password";
@@ -145,10 +151,10 @@ class EmailModal extends AccountFormModal {
     heading.createSpan({text:t("Email (optional)")});
     const help=createButton(heading, {type:"button",text:"?",cls:"ignis-password-help"});
     nativeTooltip(window,help,t("Changing your email requires an administrator to verify it again. All your Ignis sessions will be closed."),{help:true});
-    const email=label.createEl("input",{type:"email"});this.emailInput=email;email.autofocus=true;email.value=this.session.email ?? "";email.maxLength=254;email.autocomplete="email";
+    const email=appendUiControl(label,"input",{type:"email"});this.emailInput=email;email.autofocus=true;email.value=this.session.email ?? "";email.maxLength=254;email.autocomplete="email";
     const passwordLabel=form.createEl("label",{cls:"ignis-password-field",text:t("Current password")});
     const control=passwordLabel.createSpan({cls:"ignis-password-control"});
-    const password=control.createEl("input",{type:"password"});password.autocomplete="current-password";password.maxLength=1024;
+    const password=appendUiControl(control,"input",{type:"password"});password.autocomplete="current-password";password.maxLength=1024;
     password.placeholder=t("Your current password...");
     password.addEventListener("input",()=>password.setCustomValidity(""));
     const toggle=createButton(control, {type:"button",cls:"ignis-password-toggle"});
@@ -223,7 +229,7 @@ class UnlinkProviderModal extends AccountFormModal {
     const form = this.contentEl.createEl("form");
     const label = form.createEl("label", {cls:"ignis-password-field", text:t("Current password")});
     const control = label.createSpan({cls:"ignis-password-control"});
-    const input = control.createEl("input", {type:"password"});
+    const input = appendUiControl(control,"input", {type:"password"});
     input.placeholder = t("Your current password...");
     const toggle = createButton(control, {type:"button", cls:"ignis-password-toggle"});
     const updateToggle = () => {
@@ -271,7 +277,7 @@ async function linkProvider(session, button) {
   button.setDisabled(true);
   try {
     if (window.__ignis?.writes?.snapshotPending?.().length) {
-      new Notice(t("Some writes are not confirmed. Wait for saving to finish or resolve failed writes before signing out."));
+      showManagementNotice(Notice,t("Some writes are not confirmed. Wait for saving to finish or resolve failed writes before signing out."));
       return;
     }
     const signal = AbortSignal.timeout(15000);
@@ -293,7 +299,7 @@ async function linkProvider(session, button) {
     if (url.protocol !== "https:" || url.username || url.password) throw new Error();
     window.location.assign(url.href);
   } catch {
-    new Notice(t("Request failed"));
+    showManagementNotice(Notice,t("Request failed"));
   } finally { button.setDisabled(false); }
 }
 

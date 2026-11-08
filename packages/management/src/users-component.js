@@ -1,3 +1,4 @@
+import {createUiElement} from "./ui-controls.js";
 import {refreshHelp} from "./help.js";
 export function mountUsers(scope) {
   const {root, window, location, fetch, channel: openChannel, listen, onDispose} = scope;
@@ -129,7 +130,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       }
     } catch { /* HTTP LAN or browser restrictions may require the fallback. */ }
     if (!copied && resetDialog.open && resetTarget === target && resetSecret.value) {
-      const helper = document.createElement("textarea");
+      const helper = createUiElement(document,"textarea");
       helper.value = resetSecret.value;
       helper.className = "clipboard-helper";
       helper.readOnly = true;
@@ -310,7 +311,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       deletionPlan = result;
       const entries = result.progress.length ? result.progress : [{name:translateIgnis("No owned vaults"),state:""}];
       for (const entry of entries) {
-        const li = document.createElement("li");
+        const li = createUiElement(document,"li");
         li.textContent = entry.name + (entry.state && entry.state !== "not-started" ? ` — ${entry.state}` : "");
         byId("delete-vaults").append(li);
       }
@@ -528,28 +529,28 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     const showOidc = data.oidcAvailable === true;
     byId("oidc-column").hidden = !showOidc;
     for (const user of data.users) {
-      const row = document.createElement("tr");
+      const row = createUiElement(document,"tr");
       const trustLabels = { unverified: translateIgnis("Unverified"), admin_confirmed: translateIgnis("Verified by admin"), oidc_verified: translateIgnis("Verified by {p0}", {p0: (providerName)}) };
       const values = [user.login, user.email || "—", user.email ? trustLabels[user.email_trust] : "—", translateIgnis(user.role === "admin" ? "Administrator" : "User"), translateIgnis(user.status === "active" ? "Active" : "Disabled")];
       if (showOidc) values.push(user.oidcLinked === true ? translateIgnis("Linked") : translateIgnis("Not linked"));
       for (const [index, value] of values.entries()) {
-        const cell = document.createElement(index === 0 ? "th" : "td");
+        const cell = createUiElement(document,index === 0 ? "th" : "td");
         if (index === 0) cell.scope = "row";
         cell.dataset.label = [translateIgnis("Username"), translateIgnis("Email"), translateIgnis("Email verification"), translateIgnis("Role"), translateIgnis("Status"), providerName][index];
-        const label = document.createElement("span");
+        const label = createUiElement(document,"span");
         label.textContent = value;
         if (index > 1) label.className = "badge";
         cell.append(label);
         row.append(cell);
       }
-      const actions = document.createElement("td");
+      const actions = createUiElement(document,"td");
       actions.className = "actions";
       actions.dataset.label = translateIgnis("Actions");
       for (const [name, paths] of [
         ["Edit", ["M12 20h9", "M16.5 3.5a2.1 2.1 0 0 1 3 3L9 17l-4 1 1-4Z"]],
         ["Delete", ["M3 6h18", "M9 6V4h6v2", "M5 6l1 14h12l1-14", "M10 10v6", "M14 10v6"]],
       ]) {
-        const action = document.createElement("button");
+        const action = createUiElement(document,"button");
         action.type = "button";
         action.className = "icon-button ignis-resource-action";
         action.disabled = name === "Delete" && user.id === currentUserId;

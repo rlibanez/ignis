@@ -1,3 +1,4 @@
+import {uiComponents} from "./ui-components.mjs";
 // Real native Modal versus the zero-vault host. Only the presentation API replies
 // below are synthetic: no production account, share or OIDC mutation is sent.
 import assert from 'node:assert/strict';
@@ -48,7 +49,7 @@ export async function managementParity({native,shell,origin,vault,mobile,notices
   // Native click delegation leaves a transient mobile-tap highlight; compare resting styles.
   await client.run(`document.querySelectorAll('.mobile-tap').forEach(el=>el.classList.remove('mobile-tap'))`);
   await new Promise(r=>setTimeout(r,650));
-  const data=await client.run(`(()=>{const root=document.querySelector(${JSON.stringify(selector)}),rect=root.getBoundingClientRect();const visible=el=>!!el.getClientRects().length&&getComputedStyle(el).visibility!=='hidden';const metric=el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);return {class:el.className,hover:el.matches(':hover'),focused:el.matches(':focus-visible'),tag:el.tagName,type:el.type||'',text:el.tagName==='INPUT'?'':el.textContent.trim(),width:r.width,height:r.height,x:r.x-rect.x,y:r.y-rect.y,font:s.fontSize,color:s.color,background:s.backgroundColor,fontWeight:s.fontWeight,lineHeight:s.lineHeight,padding:s.padding,borderRadius:s.borderRadius};};return {width:rect.width,height:rect.height,top:rect.top,left:rect.left,overflow:root.scrollWidth>root.clientWidth+1,controls:[...root.querySelectorAll('input:not([type=hidden]),select,button')].filter(el=>visible(el)&&!el.matches('[data-ignis-close],.modal-header-button,.modal-close-button')).map(metric),heading:[...root.querySelectorAll('h2,.modal-title')].filter(visible).map(metric)};})()`);
+  const data=await client.run(`(()=>{const root=document.querySelector(${JSON.stringify(selector)}),rect=root.getBoundingClientRect();const visible=el=>!!el.getClientRects().length&&getComputedStyle(el).visibility!=='hidden';const metric=el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);return {class:el.className,hover:el.matches(':hover'),focused:el.matches(':focus-visible'),tag:el.tagName,type:el.type||'',text:el.tagName==='INPUT'?'':el.textContent.trim(),width:r.width,height:r.height,x:r.x-rect.x,y:r.y-rect.y,font:s.fontSize,color:s.color,background:s.backgroundColor,fontWeight:s.fontWeight,lineHeight:s.lineHeight,padding:s.padding,borderRadius:s.borderRadius};};return {modalTop:root.closest('.modal')?.getBoundingClientRect().top ?? null,width:rect.width,height:rect.height,top:rect.top,left:rect.left,overflow:root.scrollWidth>root.clientWidth+1,controls:[...root.querySelectorAll('input:not([type=hidden]),select,button')].filter(el=>visible(el)&&!el.matches('[data-ignis-close],.modal-header-button,.modal-close-button')).map(metric),heading:[...root.querySelectorAll('h2,.modal-title')].filter(visible).map(metric)};})()`);
   if(output){fs.mkdirSync(output,{recursive:true});const {data:png}=await client.call('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(output,`${report.viewport}-${client===native?'native':'shell'}-${label}.png`),Buffer.from(png,'base64'));}
   return data;
  };
@@ -61,9 +62,16 @@ export async function managementParity({native,shell,origin,vault,mobile,notices
   }
  };
  const compare=async(label,selector)=>{
+  if(label==='edit-user')for(const client of [native,shell])assert.equal(await client.run(`(()=>{const catalog=document.querySelector('#users'),parent=catalog.closest('.modal-container'),child=document.querySelector('#edit-dialog').closest('.modal-container');return !parent.hidden && getComputedStyle(parent).display!=='none' && parent!==child && catalog.getClientRects().length>0;})()`),true,'Editing preserves the visible parent catalog');
+  if(selector.includes('-dialog') || selector==='.ignis-password-modal') {
+   const nativeControls=await native.run(`(()=>{const root=document.querySelector(${JSON.stringify(selector)}),runtime=window.__ignisUiRuntime;if(!runtime)return ['runtime unavailable'];return [...root.querySelectorAll('input,select,textarea,button')].filter(el=>!['checkbox','file','hidden'].includes(el.type)&&!el.matches('.modal-close-button,.modal-header-button')).filter(el=>{const component=runtime.componentFor(el);return !component || !(component instanceof runtime[el.dataset.uiComponent]);}).map(el=>el.id||el.className||el.tagName);})()`);
+   assert.deepEqual(nativeControls,[],label+': controls must be real Obsidian component instances');
+  }
+
   const [a,b]=await Promise.all([snapshot(native,label,selector),snapshot(shell,label,selector)]);report.states.push({label,native:a,shell:b});console.log('Compared '+label);
   if(!mobile && selector==='.modal:has(.ignis-management-root)' && (a.width>1102||b.width>1102))report.differences.push(label+': exceeds native settings width cap');
   if(a.overflow||b.overflow)report.differences.push(label+': horizontal overflow');
+  if(mobile && ((a.modalTop!==null && a.modalTop>2) || (b.modalTop!==null && b.modalTop>2)))report.differences.push(label+': mobile modal must start at the safe-area top');
   if(mobile)for(const client of [native,shell]){
    const footer=await client.run(`(()=>{const root=document.querySelector(${JSON.stringify(selector)}),footer=root.querySelector('.dialog-actions,.password-actions,.modal-button-container');if(!footer)return null;const buttons=[...footer.querySelectorAll('button')].filter(el=>el.getClientRects().length);return {width:footer.clientWidth,buttons:buttons.map(el=>({text:el.textContent.trim(),width:el.getBoundingClientRect().width,top:el.getBoundingClientRect().top}))};})()`);
    if(footer){if(footer.buttons.some(b=>b.width<footer.width-2))report.differences.push(label+': mobile footer button not full width');const cancel=footer.buttons.find(b=>b.text==='Cancel');if(cancel&&footer.buttons.some(b=>b.top>cancel.top+1))report.differences.push(label+': mobile Cancel is not last');}
@@ -80,7 +88,7 @@ export async function managementParity({native,shell,origin,vault,mobile,notices
   }
  };
  const both=async expression=>{for(const client of [native,shell])await client.run(expression);};
- const click=selector=>both(`(()=>{const el=document.querySelector(${JSON.stringify(selector)});if(!el)throw Error('Missing '+${JSON.stringify(selector)});el.click();})()`);
+ const click=selector=>both(`(()=>{const selector=${JSON.stringify(selector)};const el=selector.endsWith(" .native-management-close")?document.querySelector(selector.split(" ")[0])?.closest(".modal")?.querySelector(".modal-close-button,.modal-header-button:not(.mod-start)"):document.querySelector(selector);if(!el)throw Error('Missing '+${JSON.stringify(selector)});el.click();})()`);
  const tap=async selector=>{
   for(const client of [native,shell]){
    const point=await client.run(`(()=>{const el=document.querySelector(${JSON.stringify(selector)});el.scrollIntoView({block:'nearest'});const r=el.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2,disabled:el.disabled};})()`);
@@ -90,8 +98,8 @@ export async function managementParity({native,shell,origin,vault,mobile,notices
    await client.call('Input.dispatchMouseEvent',{type:'mouseReleased',x:point.x,y:point.y,button:'left',clickCount:1});
   }
  };
- const wait=expression=>Promise.all([native,shell].map(client=>client.wait(expression,expression)));
- const close=async()=>{await both(`(()=>{const all=[...document.querySelectorAll('dialog[open]')];for(const d of all.reverse())d.close();const containers=[...document.querySelectorAll('.modal-container')];for(const c of containers.reverse()){const b=c.querySelector('[data-ignis-close],.modal-close-button,.modal-header-button:not(.mod-start)');b?.click();}})()`);await new Promise(r=>setTimeout(r,100));};
+ const wait=async expression=>{try{await Promise.all([native,shell].map(client=>client.wait(expression,expression)));}catch(error){for(const [name,client] of [["native",native],["shell",shell]])console.error(name,client.errors,await client.run(`({status:[...document.querySelectorAll("#status")].map(el=>el.textContent),modals:[...document.querySelectorAll(".modal-title")].map(el=>el.textContent)})`));throw error;}};
+ const close=async()=>{await both(`(()=>{const all=[...document.querySelectorAll('.ui-dialog[open]')];for(const d of all.reverse())d.close();const containers=[...document.querySelectorAll('.modal-container')];for(const c of containers.reverse()){const b=c.querySelector('[data-ignis-close],.modal-close-button,.modal-header-button:not(.mod-start)');b?.click();}})()`);await new Promise(r=>setTimeout(r,100));};
  const open=async kind=>{await close();await both(`(window.__ignisOpenManagement || window.IgnisUI.openAccount)(${JSON.stringify(kind)})`);};
  const row=async name=>both(`(()=>{const row=[...document.querySelectorAll('.setting-item')].find(el=>el.querySelector('.setting-item-name')?.textContent===${JSON.stringify(name)});if(!row)throw Error('Missing account row '+${JSON.stringify(name)});row.querySelector('button').click();})()`);
  for(const client of [native,shell]){const session=await client.run(`fetch('/api/auth/session').then(r=>r.json())`);await client.call('Page.addScriptToEvaluateOnNewDocument',{source:`(${fixtures.toString()})(${JSON.stringify(session)})`});}
@@ -154,7 +162,7 @@ export async function managementParity({native,shell,origin,vault,mobile,notices
  await click('#picker .resource-tree-select[data-path="Note.md"]');await both(`{document.querySelector('#recipient').value='missing';document.querySelector('#create-form').requestSubmit();}`);await wait(`!!document.querySelector('#recipient').validationMessage`);await compare('share-error','#create-dialog');await click('[data-close="create-dialog"]');
  await click('#owned button[aria-label="Edit"]');await compare('manage-resource','#manage-dialog');await both(`{const s=document.querySelector('#grants select');s.value='editor';s.dispatchEvent(new Event('change'));}`);await click('#save-resource');await wait(`!!document.querySelector('#manage-dialog .error').textContent`);await compare('manage-resource-error','#manage-dialog');await click('#add-access');await compare('grant','#grant-dialog');
  await both(`{document.querySelector('#grant-login').value='missing';document.querySelector('#grant-form').requestSubmit();}`);await wait(`!!document.querySelector('#grant-login').validationMessage`);await compare('grant-error','#grant-dialog');await tap('[data-close="grant-dialog"]');await click('[data-close="manage-dialog"]');
- await click('#owned button[aria-label="Delete"]');await compare('stop-sharing','dialog.ignis-confirm[open]');await click('dialog.ignis-confirm[open] .danger');await wait(`!document.querySelector('dialog.ignis-confirm[open]')&&!!document.querySelector('#status').textContent`);await compare('stop-sharing-error','.modal:has(.ignis-management-root)');
+ await click('#owned button[aria-label="Delete"]');await compare('stop-sharing','.ui-dialog.ignis-confirm[open]');await click('.ui-dialog.ignis-confirm[open] .danger');await wait(`!document.querySelector('.ui-dialog.ignis-confirm[open]')&&!!document.querySelector('#status').textContent`);await compare('stop-sharing-error','.modal:has(.ignis-management-root)');
  await click('#share-tab-1');await click('#received button');await wait(`!!document.querySelector('#location-tree button')`);await compare('location','#location-dialog');await both(`document.querySelector('#location-form').requestSubmit()`);await wait(`!!document.querySelector('#location-dialog .error').textContent`);await compare('location-error','#location-dialog');
  await both(`{const s=document.querySelector('#destination-vault');s.value='';s.dispatchEvent(new Event('change'));}`);await compare('location-unassigned','#location-dialog');await click('[data-close="location-dialog"]');
  await both(`parity.noVaults=true`);await open('shares');await wait(`!!document.querySelector('#workspace')&&!document.querySelector('#workspace').hidden`);await compare('shares-no-vaults','.modal:has(.ignis-management-root)');
@@ -183,6 +191,7 @@ export async function managementParity({native,shell,origin,vault,mobile,notices
  for(const client of [native,shell])assert.deepEqual(client.errors.slice(errorStarts.get(client)).filter(error=>typeof error==='string'),[],'no uncaught browser exceptions');
  if(output)fs.writeFileSync(path.join(output,`parity-${report.viewport}${noticesOnly?'-notices':''}.json`),JSON.stringify(report,null,2));
  console.log(JSON.stringify({managementParity:mobile?'mobile':'desktop',viewport:report.viewport,states:report.states.length,differences:report.differences}));
+ await uiComponents([native,shell]);
  assert.deepEqual(report.differences,[],'Native / zero-vault presentation differs');
  return report;
 }

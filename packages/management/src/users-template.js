@@ -13,7 +13,7 @@ export default String.raw`
             </table>
           </div>
         </section>
-        <dialog id="create-dialog" aria-labelledby="create-heading">
+        <section data-ui-dialog id="create-dialog" aria-labelledby="create-heading">
         <h2 id="create-heading" data-i18n="Create user">Create user</h2>
         <p id="create-status" role="status" aria-live="polite"></p>
         <form id="create-user">
@@ -47,9 +47,9 @@ export default String.raw`
           </div>
           <div class="dialog-actions"><button id="cancel-create" type="button" class="cancel-button" data-i18n="Cancel">Cancel</button><button type="submit" data-i18n="Create user">Create user</button></div>
         </form>
-        </dialog>
+        </section>
       </section>
-      <dialog id="edit-dialog" aria-labelledby="edit-heading">
+      <section data-ui-dialog id="edit-dialog" aria-labelledby="edit-heading">
         <h2 id="edit-heading"><span data-i18n="Edit user ">Edit user </span><span id="edit-user-name"></span></h2>
         <form id="edit-user">
           <div class="field-heading"><label for="edit-email" data-i18n="Email (optional)">Email (optional)</label>
@@ -108,8 +108,8 @@ export default String.raw`
           </div>
           </div>
         </form>
-      </dialog>
-      <dialog id="reset-dialog" aria-labelledby="reset-heading">
+      </section>
+      <section data-ui-dialog id="reset-dialog" aria-labelledby="reset-heading">
         <h2 id="reset-heading"><span data-i18n="Reset password for ">Reset password for </span><span id="reset-user"></span></h2>
         <div id="reset-prompt">
           <p data-i18n="This closes all the user&#x27;s Ignis sessions and blocks sign-in until they set a new password. Any earlier temporary password stops working. The provider link is kept.">This closes all the user's Ignis sessions and blocks sign-in until they set a new password. Any earlier temporary password stops working. The provider link is kept.</p>
@@ -133,8 +133,8 @@ export default String.raw`
         </div>
         <p id="reset-status" role="alert"></p>
         <button id="close-reset" type="button" class="cancel-button" data-i18n="Cancel">Cancel</button>
-      </dialog>
-      <dialog id="password-dialog" aria-labelledby="password-heading">
+      </section>
+      <section data-ui-dialog id="password-dialog" aria-labelledby="password-heading">
         <h2 id="password-heading"><span data-i18n="Set local password for ">Set local password for </span><span id="password-user"></span></h2>
         <p class="help" data-i18n="All Ignis sessions for this user will close. The provider link is kept. If this is your account, you will need to sign in again.">All Ignis sessions for this user will close. The provider link is kept. If this is your account, you will need to sign in again.</p>
         <p id="password-policy" class="help"></p>
@@ -145,8 +145,8 @@ export default String.raw`
           <input id="initial-confirmation" name="confirmation" type="password" required maxlength="1024" autocomplete="new-password" />
           <div class="dialog-actions"><button id="cancel-password" type="button" class="cancel-button" data-i18n="Cancel">Cancel</button><button type="submit" data-i18n="Set local password">Set local password</button></div>
         </form>
-      </dialog>
-      <dialog id="delete-dialog" aria-labelledby="delete-heading">
+      </section>
+      <section data-ui-dialog id="delete-dialog" aria-labelledby="delete-heading">
         <h2 id="delete-heading"><span data-i18n="Delete user ">Delete user </span><span id="delete-user-name"></span></h2>
         <p data-i18n="This permanently removes the Ignis account and its access.">This permanently removes the Ignis account and its access.</p>
         <p data-i18n="Owned vaults:">Owned vaults:</p>
@@ -159,16 +159,16 @@ export default String.raw`
           <p id="delete-status" role="alert"></p>
           <div class="dialog-actions"><button id="cancel-delete" type="button" class="cancel-button" data-i18n="Cancel">Cancel</button><button id="confirm-delete" type="submit" class="danger-button" data-i18n="Delete user">Delete user</button></div>
         </form>
-      </dialog>
-      <dialog id="revoke-confirmation" class="ignis-confirm" aria-labelledby="revoke-heading">
+      </section>
+      <section data-ui-dialog id="revoke-confirmation" class="ignis-confirm" aria-labelledby="revoke-heading">
         <h2 id="revoke-heading" data-i18n="Close all sessions">Close all sessions</h2>
         <p id="revoke-warning"></p>
         <div class="dialog-actions">
           <button id="cancel-revoke" type="button" class="cancel-button" data-i18n="Cancel">Cancel</button>
           <button id="confirm-revoke" type="button" class="warning-button" data-i18n="Confirm">Confirm</button>
         </div>
-      </dialog>
-      <dialog id="reauth-dialog" aria-labelledby="reauth-heading">
+      </section>
+      <section data-ui-dialog id="reauth-dialog" aria-labelledby="reauth-heading">
         <h2 id="reauth-heading" data-i18n="Confirm your identity">Confirm your identity</h2>
         <p id="reauth-user"></p>
         <div class="reauth-actions">
@@ -181,6 +181,6 @@ export default String.raw`
         <p id="reauth-status" role="alert"></p>
         <button id="cancel-reauth" type="button" class="account-button secondary" data-i18n="Cancel">Cancel</button>
         </div>
-      </dialog>
+      </section>
     </main>
   `;

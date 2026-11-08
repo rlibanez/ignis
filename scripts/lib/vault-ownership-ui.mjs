@@ -20,9 +20,10 @@ export async function vaultOwnershipUi({owner,member,vault,origin}){
  await owner.wait(`Array.from(document.querySelectorAll('.access-body')).some(el=>el.textContent.includes('receiver'))`,'current membership loaded');
  await owner.run(`Array.from(document.querySelectorAll('button')).find(el=>el.textContent.trim()==='Transfer ownership').click()`);
  await owner.wait(`!!document.querySelector('.confirmation')`,'ownership confirmation');
- await owner.run(`{const modal=document.querySelector('.confirmation').closest('.modal-shell'),select=modal.querySelector('select');select.value='receiver';select.dispatchEvent(new Event('change',{bubbles:true}));}`);
+ await owner.run(`{const modal=document.querySelector('.confirmation').closest('.modal'),select=modal.querySelector('select');select.value='receiver';select.dispatchEvent(new Event('change',{bubbles:true}));}`);
+ assert.equal(await owner.run(`(()=>{const input=document.querySelector('.confirmation').closest('.modal').querySelector('select'),runtime=window.__ignisUiRuntime;return runtime.componentFor(input) instanceof runtime.DropdownComponent;})()`),true,'ownership uses a real native selector');
  await owner.run(`document.querySelector('.confirmation input').click()`);
- await owner.run(`Array.from(document.querySelector('.confirmation').closest('.modal-shell').querySelectorAll('button')).find(el=>el.textContent.trim()==='Transfer ownership').click()`);
+ await owner.run(`Array.from(document.querySelector('.confirmation').closest('.modal').querySelectorAll('button')).find(el=>el.textContent.trim()==='Transfer ownership').click()`);
  await owner.wait(`location.search.includes('manager=1')&&!document.querySelector('.confirmation')`,'initiator returns safely to manager');
  await member.wait(`window.__currentVaultId==='receiver/Owner'&&!window.__ignisAuth.blocked`,'member keeps the same UUID after the namespace move');
  assert.equal(await member.run(`window.__currentVaultUuid`),vault.id);

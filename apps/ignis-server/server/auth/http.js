@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 // A fixed public asset manifest; no user-controlled paths or source-tree serving.
 const sharedBrowserAssets = new Map([
-  ["resource-tree.js", "resource-tree.cjs"], ["resource-tree.css", "resource-tree.css"],
+  ["ui-environment.js", "ui-environment.cjs"], ["resource-tree.js", "resource-tree.cjs"], ["resource-tree.css", "resource-tree.css"],
   ["password-visibility.js", "password-visibility.cjs"], ["oidc-start.js", "oidc-start.cjs"],
 ]);
 const setupAssets = new Map(
@@ -25,15 +25,15 @@ const setupAssets = new Map(
     ["/reset-password", ["text/html", "reset-password.html"]],
     ["/auth/reset-password.js", ["text/javascript", "reset-password.js"]],
     ["/login", ["text/html", "login.html"]],
-    ["/auth/components.css", ["text/css", "components.css"]],
     ["/auth/password-visibility.js", ["text/javascript", "password-visibility.js"]],
     ["/auth/login.js", ["text/javascript", "login.js"]],
     ["/auth/oidc-start.js", ["text/javascript", "oidc-start.js"]],
-    ["/auth/account.css", ["text/css", "account.css"]],
     ["/auth/events.js", ["text/javascript", "events.js"]],
     ["/auth/client.js", ["text/javascript", "client.js"]],
     ["/auth/setup.js", ["text/javascript", "setup.js"]],
-    ["/auth/setup.css", ["text/css", "setup.css"]],
+    ["/auth/entry.css", ["text/css", "entry.css"]],
+    ["/auth/entry.js", ["text/javascript", "entry.js"]],
+    ["/auth/ui-environment.js", ["text/javascript", "ui-environment.js"]],
   ].map(([url, [type, file]]) => [
     url,
     { type, content: fs.readFileSync(sharedBrowserAssets.has(file)
@@ -41,6 +41,8 @@ const setupAssets = new Map(
       : path.join(__dirname, "web", file)) },
   ]),
 );
+// The installed stylesheet is supplied by composition; API-only fixtures need no assets.
+setupAssets.set("/auth/native.css", {type:"text/css",content:""});
 setupAssets.set("/favicon.png", {
   type: "image/png",
   content: fs.readFileSync(path.join(__dirname, "../../../../images/favicon.png")),
@@ -56,11 +58,13 @@ function createAuthBoundary({
   dataRoot,
   config,
   staticRoots = [],
+  nativeCssPath,
   now = Date.now,
   vaultRoot,
   services,
 }) {
   const presentationAssets = require("./app-name").brandedAssets(setupAssets, config.appName);
+  if (nativeCssPath && fs.existsSync(nativeCssPath)) presentationAssets.set("/auth/native.css", {type:"text/css",content:fs.readFileSync(nativeCssPath)});
   require('./incoming-share-config').configureIncomingShareAsset(presentationAssets,
     config.incomingShare || require('./incoming-share-config').readIncomingShareConfig({}));
   const cookies = createSessionCookies(config); // Validate before opening/listening.
@@ -347,7 +351,7 @@ function createAuthBoundary({
         const asset = presentationAssets.get(pathname);
         res.set(
           "Content-Security-Policy",
-          "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; manifest-src 'self'; connect-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+          "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self' data:; img-src 'self'; manifest-src 'self'; connect-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
         );
         // Static PWA SVGs embed the existing logo; only these images need data URLs.
         if (asset.type === "image/svg+xml") res.set("Content-Security-Policy", "default-src 'none'; img-src data:; frame-ancestors 'none'; base-uri 'none'");

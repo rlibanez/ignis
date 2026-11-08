@@ -1,3 +1,6 @@
+import {showManagementNotice} from "./ui-notice.js";
+import {installUiLayout} from "./ui-layout.js";
+import {appendUiControl} from "./ui-controls.js";
 import {createManagementClient} from './client.js';
 import {readDirectory,directoryFromDrop,folderFromFiles,zipFromDrop} from './folder-source.js';
 import {createExclusionsModal} from './import-exclusions.js';
@@ -7,13 +10,14 @@ export function createImportModal(Modal,Notice){
  return class ImportModal extends Modal{
   constructor(app,session){super(app);this.session=session;this.abort=new AbortController();this.request=createManagementClient({signal:this.abort.signal,timeoutMs:3600000});this.entries=[];this.selection=null;this.stage=null;this.plans=[];this.sourceStage=null;this.committing=false;this.closed=false;const hex=Array.from(crypto.getRandomValues(new Uint8Array(16)),n=>n.toString(16).padStart(2,'0')).join('');this.attempt=[hex.slice(0,8),hex.slice(8,12),hex.slice(12,16),hex.slice(16,20),hex.slice(20)].join('-');}
   onOpen(){
+   installUiLayout(document);this.modalEl.addClass("ignis-ui-form");
    this.setTitle(t('Import vault'));this.modalEl.addClass('mod-lg','mod-form','ignis-password-modal','ignis-import-wizard');
    const form=this.contentEl.createEl('form');form.addEventListener('submit',e=>e.preventDefault());
    this.pages=[0,1,2,3].map(()=>form.createDiv());
    const field=(parent,text)=>parent.createEl('label',{cls:'ignis-password-field',text:t(text)});
-   const button=(parent,text,action,primary=false)=>{const el=parent.createEl('button',{text:t(text),cls:primary?'mod-cta':''});el.type='button';el.addEventListener('click',action);return el;};
+   const button=(parent,text,action,primary=false)=>{const el=appendUiControl(parent,"button",{text:t(text),cls:primary?'mod-cta':''});el.type='button';el.addEventListener('click',action);return el;};
    this.folderSupported=typeof globalThis.showDirectoryPicker==='function';
-   const source=field(this.pages[0],'Source');this.source=source.createEl('select',{cls:'dropdown'});
+   const source=field(this.pages[0],'Source');this.source=appendUiControl(source,"select",{cls:'dropdown'});
    for(const [value,text] of [['zip','ZIP file'],['folder','Local folder']]){const option=this.source.createEl('option',{text:t(text)});option.value=value;}
    this.picker=this.pages[0].createEl('input');this.picker.type='file';this.picker.hidden=true;this.picker.accept='.zip,application/zip';
    const configure=()=>{this.picker.value='';this.picker.webkitdirectory=this.source.value==='folder';this.picker.multiple=this.source.value==='folder';this.picker.accept=this.source.value==='zip'?'.zip,application/zip':'';this.entries=[];this.selection=null;this.zipFile=null;this.selected.hidden=true;this.selectedName.textContent='';this.selectedCounts.textContent='';this.name.value='';if(typeof this.step==='number')this.show();};
@@ -22,10 +26,10 @@ export function createImportModal(Modal,Notice){
    this.selectedName=this.selected.createEl('strong');this.selectedCounts=this.selected.createEl('small',{cls:'setting-item-description'});
    this.picker.addEventListener('change',()=>{
     if(this.closed||this.busy||this.selecting)return;
-    if(!this.picker.files.length){const folder=this.source.value==='folder';configure();if(folder)new Notice(t('No files were provided. Drag the folder here to import an empty folder.'));return;}
+    if(!this.picker.files.length){const folder=this.source.value==='folder';configure();if(folder)showManagementNotice(Notice,t('No files were provided. Drag the folder here to import an empty folder.'));return;}
     if(this.source.value==='zip'){this.setZip(this.picker.files[0]);return;}
     try{const {name,entries}=folderFromFiles(Array.from(this.picker.files));this.setFolder(name,entries);}
-    catch(error){configure();new Notice(error.message);}
+    catch(error){configure();showManagementNotice(Notice,error.message);}
    });
    this.dropZone=this.pages[0].createDiv({cls:'ignis-import-drop',attr:{role:'button',tabindex:'0','data-import-drop':''}});
    this.dropZone.addEventListener('click',()=>{this.selectSource();});
@@ -35,13 +39,13 @@ export function createImportModal(Modal,Notice){
    this.dropZone.addEventListener('drop',event=>{
     event.preventDefault();event.stopPropagation();this.dropZone.classList.remove('is-dragover');if(this.busy||this.selecting)return;
     if(this.source.value==='folder'){void this.selectDirectory(directoryFromDrop(event.dataTransfer));return;}
-    try{this.setZip(zipFromDrop(event.dataTransfer));}catch(error){new Notice(error.message);}
+    try{this.setZip(zipFromDrop(event.dataTransfer));}catch(error){showManagementNotice(Notice,error.message);}
    });
    this.folderWarning=this.pages[0].createEl('p',{cls:'setting-item-description',text:t('This folder picker does not report empty folders. Drag the folder here or use ZIP to include them.')});
    this.pages[0].createEl('p',{text:t('Maximum: 10000 files and folders, 512 MiB per file, 4 GiB total; ZIP upload up to 1 GiB.')});
    this.singleOptions=this.pages[1].createDiv();this.detectedOptions=this.pages[1].createDiv({cls:'ignis-import-detected'});this.sourceDetails=this.pages[1].createEl('p',{cls:'setting-item-description'});this.outsideLink=this.pages[1].createEl('a',{attr:{href:'#'}});this.outsideLink.addEventListener('click',event=>{event.preventDefault();this.openExclusions(null,this.sourceStage.outside);});
-   this.name=field(this.singleOptions,'Vault name').createEl('input');this.name.type='text';this.name.required=true;this.name.maxLength=255;this.name.addEventListener('input',()=>this.name.setCustomValidity(''));
-   const preferences=this.singleOptions.createEl('label',{cls:'ignis-password-field'});preferences.style.flexDirection='row';preferences.style.alignItems='center';this.configuration=preferences.createEl('input');this.configuration.type='checkbox';preferences.createSpan({text:t('Import Obsidian preferences')});this.configuration.addEventListener('change',()=>{const plan=this.plans[0];if(plan){plan.configuration=this.configuration.checked;if(!plan.configuration)plan.selected=[];plan.review=null;}});
+   this.name=appendUiControl(field(this.singleOptions,'Vault name'),"input",{type:"text"});this.name.required=true;this.name.maxLength=255;this.name.addEventListener('input',()=>this.name.setCustomValidity(''));
+   const preferences=this.singleOptions.createEl('label',{cls:'ignis-password-field'});preferences.style.flexDirection='row';preferences.style.alignItems='center';this.configuration=appendUiControl(preferences,"input",{type:"checkbox"});preferences.createSpan({text:t('Import Obsidian preferences')});this.configuration.addEventListener('change',()=>{const plan=this.plans[0];if(plan){plan.configuration=this.configuration.checked;if(!plan.configuration)plan.selected=[];plan.review=null;}});
    this.singleOptions.createEl('p',{text:t('App, hotkey and graph preferences are imported by default. You can select additional preferences in Excluded items. Plugins, themes, hidden state and sharing permissions remain excluded. Community plugins start disabled.')});
    this.singleOptions.createEl('p',{text:t('The new vault belongs to your account. It will only become available after the import completes.')});
    this.review=this.pages[2].createEl('p');this.review.style.whiteSpace='pre-line';this.reviewSummary=this.review.createSpan();
@@ -70,7 +74,7 @@ export function createImportModal(Modal,Notice){
     const directory=await pending,entries=await readDirectory(directory,this.abort.signal);this.abort.signal.throwIfAborted();this.setFolder(directory.name,entries);
    }catch(error){if(!this.closed&&error.name!=='AbortError'){
     if(['SecurityError','NotSupportedError','TypeError'].includes(error.name))this.folderSupported=false;
-    new Notice(error.name==='Error'?error.message:t('Unable to read the selected folder. Use a ZIP file or try again.'));
+    showManagementNotice(Notice,error.name==='Error'?error.message:t('Unable to read the selected folder. Use a ZIP file or try again.'));
    }}
    finally{this.selecting=false;if(!this.closed)this.show();}
   }
@@ -94,10 +98,10 @@ export function createImportModal(Modal,Notice){
    if(!many){this.name.value=this.plans[0].name;this.configuration.checked=false;this.plans[0].input=this.name;return;}
    this.detectedOptions.createEl('p',{text:t('Select the vaults to import. Names and preferences are independent for each vault.')});
    for(const plan of this.plans){
-    const row=this.detectedOptions.createDiv({cls:'ignis-import-vault'}),enable=row.createEl('label',{cls:'ignis-import-enable'}),check=enable.createEl('input',{attr:{type:'checkbox'}});check.checked=true;enable.createEl('strong',{text:plan.root});
-    const name=row.createEl('label',{cls:'ignis-password-field',text:t('Vault name')}).createEl('input');name.type='text';name.value=plan.name;name.maxLength=255;name.required=true;plan.input=name;plan.check=check;
+    const row=this.detectedOptions.createDiv({cls:'ignis-import-vault'}),enable=row.createEl('label',{cls:'ignis-import-enable'}),check=appendUiControl(enable,"input",{attr:{type:'checkbox'}});check.checked=true;enable.createEl('strong',{text:plan.root});
+    const name=appendUiControl(row.createEl('label',{cls:'ignis-password-field',text:t('Vault name')}),"input",{type:"text"});name.value=plan.name;name.maxLength=255;name.required=true;plan.input=name;plan.check=check;
     name.addEventListener('input',()=>{plan.name=name.value;name.setCustomValidity('');});
-    const label=row.createEl('label',{cls:'ignis-import-enable'}),config=label.createEl('input',{attr:{type:'checkbox'}});plan.configInput=config;label.createSpan({text:t('Import Obsidian preferences')});
+    const label=row.createEl('label',{cls:'ignis-import-enable'}),config=appendUiControl(label,"input",{attr:{type:'checkbox'}});plan.configInput=config;label.createSpan({text:t('Import Obsidian preferences')});
     config.addEventListener('change',()=>{plan.configuration=config.checked;if(!config.checked)plan.selected=[];plan.review=null;});
     check.addEventListener('change',()=>{plan.enabled=check.checked;name.disabled=config.disabled=!check.checked;this.show();});
    }
@@ -115,7 +119,7 @@ export function createImportModal(Modal,Notice){
   async previous(){
    if(this.busy)return;this.excludedModal?.close();this.busy=true;this.show();
    try{await this.discard();if(this.step===1){try{await this.api('cancel-source',{id:this.sourceStage.id});}catch(error){if(error.status!==404)throw error;}this.sourceStage=null;this.scanStarted=false;this.plans=[];}this.step--;this.status.textContent='';}
-   catch(error){new Notice(error.message);}finally{this.busy=false;if(!this.closed)this.show();}
+   catch(error){showManagementNotice(Notice,error.message);}finally{this.busy=false;if(!this.closed)this.show();}
   }
   updateReview(){
    const many=this.plans.length>1;this.review.hidden=many;this.batchReview.hidden=!many;this.batchReview.empty();
@@ -146,7 +150,7 @@ export function createImportModal(Modal,Notice){
    if(this.busy||this.selecting)return;
    if(this.step===1){
     if(this.plans.length===1){const plan=this.plans[0];plan.name=this.name.value.trim();if(plan.configuration&&!this.configuration.checked)plan.selected=[];plan.configuration=this.configuration.checked;}
-    const selected=this.plans.filter(p=>p.enabled);if(!selected.length){new Notice(t('Select at least one vault.'));return;}
+    const selected=this.plans.filter(p=>p.enabled);if(!selected.length){showManagementNotice(Notice,t('Select at least one vault.'));return;}
     const names=new Set();for(const plan of selected){if(plan.result)continue;plan.input.value=plan.name.trim();plan.name=plan.input.value;plan.input.setCustomValidity('');if(!plan.input.reportValidity())return;const key=plan.name.normalize('NFC').toLowerCase();if(names.has(key)){plan.input.setCustomValidity(t('Choose a different name for each vault.'));plan.input.reportValidity();return;}names.add(key);}
    }
    const openingName=this.step===0;this.busy=true;this.show();this.status.textContent='';this.progress.hidden=false;
@@ -157,12 +161,12 @@ export function createImportModal(Modal,Notice){
      this.updateReview();this.step=2;
     }else if(this.step===2){
      for(const plan of this.plans.filter(p=>p.enabled&&!p.result)){
-      try{await this.importPlan(plan);plan.error=null;}catch(error){plan.error=error.message;if(plan.stage&&!this.closed){try{await this.api('cancel',{},false,{id:plan.stage.id});plan.stage=null;plan.uploaded.clear();}catch(cancelError){if(cancelError.status===404){plan.stage=null;plan.uploaded.clear();}}}if(error.status===409){this.step=1;plan.input.setCustomValidity(t('A vault with this name already exists.'));this.invalidName=plan.input;}else if(!this.closed)new Notice(plan.name+': '+error.message);if(this.closed||error.status===401)break;}
+      try{await this.importPlan(plan);plan.error=null;}catch(error){plan.error=error.message;if(plan.stage&&!this.closed){try{await this.api('cancel',{},false,{id:plan.stage.id});plan.stage=null;plan.uploaded.clear();}catch(cancelError){if(cancelError.status===404){plan.stage=null;plan.uploaded.clear();}}}if(error.status===409){this.step=1;plan.input.setCustomValidity(t('A vault with this name already exists.'));this.invalidName=plan.input;}else if(!this.closed)showManagementNotice(Notice,plan.name+': '+error.message);if(this.closed||error.status===401)break;}
      }
      this.updateReview();const chosen=this.plans.filter(p=>p.enabled);
-     if(chosen.every(p=>p.result)){this.result=chosen[0].result;this.step=3;this.status.textContent=t(this.plans.length>1?'Vaults imported successfully.':'Vault imported successfully.');this.completedList.empty();if(this.plans.length>1)for(const plan of chosen){const button=this.completedList.createEl('button',{text:t('Open vault')+' '+plan.name});button.type='button';button.addEventListener('click',()=>window.location.assign('/?vault='+encodeURIComponent(plan.result.id)));}}
+     if(chosen.every(p=>p.result)){this.result=chosen[0].result;this.step=3;this.status.textContent=t(this.plans.length>1?'Vaults imported successfully.':'Vault imported successfully.');this.completedList.empty();if(this.plans.length>1)for(const plan of chosen){const button=appendUiControl(this.completedList,"button",{text:t('Open vault')+' '+plan.name});button.type='button';button.addEventListener('click',()=>window.location.assign('/?vault='+encodeURIComponent(plan.result.id)));}}
     }
-   }catch(error){if(!this.closed&&error.status!==409)new Notice(error.message);}
+   }catch(error){if(!this.closed&&error.status!==409)showManagementNotice(Notice,error.message);}
    finally{this.committing=false;this.busy=false;this.cancel.disabled=false;this.progress.hidden=true;if(!this.closed){this.show();if(this.invalidName){this.invalidName.reportValidity();this.invalidName=null;}else if(openingName&&this.step===1)this.plans[0]?.input.focus();}}
   }
   close(){if(!this.committing)super.close();}

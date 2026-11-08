@@ -3,7 +3,7 @@ import {createSharedNotice} from './shared-notice.js';
 function fixture(ordinary=false){
  const nodes=[],events={},context={sessionId:'session',vault:'vault'},leaves=[];
  function element(tag){const node={tag,style:{setProperty(key,value,priority){this[key]=value;this[key+"Priority"]=priority;},removeProperty(key){delete this[key];delete this[key+"Priority"];}},children:[],attrs:{},textContent:'',setAttribute(k,v){this.attrs[k]=v;},append(...children){for(const child of children){child.parent=this;this.children.push(child);}},prepend(child){child.parent=this;this.children.unshift(child);},replaceChildren(){this.children=[];},remove(){if(this.parent)this.parent.children=this.parent.children.filter(x=>x!==this);},click(){this.onclick?.();}};nodes.push(node);return node;}
- const body=element('body'),host={document:{body,createElement:element},addEventListener:(name,fn)=>events[name]=fn,URL:{createObjectURL:vi.fn(()=> 'blob:recovery'),revokeObjectURL:vi.fn()},Blob,app:{workspace:{iterateAllLeaves:fn=>leaves.forEach(fn)}}};
+ const body=element('body'),host={document:{body,head:element('head'),getElementById:id=>nodes.find(node=>node.id===id),createElement:element},addEventListener:(name,fn)=>events[name]=fn,URL:{createObjectURL:vi.fn(()=> 'blob:recovery'),revokeObjectURL:vi.fn()},Blob,app:{workspace:{iterateAllLeaves:fn=>leaves.forEach(fn)}}};
  const notice=createSharedNotice(()=>context,host,ordinary);
  const find=text=>nodes.findLast(n=>n.textContent===text),close=()=>nodes.findLast(n=>n.attrs['aria-label']==='Close').click();
  const fail=(content='draft')=>notice.failure({path:'Shared/note.md',content,...context});
@@ -170,4 +170,13 @@ it('clears acknowledged recovery only for its matching token and account',()=>{
  f.notice.failure({path:'note.md',resolved:true,recoveryToken:{},...f.context});expect(f.body.children).not.toEqual([]);
  f.notice.failure({path:'note.md',resolved:true,recoveryToken,...f.context,sessionId:'other'});expect(f.body.children).not.toEqual([]);
  f.notice.failure({path:'note.md',resolved:true,recoveryToken,...f.context});expect(f.body.children).toEqual([]);
+});
+
+it('scopes recovery styling to its own panel and retains native button appearance',()=>{
+ const f=fixture();f.fail();
+ const panel=f.body.children[0];expect(panel.className).toBe('ignis-recovery-notice');
+ expect(panel.style.background).toBeUndefined();expect(panel.style.font).toBeUndefined();
+ const download=f.find('Download recovery copy');expect(download.style.background).toBeUndefined();expect(download.style.boxShadow).toBeUndefined();
+ expect(f.host.document.head.children.filter(node=>node.id==='ignis-recovery-notice-style')).toHaveLength(1);
+ createSharedNotice(()=>f.context,f.host);expect(f.host.document.head.children.filter(node=>node.id==='ignis-recovery-notice-style')).toHaveLength(1);
 });
