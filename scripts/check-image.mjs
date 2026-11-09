@@ -12,6 +12,8 @@ fs.writeFileSync('/tmp/obsidian/app.js','');
 fs.writeFileSync('/tmp/obsidian/package.json',JSON.stringify({version:'1.14.4'}));
 const {createApplication}=require('./apps/ignis-server/server/app/create-application');
 const app=createApplication();
+const identity=require('./apps/ignis-server/server/version').getInfo();
+assert.equal(identity.semver,require('./package.json').version);assert.deepEqual(identity.upstream,require('./package.json').ignis.upstream);assert.equal(fs.existsSync('/app/.git'),false);
 const get=(port,path)=>new Promise((resolve,reject)=>{
   const request=http.get({host:'127.0.0.1',port,path,headers:{Host:'localhost:8080'}},response=>{
     let body='';response.on('data',chunk=>body+=chunk);response.on('end',()=>resolve({status:response.statusCode,body}));response.on('error',reject);

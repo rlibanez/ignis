@@ -49,10 +49,18 @@ try{
  const alice=await login('owner',owner),bob=await login('receiver',receiver);
  // Exercise upstream behavior through real Obsidian and the authenticated transport.
  for(const client of [alice,bob]) {
+  assert.equal(await client.run(`(async()=>{const version=await (await fetch('/api/version')).json();return version.semver===window.__ignis.version && version.version===window.__ignis.version && !Object.hasOwn(version,"commit") && version.upstream.version===window.__ignis.upstream.version && version.obsidianVersion==='1.14.4';})()`),true,'server and compiled frontend report identical fork, upstream and Obsidian versions');
   assert.equal(await client.run(`Object.keys(app.commands.commands).some(id=>id.endsWith(':open-workspace-in-new-tab'))`),true,'workspace command available to ordinary owners');
   assert.equal(await client.run(`Object.keys(app.commands.commands).some(id=>id.endsWith(':refresh-vault-from-disk'))`),true,'refresh command available to ordinary owners');
   assert.equal(await client.run(`(async()=>{const fs=require('fs').promises;for(const name of ['My Work','Work.v2']){const file=app.vault.adapter.getBasePath()+'/.obsidian/workspace.'+name+'.json';await fs.writeFile(file,'{"main":{}}');if(await fs.readFile(file,'utf8')!=='{"main":{}}')return false;}return true;})()`),true,'workspace names with spaces and dots persist');
  }
+ await alice.run(`window.__ignisOpenAccount();[...document.querySelectorAll('[data-section="ignis"] .vertical-tab-nav-item')].find(el=>el.textContent.trim()==='General').click();void 0;`);
+ await alice.wait(`document.querySelector('.ignis-header-version')?.textContent.includes(window.__ignis.version)`,'fork version in native general settings');
+ assert.equal(await alice.run(`(()=>{const el=document.querySelector('.ignis-header');return el.scrollWidth<=el.clientWidth+1;})()`),true,'version header fits native settings');
+ assert.equal(await alice.run(`document.querySelector('a.ignis-header-version')?.href`),'https://github.com/rlibanez/ignis/releases/tag/v'+await alice.run('window.__ignis.version'),'fork version links to its release');
+ await alice.run(`app.setting.openTab(app.setting.settingTabs.find(tab=>tab.id==='about'));void 0;`);
+ await alice.wait(`document.querySelector('.modal.mod-settings')?.textContent.includes('Running in Ignis v'+window.__ignis.version)`,'fork version in native About row');
+ await alice.run(`app.setting.close();void 0;`);
  // The real file-menu path must use the same form category and mobile order.
  await alice.run(`{const menu=new (require('obsidian').Menu)();app.workspace.trigger('file-menu',menu,app.vault.getAbstractFileByPath('Shared.md'));menu.showAtPosition({x:20,y:20});void 0;}`);
  await alice.run(`[...document.querySelectorAll('.menu-item')].find(item=>item.textContent.trim()==='Copy to…').click()`);

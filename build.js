@@ -13,9 +13,9 @@ const headlessSyncDir = path.join(
 );
 
 // Compute version info once and share across per-package builds.
-const { version: semver } = require("./package.json");
-const build = process.env.IGNIS_BUILD || Date.now().toString(36).slice(-7);
-const version = `${semver}+${build}`;
+const info = require('./apps/ignis-server/server/version').createBuildInfo();
+const {build} = info;
+console.log(`[build] ${info.version} · upstream ${info.upstream.version}`);
 
 const buildInfoPath = path.join(
   __dirname,
@@ -27,11 +27,12 @@ const buildInfoPath = path.join(
 
 fs.writeFileSync(
   buildInfoPath,
-  JSON.stringify({ semver, build, version }, null, 2),
+  JSON.stringify(info, null, 2),
 );
 
 // Used by packages.
 process.env.IGNIS_BUILD_RESOLVED = build;
+process.env.IGNIS_VERSION_INFO_RESOLVED = JSON.stringify(info);
 
 Promise.all([
   // Build shim-loader.js (delegated to packages/shim)

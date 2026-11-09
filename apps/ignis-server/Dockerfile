@@ -20,6 +20,7 @@ COPY packages/ ./packages/
 COPY apps/ignis-server/ ./apps/ignis-server/
 
 ARG IGNIS_BUILD
+ARG IGNIS_VERSION
 RUN IGNIS_BUILD=${IGNIS_BUILD} npm run build
 
 # Production image. No Obsidian code included.

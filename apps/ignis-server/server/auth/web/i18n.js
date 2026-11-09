@@ -137,6 +137,7 @@
   "Some files are already saved. Keep the original destination to finish this share.": "Algunos archivos ya están guardados. Mantén el destino original para completar este envío.",
   "Shared image": "Imagen compartida",
   "Shared images": "Imágenes compartidas",
+  "Version": "Versión",
   "Title": "Título",
   "Content": "Contenido",
   "Shared text": "Texto compartido",

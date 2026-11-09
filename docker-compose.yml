@@ -1,9 +1,11 @@
 services:
   ignis:
-    image: rlibanez/ignis:dev
+    image: rlibanez/ignis:${IGNIS_VERSION:-1.0.0}
     build:
       context: .
       dockerfile: apps/ignis-server/Dockerfile
+      args:
+        IGNIS_VERSION: ${IGNIS_VERSION:-1.0.0}
     ports:
       - "127.0.0.1:8080:8080"
     environment:

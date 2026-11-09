@@ -2,10 +2,12 @@
 # Supply values via environment or --env-file. No host port is published.
 services:
   ignis:
-    image: rlibanez/ignis:dev
+    image: rlibanez/ignis:${IGNIS_VERSION:-1.0.0}
     build:
       context: ../../../..
       dockerfile: apps/ignis-server/Dockerfile
+      args:
+        IGNIS_VERSION: ${IGNIS_VERSION:-1.0.0}
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true

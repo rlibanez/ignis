@@ -42,7 +42,7 @@ import {
 } from "./fs/write-durability.js";
 
 // __IGNIS_VERSION__ (semver) and __IGNIS_BUILD__ are replaced at build time.
-window.__ignis = { version: __IGNIS_VERSION__, build: __IGNIS_BUILD__ };
+window.__ignis = { version: __IGNIS_VERSION__, build: __IGNIS_BUILD__, upstream: __IGNIS_UPSTREAM__ };
 window.__ignis_registerUI = registerUI;
 
 let editorSaves;

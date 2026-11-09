@@ -3,13 +3,13 @@
 // --push       build mulit-arch (amd64+arm64) and push as a manifest list, tagged with the package.json version and latest
 // --no-latest  don't move the latest tag
 //
-// Without --push, builds the host arch and loads it as <image>:dev.
+// Without --push, builds the host arch and loads it as <image>:<version>.
 
-const { spawnSync, execSync } = require("child_process");
+const { spawnSync } = require("child_process");
 const path = require("path");
 
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
-const IMAGE = process.env.IGNIS_IMAGE || "nobbe/ignis";
+const IMAGE = process.env.IGNIS_IMAGE || "rlibanez/ignis";
 const BUILDER = "ignis-builder";
 const PLATFORMS = "linux/amd64,linux/arm64";
 
@@ -41,22 +41,6 @@ function run(cmd, cmdArgs, opts = {}) {
   });
 
   return result.status === 0;
-}
-
-let dirty = "";
-
-try {
-  dirty = execSync("git status --porcelain", { cwd: repoRoot })
-    .toString()
-    .trim();
-} catch {
-  console.warn("[build-image] could not check git status");
-}
-
-if (dirty) {
-  console.warn(
-    "[build-image] WARNING: working tree has uncommitted changes; the image will not match the committed source",
-  );
 }
 
 const inspect = spawnSync("docker", ["buildx", "inspect", BUILDER], {
@@ -102,8 +86,8 @@ if (push) {
   );
 } else {
   // Host arch only. Multi-arch builds can't be loaded into the local image store.
-  buildArgs.push("-t", `${IMAGE}:dev`, "--load");
-  console.log(`[build-image] local build, loading ${IMAGE}:dev`);
+  buildArgs.push("-t", `${IMAGE}:${version}`, "--load");
+  console.log(`[build-image] local build, loading ${IMAGE}:${version}`);
 }
 
 buildArgs.push(".");

@@ -153,7 +153,7 @@ function injectIgnisSettings(setting, plugin) {
   allIgnisNavEls.clear();
 
   patchOpenTab(setting);
-  patchVersionRow(setting, plugin.manifest.version);
+  patchVersionRow(setting, window.__ignis?.version || plugin.manifest.version);
 
   const ignis = createGroup(translateIgnis("Ignis"), "ignis");
 

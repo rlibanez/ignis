@@ -41,6 +41,7 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
   let createForm;
   let createNameInput;
   let version = "";
+  let versionDetails = "";
 
   const menuItems = [
     { id: "access", label: translateIgnis("Manage access") },
@@ -71,6 +72,7 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
       const res = await fetch("/api/version");
       const data = await res.json();
       version = data.version;
+      versionDetails = `Upstream Ignis ${data.upstream?.version || "unknown"} · Obsidian ${data.obsidianVersion}`;
     } catch (e) {
       console.warn("[VaultManager] Failed to fetch version:", e);
     }
@@ -301,7 +303,7 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
   <svelte:fragment slot="footer">
     <div class="footer-left">
       {#if version}
-        <span class="version-info">Ignis v{version}</span>
+        <span class="version-info" title={versionDetails}>Ignis v{version}</span>
       {/if}
     </div>
     <div class="footer-right">

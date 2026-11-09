@@ -19,6 +19,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   delete globalThis.fetch;
+  vi.unstubAllGlobals();
 });
 
 describe("checkForUpdate", () => {
@@ -51,4 +52,10 @@ describe("checkForUpdate", () => {
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
+});
+
+it('compares upstream releases against the upstream base, not the fork release',async()=>{
+ vi.stubGlobal('window',{__ignis:{version:'1.0.0',upstream:{version:'0.9.0'}}});
+ globalThis.fetch=vi.fn(async()=>release('v0.10.0'));
+ expect(await checkForUpdate('1.0.0-a1b2c3d')).toEqual({version:'0.10.0',url:'https://example.com/v0.10.0'});
 });

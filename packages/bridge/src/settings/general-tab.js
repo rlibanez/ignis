@@ -6,7 +6,8 @@ import * as serverSettings from "./server-settings.js";
 import { numberField, listField } from "./server-setting-fields.js";
 import { messageDefinition, blockDefinition } from "./settings-ui.js";
 
-const GITHUB_URL = "https://github.com/Nystik-gh/ignis";
+const UPSTREAM_RELEASES_URL = "https://github.com/Nystik-gh/ignis/releases";
+const GITHUB_URL = "https://github.com/rlibanez/ignis";
 
 const TEXT_LINKS = [
   { text: translateIgnis("Docs"), href: "https://ignis.thiefling.com/docs/" },
@@ -100,14 +101,19 @@ function addHeader(containerEl) {
   const right = header.createDiv("ignis-header-right");
 
   const versionCol = right.createDiv("ignis-header-version-col");
-  versionCol.createEl("span", {
+  versionCol.createEl("a", {
+    href: GITHUB_URL + "/releases/tag/v" + encodeURIComponent(version),
+    attr: { target: "_blank", rel: "noopener noreferrer" },
     text: translateIgnis("Version {p0}", {p0: (version)}),
     cls: "ignis-header-version",
   });
 
+  const upstreamVersion = window.__ignis?.upstream?.version;
+  const upstreamLabel = upstreamVersion ? "Upstream " + upstreamVersion : "Upstream";
   const updateIndicator = versionCol.createEl("a", {
-    text: translateIgnis("Checking..."),
-    cls: "ignis-update-indicator",
+    text: upstreamLabel,
+    href: UPSTREAM_RELEASES_URL,
+    cls: "ignis-header-version ignis-update-indicator",
     attr: { target: "_blank", rel: "noopener noreferrer" },
   });
 
@@ -124,11 +130,10 @@ function addHeader(containerEl) {
 
   checkForUpdate(version).then((latest) => {
     if (latest) {
-      updateIndicator.textContent = translateIgnis("v{p0} available", {p0: (latest.version)});
+      updateIndicator.textContent = upstreamLabel + " · " + translateIgnis("v{p0} available", {p0: latest.version});
       updateIndicator.addClass("ignis-update-available");
       updateIndicator.href = latest.url;
-    } else {
-      updateIndicator.textContent = translateIgnis("Up to date");
+
     }
   });
 }

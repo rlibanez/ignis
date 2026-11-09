@@ -67,7 +67,7 @@ function metadata(input = {}) {
       if (typeof input[key] === "string" && input[key].length > 0 && input[key].length <= 255) out[key] = input[key];
     }
   }
-  for (const key of ["version", "obsidianVersion"])
+  for (const key of ["version", "upstreamVersion", "obsidianVersion"])
     if (typeof input[key] === "string" && input[key].length <= 128 && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(input[key])) out[key] = input[key];
   if (methods.has(input.method)) out.method = input.method;
   if (components.has(input.component)) out.component = input.component;

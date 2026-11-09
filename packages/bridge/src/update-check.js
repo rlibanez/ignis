@@ -29,8 +29,9 @@ async function fetchNewerRelease(currentVersion) {
 
 // once per page session.
 function checkForUpdate(currentVersion) {
+  const upstreamVersion = globalThis.window?.__ignis?.upstream?.version || currentVersion;
   if (!newerRelease) {
-    newerRelease = fetchNewerRelease(currentVersion);
+    newerRelease = fetchNewerRelease(upstreamVersion);
   }
 
   return newerRelease;

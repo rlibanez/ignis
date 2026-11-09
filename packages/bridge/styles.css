@@ -125,13 +125,6 @@
 .ignis-header-version {
   font-size: var(--font-ui-small);
   color: var(--text-muted);
-}
-
-.ignis-update-indicator {
-  min-width: 10em;
-  text-align: right;
-  font-size: var(--font-ui-smaller);
-  color: var(--text-faint);
   text-decoration: none;
 }
 
