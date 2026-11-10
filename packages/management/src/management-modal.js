@@ -24,7 +24,9 @@ return class ManagementModal extends Modal {
     this.cleanups.push(() => window.removeEventListener("ignis:auth-lost", lost));
     const resourceOnly = this.kind === "shares" && !!this.options.initialResource;
     this.setTitle(t(resourceOnly ? "Manage resource" : title));
-    if (["shares", "users", "password"].includes(this.kind) && document.body.classList.contains("is-mobile")) {
+    const tabletCatalog = !resourceOnly && ["shares", "users"].includes(this.kind) &&
+      document.body.classList.contains("is-tablet");
+    if (!tabletCatalog && ["shares", "users", "password"].includes(this.kind) && document.body.classList.contains("is-mobile")) {
       // Let Obsidian position mobile sheets within its native safe-area inset.
       this.modalEl.addClass("mod-lg");
       if (resourceOnly) this.modalEl.addClass("mod-form");

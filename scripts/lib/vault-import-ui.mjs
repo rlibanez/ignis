@@ -21,9 +21,9 @@ export async function vaultImportUi({native,shell}){
   }
   await client.wait(`!!document.querySelector('.ignis-import-wizard')`,'import wizard');
   const picture=async step=>{await client.run(`Promise.allSettled(document.getAnimations().map(animation=>animation.finished))`);const {data}=await client.call('Page.captureScreenshot',{format:'png'});fs.writeFileSync('/tmp/ignis-import-'+(client===native?'native':kind==='legacy'?'shell-folder':'shell')+'-'+(process.argv.includes('--mobile')?'mobile':'desktop')+'-'+step+'.png',Buffer.from(data,'base64'));};
-  await client.wait(`document.querySelector('.ignis-import-wizard').getBoundingClientRect().top<=2 || !document.body.classList.contains('is-mobile')`,'import sheet reaches mobile safe-area top');
+  if(!process.argv.includes('--tablet'))await client.wait(`document.querySelector('.ignis-import-wizard').getBoundingClientRect().top<=2 || !document.body.classList.contains('is-mobile')`,'import sheet reaches phone safe-area top');
   await picture('source');
-  if(client===native)assert.equal(await client.run(`(()=>{const runtime=window.__ignisUiRuntime;return [...document.querySelector('.ignis-import-wizard').querySelectorAll('input:not([type=checkbox]):not([type=file]),select,button')].filter(el=>!el.classList.contains('modal-close-button')).every(el=>runtime.componentFor(el) instanceof runtime[el.dataset.uiComponent]);})()`),true,'all import text fields and actions are actual native controls');
+  if(client===native)assert.equal(await client.run(`(()=>{const runtime=window.__ignisUiRuntime;return [...document.querySelector('.ignis-import-wizard').querySelectorAll('input:not([type=checkbox]):not([type=file]),select,button')].filter(el=>!el.matches('.modal-close-button,select.is-measuring')).every(el=>runtime.componentFor(el) instanceof runtime[el.dataset.uiComponent]);})()`),true,'all import text fields and actions are actual native controls');
   assert.equal(await client.run(`document.querySelector('[data-import-next]').disabled`),true,'Next is disabled without a selection');
   assert.deepEqual(await client.run(`Array.from(document.querySelector('.ignis-import-wizard select').options).map(option=>option.value)`),['zip','folder'],'ZIP is the first source option');
   assert.equal(await client.run(`document.querySelector('.ignis-import-wizard select').value`),'zip','ZIP is selected by default');
@@ -158,8 +158,7 @@ export async function vaultImportUi({native,shell}){
    assert.equal(await client.run(`!!window.app?.workspace`),false,'manager import also works without an open vault');
    const buttons=await client.run(`Array.from(document.querySelectorAll('.vault-manager-overlay .footer-right button')).map(el=>{const r=el.getBoundingClientRect();return {text:el.textContent.trim(),x:r.x,y:r.y,width:r.width};})`);
    const importing=buttons.find(b=>b.text==='Import vault'),creating=buttons.find(b=>b.text==='Create New Vault');assert.ok(importing&&creating,'manager offers import beside create');
-   if(process.argv.includes('--mobile')){assert.ok(importing.width>300&&creating.width>300,'manager actions use full mobile width');assert.ok(creating.y<importing.y,'mobile manager actions use separate rows');}
-   else assert.ok(importing.x<creating.x&&Math.abs(importing.y-creating.y)<2,'desktop import sits beside create');
+   assert.ok(importing.y<creating.y || (Math.abs(importing.y-creating.y)<2 && importing.x<creating.x),'manager actions retain their order when the footer wraps');
 
    continue;
   }

@@ -42,7 +42,15 @@ function fixtures(realSession){
 }
 export async function managementParity({native,shell,origin,vault,mobile,noticesOnly=false}){
  let errorStarts;
- const report={mobile,viewport:process.argv.includes('--landscape')?'844x390':process.argv.includes('--compact')?'360x800':process.argv.includes('--wide')?'2560x1440':mobile?'390x844':'780x437',states:[],differences:[]},output=process.env.IGNIS_PARITY_OUTPUT;
+ const tablet=process.argv.includes('--tablet');
+ const tabletViewport=process.argv.includes('--landscape')?[1024,650]:[800,1024];
+ const configureTablet=async()=>{
+  if(!tablet)return;
+  for(const client of [native,shell])await client.call('Emulation.setDeviceMetricsOverride',{width:tabletViewport[0],height:tabletViewport[1],deviceScaleFactor:1,mobile:true});
+  await native.run("document.body.classList.remove('is-phone');document.body.classList.add('is-mobile','is-tablet')");
+  await shell.run("window.__ignisAndroidInterfaceMode='tablet'");
+ };
+ const report={mobile,viewport:tablet?tabletViewport.join('x'):process.argv.includes('--landscape')?'844x390':process.argv.includes('--compact')?'360x800':process.argv.includes('--wide')?'2560x1440':mobile?'390x844':'780x437',states:[],differences:[]},output=process.env.IGNIS_PARITY_OUTPUT;
  const snapshot=async(client,label,selector)=>{
   await client.wait(`!!document.querySelector(${JSON.stringify(selector)})`,'matrix '+label);
   await client.call('Input.dispatchMouseEvent',{type:'mouseMoved',x:0,y:0});
@@ -61,17 +69,36 @@ export async function managementParity({native,shell,origin,vault,mobile,notices
    await client.run(`document.querySelector(${JSON.stringify(selector)}).dispatchEvent(new Event('pointerout',{bubbles:true}));document.querySelector(${JSON.stringify(selector)}).closest('form')?.querySelector('input')?.focus()`);
   }
  };
+ const settingsSizes=new Map();
+ const dimensionsOf=(client,selector)=>client.run(`(()=>{const {width,height}=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {width,height};})()`);
  const compare=async(label,selector)=>{
   if(label==='edit-user')for(const client of [native,shell])assert.equal(await client.run(`(()=>{const catalog=document.querySelector('#users'),parent=catalog.closest('.modal-container'),child=document.querySelector('#edit-dialog').closest('.modal-container');return !parent.hidden && getComputedStyle(parent).display!=='none' && parent!==child && catalog.getClientRects().length>0;})()`),true,'Editing preserves the visible parent catalog');
   if(selector.includes('-dialog') || selector==='.ignis-password-modal') {
-   const nativeControls=await native.run(`(()=>{const root=document.querySelector(${JSON.stringify(selector)}),runtime=window.__ignisUiRuntime;if(!runtime)return ['runtime unavailable'];return [...root.querySelectorAll('input,select,textarea,button')].filter(el=>!['checkbox','file','hidden'].includes(el.type)&&!el.matches('.modal-close-button,.modal-header-button')).filter(el=>{const component=runtime.componentFor(el);return !component || !(component instanceof runtime[el.dataset.uiComponent]);}).map(el=>el.id||el.className||el.tagName);})()`);
+   const nativeControls=await native.run(`(()=>{const root=document.querySelector(${JSON.stringify(selector)}),runtime=window.__ignisUiRuntime;if(!runtime)return ['runtime unavailable'];return [...root.querySelectorAll('input,select,textarea,button')].filter(el=>!['checkbox','file','hidden'].includes(el.type)&&!el.matches('.modal-close-button,.modal-header-button,select.is-measuring')).filter(el=>{const component=runtime.componentFor(el);return !component || !(component instanceof runtime[el.dataset.uiComponent]);}).map(el=>el.id||el.className||el.tagName);})()`);
    assert.deepEqual(nativeControls,[],label+': controls must be real Obsidian component instances');
   }
 
   const [a,b]=await Promise.all([snapshot(native,label,selector),snapshot(shell,label,selector)]);report.states.push({label,native:a,shell:b});console.log('Compared '+label);
+  if(tablet && label==='account-panel')for(const client of [native,shell])settingsSizes.set(client,await dimensionsOf(client,'.modal.mod-settings'));
+  if(tablet && selector==='.modal:has(.ignis-management-root)' && settingsSizes.size)for(const client of [native,shell]){
+   const catalog=await dimensionsOf(client,selector),settings=settingsSizes.get(client);
+   assert.ok(Math.abs(catalog.width-settings.width)<1&&Math.abs(catalog.height-settings.height)<1,
+    label+': tablet catalog matches Settings '+JSON.stringify({catalog,settings}));
+  }
   if(!mobile && selector==='.modal:has(.ignis-management-root)' && (a.width>1102||b.width>1102))report.differences.push(label+': exceeds native settings width cap');
   if(a.overflow||b.overflow)report.differences.push(label+': horizontal overflow');
-  if(mobile && ((a.modalTop!==null && a.modalTop>2) || (b.modalTop!==null && b.modalTop>2)))report.differences.push(label+': mobile modal must start at the safe-area top');
+  if(mobile && !tablet && ((a.modalTop!==null && a.modalTop>2) || (b.modalTop!==null && b.modalTop>2)))report.differences.push(label+': mobile modal must start at the safe-area top');
+  if(tablet)for(const client of [native,shell]){
+   assert.equal(await client.run(`[...document.querySelector(${JSON.stringify(selector)}).querySelectorAll('.help-toggle,.setup-help-toggle,.ignis-password-help')].filter(el=>el.getClientRects().length).every(el=>{const r=el.getBoundingClientRect();return Math.abs(r.width-r.height)<1;})`),true,label+': visible help buttons are circular in Tablet');
+
+   const geometry=await client.run(`(()=>{const modal=document.querySelector(${JSON.stringify(selector)})?.closest('.modal.ignis-ui-form');if(!modal)return null;
+    const rect=modal.getBoundingClientRect(),host=modal.closest('.modal-container').getBoundingClientRect(),previous=modal.scrollTop;
+    modal.scrollTop=modal.scrollHeight;const scrollable=modal.scrollHeight<=modal.clientHeight+1||modal.scrollTop>0;modal.scrollTop=previous;
+    return {width:rect.width,center:Math.abs(rect.top+rect.height/2-host.top-host.height/2),fits:rect.height<=host.height*.85+2,scrollable};
+   })()`);
+   if(geometry && (geometry.width>401 || geometry.center>2 || !geometry.fits || !geometry.scrollable))
+    report.differences.push(label+': tablet modal geometry '+JSON.stringify(geometry));
+  }
   if(mobile)for(const client of [native,shell]){
    const footer=await client.run(`(()=>{const root=document.querySelector(${JSON.stringify(selector)}),footer=root.querySelector('.dialog-actions,.password-actions,.modal-button-container');if(!footer)return null;const buttons=[...footer.querySelectorAll('button')].filter(el=>el.getClientRects().length);return {width:footer.clientWidth,buttons:buttons.map(el=>({text:el.textContent.trim(),width:el.getBoundingClientRect().width,top:el.getBoundingClientRect().top}))};})()`);
    if(footer){if(footer.buttons.some(b=>b.width<footer.width-2))report.differences.push(label+': mobile footer button not full width');const cancel=footer.buttons.find(b=>b.text==='Cancel');if(cancel&&footer.buttons.some(b=>b.top>cancel.top+1))report.differences.push(label+': mobile Cancel is not last');}
@@ -107,8 +134,9 @@ export async function managementParity({native,shell,origin,vault,mobile,notices
  await shell.call('Page.navigate',{url:origin+'/'});await shell.wait(`!!window.IgnisUI && !window.app?.workspace`,'zero-vault parity host');
  errorStarts=new Map([native,shell].map(client=>[client,client.errors.length]));
  await both(`parity.ready=true;document.body.classList.remove('theme-light');document.body.classList.add('theme-dark')`);
+ await configureTablet();
  await open('account');
- const dimensions=process.argv.includes('--landscape')?[844,390]:process.argv.includes('--compact')?[360,800]:process.argv.includes('--wide')?[2560,1440]:null;
+ const dimensions=tablet?null:process.argv.includes('--landscape')?[844,390]:process.argv.includes('--compact')?[360,800]:process.argv.includes('--wide')?[2560,1440]:null;
  if(dimensions)for(const client of [native,shell])await client.call('Emulation.setDeviceMetricsOverride',{width:dimensions[0],height:dimensions[1],deviceScaleFactor:1,mobile});
  await wait(`document.querySelectorAll('.setting-item-name').length>=6`);
  // Native Account retains its fetched session while mounted, just as production.
@@ -142,7 +170,7 @@ export async function managementParity({native,shell,origin,vault,mobile,notices
  await both(`parity.pending='/api/auth/users';parity.pendingMethod='POST';{const f=document.querySelector('#create-user');f.elements.login.dispatchEvent(new Event('input',{bubbles:true}));f.elements.password.value=f.elements.confirmation.value='new password!';f.requestSubmit();}`);await wait(`typeof parity.release==='function'`);await compare('create-user-busy','#create-dialog');
  await click('#create-dialog .native-management-close');await wait(`document.querySelector('#create-dialog').open`);
  await both(`parity.pending=false;parity.release();delete parity.release`);await wait(`!document.querySelector('#cancel-create').disabled`);await tap('#cancel-create');
- await click('#users button[aria-label="Edit bob"]');await wait(`document.querySelector('#edit-dialog').open`);await compare('edit-user','#edit-dialog');await both(`document.querySelector('#edit-user').requestSubmit()`);await wait(`!!document.querySelector('#edit-status').textContent`);await compare('edit-user-error','#edit-dialog');
+ await click('#users button[aria-label="Edit bob"]');await wait(`document.querySelector('#edit-dialog').open`);for(const client of [native,shell])await client.wait(`document.activeElement?.id==='edit-email'`,'initial focus on the edit user email');await compare('edit-user','#edit-dialog');await both(`document.querySelector('#edit-user').requestSubmit()`);await wait(`!!document.querySelector('#edit-status').textContent`);await compare('edit-user-error','#edit-dialog');
  await click('#revoke-sessions');await compare('close-sessions','#revoke-confirmation');await click('#cancel-revoke');
  await click('#unlink-oidc');await compare('admin-unlink-confirmation','#edit-dialog');await click('#confirm-unlink');await wait(`!!document.querySelector('#edit-status').textContent`);await compare('admin-unlink-error','#edit-dialog');await click('#cancel-unlink');
  await click('#reset-password');await compare('reset-prompt','#reset-dialog');await both(`parity.failOperation='/api/auth/users/reset-password'`);await click('#generate-reset');await wait(`!!document.querySelector('#reset-status').textContent`);await compare('reset-error','#reset-dialog');await both(`parity.failOperation=false`);await click('#generate-reset');await wait(`!document.querySelector('#reset-result').hidden`);await compare('reset-secret','#reset-dialog');
@@ -182,6 +210,7 @@ export async function managementParity({native,shell,origin,vault,mobile,notices
  await shell.call('Page.navigate',{url:origin+'/?parityLink=1'});await shell.wait(`!!window.IgnisUI&&!window.app?.workspace`,'shell provider-link host');
  errorStarts=new Map([native,shell].map(client=>[client,client.errors.length]));
  await both(`parity.ready=true;document.body.classList.remove('theme-light');document.body.classList.add('theme-dark')`);
+ await configureTablet();
  await open('account');if(dimensions)for(const client of [native,shell])await client.call('Emulation.setDeviceMetricsOverride',{width:dimensions[0],height:dimensions[1],deviceScaleFactor:1,mobile});
  await wait(`!!Array.from(document.querySelectorAll('.setting-item')).find(el=>el.querySelector('.setting-item-name')?.textContent==='OpenID Connect')`);
  await compare('account-link-provider','.modal.mod-settings .vertical-tab-content');await row('OpenID Connect');

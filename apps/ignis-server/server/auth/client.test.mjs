@@ -1,6 +1,13 @@
 import { it, expect, vi } from "vitest";
 import fs from "node:fs";
 import vm from "node:vm";
+import uiEnvironment from "../../../../packages/management/src/ui-environment.cjs";
+
+function managerEnvironment() {
+  const toggle = vi.fn();
+  return { IgnisUiEnvironment: uiEnvironment, addEventListener() {}, document: { body: { classList: { toggle } } },
+    __ignisAndroidInterfaceMode: "phone", toggle };
+}
 const source = fs.readFileSync(
   new URL("./web/client.js", import.meta.url),
   "utf8",
@@ -44,7 +51,7 @@ async function fixture({ storageFails = false, initialSessionStatus = 200, initi
     }
   }
   const element = tag => { const classes=new Set();const el = {
-    tag,attrs:{},classList:{add:(...values)=>values.forEach(value=>classes.add(value)),contains:value=>classes.has(value)},
+    tag,attrs:{},classList:{add:(...values)=>values.forEach(value=>classes.add(value)),contains:value=>classes.has(value),toggle:(value,force)=>force?classes.add(value):classes.delete(value)},
     setAttribute(key,value){this.attrs[key]=value;},focus(){this.focused=true;},
     style: {},
     append() {},
@@ -209,8 +216,12 @@ it("opens the standalone manager without booting the removed vault or Obsidian",
   const loaded = [];
   let opened = false;
   let splashRemoved = false;
+  const environment = managerEnvironment();
   await vm.runInNewContext(script, {
-    window: { __ignisAuth: { ready: Promise.resolve() }, IgnisUI: { openRequestedManagement() {}, showVaultManager() { opened = true; } } },
+    window: { ...environment, __ignisAuth: { ready: Promise.resolve() }, IgnisUI: { openRequestedManagement() {}, showVaultManager() {
+      expect(environment.toggle).toHaveBeenCalledWith("is-phone", true);
+      opened = true;
+    } } },
     location: { search: "?manager=1" },
     URLSearchParams,
     document: {
@@ -240,7 +251,7 @@ it("shows the manager for empty installations and unavailable vaults for either 
     const loaded = [];
     let opened = false;
     await vm.runInNewContext(script, {
-      window: { __ignisAuth: { role, ready: Promise.resolve() }, IgnisUI: { openRequestedManagement() {}, showVaultManager() { opened = true; } } },
+      window: { ...managerEnvironment(), __ignisAuth: { role, ready: Promise.resolve() }, IgnisUI: { openRequestedManagement() {}, showVaultManager() { opened = true; } } },
       location: { search }, URLSearchParams,
       fetch: async () => ({ status: 404 }),
       document: { createElement: () => ({}), head: { appendChild(script) { loaded.push(script.src); script.onload(); } }, getElementById: () => ({ remove() {} }) },
@@ -435,7 +446,7 @@ it.each([
   const script=html.match(/<script>\s*(\(async function[\s\S]*?)<\/script>/)[1];
   const calls=[],loaded=[];let manager=false,target;
   await vm.runInNewContext(script,{
-    window:{__ignisAuth:{ready:Promise.resolve(),role:"user",rememberedVault:()=>saved,lock(){}},IgnisUI:{showVaultManager(){manager=true;},openRequestedManagement(){}}},
+    window:{...managerEnvironment(),__ignisAuth:{ready:Promise.resolve(),role:"user",rememberedVault:()=>saved,lock(){}},IgnisUI:{showVaultManager(){manager=true;},openRequestedManagement(){}}},
     location:{search,pathname:"/"},URLSearchParams,
     history:{state:{ignisVirtualEntry:true},replaceState(state,_title,url){expect(state.ignisVirtualEntry).toBe(true);target=url;}},
     fetch:async url=>{calls.push(url);return {status,ok:status===200,json:async()=>({id:"owner/C",uuid:"confirmed-uuid"})};},
@@ -471,6 +482,7 @@ it('renders the terminal lock with the shared entry shell, preserves the active 
  f.window.__ignisAuth.lock();
  expect(document.body.classList.contains('ignis-entry')).toBe(true);
  expect(document.body.classList.contains('ignis-lock-screen')).toBe(true);
+ expect(document.body.classList.contains('ignis-access-entry')).toBe(true);
  expect(document.body.classList.contains('theme-dark')).toBe(true);
  expect(document.body.classList.contains('theme-light')).toBe(false);
  expect(f.elements.find(el=>el.id==='ignis-entry-css').href).toBe('/auth/entry.css');

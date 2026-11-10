@@ -14,6 +14,23 @@ describe('Ignis UI languages',()=>{
   for(const language of ['es','es-ES','es-MX','ES_ar'])expect(fixture(language).i18n.t('Account')).toBe('Cuenta');
   for(const language of ['en','en-GB','fr','unexpected'])expect(fixture(language).i18n.t('Account')).toBe('Account');
  });
+ it('uses the Android language on entry pages without overriding the editor language',()=>{
+  const {host,values}=fixture('en-US');
+  host.location={pathname:'/setup'};
+  host.__ignisAndroidExternalLanguage='es';
+  const i18n=createI18n(host);
+  expect(i18n.language).toBe('es');
+  host.location.pathname='/login';
+  host.__ignisAndroidExternalLanguage='en';
+  i18n.applyDeviceLanguage();
+  expect(i18n.language).toBe('en');
+  host.location.pathname='/';
+  values.set('ignis-account-v1:alice:language','es');
+  i18n.useAccount('alice');
+  expect(i18n.language).toBe('es');
+  i18n.applyDeviceLanguage();
+  expect(i18n.language).toBe('es');
+ });
  it('keeps account preferences separate and respects the Obsidian language',()=>{
   const {i18n,values}=fixture('en-US');
   values.set('ignis-account-v1:alice:language','es');

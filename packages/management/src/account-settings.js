@@ -125,7 +125,7 @@ class PasswordModal extends AccountFormModal {
         if (typeof BroadcastChannel === "function") {
           const channel = new BroadcastChannel("ignis-auth"); channel.postMessage("lock"); channel.close();
         }
-        try { localStorage.clear(); sessionStorage.clear(); window.IgnisI18n?.rememberLanguage(); } catch { /* Sessions are already revoked. */ }
+        try { if (window.IgnisUiEnvironment?.clearBrowserPreferences) window.IgnisUiEnvironment.clearBrowserPreferences(window); else localStorage.clear(); sessionStorage.clear(); window.IgnisI18n?.rememberLanguage(); } catch { /* Sessions are already revoked. */ }
         window.location.assign("/login?password=changed");
       } catch { fieldError(fields.currentPassword,"The change could not be confirmed. Sign in again before retrying."); }
       finally { submit.disabled = false; fields.currentPassword.value = ""; }
@@ -265,7 +265,7 @@ class UnlinkProviderModal extends AccountFormModal {
         if (typeof BroadcastChannel === "function") {
           const channel=new BroadcastChannel("ignis-auth"); channel.postMessage("lock"); channel.close();
         }
-        try { localStorage.clear(); sessionStorage.clear(); window.IgnisI18n?.rememberLanguage(); } catch { /* Sessions are already revoked. */ }
+        try { if (window.IgnisUiEnvironment?.clearBrowserPreferences) window.IgnisUiEnvironment.clearBrowserPreferences(window); else localStorage.clear(); sessionStorage.clear(); window.IgnisI18n?.rememberLanguage(); } catch { /* Sessions are already revoked. */ }
         window.location.assign("/login");
       } catch { error.textContent=t("Request failed"); }
       finally { submit.disabled=false; input.value=""; }

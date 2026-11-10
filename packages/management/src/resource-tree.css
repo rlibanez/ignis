@@ -1,14 +1,16 @@
 .resource-tree{overflow:auto;max-height:22rem;border:1px solid var(--background-modifier-border,#6666);border-radius:8px;padding:8px;min-height:90px}
 .resource-tree .resource-tree-row{display:flex;align-items:center;gap:4px;padding-inline-start:calc(var(--depth,0)*20px);margin:2px 0}
-.resource-tree button.resource-tree-toggle,.resource-tree button.resource-tree-select{border:0;box-shadow:none;background:transparent;color:inherit;margin:0;min-height:32px;border-radius:4px;font:inherit;padding:4px 8px;width:auto}
-.resource-tree button.resource-tree-toggle{display:grid;place-items:center;flex:0 0 32px;padding:4px}
+.resource-tree button.resource-tree-toggle,.resource-tree button.resource-tree-select{border:0;box-shadow:none;background:transparent;color:inherit;margin:0;min-height:var(--ignis-tree-control-size,32px);border-radius:4px;font:inherit;padding:4px 8px;width:auto}
+.resource-tree button.resource-tree-toggle{display:grid;place-items:center;flex:0 0 var(--ignis-tree-control-size,32px);padding:4px}
 .resource-tree button.resource-tree-select{display:flex;align-items:center;justify-content:flex-start;gap:8px;flex:1;min-width:0;text-align:start;white-space:normal;overflow-wrap:anywhere}
 .resource-tree svg{width:18px;height:18px;flex:none}
 .resource-tree button:hover,.resource-tree button[aria-pressed=true]{background:var(--background-modifier-hover,#8964d322)}
 .resource-tree button[aria-pressed=true]{color:var(--text-accent,#a48be8)}
 .resource-tree button:focus-visible{outline:2px solid var(--interactive-accent,#a48be8);outline-offset:-2px}
 .resource-tree button:disabled{opacity:.5}
-@media(pointer:coarse){.resource-tree button.resource-tree-toggle{flex-basis:44px;min-height:44px}.resource-tree button.resource-tree-select{min-height:44px}}
+@media(pointer:coarse){body:not(.incoming-share) .resource-tree button.resource-tree-toggle{flex-basis:44px;min-height:44px}body:not(.incoming-share) .resource-tree button.resource-tree-select{min-height:44px}}
+.incoming-share .resource-tree button.resource-tree-toggle{flex-basis:var(--incoming-toggle-width);min-height:var(--incoming-toggle-width)}
+.incoming-share .resource-tree button.resource-tree-select{min-height:var(--incoming-toggle-width)}
 
 /* Explicit typography keeps native dialogs and embedded management views aligned. */
 .resource-tree button.resource-tree-select,.resource-tree button.resource-tree-toggle{font-family:var(--font-interface,inherit);font-size:var(--font-ui-medium,16px);font-weight:var(--font-normal,400);line-height:var(--line-height-normal,1.5)}

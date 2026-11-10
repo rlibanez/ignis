@@ -15,3 +15,5 @@ body:not(.is-phone) .ignis-shell-settings > .mod-start { display: none; }
 .is-phone .ignis-shell-settings[data-view="account"] .vertical-tab-header { display: none; }
 .is-phone .ignis-shell-settings[data-view="navigation"] .vertical-tab-content-container,
 .is-phone .ignis-shell-settings[data-view="navigation"] > .mod-start { display: none; }
+
+.ignis-shell-settings .ignis-device-tab:not(.is-active):not(.mobile-tap):not(:hover) { background-color: transparent; }

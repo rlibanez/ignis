@@ -32,9 +32,20 @@ export function appendUiControl(parent, tag, options) {
     return element;
   }
   const element = createUiElement(parent.ownerDocument,tag,options);
-  parent.append(element);return element;
+  parent.append(element);
+  mountDropdownMeasure(element);
+  return element;
 }
 export function nativeComponent(element) { return controls.get(element); }
+function mountDropdownMeasure(element) {
+  const dropdown = element.tagName === "SELECT" && nativeComponent(element);
+  if (!dropdown?.measureEl) return;
+  // An absolutely positioned measuring select must not extend the form at its static position.
+  dropdown.measureEl.style.insetBlockStart = "0";
+  dropdown.measureEl.style.insetInlineStart = "0";
+  element.after(dropdown.measureEl);
+  dropdown.setValue(element.value);
+}
 // Called once before template controllers attach listeners or retain references.
 export function initializeUiControls(root) {
   for(const input of root.querySelectorAll("input:not([type])"))input.type="text";
@@ -48,6 +59,7 @@ export function initializeUiControls(root) {
     if (old.tagName === 'INPUT') element.value=old.value;
     else element.replaceChildren(...old.childNodes);
     old.replaceWith(element);
+    mountDropdownMeasure(element);
   }
 }
 // Select choices are data, not portalled Svelte <option> nodes. Updating a list
@@ -60,4 +72,5 @@ export function setUiOptions(select, choices) {
     else{const option=select.ownerDocument.createElement('option');option.value=String(choice.value);option.textContent=String(choice.label);select.append(option);}
     select.lastElementChild.disabled=choice.disabled===true;
   }
+  if (component?.measureEl?.isConnected) component.setValue(select.value);
 }

@@ -58,6 +58,9 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
             ? translateIgnis(" Include at least {p0} punctuation or symbol characters (for example ! or *). Spaces do not count as symbols.", {p0: (policy.minSpecialChars)})
             : translateIgnis(" No special characters are required."));
         form.hidden = false;
+        if (globalThis.IgnisUiEnvironment?.mobile(window) && document.activeElement === document.body) {
+          field("initialAdminKey").focus();
+        }
       }
     } catch {
       status.textContent =

@@ -587,6 +587,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
           editButton.disabled = false;
           editStatus.textContent = ownAccount ? translateIgnis("You cannot disable your own account or change your own role.") : "";
           editDialog.showModal();
+          editForm.elements.email.focus();
         });
         const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
         for (const [key, value] of Object.entries({

@@ -9,8 +9,12 @@
   const contentPath = path => path.split('/').every(part => IgnisIncoming.safeName(part));
   const option = (value, label) => { const el = document.createElement('option'); el.value = value; el.textContent = label; return el; };
   function status(message) { $('status').textContent = t(message); }
+  function showSignIn(visible) {
+    $('signin').hidden = !visible;
+    document.body.classList.toggle('ignis-access-entry', visible);
+  }
   function lock() {
-    locked = true; $('resource-dialog').close(); $('resource-name').value = ''; $('capture').hidden = true; $('signin').hidden = false; clearPreview(); $('files').replaceChildren();
+    locked = true; $('resource-dialog').close(); $('resource-name').value = ''; $('capture').hidden = true; showSignIn(true); clearPreview(); $('files').replaceChildren();
     status('Your session has ended or changed. Return to this page after signing in with the same account.');
   }
   async function session() {
@@ -140,7 +144,10 @@
     }
     await IgnisIncoming.purge();
     const current = await session();
-    if (!current) { $('signin').hidden = false; return; }
+    if (!current) {
+      showSignIn(true);
+      return;
+    }
     if (context && context !== current.sessionId) { lock(); return; }
     context = current.sessionId; userId = current.user.id;
     globalThis.IgnisI18n?.useAccount(userId);
@@ -149,7 +156,7 @@
       if (existing.owner && existing.owner !== userId) throw new Error(t('Sign in with the account that started saving this content.'));
       return {...existing, owner: userId};
     });
-    $('signin').hidden = true;
+    showSignIn(false);
     if (item.state !== 'pending') { status('The save could not be confirmed. Check the destination in Ignis before sharing again.'); return; }
     renderContentHeading();
     renderPreview();
@@ -174,8 +181,15 @@
   }
   $('mkdir').onclick = () => openCreate('folder');
   $('choose-new-note').onclick = () => openCreate('note');
-  $('retry').onclick = () => { if (locked) location.reload(); else void run(start); };
-  $('resource-cancel').onclick = () => { if (!creatingBusy) $('resource-dialog').close(); };
+  $('share-sign-in').addEventListener('click', event => {
+    try {
+      sessionStorage.setItem('ignis-share-sign-in', id);
+    } catch {
+      event.preventDefault();
+      status('Temporary storage unavailable. Share the content again.');
+    }
+  });
+  $('resource-close').onclick = $('resource-cancel').onclick = () => { if (!creatingBusy) $('resource-dialog').close(); };
   $('resource-dialog').addEventListener('cancel', event => { if (creatingBusy) event.preventDefault(); });
   $('resource-form').onsubmit = event => {
     event.preventDefault();
@@ -183,7 +197,7 @@
     const target = creating;
     void run(async () => {
       creatingBusy = true;
-      $('resource-create').disabled = $('resource-cancel').disabled = true;
+      $('resource-close').disabled = $('resource-create').disabled = $('resource-cancel').disabled = true;
       try {
         if (target.vault !== vault()) throw new Error(t('Request failed'));
         let name = $('resource-name').value.trim();
@@ -197,7 +211,7 @@
         if (target.kind === 'note') { selectDestination(path, true); renderTree(); }
         $('resource-dialog').close(); status('');
       } catch (error) { $('resource-error').textContent = error.message; }
-      finally { creatingBusy = false; $('resource-create').disabled = $('resource-cancel').disabled = false; }
+      finally { creatingBusy = false; $('resource-close').disabled = $('resource-create').disabled = $('resource-cancel').disabled = false; }
     });
   };
   async function update(change) {

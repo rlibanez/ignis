@@ -48,6 +48,8 @@
 <script>window.__obsidianTerms = __OBSIDIAN_TERMS__;</script>
 <!-- Ignis shims: must run before any Obsidian code. -->
 <script src="/auth/i18n.js"></script>
+<script src="/auth/ui-environment.js"></script>
+<script src="/auth/share-store.js" defer></script>
 <script src="/auth/client.js"></script>
 <script src="/auth/events.js"></script>
 <!-- Obsidian scripts injected dynamically to avoid touching their files. -->
@@ -55,6 +57,19 @@
 (async function () {
   try {
     await window.__ignisAuth.ready;
+    // OIDC sign-in returns to the app root. Resume only a share explicitly
+    // selected for sign-in in this tab, after the authenticated client is ready.
+    if (!location.search && window.__ignisAuth.userId) {
+      let shareId;
+      try {
+        shareId = sessionStorage.getItem("ignis-share-sign-in");
+        sessionStorage.removeItem("ignis-share-sign-in");
+      } catch { /* Optional browser storage. */ }
+      if (shareId && /^[A-Za-z0-9_-]{1,128}$/.test(shareId)) {
+        location.replace("/share-target?" + new URLSearchParams({id: shareId}));
+        return;
+      }
+    }
     async function load(src) {
       await new Promise(function (resolve, reject) {
         var script = document.createElement("script");
@@ -82,6 +97,12 @@
       }
     }
     if (showManager) {
+      const environment = window.IgnisUiEnvironment;
+      environment.applyTheme?.(window);
+      if (environment.applyTheme) window.addEventListener("ignis:external-theme", () => {
+        if (!window.app?.workspace) environment.applyTheme(window);
+      });
+      environment.applyMode(window, environment.mode(window, { inherit: false }));
       await load(uiSrc);
       document.getElementById("ignis-status")?.remove();
       window.IgnisUI.showVaultManager();

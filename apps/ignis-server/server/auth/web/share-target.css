@@ -1,5 +1,5 @@
 /* The incoming-content page shares native controls and the common entry shell. */
-.ignis-entry.incoming-share main { width: min(704px, 100%); }
+.ignis-entry.incoming-share:not(.ignis-access-entry) main { width: min(704px, 100%); }
 .incoming-share fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .incoming-share section { margin-block: 20px; }
 #preview-title { white-space: pre-wrap; overflow-wrap: anywhere; font-weight: var(--font-semibold,600); margin-bottom: 8px; }
@@ -10,28 +10,64 @@
 .destination-picker { position: relative; margin-top: 12px; }
 .destination-tree { max-height: 22rem; overflow: auto; }
 .resource-actions { position: absolute; inset-block-start: 8px; inset-inline-end: 8px; z-index: 1; display: flex; gap: 8px; }
-.resource-actions button { display: grid; place-items: center; width: 36px; min-width: 36px; height: 32px; padding: 6px; margin: 0; }
-.resource-actions button svg { width: 18px; height: 18px; }
+.incoming-share .resource-actions > button { display: grid; place-items: center; width: 36px; min-width: 36px; height: 32px; padding: 0; margin: 0; }
+.resource-actions > button > svg { display: block; width: 18px; height: 18px; }
 .incoming-file { margin-block: 16px; }
 .incoming-file-original { margin: 0 0 12px; font-weight: var(--font-semibold,600); overflow-wrap: anywhere; }
 #files .incoming-file label { margin: 0 0 8px; }
 #resource-error:empty { display: none; }
-@media (max-width: 767px) { .resource-actions button { width: 44px; height: 44px; } }
+.incoming-share.is-mobile .resource-actions button { width: 44px; height: 44px; }
 
 .destination-tree .resource-tree-row:first-child { padding-inline-end: 6.5rem; }
 /* The root has no expand action. Align its folder icon with the arrows below. */
 .destination-tree { --incoming-toggle-width: 32px; }
 .destination-tree .resource-tree-row:first-child > .resource-tree-toggle { display: none; }
 .destination-tree .resource-tree-row:first-child > .resource-tree-select { padding-inline-start: calc((var(--incoming-toggle-width) - 18px) / 2); }
-@media (pointer: coarse) {
-  .destination-tree { --incoming-toggle-width: 44px; }
-}
+.incoming-share.is-mobile .destination-tree { --incoming-toggle-width: 44px; }
 
 .incoming-share #status:empty { display:none; }
 .incoming-share #preview-heading { margin-bottom:16px; }
 .incoming-share .incoming-content { margin-top:0; padding:16px; border:1px solid var(--background-modifier-border); border-radius:var(--radius-m,8px); background:var(--background-secondary); }
+body.incoming-share.theme-light .incoming-content { background: var(--background-primary); }
 .incoming-share .incoming-content label { margin:0 0 8px; font-size:var(--font-ui-small); color:var(--text-muted); }
 .incoming-share #preview-title-field { margin-bottom:16px; }
 .incoming-share #preview-title { margin:0; font-weight:var(--font-normal); }
 .incoming-share #preview { display:block; width:100%; min-height:var(--input-height); margin:0; padding:8px 12px; resize:vertical; }
 .incoming-share .incoming-content [hidden] { display:none; }
+
+.incoming-share #signin .account-button {
+  margin: 0; padding-inline: 16px;
+  background: var(--interactive-accent); color: var(--text-on-accent);
+  font-weight: var(--input-font-weight, 500);
+}
+html:has(> body.incoming-share #resource-dialog[open]) {
+  overflow: hidden;
+}
+.incoming-share #resource-dialog {
+  position: fixed;
+  overscroll-behavior: contain;
+  background: var(--modal-background, var(--background-primary));
+}
+.incoming-share #resource-dialog .share-dialog-close {
+  margin: 0;
+}
+.incoming-share.is-mobile #resource-dialog .share-dialog-close {
+  display: grid; place-items: center; width: 44px; height: 44px;
+}
+.incoming-share.is-phone #resource-dialog {
+  width: min(400px, 100%);
+  max-width: none;
+  padding-inline: 16px;
+  border-radius: 28px;
+}
+.incoming-share.theme-dark.is-phone #resource-dialog {
+  border: 0;
+}
+.incoming-share.is-phone #resource-dialog h2 {
+  text-align: center; padding-inline: 44px;
+}
+.incoming-share.is-phone #resource-dialog .share-dialog-close {
+  inset: 12px 12px auto auto;
+  border-radius: 50%; background: var(--interactive-normal);
+}
+.incoming-share.is-mobile #signin .account-button { width: 100%; }

@@ -10,6 +10,8 @@ export async function vaultBatchUi({native,shell}){
    if(client===native){await client.run(`window.__ignisOpenManagement('account')`);await client.wait(`Array.from(document.querySelectorAll('.setting-item')).some(el=>el.querySelector('.setting-item-name')?.textContent==='Import vault')`,'batch account entry');await client.run(`Array.from(document.querySelectorAll('.setting-item')).find(el=>el.querySelector('.setting-item-name')?.textContent==='Import vault').querySelector('button').click()`);}
    else{await client.wait(`!!document.querySelector('.vault-manager-overlay')`,'zero-vault manager');await client.run(`Array.from(document.querySelectorAll('.vault-manager-overlay .footer-right button')).find(el=>el.textContent.trim()==='Import vault').click()`);}
    await client.wait(`!!document.querySelector('.ignis-import-wizard')`,'batch wizard');
+   if(process.argv.includes('--tablet'))assert.ok(await client.run(`(()=>{const modal=document.querySelector('.ignis-import-wizard'),r=modal.getBoundingClientRect(),host=modal.closest('.modal-container').getBoundingClientRect();return r.width<=401&&r.height<=host.height*.85+2&&Math.abs(r.top+r.height/2-host.top-host.height/2)<=2;})()`),'tablet import wizard is compact and centered');
+
    if(kind==='folder')await client.run(`{const select=document.querySelector('.ignis-import-wizard select');select.value='folder';select.dispatchEvent(new Event('change'));document.querySelector('[data-import-drop]').click();}`);
    else{
     const archive=require('archiver')('zip',{zlib:{level:6}}),chunks=[];archive.on('data',b=>chunks.push(b));const done=new Promise((resolve,reject)=>{archive.on('end',resolve);archive.on('error',reject);});

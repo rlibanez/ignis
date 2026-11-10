@@ -77,6 +77,13 @@ jobs:
         env:
           IGNIS_E2E_OBSIDIAN_ASSETS: ${{ vars.IGNIS_E2E_OBSIDIAN_ASSETS }}
           IGNIS_CHROME_PATH: ${{ vars.IGNIS_CHROME_PATH }}
+      - run: |
+          node scripts/check-obsidian-runtime.mjs --mobile --tablet --management-parity
+          node scripts/check-obsidian-runtime.mjs --mobile --device-settings
+          node scripts/check-obsidian-runtime.mjs --mobile --device-settings --android-device-settings
+        env:
+          IGNIS_E2E_OBSIDIAN_ASSETS: ${{ vars.IGNIS_E2E_OBSIDIAN_ASSETS }}
+          IGNIS_CHROME_PATH: ${{ vars.IGNIS_CHROME_PATH }}
       - run: npm run test:vault-transfers
         env:
           IGNIS_E2E_OBSIDIAN_ASSETS: ${{ vars.IGNIS_E2E_OBSIDIAN_ASSETS }}

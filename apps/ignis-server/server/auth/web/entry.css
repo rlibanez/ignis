@@ -14,7 +14,6 @@ body.ignis-entry {
   background: var(--background-primary); border: 1px solid var(--background-modifier-border);
   border-radius: var(--modal-radius, 12px); box-shadow: var(--shadow-l);
 }
-.ignis-entry.ignis-access-entry main { width: min(400px, 100%); }
 .ignis-entry main :is(p,h1,h2,label,pre) { font-family: var(--font-interface); }
 .ignis-entry .brand { margin: 0 0 8px; color: var(--text-muted); font-size: var(--font-ui-small, 13px); font-weight: var(--font-semibold, 600); letter-spacing: .12em; }
 .ignis-entry h1, .ignis-entry h2 { margin: 0 0 24px; color: var(--text-normal); font-size: var(--font-ui-large, 18px); font-weight: var(--font-semibold, 600); line-height: 1.4; overflow-wrap: anywhere; }
@@ -41,32 +40,113 @@ body.ignis-entry {
 .ignis-entry .setup-field-heading { position: relative; display: flex; align-items: center; gap: 8px; margin: 20px 0 8px; }
 .ignis-entry .setup-field-heading label { margin: 0; }
 .ignis-entry .setup-field-help { display: inline-flex; }
-.ignis-entry .setup-help-toggle { display: grid; place-items: center; width: 22px; height: 22px; min-height: 0; padding: 0; margin: 0; border-radius: 50%; background: var(--background-modifier-hover); color: var(--text-muted); box-shadow: none; }
+.ignis-entry .setup-field-help > .setup-help-toggle { display: grid; place-items: center; width: 22px; height: 22px; min-height: 0; padding: 0; margin: 0; border-radius: 50%; background: var(--background-modifier-hover); color: var(--text-muted); box-shadow: none; }
 .ignis-entry .setup-help-tooltip { position: absolute; z-index: 10; top: calc(100% + 8px); inset-inline-start: 0; width: 100%; padding: 8px 12px; border-radius: var(--radius-m, 8px); background: var(--background-modifier-message); color: var(--text-on-accent); box-shadow: var(--shadow-s); font-size: var(--font-ui-small, 13px); }
 .ignis-entry .login-submit { position: relative; }
 .ignis-entry #login-error { position: absolute; bottom: calc(100% - 16px); inset-inline-start: 0; z-index: 10; max-width: 100%; margin: 0; padding: 8px 12px; border-radius: var(--radius-s, 4px); background: var(--background-secondary); border: 1px solid var(--text-error); color: var(--text-error); box-shadow: var(--shadow-s); font-size: var(--font-ui-small, 13px); }
 .ignis-entry .account-button { display: flex; align-items: center; justify-content: center; text-decoration: none; }
 .ignis-entry a.account-button { margin-top: 12px; min-height: var(--input-height, 30px); border-radius: var(--button-radius, 5px); background: var(--interactive-normal); color: var(--text-normal); box-shadow: var(--input-shadow); }
 .ignis-entry .ignis-language { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 24px; color: var(--text-muted); font-size: var(--font-ui-small, 13px); }
-.ignis-entry .ignis-language select { width: auto; max-width: 60%; }
+/* CSS chevrons work under the entry pages' self-only image policy. */
+.ignis-entry .ignis-language-dropdown { position: relative; margin: 0; max-width: 60%; }
+.ignis-entry .ignis-language select { width: auto; padding-inline-end: 36px; }
+.ignis-language-dropdown::before, .ignis-language-dropdown::after {
+  content: ""; position: absolute; z-index: 1; inset-inline-end: 14px;
+  width: 5px; height: 5px; border: solid currentColor; border-width: 0 1.5px 1.5px 0;
+  pointer-events: none;
+}
+.ignis-language-dropdown::before { top: calc(50% - 5px); transform: rotate(225deg); }
+.ignis-language-dropdown::after { top: calc(50% + 1px); transform: rotate(45deg); }
 .ignis-entry dialog { width: min(400px, calc(100% - 32px)); max-height: calc(100dvh - 48px); overflow: auto; padding: 24px; border: 1px solid var(--background-modifier-border); border-radius: var(--modal-radius, 12px); background: var(--background-primary); color: var(--text-normal); box-shadow: var(--shadow-l); }
+/* Keep the capture page's secondary dialogs inside both system bars. */
+.ignis-entry.incoming-share dialog {
+  --dialog-safe-top: max(24px, var(--ignis-android-status-inset, 0px), var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px));
+  --dialog-safe-bottom: max(24px, var(--ignis-android-gesture-inset, 0px), var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px));
+  inset-block: var(--dialog-safe-top) var(--dialog-safe-bottom);
+  max-height: calc(100dvh - var(--dialog-safe-top) - var(--dialog-safe-bottom));
+}
+.ignis-entry.incoming-share.is-phone dialog {
+  inset-block-end: 0;
+  height: calc(100dvh - var(--dialog-safe-top));
+  max-height: calc(100dvh - var(--dialog-safe-top));
+  padding-block-end: var(--dialog-safe-bottom);
+}
 .ignis-entry dialog::backdrop { background: var(--background-modifier-cover, #0009); }
 .ignis-entry dialog h2 { padding-inline-end: 32px; }
 .ignis-entry .share-dialog-close { position: absolute; top: 12px; right: 12px; width: 28px; height: 28px; padding: 4px; border: 0; background: transparent; box-shadow: none; color: var(--text-muted); }
 .ignis-entry .share-dialog-close svg { width: 18px; height: 18px; }
 .ignis-entry .dialog-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
-@media (max-width: 767px) {
-  body.ignis-entry { background: var(--modal-background, var(--background-primary)); padding-inline: max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-right)); }
-  .ignis-entry main { margin: 0 auto; padding: 16px 8px; border: 0; border-radius: 0; box-shadow: none; background: transparent; }
-  .ignis-entry .dialog-actions { flex-direction: column; }
-  .ignis-entry .dialog-actions > button { width: 100%; }
+/* Use the same interaction mode as the native controls. */
+body.ignis-entry.is-mobile {
+  background: var(--modal-background, var(--background-primary));
+  padding-top: max(16px, var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px));
+  padding-bottom: max(24px, var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px));
+}
+.ignis-entry.is-mobile main {
+  margin: 0 auto; padding: 0 8px 16px; border: 0;
+  border-radius: 0; box-shadow: none; background: transparent;
+}
+.ignis-entry.is-mobile .dialog-actions { flex-direction: column; }
+.ignis-entry.is-mobile .dialog-actions > button { width: 100%; }
+
+/* Login and first administrator share the access panel on mobile. */
+body.ignis-entry.ignis-access-entry.is-mobile {
+  --access-top: max(16px, var(--ignis-android-status-inset, 0px), var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px));
+  --access-bottom: max(24px, var(--ignis-android-gesture-inset, 0px), var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px));
+  padding: var(--access-top) 0 var(--access-bottom);
+  background: var(--background-primary, #202020);
+}
+body.ignis-entry.ignis-access-entry.is-mobile main {
+  margin: 0 auto;
+  padding: 20px 24px 28px;
+  background: var(--modal-background, var(--background-secondary, #262626));
+  border: 0;
+  border-radius: 28px;
+  box-shadow: none;
 }
 
-/* Mobile entry headers use one top inset, rather than body plus main padding. */
-body.ignis-entry.is-mobile { padding-top:max(16px, env(safe-area-inset-top)); }
-body.ignis-entry.is-mobile main { margin-top:0; padding-top:0; }
+body.ignis-entry.ignis-access-entry.theme-light.is-mobile {
+  background: var(--background-secondary, #f5f5f5);
+}
+body.ignis-entry.ignis-access-entry.theme-light.is-mobile main {
+  background: var(--background-primary, #fff);
+  box-shadow: inset 0 0 0 1px var(--background-modifier-border, #ddd);
+}
+
+body.ignis-entry.ignis-access-entry.is-phone main {
+  min-height: calc(100dvh - var(--access-top) - var(--access-bottom));
+}
+
+body.ignis-entry.ignis-access-entry.is-tablet {
+  display: flex;
+  flex-direction: column;
+}
+body.ignis-entry.ignis-access-entry.is-tablet main {
+  margin-block: auto;
+}
 
 /* Terminal session/vault screens share the entry shell, never the live editor. */
+body.ignis-lock-screen .ignis-lock-viewport {
+  position: fixed;
+  inset: max(16px, var(--ignis-android-status-inset, 0px), var(--safe-area-inset-top, 0px), env(safe-area-inset-top, 0px))
+    max(0px, env(safe-area-inset-right, 0px))
+    max(24px, var(--ignis-android-gesture-inset, 0px), var(--safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px))
+    max(0px, env(safe-area-inset-left, 0px));
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+body.ignis-entry.ignis-lock-screen.theme-light.is-mobile {
+  background: var(--background-secondary, #f5f5f5);
+}
+body.ignis-entry.ignis-lock-screen.theme-light.is-mobile .ignis-lock-panel {
+  box-shadow: inset 0 0 0 1px var(--background-modifier-border, #ddd);
+}
+body.ignis-lock-screen.is-tablet .ignis-lock-viewport {
+  display: flex;
+  flex-direction: column;
+}
+body.ignis-lock-screen .ignis-lock-viewport main { flex-shrink: 0; }
+body.ignis-lock-screen.is-phone .ignis-lock-viewport main { min-height: 100%; }
 .ignis-lock-screen .lock-actions { display:flex; flex-direction:column; gap:var(--size-4-3,12px); margin-top:var(--size-4-6,24px); }
 .ignis-lock-screen .lock-actions > :is(button,a.account-button) { width:100%; margin:0; white-space:normal; }
 .ignis-entry a.account-button.mod-cta { background:var(--interactive-accent); color:var(--text-on-accent); }

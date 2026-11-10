@@ -1,7 +1,9 @@
 // A provider redirect must not carry another session's caches or editor data.
 export async function clearSessionStorage(host, signal, {forSignIn=false}={}) {
   signal?.throwIfAborted();
-  host.localStorage.clear();host.sessionStorage.clear();
+  if (host.IgnisUiEnvironment?.clearBrowserPreferences) host.IgnisUiEnvironment.clearBrowserPreferences(host);
+  else host.localStorage.clear();
+  host.sessionStorage.clear();
   host.IgnisI18n?.rememberLanguage({forSignIn});
   if(host.caches)for(const key of await host.caches.keys()){
     signal?.throwIfAborted();await host.caches.delete(key);

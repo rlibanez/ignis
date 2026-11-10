@@ -1,6 +1,7 @@
+import {deviceSettings, hasDeviceSettings, hasMobileDeviceSettings} from "../../management/src/device-settings.js";
 import {showManagementNotice} from "../../management/src/ui-notice.js";
 import {createUiElement,uiRuntime} from "../../management/src/ui-controls.js";
-import {X, Eye, EyeOff, User, ArrowLeft} from 'lucide-svelte';
+import {X, Eye, EyeOff, User, ArrowLeft, Settings} from 'lucide-svelte';
 import settingsShellStyles from './settings-shell.css';
 import {createManagementModal} from '../../management/src/management-modal.js';
 import {createImportModal} from '../../management/src/import-vault.js';
@@ -26,7 +27,7 @@ function element(tag,options={}) {
 const icons=new WeakMap();
 function setIcon(target,name){
   icons.get(target)?.$destroy();target.replaceChildren();
-  const Icon=({x:X,eye:Eye,'eye-off':EyeOff,user:User,'arrow-left':ArrowLeft})[name] || X;
+  const Icon=({x:X,eye:Eye,'eye-off':EyeOff,user:User,'arrow-left':ArrowLeft,settings:Settings})[name] || X;
   icons.set(target,new Icon({target,props:{size:18}}));
 }
 export class BrowserModal {
@@ -77,7 +78,10 @@ export class BrowserModal {
   }
   setTitle(title){this.titleEl.textContent=title;}
   open(){
-    if(!window.app?.workspace && (document.body.classList.contains('is-mobile') || window.matchMedia('(max-width: 599px)').matches)){
+    const environment=globalThis.IgnisUiEnvironment;
+    const deviceMode=environment && (hasMobileDeviceSettings() || window.__ignisAndroidInterfaceMode);
+    if(!window.app?.workspace && deviceMode)environment.applyMode(window,environment.mode(window,{inherit:false}));
+    if(!window.app?.workspace && !document.body.classList.contains('is-tablet') && (document.body.classList.contains('is-mobile') || (!deviceMode && window.matchMedia('(max-width: 599px)').matches))){
       document.body.classList.add('is-mobile','is-phone');
       this.containerEl.style.alignItems='flex-start';
       this.containerEl.style.paddingTop='max(var(--safe-area-inset-top,0px),env(safe-area-inset-top,0px))';
@@ -134,25 +138,44 @@ class AccountModal extends BrowserModal {
     this.accountTab.id=`ignis-shell-account-tab-${sequence}`;
     setIcon(this.accountTab.createDiv({cls:'vertical-tab-nav-item-icon'}),'user');
     this.accountTab.createSpan({cls:'vertical-tab-nav-item-title',text:t('Account')});
+    if(hasDeviceSettings()){
+      this.deviceTab=tabs.createEl('button',{type:'button',cls:'vertical-tab-nav-item ignis-device-tab',attr:{role:'tab','aria-selected':'false'}});
+      setIcon(this.deviceTab.createDiv({cls:'vertical-tab-nav-item-icon'}),'settings');
+      this.deviceTab.createSpan({cls:'vertical-tab-nav-item-title',text:t('Device settings')});
+      this.deviceTab.addEventListener('click',()=>{
+        this.showAccount(true,true);
+        this.render();
+      });
+    }
+
     const content=this.contentEl.createDiv({cls:'vertical-tab-content-container'});
     this.accountContent=content.createDiv({cls:'vertical-tab-content',attr:{role:'tabpanel','aria-labelledby':this.accountTab.id}});
     this.accountContent.id=`ignis-shell-account-panel-${sequence}`;
     this.accountTab.setAttribute('aria-controls',this.accountContent.id);
     const back=this.modalEl.createEl('button',{type:'button',cls:'modal-header-button mod-start mod-raised clickable-icon',attr:{'aria-label':t('Back')}});
     setIcon(back,'arrow-left');back.addEventListener('click',()=>this.showAccount(false));
-    this.accountTab.addEventListener('click',()=>{this.showAccount(true);this.accountContent.querySelector('button')?.focus();});
+    this.accountTab.addEventListener('click',()=>{this.showAccount(true);this.render();this.accountContent.querySelector('button')?.focus();});
     this.search.addEventListener('input',()=>this.filter());
     this.tab={app:null,pendingEmailEdit:this.kind==='email',isActive:()=>this.containerEl.isConnected,update:()=>this.render()};
-    this.showAccount(true);this.render();
+    const showNavigation = this.kind === "settings" && document.body.classList.contains("is-phone");
+    this.showAccount(!showNavigation);
+    this.render();
   }
-  showAccount(selected){
+  showAccount(selected,device=false){
+    this.deviceSelected=device;
+    this.accountTab.classList.toggle('is-active',selected&&!device);
+    this.accountTab.setAttribute('aria-selected',String(selected&&!device));
+    if(this.deviceTab){
+      this.deviceTab.classList.toggle('is-active',selected&&device);
+      this.deviceTab.setAttribute('aria-selected',String(selected&&device));
+    }
     this.modalEl.dataset.view=selected?'account':'navigation';
-    this.setTitle(t(selected?'Account':'Settings'));
+    this.setTitle(t(selected?(device?'Device settings':'Account'):'Settings'));
     if(!selected)this.accountTab.focus();
   }
   filter(){
     const query=this.search.value.trim().toLocaleLowerCase();
-    const matchesTab=[t('Account'),t('Ignis')].some(text=>text.toLocaleLowerCase().includes(query));
+    const matchesTab=[t(this.deviceSelected?'Device settings':'Account'),t('Ignis')].some(text=>text.toLocaleLowerCase().includes(query));
     let visible=0;
     for(const row of this.accountContent.querySelectorAll('.setting-item')){
       row.hidden=!!query && !matchesTab && !row.textContent.toLocaleLowerCase().includes(query);
@@ -163,13 +186,13 @@ class AccountModal extends BrowserModal {
   render(){
     if(!this.containerEl.isConnected)return;
     this.accountContent.replaceChildren();
-    for(const group of settingDefinitions(this.tab)){
+    for(const group of this.deviceSelected?deviceSettings(BrowserModal):settingDefinitions(this.tab)){
       const items=this.accountContent.createDiv({cls:'setting-group'}).createDiv({cls:'setting-items'});
       for(const item of group.items){
         const row=items.createDiv({cls:'setting-item'}),info=row.createDiv({cls:'setting-item-info'});
         if(item.name)info.createDiv({cls:'setting-item-name',text:item.name});
         const desc=info.createDiv({cls:'setting-item-description'}),controls=row.createDiv({cls:'setting-item-control'});
-        const setting={settingEl:row,setDesc(text){desc.textContent=text;return this;},addButton(fn){
+        const setting={settingEl:row,controlEl:controls,setDesc(text){desc.textContent=text;return this;},addButton(fn){
           const el=controls.createEl('button',{type:'button'});
           const button={setButtonText(text){el.textContent=text;return this;},setDisabled(disabled){el.disabled=disabled;return this;},setWarning(){el.classList.add('mod-destructive','mod-cta');return this;},onClick(fn){el.addEventListener('click',fn);return this;}};
           fn(button);return this;
@@ -182,7 +205,7 @@ class AccountModal extends BrowserModal {
   }
 }
 export function openAccount(kind='account') {
-  if(window.__ignisOpenManagement && window.app?.workspace){window.__ignisOpenManagement(kind);return;}
+  if(window.__ignisOpenManagement && window.app?.workspace){window.__ignisOpenManagement(kind === "settings" ? "account" : kind);return;}
   if(['users','shares'].includes(kind))new ManagementModal(null,kind).open();
   else if(kind==='password')new ManagementModal(null,'password',{passwordSetup:true}).open();
   else new AccountModal(kind).open();

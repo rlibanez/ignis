@@ -46,6 +46,28 @@
       });
     } finally { db.close(); }
   }
+  async function pending(owner) {
+    if (!owner) return [];
+    const db = await open();
+    try {
+      return await new Promise((resolve, reject) => {
+        const items = [];
+        const tx = db.transaction('shares', 'readonly');
+        const request = tx.objectStore('shares').openCursor();
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (!cursor) return;
+          const item = cursor.value;
+          if (item.owner === owner && item.state === 'pending' && !expired(item)) {
+            items.push({id:item.id, title:item.title, names:item.names, createdAt:item.createdAt});
+          }
+          cursor.continue();
+        };
+        tx.oncomplete = () => resolve(items.sort((a,b) => b.createdAt-a.createdAt));
+        tx.onerror = () => reject(new Error('Temporary storage unavailable.'));
+      });
+    } finally { db.close(); }
+  }
   function textContent(title, text, url) {
     // Android commonly supplies links in text rather than url. Keep that text intact.
     const parts = [text, url].filter(Boolean);
@@ -57,5 +79,5 @@
       // eslint-disable-next-line no-control-regex
       !/[\\/\u0000-\u001f\u007f]/.test(name) && !name.startsWith('.') && !/[. ]$/.test(name);
   }
-  globalThis.IgnisIncoming = { TTL, MAX_BYTES, MAX_FILES, config, expired, change, purge, textContent, safeName };
+  globalThis.IgnisIncoming = { TTL, MAX_BYTES, MAX_FILES, config, expired, change, purge, pending, textContent, safeName };
 })();

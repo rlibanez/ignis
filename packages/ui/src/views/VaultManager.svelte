@@ -308,7 +308,7 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
     </div>
     <div class="footer-right">
       {#if window.__ignisAuth && (!currentVaultId || !hasAccountSwitcher)}
-        <Button variant="ghost" on:click={() => openAccount()}>{translateIgnis("Settings")}</Button>
+        <Button variant="ghost" on:click={() => openAccount("settings")}>{translateIgnis("Settings")}</Button>
       {/if}
       {#if window.__ignisAuth?.sessionId && !window.__ignisAuth?.blocked}
         <Button variant="ghost" on:click={openVaultImport}>{translateIgnis("Import vault")}</Button>
@@ -444,17 +444,18 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
   }
 
   .section-body {
-    flex: 1;
+    flex: 0 1 auto;
+    min-height: 5rem;
     display: flex;
     flex-direction: column;
     padding: 1rem 1.1rem 0rem 1rem;
   }
 
   .vault-list {
-    flex: 1;
+    flex: 1 1 300px;
     overflow-y: auto;
     scrollbar-gutter: stable;
-    min-height: 300px;
+    min-height: 0;
     max-height: 300px;
     padding: 0rem 0 1rem 0;
     display: flex;
@@ -516,6 +517,4 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
     color: var(--text-muted);
     user-select: none;
   }
-  :global(.is-mobile) .footer-right { flex-direction:column-reverse; width:100%; }
-  :global(.is-mobile) .footer-right :global(.btn) { width:100%; justify-content:center; }
 </style>

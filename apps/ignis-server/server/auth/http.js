@@ -327,7 +327,7 @@ function createAuthBoundary({
         req.url.split("?")[0] === "/api/auth/oidc/callback";
       const entryNavigation =
         req.method === "GET" &&
-        ["/", "/index.html", "/login", "/share-target"].includes(req.url.split("?")[0]) &&
+        ["/", "/index.html", "/login", "/setup", "/share-target"].includes(req.url.split("?")[0]) &&
         req.headers["sec-fetch-mode"] === "navigate" &&
         req.headers["sec-fetch-dest"] === "document";
       if (!transportAllowed(req) || (!callback && !entryNavigation && !originAllowed(req)))

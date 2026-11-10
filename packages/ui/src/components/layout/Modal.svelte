@@ -89,6 +89,11 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
     overflow: hidden;
   }
 
+  .modal-overlay:global(.vault-manager-overlay) .modal-shell {
+    max-height: 80dvh;
+    overflow-y: auto;
+  }
+
   .modal-header {
     display: flex;
     align-items: center;

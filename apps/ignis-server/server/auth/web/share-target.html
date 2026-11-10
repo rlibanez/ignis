@@ -17,7 +17,7 @@
 <body class="ignis-entry incoming-share"><main>
 <p class="brand" data-ignis-app-name>IGNIS</p><h1 id="preview-heading" data-i18n="Save shared content">Save shared content</h1>
 <p id="status" role="status" aria-live="polite"></p>
-<section id="signin" hidden><p data-i18n="Sign in, then return here to continue. Your incoming content stays on this device.">Sign in, then return here to continue. Your incoming content stays on this device.</p><a href="/login" target="_blank" rel="noopener" data-i18n="Sign in">Sign in</a><button id="retry" type="button" data-i18n="Continue">Continue</button></section>
+<section id="signin" hidden><p data-i18n="Sign in to continue. Your incoming content stays on this device.">Sign in to continue. Your incoming content stays on this device.</p><div class="dialog-actions"><a class="account-button mod-cta" id="share-sign-in" href="/login" data-i18n="Sign in">Sign in</a></div></section>
 <form id="capture" hidden><fieldset id="fields">
 <section class="incoming-content" aria-labelledby="preview-heading">
 <div id="preview-title-field" hidden><label for="preview-title" data-i18n="Title">Title</label><input id="preview-title" type="text" hidden></div>
@@ -28,8 +28,8 @@
 <input id="destination-search" type="search" data-i18n-placeholder="Search folders..." placeholder="Search folders..." autocomplete="off">
 <div class="destination-picker">
 <div class="resource-actions">
-<button id="mkdir" aria-label="Create folder" data-i18n-aria-label="Create folder" title="Create folder" data-i18n-title="Create folder" type="button" class="account-button secondary" ><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h7l2 2h9v11H3z M3 7V4h7l2 3 M15 12v6 M12 15h6"/></svg></button>
-<button id="choose-new-note" aria-label="Create note" data-i18n-aria-label="Create note" title="Create note" data-i18n-title="Create note" type="button" class="account-button secondary" ><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6v20h12V6z M14 2v5h4 M9 13h6 M12 10v6"/></svg></button>
+<button id="mkdir" aria-label="Create folder" data-i18n-aria-label="Create folder" title="Create folder" data-i18n-title="Create folder" type="button"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h7l2 2h9v11H3z M3 7V4h7l2 3 M15 12v6 M12 15h6"/></svg></button>
+<button id="choose-new-note" aria-label="Create note" data-i18n-aria-label="Create note" title="Create note" data-i18n-title="Create note" type="button"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6v20h12V6z M14 2v5h4 M9 13h6 M12 10v6"/></svg></button>
 </div>
 <div id="destination-tree" class="destination-tree" aria-label="Destination"></div>
 </div>
@@ -43,9 +43,9 @@
 </div>
 </fieldset></form>
 <dialog id="resource-dialog" aria-labelledby="resource-title">
-<form id="resource-form"><h2 id="resource-title"></h2>
-<label for="resource-name" data-i18n="Name">Name</label><input id="resource-name" maxlength="240" autocomplete="off" required>
+<form id="resource-form"><button type="button" id="resource-close" class="share-dialog-close" aria-label="Close" data-i18n-aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button><h2 id="resource-title"></h2>
+<label for="resource-name" data-i18n="Name">Name</label><input id="resource-name" type="text" maxlength="240" autocomplete="off" required>
 <p id="resource-error" role="alert"></p>
-<div class="capture-actions"><button id="resource-create" type="submit" class="account-button mod-cta" data-i18n="Create">Create</button><button id="resource-cancel" type="button" class="account-button secondary" data-i18n="Cancel">Cancel</button></div>
+<div class="dialog-actions"><button id="resource-create" type="submit" class="account-button mod-cta" data-i18n="Create">Create</button><button id="resource-cancel" type="button" class="account-button secondary" data-i18n="Cancel">Cancel</button></div>
 </form></dialog>
 </main></body></html>

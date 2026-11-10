@@ -23,7 +23,7 @@ try{
  db=openDatabase(path.join(root,'data'));const password='synthetic e2e password!',hash=await hashPassword(password);
  require('../apps/ignis-server/server/features/identity/adapters/store').bootstrapAdmin(db,'owner',hash);
  db.prepare("INSERT INTO users(id,login,role,created_at) VALUES ('receiver','receiver','user',0)").run();db.prepare('INSERT INTO local_credentials VALUES (?,?,0)').run('receiver',hash);
- if((process.argv.includes('--ui-isolation')||process.argv.includes('--management-parity')||process.argv.includes('--management-notices')||process.argv.includes('--vault-transfers'))){db.prepare("INSERT INTO users(id,login,role,created_at) VALUES ('empty','empty',?,0)").run(process.argv.includes('--vault-transfers')?'user':'admin');db.prepare('INSERT INTO local_credentials VALUES (?,?,0)').run('empty',hash);}
+ if((process.argv.includes('--ui-isolation')||process.argv.includes('--management-parity')||process.argv.includes('--management-notices')||process.argv.includes('--vault-transfers')||process.argv.includes('--device-settings'))){db.prepare("INSERT INTO users(id,login,role,created_at) VALUES ('empty','empty',?,0)").run(process.argv.includes('--vault-transfers')?'user':'admin');db.prepare('INSERT INTO local_credentials VALUES (?,?,0)').run('empty',hash);}
  const ownerId=db.prepare("SELECT id FROM users WHERE login='owner'").get().id;
  const owner=createRegisteredVault(db,vaultRoot,ownerId,'Owner',{isCurrent:()=>true}),receiver=createRegisteredVault(db,vaultRoot,'receiver','Receiver',{isCurrent:()=>true});
  fs.writeFileSync(path.join(vaultRoot,'owner/Owner','Shared.md'),'# Shared\ninitial\n');
@@ -39,7 +39,20 @@ try{
  let startupLog="";child.stderr.on("data",chunk=>{startupLog=(startupLog+chunk).slice(-16000);});child.stdout.on("data",chunk=>{startupLog=(startupLog+chunk).slice(-16000);});
  try{await waitForServerStarted(child);}catch(error){console.error(startupLog);throw error;}
  async function login(user,vault){
-  const client=await browser({mobile:process.argv.includes('--mobile')});clients.push(client);await client.call('Page.navigate',{url:origin+'/login'});await client.wait(`!!document.querySelector('#login-form') && !document.querySelector('#login-form').hidden`,'visible login form');
+  const client=await browser({mobile:process.argv.includes('--mobile')});clients.push(client);
+  const userAgent = process.argv.includes('--device-settings') ? 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36' : await client.run('navigator.userAgent');
+  await client.call('Emulation.setUserAgentOverride',{userAgent,acceptLanguage:'en-US,en'});
+  if(process.argv.includes('--android-device-settings'))await client.call('Page.addScriptToEvaluateOnNewDocument',{source:`
+    window.__ignisAndroidDeviceActions=true;
+    window.__ignisAndroidInterfaceMode='phone';
+    window.__ignisAndroidAppVersion='1.0.0';
+    window.__ignisAndroidExternalTheme='dark';
+    const originalPrompt=window.prompt.bind(window);
+    window.prompt=(action,...args)=>action==='IgnisAndroid:app-update'
+      ? JSON.stringify(window.ignisTestUpdate || {checking:true})
+      : action==='IgnisAndroid:external-theme' ? args[0] : originalPrompt(action,...args);
+  `});
+  await client.call('Page.navigate',{url:origin+'/login'});await client.wait(`!!document.querySelector('#login-form') && !document.querySelector('#login-form').hidden`,'visible login form');
   await client.run(`(()=>{const form=document.querySelector('#login-form');form.elements.login.value=${JSON.stringify(user)};form.elements.password.value=${JSON.stringify(password)};form.requestSubmit();})()`);
   await client.wait(`location.pathname!=='/login'`,'login form submission');
   if(!vault){await client.wait(`!!window.IgnisUI && !window.app?.workspace`,'zero-vault shell');return client;}
@@ -59,16 +72,139 @@ try{
  assert.equal(await alice.run(`(()=>{const el=document.querySelector('.ignis-header');return el.scrollWidth<=el.clientWidth+1;})()`),true,'version header fits native settings');
  assert.equal(await alice.run(`document.querySelector('a.ignis-header-version')?.href`),'https://github.com/rlibanez/ignis/releases/tag/v'+await alice.run('window.__ignis.version'),'fork version links to its release');
  await alice.run(`app.setting.openTab(app.setting.settingTabs.find(tab=>tab.id==='about'));void 0;`);
- await alice.wait(`document.querySelector('.modal.mod-settings')?.textContent.includes('Running in Ignis v'+window.__ignis.version)`,'fork version in native About row');
- await alice.run(`app.setting.close();void 0;`);
+ await alice.wait(`document.querySelector('.modal.mod-settings')?.textContent.includes(IgnisI18n.t('Running in Ignis v{p0}',{p0:window.__ignis.version}))`,'fork version in native About row');
+ if(process.argv.includes('--device-settings')){
+  const shell=await login('empty');
+  for(const client of [alice,shell]){
+   const native=client===alice;
+   await client.run(native ? `document.querySelector(".modal-setting-back-button")?.click();void 0;` : `window.IgnisUI.openAccount();void 0;`);
+   await client.run(`Promise.allSettled(document.getAnimations().map(animation=>animation.finished))`);
+   const nav=`.vertical-tab-nav-item`;
+   try { await client.wait(`[...document.querySelectorAll('${nav}')].some(el=>el.textContent.trim()==='Device settings')`,'device settings entry',3000); }
+   catch(error){console.error(native,client.errors,await client.run(`({body:document.querySelector('.modal.mod-settings')?.outerHTML.slice(0,1800),header:window.app?.setting?.tabHeadersEl?.outerHTML.slice(0,400),ua:navigator.userAgent,device:IgnisUiEnvironment.hasWebDeviceSettings(window),tabs:[...document.querySelectorAll('.vertical-tab-nav-item')].map(el=>el.textContent)})`));throw error;}
+   assert.equal(await client.run(`[...document.querySelectorAll('${nav}')].find(el=>el.textContent.trim()==='Device settings').classList.contains('is-active')`),false,'device tab starts inactive');
+   assert.equal(await client.run(`getComputedStyle([...document.querySelectorAll('${nav}')].find(el=>el.textContent.trim()==='Device settings')).backgroundColor`),'rgba(0, 0, 0, 0)','inactive device tab has a transparent background');
+   await client.run(`[...document.querySelectorAll('${nav}')].find(el=>el.textContent.trim()==='Device settings').click()`);
+   try { await client.wait(`!!document.querySelector('select[aria-label="Interface mode"]')`,'device mode selector',3000); }
+   catch(error){console.error(native,client.errors,await client.run(`document.querySelector('.modal.mod-settings')?.innerText`));throw error;}
+   assert.equal(await client.run(`(()=>{
+    const before=document.body.classList.contains('theme-dark');
+    const button=[...document.querySelectorAll('.setting-item')].find(row=>row.querySelector('.setting-item-name')?.textContent==='Ignis screen theme').querySelector('button');
+    button.click();
+    return IgnisUiEnvironment.theme(window)==='light' &&
+      document.body.classList.contains('theme-dark')===(${native}?before:false) &&
+      button.textContent==='Dark mode';
+   })()`),true,'external theme toggles without changing the vault theme');
+   assert.equal(await client.run(`document.querySelector('select[aria-label="Interface mode"]').dataset.uiComponent==='DropdownComponent'`),native);
+   assert.equal(await client.run(`(()=>{
+     const select=document.querySelector('select[aria-label="Interface mode"]'),style=getComputedStyle(select);
+     const context=document.createElement('canvas').getContext('2d');
+     context.font=style.font;
+     const label=select.selectedOptions[0]?.textContent;
+     return !!label && select.clientWidth>=context.measureText(label).width+parseFloat(style.paddingLeft)+parseFloat(style.paddingRight)-1;
+   })()`),true,'interface selector leaves room for the selected label');
+   if(native)assert.ok(await client.run(`parseFloat(document.querySelector('select[aria-label="Interface mode"]').style.getPropertyValue('--dropdown-fitted-width'))>48`),'Obsidian measures the selected label in the live DOM');
+   if(process.argv.includes('--android-device-settings')){
+    assert.deepEqual(await client.run(`[...document.querySelectorAll('.modal.mod-settings a.ignis-device-action')].map(el=>el.getAttribute('href'))`),['settings','pending','lock-settings','lock-now'].map(action=>'/__ignis_android/action/'+action));
+    const release = 'https://github.com/rlibanez/ignis-android/releases/tag/v1.1.0';
+    await client.wait(`document.querySelector('.modal.mod-settings').textContent.includes('Installed version 1.0.0')`,'installed Android version');
+    await client.wait(`document.querySelector('.modal.mod-settings').textContent.includes('Checking for updates…')`,'automatic Android update check');
+    await client.run(`window.ignisTestUpdate={available:'1.1.0',release:${JSON.stringify(release)}};window.dispatchEvent(new Event('ignis:android-update'));void 0;`);
+    assert.equal(await client.run(`document.querySelector('.modal.mod-settings a[href="${release}"]')?.textContent`),'View');
+    assert.equal(await client.run(`document.querySelector('select[aria-label="Interface mode"]').value`),'phone');
+    assert.equal(await client.run(`document.querySelectorAll('[data-ignis-android-settings]').length`),0);
+    assert.deepEqual(await client.run(`(async()=>{
+      const dialogs=window.__ignisAndroidDialogs,prompt=window.prompt,calls=[];
+      const select=document.querySelector('select[aria-label="Interface mode"]');
+      try {
+        let accepted=false;
+        window.__ignisAndroidDialogs={confirm:async()=>accepted};
+        window.prompt=(action,payload)=>{calls.push([action,JSON.parse(payload)]);return JSON.stringify({ok:true,mode:'tablet'});};
+        const change=async()=>{select.value='tablet';await select.onchange();};
+        await change();
+        const cancelled=select.value==='phone'&&calls.length===0;
+        accepted=true;await change();
+        return {cancelled,calls,applied:select.value==='tablet'};
+      } finally {window.__ignisAndroidDialogs=dialogs;window.prompt=prompt;window.__ignisAndroidInterfaceMode='phone';}
+    })()`),{cancelled:true,calls:[['IgnisAndroid:interface-apply',{mode:'tablet'}]],applied:true});
+
+    continue;
+   }
+   await client.run(`{const select=document.querySelector('select[aria-label="Interface mode"]');select.value='tablet';select.dispatchEvent(new Event('change'));}`);
+   await client.wait(`document.querySelector('.modal.ignis-ui-form')?.textContent.includes('Apply and reload')`,'web reload confirmation');
+   await client.run(`[...document.querySelectorAll('.modal.ignis-ui-form button')].find(button=>button.textContent==='Cancel').click()`);
+   await client.wait(`document.querySelector('select[aria-label="Interface mode"]').value==='auto' && !document.querySelector('.modal.ignis-ui-form')`,'cancel restores the previous web mode');
+   await client.run(`{
+     const original=IgnisUiEnvironment.setWebPreference;
+     IgnisUiEnvironment.setWebPreference=mode=>{IgnisUiEnvironment.setWebPreference=original;return false;};
+     const select=document.querySelector('select[aria-label="Interface mode"]');
+     select.value='tablet';select.dispatchEvent(new Event('change'));
+   }`);
+   await client.wait(`document.querySelector('.modal.ignis-ui-form .mod-cta')?.textContent==='Apply and reload'`,'web reload confirmation before storage failure');
+   await client.run(`document.querySelector('.modal.ignis-ui-form .mod-cta').click();void 0;`);
+   await client.wait(`document.querySelector('.modal.ignis-ui-form')?.textContent.includes('Request failed') && document.querySelector('select[aria-label="Interface mode"]').value==='auto'`,'web mode failure is visible and leaves the selection unchanged');
+   await client.run(`[...document.querySelectorAll('.modal.ignis-ui-form button')].find(button=>button.textContent==='Close').click()`);
+   await client.run(`(async()=>{for(const [id,title,owner,expiresAt] of [['own','Own pending',__ignisAuth.userId,null],['foreign','Foreign pending','another-user',null],['expired','Expired pending',__ignisAuth.userId,1]])await IgnisIncoming.change(id,()=>({id,title,owner,expiresAt,state:'pending',createdAt:Date.now()}));})()`);
+   await client.run(`[...document.querySelectorAll('.setting-item')].find(el=>el.querySelector('.setting-item-name')?.textContent==='Pending shares').querySelector('button').click()`);
+   await client.wait(`document.querySelector('.modal.ignis-ui-form')?.textContent.includes('Own pending')`,'owned pending share');
+   assert.equal(await client.run(`/Foreign pending|Expired pending/.test(document.querySelector('.modal.ignis-ui-form').textContent)`),false);
+   await client.run(`[...document.querySelectorAll('.modal.ignis-ui-form button')].find(button=>button.textContent==='Discard').click()`);
+   await client.wait(`document.querySelector('.modal.ignis-ui-form')?.textContent.includes('No pending shares.')`,'pending item discarded');
+   await client.run(`[...document.querySelectorAll('.modal.ignis-ui-form button')].find(button=>button.textContent==='Close').click()`);
+  }
+  await alice.run(`app.setting.close();void 0;`);
+  if(!process.argv.includes('--android-device-settings')){
+   await shell.run(`{
+     window.ignisBeforeModeReload=true;
+     const select=document.querySelector('select[aria-label="Interface mode"]');
+     select.value='tablet';select.dispatchEvent(new Event('change'));
+   }`);
+   await shell.wait(`document.querySelector('.modal.ignis-ui-form .mod-cta')?.textContent==='Apply and reload'`,'web mode confirmation before reload');
+   await shell.run(`document.querySelector('.modal.ignis-ui-form .mod-cta').click();void 0;`);
+   await shell.wait(`!window.ignisBeforeModeReload && !!window.IgnisUI && document.body.classList.contains('is-tablet')`,'saved Tablet mode applies after reloading the zero-vault host');
+  }
+  await shell.call('Emulation.setDeviceMetricsOverride',{width:1024,height:1366,deviceScaleFactor:1,mobile:true});
+  await shell.call('Page.addScriptToEvaluateOnNewDocument',{source:"window.__ignisAndroidInterfaceMode='phone'"});
+  await shell.call('Page.navigate',{url:origin+'/?manager=1'});
+  await shell.wait(`!!window.IgnisUI && !window.app?.workspace`,'Android zero-vault host after reload');
+  await shell.wait(`document.querySelectorAll('.vault-manager-overlay .footer-right button').length===3`,'zero-vault manager actions');
+  const managerRows=()=>shell.run(`[...document.querySelectorAll('.vault-manager-overlay .footer-right button')].map(el=>el.offsetTop-el.parentElement.offsetTop)`);
+  const rowsBeforeSettings=await managerRows();
+  assert.equal(new Set(rowsBeforeSettings).size,1,'manager actions fit on one row on a wide tablet in Phone mode');
+  assert.equal(await shell.run(`document.body.classList.contains('is-phone')`),true,'saved Phone mode applies before opening Settings');
+  await shell.run(`[...document.querySelectorAll('.vault-manager-overlay .footer-right button')].find(button=>button.textContent.trim()==='Settings').click();void 0;`);
+  await shell.wait(`document.querySelector('.ignis-shell-settings')?.dataset.view==='navigation'`,'vault manager opens the Settings menu in Phone mode');
+  assert.deepEqual(await shell.run(`[...document.querySelectorAll('.ignis-shell-settings [role="tab"]')].map(tab=>[tab.textContent.trim(),tab.getAttribute('aria-selected')])`),
+    [['Account','false'],['Device settings','false']]);
+  assert.equal(await shell.run(`document.body.classList.contains('is-phone') && !document.body.classList.contains('is-tablet')`),true,'Android Phone preference wins on a wide tablet without a vault');
+  assert.deepEqual(await managerRows(),rowsBeforeSettings,'opening Settings does not reflow the manager footer');
+
+  console.log("Device settings passed with and without a vault");
+ }
+
  // The real file-menu path must use the same form category and mobile order.
  await alice.run(`{const menu=new (require('obsidian').Menu)();app.workspace.trigger('file-menu',menu,app.vault.getAbstractFileByPath('Shared.md'));menu.showAtPosition({x:20,y:20});void 0;}`);
  await alice.run(`[...document.querySelectorAll('.menu-item')].find(item=>item.textContent.trim()==='Copy to…').click()`);
  await alice.wait(`!!document.querySelector('.ignis-copy-actions')`,'native copy form');
  await alice.run(`Promise.allSettled(document.getAnimations().map(animation=>animation.finished))`);
- const copyLayout=await alice.run(`(()=>{const actions=document.querySelector('.ignis-copy-actions'),modal=actions.closest('.modal'),runtime=window.__ignisUiRuntime,r=modal.getBoundingClientRect(),buttons=[...actions.querySelectorAll('button')];return {width:r.width,top:r.top,native:[...modal.querySelectorAll('input,select,button')].filter(el=>!el.matches('.modal-close-button,.modal-header-button')).every(el=>runtime.componentFor(el) instanceof runtime[el.dataset.uiComponent]),primary:buttons[1].getBoundingClientRect().top,cancel:buttons[0].getBoundingClientRect().top};})()`);
+ const copyLayout=await alice.run(`(()=>{const actions=document.querySelector('.ignis-copy-actions'),modal=actions.closest('.modal'),runtime=window.__ignisUiRuntime,r=modal.getBoundingClientRect(),buttons=[...actions.querySelectorAll('button')];return {width:r.width,top:r.top,height:r.height,viewport:innerHeight,native:[...modal.querySelectorAll('input,select,button')].filter(el=>!el.matches('.modal-close-button,.modal-header-button,select.is-measuring')).every(el=>runtime.componentFor(el) instanceof runtime[el.dataset.uiComponent]),primary:buttons[1].getBoundingClientRect().top,cancel:buttons[0].getBoundingClientRect().top};})()`);
  assert.equal(copyLayout.native,true,'Copy to uses actual native controls');
- if(process.argv.includes('--mobile')){assert.ok(copyLayout.top<=2,'copy modal starts at the safe-area top');assert.ok(copyLayout.primary<copyLayout.cancel,'Copy here precedes Cancel');}else assert.ok(copyLayout.width<=400,'copy uses the shared native form width');
+ if(process.argv.includes('--mobile')){assert.ok(copyLayout.top<=2,'copy modal starts at the safe-area top');assert.ok(copyLayout.height>=copyLayout.viewport-2,'phone form fills the viewport');assert.ok(copyLayout.primary<copyLayout.cancel,'Copy here precedes Cancel');}
+ assert.ok(copyLayout.width<=400,'copy uses the shared native form width');
+ if(process.argv.includes('--mobile')){
+  const tabletLayout=await alice.run(`(()=>{const body=document.body,classes=body.className;
+    try {
+      body.classList.remove('is-phone');
+      body.classList.add('is-tablet');
+      const modal=document.querySelector('.ignis-copy-actions').closest('.modal'),r=modal.getBoundingClientRect();
+      return {width:r.width,height:r.height,top:r.top,viewport:innerHeight};
+    } finally {body.className=classes;}
+  })()`);
+  assert.ok(tabletLayout.width<=400,'tablet uses the shared native form width');
+  assert.ok(tabletLayout.height<tabletLayout.viewport,'tablet form height is limited to the native dialog bounds');
+  assert.ok(Math.abs(tabletLayout.top-(tabletLayout.viewport-tabletLayout.height)/2)<2,'tablet form is centered vertically');
+ }
+
  await alice.run(`document.querySelector('.ignis-copy-actions').closest('.modal').querySelector('.modal-close-button,.modal-header-button:not(.mod-start)').click()`);
  await alice.wait(`!document.querySelector('.ignis-copy-actions')`,'copy form dismissed');
  await bob.wait(`!!window.__ignis?.sharedFiles?.downloadUrl('Shared.md')`,'shared download URL');
@@ -101,7 +237,7 @@ try{
   assert.equal(fs.existsSync(probe),false,'Obsidian probe must not remain on disk');
  }
 
- for(const client of clients)await client.run(`(async()=>{const file=app.vault.getAbstractFileByPath('Shared.md');if(!file)throw Error('Shared file absent');await app.workspace.getLeaf().openFile(file);})()`);
+ for(const client of [alice,bob])await client.run(`(async()=>{const file=app.vault.getAbstractFileByPath('Shared.md');if(!file)throw Error('Shared file absent');await app.workspace.getLeaf().openFile(file);})()`);
  await bob.wait(`!!app.workspace.getLeavesOfType('markdown').find(leaf=>leaf.view.file?.path==='Shared.md')?.view?.editor`,'recipient editor');
  await bob.run(`(async()=>{const view=app.workspace.getLeavesOfType('markdown').find(leaf=>leaf.view.file?.path==='Shared.md')?.view;view.editor.setValue(${JSON.stringify('# Shared\nconfirmed from recipient\n')});await view.save();})()`);
  const until=Date.now()+10000;while(Date.now()<until&&!fs.readFileSync(path.join(vaultRoot,'owner/Owner','Shared.md'),'utf8').includes('confirmed from recipient'))await new Promise(r=>setTimeout(r,100));
@@ -132,7 +268,15 @@ try{
 
  const denied=await bob.run(`(async()=>{const session=await(await fetch('/api/auth/session')).json(),csrf=await(await fetch('/api/auth/csrf')).json();return (await fetch('/api/shares',{method:'POST',headers:{'Content-Type':'application/json','X-Ignis-Context':session.sessionId,'X-Ignis-Csrf':csrf.csrfToken},body:JSON.stringify({operation:'read',input:{id:${JSON.stringify(resource.id)},path:''}})})).status;})()`);assert.equal(denied,404);
 
- if(process.argv.includes('--vault-transfers')){const shell=await login('empty');await vaultBatchUi({native:alice,shell});await vaultImportUi({native:alice,shell});}
+ if(process.argv.includes('--vault-transfers')){
+  const shell=await login('empty');
+  if(process.argv.includes('--tablet'))for(const client of [alice,shell]){
+   await client.call('Emulation.setDeviceMetricsOverride',{width:800,height:1024,deviceScaleFactor:1,mobile:true});
+   await client.call('Page.addScriptToEvaluateOnNewDocument',{source:`document.addEventListener('DOMContentLoaded',()=>{document.body.classList.remove('is-phone');document.body.classList.add('is-mobile','is-tablet');});`});
+   await client.run("document.body.classList.remove('is-phone');document.body.classList.add('is-mobile','is-tablet')");
+  }
+  await vaultBatchUi({native:alice,shell});await vaultImportUi({native:alice,shell});
+ }
  // Exercise the real bridge host, not the vaultless fallback or synthetic CSS.
  await alice.call('Page.bringToFront');
  const activationPoint=await alice.run(`({x:innerWidth-25,y:innerHeight-25})`);
@@ -153,9 +297,10 @@ try{
   await bob.run(`document.querySelector('.ignis-ui-actions button:not(.mod-warning)').click()`);await bob.wait(`removalResult==='ECANCELED'`,'cancelled received deletion');assert.equal(fs.existsSync(path.join(vaultRoot,'owner/Owner/DownloadFolder/Note.md')),true);
   await begin();await bob.wait(`!!document.querySelector('.ignis-ui-actions .mod-warning')`,'second deletion confirmation');await bob.run(`document.querySelector('.ignis-ui-actions .mod-warning').click()`);await bob.wait(`removalResult==='done'`,'confirmed original deletion');assert.equal(fs.existsSync(path.join(vaultRoot,'owner/Owner/DownloadFolder/Note.md')),false);
   for(const client of [alice,bob]){
-   await client.run(`document.body.style.setProperty('--interactive-accent','rgb(11, 22, 33)');__ignisAuth.lock()`);
+   await client.run(`IgnisUiEnvironment.setTheme(window,'light');document.body.classList.remove('theme-light');document.body.classList.add('theme-dark');document.body.style.setProperty('--interactive-accent','rgb(11, 22, 33)');__ignisAuth.lock()`);
    await client.wait(`!!document.querySelector('.ignis-lock-panel') && !!document.querySelector('#ignis-entry-css')?.sheet`,'real editor terminal view');
    assert.equal(await client.run(`getComputedStyle(document.querySelector('.lock-actions a')).backgroundColor`),'rgb(11, 22, 33)','active theme survives terminal rendering');
+   assert.equal(await client.run(`document.body.classList.contains('theme-light') && !document.body.classList.contains('theme-dark')`),true,'the lock uses the external theme instead of the editor mode: '+await client.run(`JSON.stringify([document.body.className,IgnisUiEnvironment.theme(window)])`));
    assert.equal(await client.run(`!!document.querySelector('#ignis-lock-native-css')`),false,'native CSS is not appended over the active theme');
    assert.equal(await client.run(`!!document.querySelector('.workspace')`),false);
    assert.equal(await client.run(`fetch('/api/fs/writeFile',{method:'POST'}).then(()=>false,()=>true)`),true);

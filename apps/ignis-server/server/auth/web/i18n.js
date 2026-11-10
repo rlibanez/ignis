@@ -416,6 +416,34 @@
   "Rename": "Renombrar",
   "Rename Item": "Renombrar elemento",
   "Reopen the recovery notice": "Volver a abrir el aviso de recuperación",
+  "Configure": "Configurar",
+  "Lock": "Bloquear",
+  "Server configuration": "Configuración del servidor",
+  "App lock": "Bloqueo de la aplicación",
+  "Lock now": "Bloquear ahora",
+  "Apply interface mode?": "¿Aplicar el modo de interfaz?",
+  "Save changes before reloading Ignis.": "Guarda los cambios antes de recargar Ignis.",
+  "Device settings": "Ajustes del dispositivo",
+  "Ignis for Android": "Ignis para Android",
+  "Installed version {p0}": "Versión instalada {p0}",
+  "Checking for updates…": "Buscando actualizaciones…",
+  "Could not check for updates.": "No se pudieron consultar las actualizaciones.",
+  "Update {p0} available.": "Actualización {p0} disponible.",
+  "No updates available.": "No hay actualizaciones.",
+  "Sign in to continue. Your incoming content stays on this device.": "Inicia sesión para continuar. El contenido recibido permanece en este dispositivo.",
+  "Ignis screen theme": "Tema propio de Ignis",
+  "Color mode for Ignis screens": "Modo de las pantallas propias de Ignis",
+  "Light mode": "Modo claro",
+  "Dark mode": "Modo oscuro",
+  "Toggle Ignis screen theme": "Alternar el tema de las pantallas de Ignis",
+  "Pending shares": "Compartidos pendientes",
+  "No pending shares.": "No hay compartidos pendientes.",
+  "Interface mode": "Modo de interfaz",
+  "Apply and reload": "Aplicar y recargar",
+  "Phone": "Teléfono",
+  "Tablet": "Tablet",
+  "Desktop": "Escritorio",
+  "Discard": "Descartar",
   "Request failed": "La solicitud ha fallado",
   "Request failed: {p0}": "La solicitud ha fallado: {p0}",
   "Reset password": "Restablecer contraseña",
@@ -993,7 +1021,12 @@
     const pendingLanguageKey='ignis-signin-language-v1';
     const remove=key=>{try{storage?.removeItem(key);}catch{}};
     const browserLanguage = () => normalize(host.navigator?.languages?.[0] || host.navigator?.language);
-    let locale = normalize(read('ignis-ui-language-v1') || host.navigator?.languages?.[0] || host.navigator?.language), account = null;
+    const externalPage = () => ['/login','/setup','/reset-password','/share-target'].includes(host.location?.pathname);
+    const deviceLanguage = () => {
+      const value = host.__ignisAndroidExternalLanguage;
+      return externalPage() && (value === 'es' || value === 'en') ? value : null;
+    };
+    let locale = normalize(deviceLanguage() || read('ignis-ui-language-v1') || host.navigator?.languages?.[0] || host.navigator?.language), account = null;
     const keyFor = id => 'ignis-account-v1:' + encodeURIComponent(id) + ':language';
     const textKey = value => value.trim().replace(/\s+/g, ' ');
     function t(message, values = {}) {
@@ -1028,6 +1061,10 @@
       applyStatic();
       return locale;
     }
+    function applyDeviceLanguage() {
+      const value = deviceLanguage();
+      if (value && value !== locale) setLanguage(value, {persist:false});
+    }
     function useAccount(id) {
       if (typeof id !== 'string' || !id || account === id) return;
       account = id;
@@ -1037,7 +1074,7 @@
         // Only an authentication attempt carries the public selection into the
         // account. No other account's browser data is imported.
         locale=pending;write(keyFor(id),pending);
-      }else locale = saved ? normalize(saved) : browserLanguage();
+      }else locale = deviceLanguage() || (saved ? normalize(saved) : browserLanguage());
       applyStatic();
     }
     function rememberLanguage({forSignIn=false}={}) {
@@ -1057,13 +1094,26 @@
     function installSelector() {
       const doc=host.document, main=doc?.querySelector('main');
       if (!main || !['/login', '/setup', '/reset-password'].includes(host.location?.pathname) || doc.querySelector('[data-ignis-language]')) return;
-      const label=doc.createElement('label'),select=doc.createElement('select');
+      const label=doc.createElement('div'),select=doc.createElement('select');
       label.className='ignis-language';
       select.setAttribute('data-ignis-language','');select.setAttribute('aria-label',t('Language'));select.setAttribute('data-i18n-aria-label','Language');
       for(const [value,text] of [['es','Español'],['en','English']]){const option=doc.createElement('option');option.value=value;option.textContent=text;select.append(option);}
-      select.value=locale;select.addEventListener('change',()=>{setLanguage(select.value);host.location.reload();});label.append(select);main.append(label);
+      select.value=locale;select.addEventListener('change',()=>{
+        if (deviceLanguage()) {
+          try {
+            if (host.prompt('IgnisAndroid:external-language', select.value) !== select.value) {
+              select.value=locale;
+              return;
+            }
+            host.__ignisAndroidExternalLanguage=select.value;
+          } catch { select.value=locale; return; }
+        }
+        setLanguage(select.value);host.location.reload();
+      });const dropdown=doc.createElement('label');
+      dropdown.className='ignis-language-dropdown';
+      dropdown.append(select);label.append(dropdown);main.append(label);
     }
-    return {t, appName, get language(){return locale;}, normalize, setLanguage, useAccount, rememberLanguage, fromObsidian, applyStatic, installSelector};
+    return {t, appName, get language(){return locale;}, normalize, setLanguage, useAccount, rememberLanguage, fromObsidian, applyStatic, installSelector, applyDeviceLanguage};
   }
   if (typeof module !== 'undefined' && module.exports) module.exports = { createI18n, catalog };
   if (typeof window !== 'undefined' && !window.IgnisI18n) {

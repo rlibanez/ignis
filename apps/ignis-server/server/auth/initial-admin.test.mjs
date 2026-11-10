@@ -412,3 +412,19 @@ it('serves configured incoming-share limits to pages and imported worker scripts
   expect(context.IgnisIncoming.MAX_FILES).toBe(7); expect(context.IgnisIncoming.TTL).toBe(0);
   expect((await request('/share-worker.js')).text).toContain("importScripts('/auth/share-store.js')");
 });
+
+it("opens setup from a fresh installation's external PWA navigation", async () => {
+  await start();
+  const headers = {
+    "sec-fetch-site": "cross-site",
+    "sec-fetch-mode": "navigate",
+    "sec-fetch-dest": "document",
+  };
+  const entry = await request("/", {}, { headers });
+  expect(entry.status).toBe(303);
+  expect(entry.headers.location).toBe("/setup");
+  expect((await request(entry.headers.location, {}, { headers })).status).toBe(200);
+  expect((await request("/setup", {}, { headers: {...headers, "sec-fetch-dest": "iframe"} })).status).toBe(403);
+  expect((await request("/api/auth/setup", {}, { method: "POST", headers, body: body() })).status).toBe(403);
+  expect(count("users")).toBe(0);
+});

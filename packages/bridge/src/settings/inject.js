@@ -2,7 +2,8 @@ import {consumeManagementIntent} from "../../../management/src/intent.js";
 import { ManagementModal } from "./management-modal.js";
 
 const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
-import { Platform } from "obsidian";
+import { deviceSettings, hasDeviceSettings } from "../../../management/src/device-settings.js";
+import { Modal, Platform } from "obsidian";
 import * as accountTab from "./account-tab.js";
 import * as generalTab from "./general-tab.js";
 import * as vaultTab from "./vault-tab.js";
@@ -24,9 +25,7 @@ let ignisTabs = [];
 
 function createIgnisTabs(app) {
   const account = new IgnisSettingTab(app, "ignis-account", translateIgnis("Account"), "user-round", accountTab.settingDefinitions);
-  if (window.__ignisAuth?.role !== "admin") return [account];
-  return [
-    account,
+  const tabs = window.__ignisAuth?.role === "admin" ? [
     new IgnisSettingTab(
       app,
       "ignis-general",
@@ -34,6 +33,7 @@ function createIgnisTabs(app) {
       "flame",
       generalTab.settingDefinitions,
     ),
+    account,
     new IgnisSettingTab(
       app,
       "ignis-vault",
@@ -48,7 +48,10 @@ function createIgnisTabs(app) {
       "blocks",
       serverPluginsTab.settingDefinitions,
     ),
-  ];
+  ] : [account];
+  if (hasDeviceSettings()) tabs.push(new IgnisSettingTab(app, "ignis-device",
+    translateIgnis("Device settings"), "settings", () => deviceSettings(Modal, app)));
+  return tabs;
 }
 
 function refreshIgnisSettings() {

@@ -102,12 +102,14 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     document.body.replaceChildren();
     document.body.style.visibility = "visible";
     // This is a terminal security screen: never depend on a live editor runtime.
-    // Reuse the independent entry shell, preserving the theme already selected.
-    document.body.classList.add("ignis-entry", "ignis-lock-screen");
-    if (!document.body.classList.contains("theme-dark") && !document.body.classList.contains("theme-light")) {
-      document.body.classList.add(window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "theme-dark" : "theme-light");
+    document.body.classList.add("ignis-entry", "ignis-access-entry", "ignis-lock-screen");
+    const environment = globalThis.IgnisUiEnvironment;
+    if (environment) {
+      environment.applyTheme?.(window);
+      environment.applyMode(window, environment.mode(window, {
+        inherit: window.__ignisAndroidInterfaceMode === "auto",
+      }));
     }
-    if (window.innerWidth < 600 || window.matchMedia?.("(pointer: coarse)").matches) document.body.classList.add("is-mobile", "is-phone");
     installBoundaryStyles();
     const panel = document.createElement("main");
     panel.className = "ignis-lock-panel";
@@ -149,8 +151,11 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     }
     actions.append(link);
     panel.append(actions);
-    document.body.append(panel);
-    panel.focus();
+    const viewport = document.createElement("div");
+    viewport.className = "ignis-lock-viewport";
+    viewport.append(panel);
+    document.body.append(viewport);
+    panel.focus({ preventScroll: true });
   }
   function vaultUnavailable() {
     if(renaming){renaming.unavailable=true;return;}
@@ -404,7 +409,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       if (!response.ok) throw new Error();
       // Clear the account-scoped storage while its local context is still valid.
       // Storage failure must not prevent leaving an already revoked session.
-      try { localStorage.clear(); sessionStorage.clear(); window.IgnisI18n?.rememberLanguage(); } catch { /* Optional browser storage. */ }
+      try { if (globalThis.IgnisUiEnvironment?.clearBrowserPreferences) globalThis.IgnisUiEnvironment.clearBrowserPreferences(window); else localStorage.clear(); sessionStorage.clear(); window.IgnisI18n?.rememberLanguage(); } catch { /* Optional browser storage. */ }
       channel?.postMessage("lock");
       lock(translateIgnis("You have signed out."));
       location.replace("/login");

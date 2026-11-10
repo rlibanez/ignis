@@ -16,16 +16,17 @@ const server=http.createServer((req,res)=>{
  if(url.pathname==='/api/vault/list')return json([]);
  if(url.pathname==='/api/auth/logout'){res.statusCode=503;return json({error:'Unavailable'});}
  if(url.pathname==='/harness.js'){res.setHeader('Content-Type','text/javascript');return res.end(harness.outputFiles[0].text);}
+ if(url.pathname==='/auth/ui-environment.js'){res.setHeader('Content-Type','text/javascript');return res.end(fs.readFileSync(path.join(repo,'packages/management/src/ui-environment.cjs')));}
  if(['/auth/native.css','/auth/entry.css','/auth/client.js'].includes(url.pathname)){
   res.setHeader('Content-Type',url.pathname.endsWith('.css')?'text/css':'text/javascript');return res.end(fs.readFileSync(url.pathname==='/auth/native.css'?path.join(assets,'app.css'):path.join(web,path.basename(url.pathname))));
  }
- res.setHeader('Content-Type','text/html');res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">${url.searchParams.get('native')==='0'?'':'<link id="existing-native-css" rel="stylesheet" href="/auth/native.css">'}</head><body class="theme-${url.searchParams.get('theme')||'dark'}"><div id="editor-marker">Original editor</div><div class="status-bar"></div><script src="/auth/client.js"></script><script src="/harness.js"></script></body></html>`);
+ res.setHeader('Content-Type','text/html');res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">${url.searchParams.get('native')==='0'?'':'<link id="existing-native-css" rel="stylesheet" href="/auth/native.css">'}</head><body class="theme-${url.searchParams.get('theme')||'dark'}"><div id="editor-marker">Original editor</div><div class="status-bar"></div><script src="/auth/ui-environment.js"></script><script src="/auth/client.js"></script><script src="/harness.js"></script></body></html>`);
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const origin='http://127.0.0.1:'+server.address().port;
 let terminalStates=0,recoveryStates=0;
 try{
- for(const [mobile,width,height] of [[false,1280,900],[true,390,844],[true,360,800],[true,844,390]]){
-  const client=await browser({mobile});
+ for(const [mobile,width,height,touch=mobile,tablet=false] of [[false,1280,900],[true,390,844],[true,360,800],[true,844,390],[false,744,534],[true,800,1024,true,true]]){
+  const client=await browser({mobile:touch});
   try{
    await client.call('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile});
    await client.call('Browser.setDownloadBehavior',{behavior:'deny'});
@@ -43,13 +44,23 @@ try{
     for(const mode of ['session','vault','startup'])for(const pending of [false,true]){
      await client.call('Page.navigate',{url:origin+`/?theme=${theme}&native=${mode==='startup'?0:1}`});
      await client.wait(`!!window.__ignisAuth?.sessionId && !!window.makeRecovery`,'verified client');
+     await client.run(`IgnisUiEnvironment.setTheme(window,'${theme}');void 0;`);
      const before=await client.run(`({theme:document.body.className,hasNative:!!document.querySelector('#existing-native-css')})`);
      await client.run(`{window.recoveryBlob=null;const create=URL.createObjectURL.bind(URL);URL.createObjectURL=blob=>{window.recoveryBlob=blob;return create(blob);};window.__ignis={writes:{snapshotPending:()=>${pending?"[{path:'queued.md',data:'queued draft'}]":"[]"}}};window.app={workspace:{iterateAllLeaves:fn=>${pending?"fn({view:{file:{path:'open.md'},editor:{getValue:()=> 'open draft'}}})":"undefined"}}};void 0;}`);
+     if(mobile)await client.run("document.documentElement.style.setProperty('--ignis-android-status-inset','36px')");
+     // A host may still have editor-era body geometry during the transition.
+     if(mobile)await client.run("document.body.style.setProperty('padding-top','0','important')");
      await client.run(mode==='vault'?`__ignisAuth.vaultUnavailable()`:mode==='startup'?`__ignisAuth.lock('Unable to start Ignis. Sign in again to continue.')`:`__ignisAuth.lock()`);
      await client.wait(`!!document.querySelector('.ignis-lock-panel') && !!getComputedStyle(document.body).getPropertyValue('--font-interface').trim() && getComputedStyle(document.querySelector('.ignis-lock-panel')).width!=='auto'`,'terminal native styles');
      await client.run(`Promise.all([...document.querySelectorAll('link[rel=stylesheet]')].map(link=>link.sheet?Promise.resolve():new Promise(resolve=>{link.onload=resolve;link.onerror=resolve;})))`);
      const layout=await client.run(`(()=>{const panel=document.querySelector('.ignis-lock-panel'),box=panel.getBoundingClientRect(),actions=[...panel.querySelectorAll('.lock-actions > *')],nativeFont=token=>{const probe=document.createElement('span');probe.style.cssText='position:absolute;font-size:var('+token+')';document.body.append(probe);const value=getComputedStyle(probe).fontSize;probe.remove();return value;};return {theme:document.body.classList.contains('theme-${theme}'),font:getComputedStyle(panel.querySelector('h1')).fontSize,nativeTitleFont:nativeFont('--font-ui-large'),nativeControlFont:nativeFont('--font-ui-small'),width:box.width,left:box.left,overflow:document.documentElement.scrollWidth>innerWidth,focused:document.activeElement===panel,buttons:actions.map(el=>({width:el.getBoundingClientRect().width,font:getComputedStyle(el).fontSize})),styles:[...document.querySelectorAll('#ignis-lock-native-css')].length};})()`);
-     assert.equal(layout.theme,true,'locking preserves the selected theme over the system theme');assert.equal(layout.focused,true);assert.ok(layout.width<=400&&layout.left>=0);assert.equal(layout.overflow,false);assert.equal(layout.font,layout.nativeTitleFont);assert.ok(layout.buttons.every(button=>button.font===layout.nativeControlFont&&Math.abs(button.width-layout.buttons[0].width)<1));
+     assert.equal(await client.run("document.body.classList.contains('is-mobile')"),mobile);
+     if(mobile && theme==='light')assert.equal(await client.run(`getComputedStyle(document.querySelector('main')).boxShadow.includes('inset')`),true,'light terminal panel retains a visible outline');
+     assert.equal(await client.run("getComputedStyle(document.querySelector('main')).borderTopWidth"),mobile?'0px':'1px');
+     assert.equal(layout.theme,true,'locking preserves the selected theme over the system theme');assert.equal(layout.focused,true);assert.ok(layout.width<=400&&layout.left>=0,JSON.stringify(layout));assert.equal(layout.overflow,false);assert.equal(layout.font,layout.nativeTitleFont);assert.ok(layout.buttons.every(button=>button.font===layout.nativeControlFont&&Math.abs(button.width-layout.buttons[0].width)<1));
+     if(tablet)assert.equal(await client.run(`(()=>{const r=document.querySelector('main').getBoundingClientRect(),v=document.querySelector('.ignis-lock-viewport').getBoundingClientRect();return r.height<v.height && Math.abs(r.top-v.top-(v.height-r.height)/2)<1;})()`),true,'tablet terminal panel is compact and centered');
+     if(mobile)assert.ok(await client.run("document.querySelector('main').getBoundingClientRect().top>=36"),'terminal panel clears the status bar inset');
+     assert.equal(await client.run("getComputedStyle(document.querySelector('.ignis-lock-viewport')).position"),'fixed','terminal screen is independent of the editor scroll position');
      assert.equal(layout.styles,before.hasNative?0:1,'installed base CSS is only loaded when missing');
      assert.equal(await client.run(`!!document.querySelector('#editor-marker')`),false,'locked editor DOM is removed');
      assert.equal(await client.run(`__ignisAuth.blocked`),true);

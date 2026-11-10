@@ -21,6 +21,16 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   const requested = new URL(location.href).searchParams.get("reauth");
   const intent = ["users", "link"].includes(requested) ? requested : null;
   const destination = value => value === "users" ? "/?manage=users" : "/?manage=account";
+  function signedInDestination() {
+    let shareId;
+    try {
+      shareId = sessionStorage.getItem("ignis-share-sign-in");
+      sessionStorage.removeItem("ignis-share-sign-in");
+    } catch { /* Login remains available without session storage. */ }
+    if (shareId && /^[A-Za-z0-9_-]{1,128}$/.test(shareId))
+      return "/share-target?" + new URLSearchParams({id: shareId});
+    return "/";
+  }
   const rateLimitMessage = "Too many requests or sign-in attempts. Access is temporarily limited. Wait before trying again and avoid repeatedly reloading the page.";
   async function beginOidc() {
     if (oidcButton.disabled) return;
@@ -88,14 +98,18 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   }
   async function clearBrowserData(signal, forSignIn=false) {
     signal?.throwIfAborted();
-    localStorage.clear();
+    if (globalThis.IgnisUiEnvironment?.clearBrowserPreferences) globalThis.IgnisUiEnvironment.clearBrowserPreferences(window);
+    else localStorage.clear();
+    const pendingShare = forSignIn ? sessionStorage.getItem("ignis-share-sign-in") : null;
     sessionStorage.clear();
+    if (pendingShare) sessionStorage.setItem("ignis-share-sign-in", pendingShare);
     window.IgnisI18n?.rememberLanguage({forSignIn});
     if (window.caches)
       await Promise.all((await caches.keys()).map((key) => { signal?.throwIfAborted(); return caches.delete(key); }));
     signal?.throwIfAborted();
     if (window.indexedDB?.databases)
       for (const { name } of await indexedDB.databases()) {
+        if (pendingShare && name === "ignis-incoming-shares") continue;
         signal?.throwIfAborted();
         await new Promise((resolve, reject) => {
           const request = indexedDB.deleteDatabase(name);
@@ -149,7 +163,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       const session = await response.json();
       if (session.passwordResetRequired) { location.replace("/reset-password"); return; }
       if (intent) location.replace(destination(intent));
-      else location.replace("/");
+      else location.replace(signedInDestination());
     } catch {
       showLoginError(translateIgnis("Unable to sign in. Close other Ignis tabs and try again."));
     } finally {
@@ -176,10 +190,13 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
         const session=await current.json();
         window.IgnisI18n?.useAccount(session.user.id);activeSessionId=session.sessionId;
         if(outcome==="success" && ["users","link"].includes(returnIntent)){location.replace(destination(returnIntent));return;}
-        if(!intent || outcome==="success"){location.replace("/");return;}
+        if(!intent || outcome==="success"){location.replace(signedInDestination());return;}
         form.elements.login.value=session.user.login;
       }else if(current.status!==401){status.textContent=translateIgnis("Unable to check your session. Reload or sign in again.");return;}
       form.hidden=false;
+      if (!intent && globalThis.IgnisUiEnvironment?.mobile(window) && document.activeElement === document.body) {
+        form.elements.login.focus();
+      }
       status.textContent=new URL(location.href).searchParams.get("password")==="changed"
         ? translateIgnis("Password changed. All Ignis sessions have been closed. Sign in with your new password.") : "";
       if(outcome==="failed")status.textContent=translateIgnis("{p0} sign-in failed. Please start again or contact your administrator.",{p0:providerName});

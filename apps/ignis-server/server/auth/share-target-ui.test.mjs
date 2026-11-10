@@ -28,7 +28,7 @@ async function fixture({conflict = false, text = 'received\ncontent', title = 'T
     if (url.startsWith('/api/fs/writeFile') && conflict) return Response.json({error: 'Content changed'}, {status: 409});
     return Response.json({ok: true});
   };
-  const document={getElementById:$,createElement:tag=>new Element(tag),createElementNS:(ns,tag)=>new Element(tag)};
+  const document={body:{classList:{toggle(){}}},getElementById:$,createElement:tag=>new Element(tag),createElementNS:(ns,tag)=>new Element(tag)};
   vm.runInNewContext(fs.readFileSync(new URL('../../../../packages/management/src/resource-tree.cjs',import.meta.url),'utf8')+'\n'+source, {document,
     window: {addEventListener() {}, close() { closed.push(true); }}, history: {length: 1}, setTimeout() {},
     location: {href: 'https://ignis.test/share-target?id=one', replace: url => redirects.push(url)},
