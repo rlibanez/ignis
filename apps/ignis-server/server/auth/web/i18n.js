@@ -843,7 +843,7 @@
   "Downloading": "Descargando",
   "Downloads": "Descargas",
   "Edit ({p0})": "Editar ({p0})",
-  "Enable community plugins for this vault in every browser that opens it, so the restricted-mode prompt does not appear on a new device or after clearing site data.": "Habilita los complementos comunitarios de esta bóveda en todos los navegadores que la abran, para que no aparezca el aviso del modo restringido en dispositivos nuevos o tras borrar los datos del sitio.",
+  "Skip the trust prompt on new devices for community plugins already enabled in this vault.": "Omite el aviso de confianza en dispositivos nuevos para los complementos comunitarios que ya estén habilitados en esta bóveda.",
   "Enter": "Introducir",
   "Error: {p0}": "Error: {p0}",
   "Errors": "Errores",

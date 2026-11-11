@@ -25,30 +25,16 @@ let ignisTabs = [];
 
 function createIgnisTabs(app) {
   const account = new IgnisSettingTab(app, "ignis-account", translateIgnis("Account"), "user-round", accountTab.settingDefinitions);
-  const tabs = window.__ignisAuth?.role === "admin" ? [
-    new IgnisSettingTab(
-      app,
-      "ignis-general",
-      translateIgnis("General"),
-      "flame",
-      generalTab.settingDefinitions,
-    ),
-    account,
-    new IgnisSettingTab(
-      app,
-      "ignis-vault",
-      translateIgnis("Vault"),
-      "vault",
-      vaultTab.settingDefinitions,
-    ),
-    new IgnisSettingTab(
-      app,
-      "ignis-core-plugins",
-      translateIgnis("Core plugins"),
-      "blocks",
-      serverPluginsTab.settingDefinitions,
-    ),
-  ] : [account];
+  const administrator = window.__ignisAuth?.role === "admin";
+  const tabs = [];
+  if (administrator) tabs.push(new IgnisSettingTab(app, "ignis-general", translateIgnis("General"), "flame", generalTab.settingDefinitions));
+  tabs.push(account);
+  if (window.__currentVaultMembership === "owner") tabs.push(new IgnisSettingTab(
+    app, "ignis-vault", translateIgnis("Vault"), "vault", vaultTab.settingDefinitions,
+  ));
+  if (administrator) tabs.push(new IgnisSettingTab(
+    app, "ignis-core-plugins", translateIgnis("Core plugins"), "blocks", serverPluginsTab.settingDefinitions,
+  ));
   if (hasDeviceSettings()) tabs.push(new IgnisSettingTab(app, "ignis-device",
     translateIgnis("Device settings"), "settings", () => deviceSettings(Modal, app)));
   return tabs;

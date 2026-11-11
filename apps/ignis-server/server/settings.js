@@ -134,14 +134,16 @@ function resolveIgnoreLines() {
 
 // Merge validated changes into the persisted file and return the new effective settings.
 function update(partial) {
+  const updated = { ...fileOverrides };
   for (const [key, value] of Object.entries(partial)) {
     if (KEYS.includes(key) && !ENV_ONLY_KEYS.includes(key)) {
-      fileOverrides[key] = value;
+      updated[key] = value;
     }
   }
 
   fs.mkdirSync(path.dirname(SETTINGS_FILE), { recursive: true });
-  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(fileOverrides, null, 2));
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(updated, null, 2));
+  fileOverrides = updated;
 
   return getAll();
 }

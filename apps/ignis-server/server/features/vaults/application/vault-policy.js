@@ -10,7 +10,7 @@ const instanceCapabilities = new Set([
   "plugins.manage", "sync.manage",
 ]);
 const ownerCapabilities = new Set([
-  "members.manage", "ownership.transfer", "vault.rename", "vault.delete", "vault.refresh",
+  "members.manage", "plugins.trust", "ownership.transfer", "vault.rename", "vault.delete", "vault.refresh",
 ]);
 
 // Input must already be a vault-relative, decoded, canonical path. This does

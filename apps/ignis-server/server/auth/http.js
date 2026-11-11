@@ -432,7 +432,7 @@ function createAuthBoundary({
       }
       if (pathname === "/api/proxy" && session.user.role === "user" && !limits.publicRequest(req.ip))
         return safe(res, 429, "Too many network requests");
-      if (["/api/vault/import/select", "/api/vault/export", "/api/vault/members", "/api/vault/transfer-ownership", "/api/vault/rename", "/api/vault/remove"].includes(pathname) && !limits.vaultMembers(session.user.id))
+      if (["/api/vault/import/select", "/api/vault/export", "/api/vault/plugin-trust", "/api/vault/members", "/api/vault/transfer-ownership", "/api/vault/rename", "/api/vault/remove"].includes(pathname) && !limits.vaultMembers(session.user.id))
         return safe(res, 429, "Too many access requests; try again in a minute.");
       if (["/api/vault/import/review","/api/vault/import/prepare"].includes(pathname)&&!limits.sharedResources(session.user.id))return safe(res,429,"Too many access requests; try again in a minute.");
       if (["/api/vault/create","/api/vault/import/start","/api/vault/import/zip","/api/vault/import/scan","/api/vault/import/scan-zip"].includes(pathname) && !limits.vaultCreation(session.user.id))
@@ -534,6 +534,12 @@ function createAuthBoundary({
         req.copyVaultContent=(reference,source,destination)=>content.copyOriginal(cookies.read(req.headers.cookie),reference,source,destination);
         req.writeVaultContent = (reference, relative, bytes, expectedHash) =>
           content.writeOriginal(cookies.read(req.headers.cookie), reference, relative, bytes, expectedHash);
+        if (["/api/vault/plugin-trust", "/api/settings"].includes(pathname)) {
+          req.resolveVaultPluginTrust = reference => {
+            const decision = scope.authorize(reference,"plugins.trust");
+            return decision.allowed ? decision.directory : null;
+          };
+        }
         req.vaultMembers = async (operation, input) => {
           const result=await scope.members(operation,input,require("../vault/deletion-lifecycle").deletionLifecycle());
           if(operation==='transfer')require("../config").refreshVaults();

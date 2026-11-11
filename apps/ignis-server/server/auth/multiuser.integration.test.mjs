@@ -150,6 +150,18 @@ it('validates three independent real sessions across conflicts, downgrade, revok
   let membership=await success(alice.call('/api/vault/members?vault='+a));
   const member=async(role,expectedRole)=>{membership=await success(alice.call('/api/vault/members',{vault:a,login:'bob',role,expectedRole,revision:membership.revision}));};
   await member('editor',null);
+  const trustRoute='/api/vault/plugin-trust';
+  expect(await success(alice.call(trustRoute+'?vault='+a))).toEqual({trusted:false});
+  expect(await success(alice.call(trustRoute,{vault:a,trusted:true}))).toEqual({trusted:true});
+  expect((await success(alice.call('/api/bootstrap?vault='+a))).vault.trustPlugins).toBe(true);
+  expect((await bob.call(trustRoute+'?vault='+a)).status).toBe(404);
+  expect((await bob.call(trustRoute,{vault:a,trusted:false})).status).toBe(404);
+  expect((await admin.call(trustRoute,{vault:a,trusted:false})).status).toBe(404);
+  expect((await admin.call('/api/settings',{trustedVaults:[]})).status).toBe(404);
+  expect((await alice.call(trustRoute,{vault:a,trusted:"false"})).status).toBe(400);
+  expect((await alice.call(trustRoute+'?vault='+b,{vault:a,trusted:false})).status).toBe(400);
+  expect(await success(bob.call(trustRoute,{vault:b,trusted:true}))).toEqual({trusted:true});
+  expect(await success(alice.call(trustRoute+'?vault='+a))).toEqual({trusted:true});
   const pluginPath='.obsidian/plugins/example/main.js';
   const setPluginPermission=async(actor,allow,expected)=>{
    const csrfToken=(await success(actor.call('/api/auth/csrf'))).csrfToken;
@@ -175,6 +187,10 @@ it('validates three independent real sessions across conflicts, downgrade, revok
   expect((await writePlugin(bob)).status).toBe(404);
   expect((await writePlugin(alice,b)).status).toBe(404);
   await success(setPluginPermission(admin,false,true));
+  expect(await success(alice.call(trustRoute+'?vault='+a))).toEqual({trusted:true});
+  expect(await success(alice.call(trustRoute,{vault:a,trusted:false}))).toEqual({trusted:false});
+  expect((await success(alice.call('/api/bootstrap?vault='+a))).vault.trustPlugins).toBe(false);
+  expect(await success(bob.call(trustRoute+'?vault='+b))).toEqual({trusted:true});
   expect((await writePlugin(alice)).status).toBe(404);
   expect((await alice.call('/api/fs/readFile?vault='+a+'&path='+pluginPath)).status).toBe(200);
 

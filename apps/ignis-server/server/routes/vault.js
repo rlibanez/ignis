@@ -80,6 +80,39 @@ router.get("/members", (req,res) => membersRequest(req,res,"list"));
 router.post("/members", (req,res) => membersRequest(req,res,"update"));
 router.post("/transfer-ownership", (req,res) => membersRequest(req,res,"transfer"));
 
+function pluginTrust(req, res) {
+  const write = req.method === "POST";
+  const input = write ? req.body : req.query;
+  if (!input || Object.keys(input).sort().join(",") !== (write ? "trusted,vault" : "vault") ||
+      typeof input.vault !== "string" ||
+      (write && (Object.keys(req.query).length || typeof input.trusted !== "boolean"))) {
+    return res.status(400).json({error:"Invalid request"});
+  }
+  let directory;
+  try {
+    const reference = require("../features/vaults/application/vault-selection").selectVaultReference(input);
+    directory = req.resolveVaultPluginTrust?.(reference);
+  } catch (error) {
+    if (error.code === "INVALID_VAULT_SELECTION") return res.status(400).json({error:"Invalid request"});
+    if (error.code !== "VAULT_UNAVAILABLE") return res.status(503).json({error:"Request failed"});
+  }
+  if (!directory) return res.status(404).json({error:"Vault unavailable"});
+  try {
+    const trusted = new Set(settings.get("trustedVaults"));
+    if (write && input.trusted !== trusted.has(directory)) {
+      if (input.trusted) trusted.add(directory);
+      else trusted.delete(directory);
+      settings.update({trustedVaults:[...trusted]});
+      bootstrapCache.invalidateVault(directory);
+    }
+    res.set("Cache-Control","no-store").json({trusted:trusted.has(directory)});
+  } catch {
+    res.status(503).json({error:"Request failed"});
+  }
+}
+router.get("/plugin-trust",pluginTrust);
+router.post("/plugin-trust",pluginTrust);
+
 router.get("/owners", (req, res) => {
   if (!req.vaultOwners) return res.status(503).json({ error: "Vault owners unavailable" });
   try { res.json({ owners: req.vaultOwners() }); }

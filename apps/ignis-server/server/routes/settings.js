@@ -197,6 +197,10 @@ router.post("/", async (req, res) => {
   }
 
   const previous = settings.getAll();
+  if (clean.trustedVaults !== undefined &&
+      trustChanges(previous.trustedVaults,clean.trustedVaults).some(directory=>!req.resolveVaultPluginTrust?.(directory))) {
+    return res.status(404).json({error:"Vault unavailable"});
+  }
   const effective = settings.update(clean);
 
   await applySettings(effective, previous);

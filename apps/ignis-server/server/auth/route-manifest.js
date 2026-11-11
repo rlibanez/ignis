@@ -15,6 +15,7 @@ const groups = [
     ["POST", "/refresh", "manage"], ["POST", "/create", "manage"],
     ["POST", "/rename", "manage"], ["DELETE", "/remove", "manage"],
     ["GET", "/owners", "read"],
+    ["GET", "/plugin-trust", "read"], ["POST", "/plugin-trust", "manage"],
   ] },
   { mount: "/api/bootstrap", source: "routes/bootstrap.js", surface: "mixed-bootstrap", routes: [["GET", "/", "read"]] },
   { mount: "/api/proxy", source: "routes/proxy/index.js", surface: "external-network", routes: [["POST", "/", "network"]] },
@@ -34,7 +35,7 @@ const routes = Object.freeze(groups.flatMap(group => group.routes.map(([method, 
   source: group.source, sourcePath: sourcePath || suffix,
   surface: group.surface, operation, currentAccess:
     ["vault-content", "mixed-bootstrap", "resource-sharing", "vault-import"].includes(group.surface) ||
-    (group.mount === "/api/vault" && (["/export", "/members", "/transfer-ownership", "/create", "/rename", "/remove"].includes(suffix))) ||
+    (group.mount === "/api/vault" && (["/export", "/plugin-trust", "/members", "/transfer-ownership", "/create", "/rename", "/remove"].includes(suffix))) ||
     (method === "GET" && ["/api/vault/list", "/api/vault/info", "/api/version"].includes(group.mount + (suffix === "/" ? "" : suffix)))
       ? "owner" : "admin",
 }))));

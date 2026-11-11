@@ -1,7 +1,7 @@
 
 const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, values) ?? message.replace(/\{(p\d+)\}/g, (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match);
 import { vaultService } from "@ignis/services";
-import * as serverSettings from "./server-settings.js";
+import { Notice } from "obsidian";
 import { messageDefinition } from "./settings-ui.js";
 
 function settingDefinitions() {
@@ -20,53 +20,40 @@ function settingDefinitions() {
 }
 
 function vaultSettingDefinition() {
-  if (!serverSettings.get()) {
-    return messageDefinition(
-      serverSettings.loadFailed()
-        ? translateIgnis("Failed to load server settings.")
-        : translateIgnis("Loading server settings..."),
-    );
-  }
-
-  return trustDefinition();
-}
-
-function getTrustedVaults() {
-  return serverSettings.get().trustedVaults || [];
-}
-
-function trustDefinition() {
   return {
     name: translateIgnis("Always trust plugins for this vault"),
-    desc: translateIgnis("Enable community plugins for this vault in every browser that opens it, so the restricted-mode prompt does not appear on a new device or after clearing site data."),
+    desc: translateIgnis("Skip the trust prompt on new devices for community plugins already enabled in this vault."),
     render: (setting) => {
-      const vaultId = vaultService.getCurrentVaultId();
-
-      setting.addToggle((toggle) => {
-        toggle.setValue(getTrustedVaults().includes(vaultId));
-
-        toggle.onChange(async (value) => {
-          const trustedVaults = getTrustedVaults();
-
-          if (value === trustedVaults.includes(vaultId)) {
-            return;
-          }
-
-          const saved = await serverSettings.save({
-            trustedVaults: value
-              ? [...trustedVaults, vaultId]
-              : trustedVaults.filter((id) => id !== vaultId),
-          });
-
-          if (!saved) {
-            toggle.setValue(!value);
-            return;
-          }
-
-          if (value) {
-            vaultService.setVaultTrust(vaultId);
+      const vault = vaultService.getCurrentVaultReference();
+      const endpoint = "/api/vault/plugin-trust";
+      setting.addToggle(toggle => {
+        let trusted = false;
+        toggle.setDisabled(true);
+        async function request(url, options) {
+          const response = await fetch(url,{cache:"no-store",...options});
+          if (!response.ok) throw new Error("Vault trust request failed");
+          return (await response.json()).trusted;
+        }
+        toggle.onChange(async value => {
+          if (value === trusted) return;
+          toggle.setDisabled(true);
+          try {
+            trusted = await request(endpoint,{
+              method:"POST",
+              headers:{"Content-Type":"application/json"},
+              body:JSON.stringify({vault,trusted:value}),
+            });
+            if (trusted) vaultService.setVaultTrust(vault);
+          } catch {
+            new Notice(translateIgnis("Save failed"));
+          } finally {
+            toggle.setValue(trusted).setDisabled(false);
           }
         });
+        void request(`${endpoint}?vault=${encodeURIComponent(vault)}`).then(value=>{
+          trusted = value;
+          toggle.setValue(trusted).setDisabled(false);
+        }).catch(()=>new Notice(translateIgnis("Failed to load server settings.")));
       });
     },
   };
