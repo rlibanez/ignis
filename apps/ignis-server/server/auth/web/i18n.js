@@ -54,6 +54,8 @@
   "Allow installing community plugins": "Permitir instalar complementos comunitarios",
   "Invalid community plugin permission.": "El permiso de complementos comunitarios no es válido.",
   "Community add-ons": "Complementos",
+  "Allowed": "Permitido",
+  "Not allowed": "No permitido",
   "Do not restore": "No restaurar",
   "Restore without configuration": "Restaurar sin su configuración",
   "Restore with configuration": "Restaurar con su configuración",

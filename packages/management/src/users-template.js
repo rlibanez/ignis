@@ -8,7 +8,7 @@ export default String.raw`
           <div class="panel-heading"><h2 id="accounts-heading" data-i18n="Accounts">Accounts</h2><button id="add-user" type="button" class="account-button" data-i18n="Add user">Add user</button></div>
           <div class="table-scroll" role="region" aria-label="User accounts" tabindex="0" data-i18n-aria-label="User accounts">
             <table class="responsive-table" role="table">
-              <thead><tr><th scope="col" data-i18n="Username">Username</th><th scope="col" data-i18n="Email">Email</th><th scope="col" data-i18n="Email verification">Email verification</th><th scope="col" data-i18n="Role">Role</th><th scope="col" data-i18n="Status">Status</th><th id="oidc-column" scope="col" hidden data-provider-template="OpenID Connect">OpenID Connect</th><th scope="col" class="actions-heading" data-i18n="Actions">Actions</th></tr></thead>
+              <thead><tr><th scope="col" data-i18n="Username">Username</th><th scope="col" data-i18n="Email">Email</th><th scope="col" data-i18n="Email verification">Email verification</th><th scope="col" data-i18n="Role">Role</th><th scope="col" data-i18n="Status">Status</th><th scope="col" data-i18n="Community add-ons">Community add-ons</th><th id="oidc-column" scope="col" hidden data-provider-template="OpenID Connect">OpenID Connect</th><th scope="col" class="actions-heading" data-i18n="Actions">Actions</th></tr></thead>
               <tbody id="users"></tbody>
             </table>
           </div>
