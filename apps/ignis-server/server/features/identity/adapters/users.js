@@ -14,8 +14,9 @@ function authorize(db, actorId) {
   ) throw new Error("Administrator required");
 }
 
-async function createLocalUser(db, actorId, login, password, policy = readPasswordPolicy(), { isCurrent = () => true, email = null, emailVerified = false, requirePasswordChange = false } = {}) {
+async function createLocalUser(db, actorId, login, password, policy = readPasswordPolicy(), { isCurrent = () => true, email = null, emailVerified = false, requirePasswordChange = false, allowCommunityPlugins = false } = {}) {
   if (typeof requirePasswordChange !== "boolean") throw new Error("Invalid password change requirement");
+  if (typeof allowCommunityPlugins !== "boolean") throw new Error("Invalid community plugin permission");
   email = email === null || email === "" ? null : normalizeEmail(email);
   if (typeof emailVerified !== "boolean" || (emailVerified && !email)) throw new Error("Invalid email confirmation");
   authorize(db, actorId);
@@ -32,21 +33,22 @@ async function createLocalUser(db, actorId, login, password, policy = readPasswo
       throw new Error("Login already exists");
     const id = randomUUID();
     const now = Date.now();
-    db.prepare("INSERT INTO users(id, login, role, created_at) VALUES (?, ?, 'user', ?)").run(id, login, now);
+    db.prepare("INSERT INTO users(id, login, role, created_at, community_plugins_allowed) VALUES (?, ?, 'user', ?, ?)").run(id, login, now, Number(allowCommunityPlugins));
     db.prepare("UPDATE users SET email=?, email_trust=? WHERE id=?").run(email, emailVerified ? "admin_confirmed" : "unverified", id);
     db.prepare("INSERT INTO local_credentials VALUES (?, ?, ?)").run(id, hash, now);
     if (requirePasswordChange) db.prepare("UPDATE users SET password_change_required=1 WHERE id=?").run(id);
     db.prepare("INSERT INTO audit_events VALUES (?, ?, ?, ?, ?)").run(randomUUID(), actorId, "create-local-user", id, now);
+    if (allowCommunityPlugins) db.prepare("INSERT INTO audit_events VALUES (?, ?, ?, ?, ?)").run(randomUUID(), actorId, "allow-community-plugins", id, now);
     return { id, login, role: "user", status: "active" };
   });
 }
 
 function listUsers(db, actorId) {
   authorize(db, actorId);
-  return db.prepare("SELECT id, login, role, status, email, email_trust, password_change_required FROM users ORDER BY login").all();
+  return db.prepare("SELECT id, login, role, status, email, email_trust, password_change_required, community_plugins_allowed FROM users ORDER BY login").all();
 }
 
-function changeUserStatus(db, actorId, userId, status, expectedStatus, { isCurrent = () => true, emailUpdate, roleUpdate, passwordUpdate } = {}) {
+function changeUserStatus(db, actorId, userId, status, expectedStatus, { isCurrent = () => true, emailUpdate, roleUpdate, passwordUpdate, pluginUpdate } = {}) {
   if (typeof userId !== "string" ||
       !["active", "disabled"].includes(status) ||
       !["active", "disabled"].includes(expectedStatus))
@@ -55,7 +57,7 @@ function changeUserStatus(db, actorId, userId, status, expectedStatus, { isCurre
     authorize(db, actorId);
     if (!isCurrent(true)) throw new Error("Administrator session required");
     const fail = (code) => { throw Object.assign(new Error("User status change rejected"), { code }); };
-    const user = db.prepare("SELECT id, login, role, status FROM users WHERE id = ?").get(userId);
+    const user = db.prepare("SELECT id, login, role, status, community_plugins_allowed FROM users WHERE id = ?").get(userId);
     if (!user) fail("USER_NOT_FOUND");
     if (db.prepare("SELECT 1 FROM user_deletions WHERE user_id=?").get(userId)) fail("USER_DELETION_IN_PROGRESS");
     if (user.status !== expectedStatus) fail("USER_STATE_CHANGED");
@@ -78,6 +80,19 @@ function changeUserStatus(db, actorId, userId, status, expectedStatus, { isCurre
       if (previous !== passwordUpdate.requirePasswordChange) {
         db.prepare("UPDATE users SET password_change_required=? WHERE id=?").run(Number(passwordUpdate.requirePasswordChange), userId);
         db.prepare("INSERT INTO audit_events VALUES (?, ?, ?, ?, ?)").run(randomUUID(), actorId, passwordUpdate.requirePasswordChange ? "require-password-change" : "cancel-password-change", userId, Date.now());
+      }
+    }
+    if (pluginUpdate) {
+      const { allowCommunityPlugins, expectedCommunityPluginsAllowed } = pluginUpdate;
+      if (typeof allowCommunityPlugins !== "boolean" || typeof expectedCommunityPluginsAllowed !== "boolean" || role !== "user")
+        fail("INVALID_COMMUNITY_PLUGIN_PERMISSION");
+      if (!!user.community_plugins_allowed !== expectedCommunityPluginsAllowed) fail("USER_STATE_CHANGED");
+      if (allowCommunityPlugins !== expectedCommunityPluginsAllowed) {
+        user.community_plugins_allowed = Number(allowCommunityPlugins);
+        db.prepare("UPDATE users SET community_plugins_allowed=? WHERE id=?").run(user.community_plugins_allowed, userId);
+        db.prepare("INSERT INTO audit_events VALUES (?, ?, ?, ?, ?)").run(
+          randomUUID(), actorId, allowCommunityPlugins ? "allow-community-plugins" : "block-community-plugins", userId, Date.now(),
+        );
       }
     }
     if (status === user.status && role === user.role && !emailUpdate) return user;

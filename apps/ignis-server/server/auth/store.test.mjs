@@ -229,6 +229,17 @@ describe("identity persistence", () => {
 });
 
 describe("schema validation and crash recovery", () => {
+  it("renumbers the identical pre-release schema and preserves account data", () => {
+    const user = bootstrapAdmin(db, "Admin", fixtureHash);
+    db.prepare("UPDATE schema_info SET version=4").run();
+    db.close(); db=null;
+
+    db = openDatabase(path.join(root,"data"));
+    expect(db.prepare("SELECT version FROM schema_info").get().version).toBe(1);
+    expect(db.prepare("SELECT login FROM users WHERE id=?").get(user.id).login).toBe("admin");
+    expect(db.prepare("SELECT password_hash FROM local_credentials WHERE user_id=?").get(user.id).password_hash).toBe(fixtureHash);
+  });
+
   it("rejects removal of a security trigger without repairing the database", () => {
     db.exec("DROP TRIGGER protect_last_admin_delete");
     db.close(); db=null;

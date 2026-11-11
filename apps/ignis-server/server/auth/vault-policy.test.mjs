@@ -43,7 +43,9 @@ it("fails closed for unknown roles, capabilities, inactive accounts and root-wid
 
 it.each(["reader","editor","owner"])("enforces %s permissions on community plugins and their configuration",membership=>{
  for(const path of [".obsidian", ".obsidian/plugins/example/main.js", ".obsidian/plugins/example/data.json", ".obsidian/community-plugins.json", ".obsidian/themes/example/theme.css", ".OBSIDIANTEST"]){
-  expect(allowed({...principal,membership,capability:"content.read",path})).toBe(true);
+  expect(allowed({...principal,membership,capability:"content.read",path})).toBe(
+    classifyVaultPath(path) !== "community-plugin" || membership === "owner",
+  );
   expect(allowed({...principal,membership,capability:"content.write",path})).toBe(path === ".OBSIDIANTEST" && membership!=="reader");
   expect(allowed({...principal,capability:"content.read",path})).toBe(false);
  }
@@ -52,8 +54,9 @@ it.each(["reader","editor","owner"])("enforces %s permissions on community plugi
 it.each([undefined, "reader", "editor", "owner"])("admin data access requires explicit %s membership", membership => {
  const context={status:"active",instanceRole:"admin",membership};
  for(const path of ["note.md", ".obsidian/plugins/demo/main.js"]){
-  expect(allowed({...context,capability:"content.read",path})).toBe(!!membership);
-  expect(allowed({...context,capability:"content.write",path})).toBe(["editor","owner"].includes(membership));
+  const plugin = classifyVaultPath(path) === "community-plugin";
+  expect(allowed({...context,capability:"content.read",path})).toBe(plugin ? membership === "owner" : !!membership);
+  expect(allowed({...context,capability:"content.write",path})).toBe(plugin ? membership === "owner" : ["editor","owner"].includes(membership));
  }
  expect(allowed({...context,capability:"content.list",path:""})).toBe(!!membership);
  for(const capability of ["vault.rename","vault.delete","vault.refresh","members.manage","ownership.transfer"])
@@ -79,7 +82,9 @@ it.each(['reader','editor','owner'])('requires admin plus writable membership to
   '.obsidian/themes/demo/theme.css','.obsidian/snippets/custom.css','.obsidian/community-plugins.json',
   '.obsidian/core-plugins.json','.obsidian/appearance.json','.obsidian/unknown.json','.obsidian/unknown.bin']){
   expect(allowed({...principal,membership,path,capability:'content.write'})).toBe(false);
-  expect(allowed({...principal,instanceRole:'admin',membership,path,capability:'content.write'})).toBe(membership!=='reader');
+  const plugin = classifyVaultPath(path) === "community-plugin";
+  expect(allowed({...principal,membership,path,capability:"content.write",communityPluginsAllowed:true})).toBe(plugin && membership==="owner");
+  expect(allowed({...principal,instanceRole:"admin",membership,path,capability:"content.write"})).toBe(plugin ? membership==="owner" : membership!=="reader");
   expect(allowed({...principal,instanceRole:'admin',path,capability:'content.write'})).toBe(false);
  }
  for(const path of ['.obsidian/app.json','.obsidian/workspace.json','.obsidian/hotkeys.json','.obsidian/graph.json'])

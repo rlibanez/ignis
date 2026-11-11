@@ -18,7 +18,7 @@ function createVaultAccessService(db, vaultRoot, sessions) {
       return transaction(db, () => {
         const session = sessions.resolve(token, { withinTransaction: true });
         if (!session) return denied;
-        const user = statement("SELECT id,role,status,auth_version FROM users WHERE id=?").get(session.user.id);
+        const user = statement("SELECT id,role,status,auth_version,community_plugins_allowed FROM users WHERE id=?").get(session.user.id);
         if (!user || user.status !== "active" || user.auth_version !== session.user.authVersion) return denied;
         let vault;
         try { vault = resolveRegisteredVault(catalogDb, vaultRoot, reference); }
@@ -28,7 +28,7 @@ function createVaultAccessService(db, vaultRoot, sessions) {
         }
         const membership = statement("SELECT role FROM memberships WHERE vault_id=? AND user_id=?").get(vault.id, user.id)?.role;
         if (!Array.isArray(operations) || !operations.length) return denied;
-        const principal={status:user.status,instanceRole:user.role,membership};
+        const principal={status:user.status,instanceRole:user.role,membership,communityPluginsAllowed:user.community_plugins_allowed===1};
         if(projection && !vaultCapabilityAllowed({...principal,capability:"content.list",path:""}))return denied;
         // This memo belongs to one synchronous DB snapshot only. Never retain it
         // across awaits, requests or response revalidation (including symlink state).

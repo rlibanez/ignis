@@ -68,18 +68,24 @@ export function createImportModal(Modal,Notice){
    const select=appendUiControl(label,"select",{cls:'dropdown',attr:{'data-import-restore':''}});
    setUiOptions(select,[
     {value:'none',label:t('Do not restore')},
-    {value:'plugins',label:t('Restore without configuration'),disabled:this.session.role!=='admin'},
-    {value:'full',label:t('Restore with configuration'),disabled:this.session.role!=='admin'},
+    {value:'plugins',label:t('Restore without configuration'),disabled:true},
+    {value:'full',label:t('Restore with configuration'),disabled:true},
    ]);
    select.addEventListener('change',()=>{
     const plan=getPlan();if(!plan)return;
     plan.restore=select.value;plan.review=null;
     this.show();
    });
-   group.createEl('p',{cls:'setting-item-description',text:t(this.session.role==='admin'
-    ?'Add-ons restored without configuration start disabled. Restoring with configuration also restores their data and activation state.'
-    :'Only administrators can restore community plugins.')});
+   group.createEl('p',{cls:'setting-item-description',text:t('Permission to install community plugins is required to restore them.')});
    return select;
+  }
+  updateRestoreSelector(select, disabled){
+   const allowed=this.sourceStage?.canRestorePlugins===true;
+   select.disabled=disabled||!allowed;
+   for(const option of select.options)option.disabled=option.value!=='none'&&!allowed;
+   select.closest('.ignis-transfer-option').querySelector('.setting-item-description').textContent=t(allowed
+    ?'Add-ons restored without configuration start disabled. Restoring with configuration also restores their data and activation state.'
+    :'Permission to install community plugins is required to restore them.');
   }
   setSelection(name,vaultName,description){this.selection=name;this.name.value=vaultName;this.selectedName.textContent=name;this.selectedCounts.textContent=description;this.selected.hidden=false;this.show();}
   setZip(file){this.zipFile=file;this.setSelection(file.name,file.name.replace(/\.zip$/i,''),(file.size/1048576).toFixed(1)+' MiB');}
@@ -101,12 +107,24 @@ export function createImportModal(Modal,Notice){
    }}
    finally{this.selecting=false;if(!this.closed)this.show();}
   }
-  show(){for(const plan of this.plans){if(plan.input)plan.input.disabled=!!(this.busy||this.selecting||plan.result||!plan.enabled);if(plan.check)plan.check.disabled=!!(this.busy||this.selecting||plan.result);if(plan.configInput)plan.configInput.disabled=!!(this.busy||this.selecting||plan.result||!plan.enabled);if(plan.restoreInput)plan.restoreInput.disabled=!!(this.busy||this.selecting||plan.result||!plan.enabled);}this.configuration.disabled=!!(this.busy||this.selecting);this.restore.disabled=!!(this.busy||this.selecting);const zip=this.source.value==='zip';this.dropZone.textContent=t(zip?'Click here or drop a ZIP file.':'Click here or drop a folder');this.dropZone.setAttribute('aria-disabled',String(!!(this.busy||this.selecting)));this.dropZone.setAttribute('aria-label',this.dropZone.textContent);this.folderWarning.hidden=zip||this.folderSupported;this.next.disabled=!!(this.busy||this.selecting||(this.step===0&&!this.selection)||(this.step===1&&this.plans.length>1&&!this.plans.some(p=>p.enabled)));this.back.disabled=this.source.disabled=!!(this.busy||this.selecting);this.pages.forEach((page,i)=>{page.hidden=i!==this.step;});this.back.hidden=this.step===0||this.step===3;this.next.hidden=this.step===3;this.openButton.hidden=this.step!==3||this.plans.length!==1;this.next.textContent=t(this.step===1?'Review import':this.step===2?'Import':'Next');this.cancel.textContent=t(this.step===3?'Close':'Cancel');}
+  show(){for(const plan of this.plans){if(plan.input)plan.input.disabled=!!(this.busy||this.selecting||plan.result||!plan.enabled);if(plan.check)plan.check.disabled=!!(this.busy||this.selecting||plan.result);if(plan.configInput)plan.configInput.disabled=!!(this.busy||this.selecting||plan.result||!plan.enabled);if(plan.restoreInput&&plan.restoreInput!==this.restore)this.updateRestoreSelector(plan.restoreInput,!!(this.busy||this.selecting||plan.result||!plan.enabled));}this.configuration.disabled=!!(this.busy||this.selecting);this.updateRestoreSelector(this.restore,!!(this.busy||this.selecting));const zip=this.source.value==='zip';this.dropZone.textContent=t(zip?'Click here or drop a ZIP file.':'Click here or drop a folder');this.dropZone.setAttribute('aria-disabled',String(!!(this.busy||this.selecting)));this.dropZone.setAttribute('aria-label',this.dropZone.textContent);this.folderWarning.hidden=zip||this.folderSupported;this.next.disabled=!!(this.busy||this.selecting||(this.step===0&&!this.selection)||(this.step===1&&this.plans.length>1&&!this.plans.some(p=>p.enabled)));this.back.disabled=this.source.disabled=!!(this.busy||this.selecting);this.pages.forEach((page,i)=>{page.hidden=i!==this.step;});this.back.hidden=this.step===0||this.step===3;this.next.hidden=this.step===3;this.openButton.hidden=this.step!==3||this.plans.length!==1;this.next.textContent=t(this.step===1?'Review import':this.step===2?'Import':'Next');this.cancel.textContent=t(this.step===3?'Close':'Cancel');}
   async api(operation,input={},binary=false,query={}){
    if(!this.csrfToken||Date.now()-this.csrfAt>300000){const csrf=await this.request('/api/auth/csrf');if(!csrf.ok)throw Error(t('Session unavailable'));this.csrfToken=(await csrf.json()).csrfToken;this.csrfAt=Date.now();}
    const url='/api/vault/import/'+operation+new URLSearchParams(query).toString().replace(/^(.+)$/,'?$1');
    const response=await this.request(url,{method:'POST',headers:{'Content-Type':binary?'application/octet-stream':'application/json','X-Ignis-Csrf':this.csrfToken,'X-Ignis-Context':this.session.sessionId},body:binary?input:JSON.stringify(input)});
-   const result=await response.json();if(!response.ok)throw Object.assign(Error(t(result.error||'Import could not be completed.')),{status:response.status});return result;
+   const result=await response.json();
+   if(!response.ok){
+    if(response.status===403&&result.code==='IMPORT_FORBIDDEN'&&this.sourceStage){
+     this.sourceStage.canRestorePlugins=false;
+     for(const plan of this.plans.filter(plan=>!plan.result)){
+      plan.restore='none';plan.restoreInput.value='none';plan.review=null;
+     }
+     this.excludedModal?.close();
+     this.step=1;
+    }
+    throw Object.assign(Error(t(result.error||'Import could not be completed.')),{status:response.status,code:result.code});
+   }
+   return result;
   }
   inputFor(plan){return {id:this.sourceStage.id,root:plan.root,name:plan.name.trim(),configuration:plan.configuration,restore:plan.restore,selected:plan.selected};}
   async scanSource(){
@@ -193,7 +211,7 @@ export function createImportModal(Modal,Notice){
      this.updateReview();this.step=2;
     }else if(this.step===2){
      for(const plan of this.plans.filter(p=>p.enabled&&!p.result)){
-      try{await this.importPlan(plan);plan.error=null;}catch(error){plan.error=error.message;if(plan.stage&&!this.closed){try{await this.api('cancel',{},false,{id:plan.stage.id});plan.stage=null;plan.uploaded.clear();}catch(cancelError){if(cancelError.status===404){plan.stage=null;plan.uploaded.clear();}}}if(error.status===409){this.step=1;plan.input.setCustomValidity(t('A vault with this name already exists.'));this.invalidName=plan.input;}else if(!this.closed)showManagementNotice(Notice,plan.name+': '+error.message);if(this.closed||error.status===401)break;}
+      try{await this.importPlan(plan);plan.error=null;}catch(error){plan.error=error.message;if(plan.stage&&!this.closed){try{await this.api('cancel',{},false,{id:plan.stage.id});plan.stage=null;plan.uploaded.clear();}catch(cancelError){if(cancelError.status===404){plan.stage=null;plan.uploaded.clear();}}}if(error.status===409){this.step=1;plan.input.setCustomValidity(t('A vault with this name already exists.'));this.invalidName=plan.input;}else if(!this.closed)showManagementNotice(Notice,plan.name+': '+error.message);if(this.closed||error.status===401||error.code==='IMPORT_FORBIDDEN')break;}
      }
      this.updateReview();const chosen=this.plans.filter(p=>p.enabled);
      if(chosen.every(p=>p.result)){

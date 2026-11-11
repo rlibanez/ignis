@@ -101,8 +101,7 @@ existentes.
 configuración» recupera los archivos estándar de instalación y deja los
 complementos deshabilitados. «Restaurar con su configuración» recupera sus
 archivos y datos junto con community-plugins.json, que conserva su estado de
-activación. Ambos modos de restauración de complementos requieren permisos de
-administrador. Los controles de ejecución de la instalación siguen aplicando.
+activación. Ambos modos de restauración de complementos requieren permiso para instalar complementos comunitarios. Los controles de ejecución de la instalación siguen aplicando.
 Las rutas reservadas y los archivos temporales se excluyen como en la exportación.
 
 La selección de modo es independiente por bóveda y forma parte de la clave de

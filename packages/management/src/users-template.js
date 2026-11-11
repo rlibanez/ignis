@@ -45,6 +45,7 @@ export default String.raw`
               <span id="create-password-change-help" class="help-tooltip" role="tooltip" hidden data-i18n="Requires a local password. Existing sessions are closed. The user must sign in with their current local password and choose a different password before accessing Ignis, including through OpenID Connect.">Requires a local password. Existing sessions are closed. The user must sign in with their current local password and choose a different password before accessing Ignis, including through OpenID Connect.</span>
             </span>
           </div>
+          <label class="email-confirmation"><input name="allowCommunityPlugins" type="checkbox" /><span data-i18n="Allow installing community plugins">Allow installing community plugins</span></label>
           <div class="dialog-actions"><button id="cancel-create" type="button" class="cancel-button" data-i18n="Cancel">Cancel</button><button type="submit" data-i18n="Create user">Create user</button></div>
         </form>
         </section>
@@ -82,6 +83,7 @@ export default String.raw`
               <span id="edit-password-change-help" class="help-tooltip" role="tooltip" hidden data-i18n="Requires a local password. Existing sessions are closed. The user must sign in with their current local password and choose a different password before accessing Ignis, including through OpenID Connect.">Requires a local password. Existing sessions are closed. The user must sign in with their current local password and choose a different password before accessing Ignis, including through OpenID Connect.</span>
             </span>
           </div>
+          <label class="email-confirmation" id="community-plugins-permission"><input name="allowCommunityPlugins" type="checkbox" /><span data-i18n="Allow installing community plugins">Allow installing community plugins</span></label>
           <p id="edit-status" role="status" aria-live="polite"></p>
           <div class="edit-account-actions">
           <button id="reset-password" type="button" class="warning-button" hidden data-i18n="Reset password">Reset password</button>

@@ -51,12 +51,22 @@ function validateSchema(db, allowEmpty = false) {
   if (!objects.length && allowEmpty) return false;
   if (checksum(JSON.stringify(objects)) !== expectedFingerprint) throw incompatible();
   const rows = db.prepare("SELECT version,checksum FROM schema_info").all();
-  if (rows.length !== 1 || rows[0].version !== schema.version || rows[0].checksum !== checksum(schema.sql)) throw incompatible();
-  return true;
+  if (rows.length !== 1 || rows[0].checksum !== checksum(schema.sql)) throw incompatible();
+  const {version} = rows[0];
+  // The pre-release schema used marker 4 for exactly this SQL and structure.
+  if (version !== schema.version && !(schema.version === 1 && version === 4)) throw incompatible();
+  return version;
 }
 function initializeSchema(db) {
   transaction(db, () => {
-    if (validateSchema(db, true)) return;
+    const version = validateSchema(db, true);
+    if (version) {
+      if (version !== schema.version) {
+        checkIntegrity(db);
+        db.prepare("UPDATE schema_info SET version=? WHERE singleton=1").run(schema.version);
+      }
+      return;
+    }
     db.exec(schema.sql);
     db.prepare("INSERT INTO schema_info VALUES (1,?,?)").run(schema.version,checksum(schema.sql));
   });

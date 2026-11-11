@@ -291,22 +291,21 @@ it("protects real server routes, persists auth and does not log request secrets"
       permissionsDb.prepare("DELETE FROM memberships WHERE vault_id=? AND user_id=?").run(ownUuid,adminId);
       expect((await request(port, `/api/fs/mkdir?vault=${ownUuid}`, jar, {method:"POST",headers:adminHeaders,body:pluginDirectory})).status).toBe(404);
       permissionsDb.prepare("INSERT INTO memberships VALUES (?,?,'editor')").run(ownUuid,adminId);
-      expect((await request(port, `/api/fs/mkdir?vault=${ownUuid}`, jar, {method:"POST",headers:adminHeaders,body:pluginDirectory})).status).toBe(200);
+      expect((await request(port, `/api/fs/mkdir?vault=${ownUuid}`, jar, {method:"POST",headers:adminHeaders,body:pluginDirectory})).status).toBe(404);
+      permissionsDb.prepare("UPDATE users SET community_plugins_allowed=1 WHERE id='normal-owner'").run();
+      expect((await request(port, `/api/fs/mkdir?vault=${ownUuid}`, ownerJar, {method:"POST",headers:pluginHeaders,body:pluginDirectory})).status).toBe(200);
       for (const [file,content] of [["plugins/demo/main.js","module.exports = class Demo {};"],["plugins/demo/manifest.json",'{"id":"demo","name":"Demo","version":"1.0.0"}'],["community-plugins.json",'["demo"]']]) {
-        expect((await request(port, `/api/fs/writeFile?vault=${ownUuid}`, ownerJar, {method:"POST",headers:pluginHeaders,body:{path:".obsidian/"+file,content}})).status).toBe(404);
-        expect((await request(port, `/api/fs/writeFile?vault=${ownUuid}`, jar, {method:"POST",headers:adminHeaders,body:{path:".obsidian/"+file,content}})).status).toBe(200);
+        expect((await request(port, `/api/fs/writeFile?vault=${ownUuid}`, ownerJar, {method:"POST",headers:pluginHeaders,body:{path:".obsidian/"+file,content}})).status).toBe(200);
         expect((await request(port, `/api/fs/readFile?vault=${ownUuid}&path=.obsidian/${file}`, ownerJar)).text).toBe(content);
+        expect((await request(port, `/api/fs/readFile?vault=${ownUuid}&path=.obsidian/${file}`, jar)).status).toBe(404);
       }
-      permissionsDb.prepare("UPDATE memberships SET role='reader' WHERE vault_id=? AND user_id='normal-owner'").run(ownUuid);
-      expect((await request(port, `/api/fs/readFile?vault=${ownUuid}&path=.obsidian/plugins/demo/main.js`, ownerJar)).status).toBe(200);
-      for(const role of ['reader','editor','owner']){
+      for(const role of ['reader','editor']){
         permissionsDb.prepare("UPDATE memberships SET role=? WHERE vault_id=? AND user_id='normal-owner'").run(role,ownUuid);
+        expect((await request(port, `/api/fs/readFile?vault=${ownUuid}&path=.obsidian/plugins/demo/main.js`, ownerJar)).status).toBe(404);
         expect((await request(port, `/api/fs/rm?vault=${ownUuid}&path=.obsidian/plugins/demo&recursive=true`, ownerJar, {method:"DELETE",headers:pluginHeaders})).status).toBe(404);
       }
-      permissionsDb.prepare("UPDATE memberships SET role='reader' WHERE vault_id=? AND user_id=?").run(ownUuid,adminId);
-      expect((await request(port, `/api/fs/writeFile?vault=${ownUuid}`, jar, {method:"POST",headers:adminHeaders,body:{path:".obsidian/plugins/demo/main.js",content:"forbidden"}})).status).toBe(404);
-      permissionsDb.prepare("UPDATE memberships SET role='editor' WHERE vault_id=? AND user_id=?").run(ownUuid,adminId);
-      expect((await request(port, `/api/fs/rm?vault=${ownUuid}&path=.obsidian/plugins/demo&recursive=true`, jar, {method:"DELETE",headers:adminHeaders})).status).toBe(200);
+      permissionsDb.prepare("UPDATE memberships SET role='owner' WHERE vault_id=? AND user_id='normal-owner'").run(ownUuid);
+      expect((await request(port, `/api/fs/rm?vault=${ownUuid}&path=.obsidian/plugins/demo&recursive=true`, ownerJar, {method:"DELETE",headers:pluginHeaders})).status).toBe(200);
 
     } finally { permissionsDb.close(); }
     expect(fs.existsSync(path.join(root,"vaults","normal-owner","Team",".obsidian","plugins","demo"))).toBe(false);
@@ -462,6 +461,12 @@ it("protects real server routes, persists auth and does not log request secrets"
     expect(persisted).toContain('"event":"server.started"');
     expect(persisted).toContain('"event":"http.request"');
     const logRecords = persisted.trim().split("\n").map(JSON.parse);
+    const loggedStartup = logRecords.find(record => record.event === "server.started");
+    const identityDb = openDatabase(path.join(root,"data"));
+    try {
+      expect(loggedStartup.schemaVersion).toBe(identityDb.prepare("SELECT version FROM schema_info WHERE singleton=1").get().version);
+    } finally { identityDb.close(); }
+
     expect(logRecords.some(r => r.operation === "auth.login" && r.status === 200 && r.username === "admin")).toBe(true);
     expect(logRecords.every(r => !Object.hasOwn(r, "userId"))).toBe(true);
     expect(logRecords.some(r => r.operation === "auth.logout" && r.status === 204 && r.username === "admin")).toBe(true);

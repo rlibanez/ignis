@@ -617,6 +617,20 @@ describe("user administration HTTP", () => {
     }
   });
 
+  it("allows only administrators to grant community plugin permission when creating a user", async () => {
+    const admin = await login(), normal = await login("normal");
+    const body = { login: "plugin-user", password: PASSWORD, allowCommunityPlugins: true };
+    const create = (jar, headers, input) => request("/api/auth/users", { jar, method: "POST", headers, body: input });
+    expect((await create(normal, { "x-ignis-csrf": await csrf(normal) }, body)).status).toBe(403);
+    const headers = { "x-ignis-csrf": await csrf(admin) };
+    expect((await create(admin, headers, { ...body, allowCommunityPlugins: "true" })).status).toBe(400);
+    const response = await create(admin, headers, body);
+    expect(response.status).toBe(201);
+    const { user } = await response.json();
+    expect(db.prepare("SELECT community_plugins_allowed FROM users WHERE id=?").get(user.id).community_plugins_allowed).toBe(1);
+    expect(db.prepare("SELECT count(*) n FROM audit_events WHERE action='allow-community-plugins' AND resource_id=?").get(user.id).n).toBe(1);
+  });
+
   it("creates a normal user with CSRF and lists only public account fields", async () => {
     const jar = await login();
     const body = { login: "new-user", password: PASSWORD };
@@ -634,11 +648,12 @@ describe("user administration HTTP", () => {
     expect(created.status).toBe(201);
     const { user } = await created.json();
     expect(user.role).toBe("user");
+    expect(db.prepare("SELECT community_plugins_allowed FROM users WHERE id=?").get(user.id).community_plugins_allowed).toBe(0);
     expect(db.prepare("SELECT count(*) n FROM memberships WHERE user_id=?").get(user.id).n).toBe(0);
     const listed = await request("/api/auth/users", { jar });
     expect(listed.status).toBe(200);
     for (const row of (await listed.json()).users)
-      expect(Object.keys(row).sort()).toEqual(["canSetLocalPassword", "email", "email_trust", "hasLocalPassword", "id", "login", "oidcLinked", "password_change_required", "role", "status"]);
+      expect(Object.keys(row).sort()).toEqual(["canSetLocalPassword", "community_plugins_allowed", "email", "email_trust", "hasLocalPassword", "id", "login", "oidcLinked", "password_change_required", "role", "status"]);
     expect((await listed.json()).oidcAvailable).toBe(false);
     expect((await listed.json()).users.every((row) => row.oidcLinked === null)).toBe(true);
     const normalJar = await login("new-user");

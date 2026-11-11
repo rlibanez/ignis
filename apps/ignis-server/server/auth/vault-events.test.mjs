@@ -33,6 +33,9 @@ it.each([null, [], {}, { type: "unknown" }, { type: "modified", path: [] }, { ch
   expect(projectVaultEvent(message, policy)).toBeNull();
 });
 
-it("delivers community plugin updates to authorized readers",()=>{
- expect(projectVaultEvent({type:"modified",path:".obsidian/plugins/x/main.js"},policy)).toEqual({type:"modified",path:".obsidian/plugins/x/main.js"});
+it("only delivers community plugin updates to the vault owner",()=>{
+ const message={type:"modified",path:".obsidian/plugins/x/main.js"};
+ expect(projectVaultEvent(message,policy)).toBeNull();
+ const owner={...policy,canRead:path=>vaultCapabilityAllowed({status:"active",instanceRole:"user",membership:"owner",capability:"content.read",path})};
+ expect(projectVaultEvent(message,owner)).toEqual(message);
 });

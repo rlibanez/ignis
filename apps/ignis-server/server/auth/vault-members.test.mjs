@@ -76,6 +76,26 @@ it("atomically transfers ownership to an existing reader and leaves the former o
  expect(db.prepare("SELECT count(*) n FROM audit_events WHERE action='transfer-vault-ownership'").get().n).toBe(1);
  expect(db.prepare("SELECT role FROM users WHERE id='reader'").get().role).toBe("user");
 });
+it("deactivates transferred plugins before publishing the vault and keeps their files",async()=>{
+ const pluginDir=path.join(root,"owner/Notes/.obsidian/plugins/demo");
+ fs.mkdirSync(pluginDir,{recursive:true});
+ fs.writeFileSync(path.join(pluginDir,"main.js"),"module.exports = {};");
+ fs.writeFileSync(path.join(pluginDir,"data.json"),'{"enabled":true}');
+ fs.writeFileSync(path.join(pluginDir,"../../community-plugins.json"),'["demo"]');
+ let invalidated=false;
+ await service.transfer("owner",transferInput(),{
+  quiesce:async()=>{},
+  invalidate:(previous,next,options)=>{
+   expect(options).toEqual({ownershipChanged:true});
+   expect(db.prepare("SELECT status FROM vaults WHERE id=?").get(vault.id).status).toBe("pending");
+   expect(fs.readFileSync(path.join(root,next,".obsidian/community-plugins.json"),"utf8")).toBe("[]");
+   invalidated=true;
+  },
+ });
+ expect(invalidated).toBe(true);
+ expect(fs.readFileSync(path.join(root,"reader/Notes/.obsidian/plugins/demo/main.js"),"utf8")).toBe("module.exports = {};");
+ expect(fs.readFileSync(path.join(root,"reader/Notes/.obsidian/plugins/demo/data.json"),"utf8")).toBe('{"enabled":true}');
+});
 it.each(["reader","editor","admin","invalid"])("does not let %s take ownership",async token=>{
  await expect(service.transfer(token,transferInput())).rejects.toThrow();
  expect(service.list("owner",vault.id).revision).toBe(1);

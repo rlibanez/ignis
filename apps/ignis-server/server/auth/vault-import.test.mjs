@@ -443,3 +443,29 @@ it('keeps executable restoration behind the existing administrator permission',a
  await expect(scope.reviewSource(input)).rejects.toMatchObject({code:'IMPORT_FORBIDDEN'});
  await expect(scope.prepareSource(input)).rejects.toMatchObject({code:'IMPORT_FORBIDDEN'});
 });
+
+it.each(['plugins','full'])('lets permitted normal users restore %s from ZIP and rechecks before publishing',async restore=>{
+ const scope=service.scope('alice');
+ const bytes=await zip([
+  ['Backup/Note.md','note'],
+  ['Backup/.obsidian/plugins/demo/main.js','module.exports = {};'],
+  ['Backup/.obsidian/community-plugins.json','["demo"]'],
+ ]);
+ const permission=allowed=>db.prepare("UPDATE users SET community_plugins_allowed=? WHERE id='alice'").run(Number(allowed));
+ permission(true);
+ const source=await scope.scan({attempt:crypto.randomUUID()},bytes);
+ expect(source.canRestorePlugins).toBe(true);
+ const input={id:source.id,root:source.vaults[0].root,name:'Restored',configuration:false,restore,selected:[]};
+ await scope.reviewSource(input);
+ const prepared=await scope.prepareSource(input);
+ permission(false);
+ await expect(scope.commit(prepared.id)).rejects.toMatchObject({code:'IMPORT_FORBIDDEN'});
+ expect(db.prepare("SELECT id FROM vaults WHERE name='Restored'").get()).toBeUndefined();
+ await scope.cancel(prepared.id);
+ await expect(scope.prepareSource(input)).rejects.toMatchObject({code:'IMPORT_FORBIDDEN'});
+ permission(true);
+ const retried=await scope.prepareSource(input);
+ const published=await scope.commit(retried.id);
+ expect(db.prepare("SELECT user_id,role FROM memberships WHERE vault_id=?").get(published.id)).toEqual({user_id:'alice',role:'owner'});
+ expect(fs.readFileSync(path.join(root,'alice/Restored/.obsidian/community-plugins.json'),'utf8')).toBe(restore==='full'?'["demo"]':'[]');
+});

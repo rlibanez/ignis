@@ -27,6 +27,27 @@ function rejectLegacyAliases(root, vault) {
   }
 }
 
+// A new owner must choose which of the transferred plugins to activate.
+function clearCommunityPluginActivation(io, vaultPath) {
+  const config = path.join(vaultPath, ".obsidian");
+  const activation = path.join(config, "community-plugins.json");
+  try {
+    if (!io.lstatSync(config).isDirectory() || !io.lstatSync(activation).isFile()) fail("VAULT_STATE_CHANGED");
+  } catch (error) {
+    if (error.code === "ENOENT") return;
+    throw error;
+  }
+  const temporary = path.join(config, ".ignis-transfer-" + randomUUID());
+  const fd = io.openSync(temporary, "wx", 0o600);
+  try {
+    try { io.writeFileSync(fd, "[]"); io.fsyncSync(fd); }
+    finally { io.closeSync(fd); }
+    io.renameSync(temporary, activation);
+    const directory = io.openSync(config, "r");
+    try { io.fsyncSync(directory); } finally { io.closeSync(directory); }
+  } finally { io.rmSync(temporary, {force:true}); }
+}
+
 // Both names remain reserved if anything fails after reservation. Recovery never
 // guesses which directory is authoritative and never reverses a filesystem move.
 async function renameRegisteredVault(db, root, actor, reference, name, {
@@ -79,10 +100,12 @@ async function renameRegisteredVault(db, root, actor, reference, name, {
     // single-process lifecycle contract. Never overwrite an observed destination.
     absent(io, target);
     io.renameSync(vault.path, target);
+    if (ownerId !== actor) clearCommunityPluginActivation(io, target);
     for(const folder of new Set([path.dirname(vault.path),path.dirname(target),root])) {
       const fd=io.openSync(folder,"r");try {io.fsyncSync(fd);}finally {io.closeSync(fd);}
     }
-    invalidate(vault.directory, directory);
+    if (ownerId !== actor) invalidate(vault.directory, directory, {ownershipChanged:true});
+    else invalidate(vault.directory, directory);
     transaction(db, () => {
       authorize();
       validate(vault);

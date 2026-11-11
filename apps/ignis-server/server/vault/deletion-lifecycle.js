@@ -13,12 +13,17 @@ function deletionLifecycle() {
       reconcile.cancelVault(id);
       await require("./lifecycle").quiesceRegisteredVault(id,vaultPath,options);
     },
-    invalidate(id, next) {
+    invalidate(id, next, {ownershipChanged = false} = {}) {
       reconcile.cancelVault(id);
       cache.invalidateVault(id);
       if(next)cache.invalidateVault(next);
       const trusted = settings.get("trustedVaults");
-      if (trusted.includes(id)) settings.update({trustedVaults:next ? trusted.map(value=>value===id?next:value) : trusted.filter(value => value !== id)});
+      if (ownershipChanged) {
+        const retained = trusted.filter(value => value !== id && value !== next);
+        if (retained.length !== trusted.length) settings.update({trustedVaults:retained});
+      } else if (trusted.includes(id)) {
+        settings.update({trustedVaults:next ? trusted.map(value=>value===id?next:value) : trusted.filter(value=>value!==id)});
+      }
     },
     refresh() { config.refreshVaults(); },
   };

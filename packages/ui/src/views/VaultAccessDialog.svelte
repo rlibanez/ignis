@@ -105,7 +105,7 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
     <div class="access-body">
       <label for="vault-transfer-owner">{translateIgnis("New owner")}<Field id="vault-transfer-owner" type="select" bind:value={transferTarget} disabled={busy} on:change={() => {transferConfirmed=false;}}
         options={[{value:'',label:translateIgnis('Select a member'),disabled:true},...candidates.map(member=>({value:member.id,label:member.login}))]} /></label>
-      <p class="hint">{translateIgnis("The new owner will control access to this vault. You will keep Read / Write access and will no longer manage its members.")}</p>
+      <p class="hint">{translateIgnis("The new owner will control access to this vault. You will keep Read / Write access and will no longer manage its members. Community plugins will be disabled for the new owner.")}</p>
       <label class="confirmation" for="vault-transfer-confirm"><Field id="vault-transfer-confirm" type="checkbox" bind:checked={transferConfirmed} disabled={busy || !recipient} />
         <span>{translateIgnis("I confirm the transfer")}{recipient ? " to " + recipient.login : ""}. Only the new owner can transfer it back.</span>
       </label>

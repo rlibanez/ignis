@@ -17,7 +17,7 @@ function createIdentityStore({db,config,now,deletion}) {
   }
   const setup=createInitialAdminSetup(db,{keyDigest:config.initialAdminKeyDigest,passwordPolicy:config.passwordPolicy,initialized});
   const credentials=id=>db.prepare('SELECT password_hash FROM local_credentials WHERE user_id=?').get(id);
-  const status=id=>db.prepare('SELECT status,role,email,email_trust,password_change_required FROM users WHERE id=?').get(id);
+  const status=id=>db.prepare('SELECT status,role,email,email_trust,password_change_required,community_plugins_allowed FROM users WHERE id=?').get(id);
   return Object.freeze({
     initialized,setup,credentials,status,
     username:id=>db.prepare('SELECT login FROM users WHERE id=?').get(id)?.login,
@@ -25,8 +25,9 @@ function createIdentityStore({db,config,now,deletion}) {
     listUsers:actor=>users.listUsers(db,actor).map(user=>({...user,hasLocalPassword:!!credentials(user.id),
       canSetLocalPassword:!credentials(user.id) && !!db.prepare('SELECT 1 FROM oidc_identities WHERE user_id=?').get(user.id)})),
     createUser:(actor,input,isCurrent)=>users.createLocalUser(db,actor,input.login,input.password,config.passwordPolicy,{isCurrent,
-      requirePasswordChange:input.requirePasswordChange ?? false,email:input.email ?? null,emailVerified:input.emailVerified ?? false}),
+      requirePasswordChange:input.requirePasswordChange ?? false,allowCommunityPlugins:input.allowCommunityPlugins ?? false,email:input.email ?? null,emailVerified:input.emailVerified ?? false}),
     changeUser:(actor,input,isCurrent)=>users.changeUserStatus(db,actor,input.userId,input.status,input.expectedStatus,{isCurrent,
+      pluginUpdate:Object.hasOwn(input,'allowCommunityPlugins')?input:undefined,
       passwordUpdate:Object.hasOwn(input,'requirePasswordChange')?input:undefined,
       emailUpdate:Object.hasOwn(input,'email')?input:undefined,roleUpdate:Object.hasOwn(input,'role')?input:undefined}),
     revokeSessions:(actor,target,isCurrent)=>users.revokeUserSessions(db,actor,target,{isCurrent}),

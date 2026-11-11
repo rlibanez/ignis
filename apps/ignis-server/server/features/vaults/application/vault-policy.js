@@ -28,6 +28,7 @@ function classifyVaultPath(value) {
   if (lower[0] === ".obsidian") {
     if (lower.length === 2 && (personalCandidates.has(lower[1]) || /^workspace\.[a-z0-9 _.-]{1,64}\.json$/.test(lower[1])))
       return "personal-candidate";
+    if (lower[1] === "plugins" || lower[1] === "community-plugins.json") return "community-plugin";
     return "configuration";
   }
   // Unknown hidden state (including nested .obsidian, .git and secrets) is
@@ -36,7 +37,7 @@ function classifyVaultPath(value) {
   return "content";
 }
 
-function vaultCapabilityAllowed({ status, instanceRole, membership, capability, path } = {}) {
+function vaultCapabilityAllowed({ status, instanceRole, membership, communityPluginsAllowed, capability, path } = {}) {
   if (status !== "active" || !["admin", "user"].includes(instanceRole)) return false;
   if(capability === "vault.create")return true; // Ownership assignment is enforced by vault-creation.
   const admin = instanceRole === "admin";
@@ -52,6 +53,10 @@ function vaultCapabilityAllowed({ status, instanceRole, membership, capability, 
     (path === ".obsidian" || path.startsWith(".obsidian/") || path === ".OBSIDIANTEST");
   const trash = path === ".trash" || (typeof path === "string" && path.startsWith(".trash/") && classifyVaultPath(path.slice(7)) === "content");
   if (!roles.has(membership) || (kind !== "content" && !sharedConfiguration && !trash)) return false;
+  // Community code and its activation list are visible only to the owner.
+  // A member must never load code installed by a different account.
+  if (kind === "community-plugin")
+    return membership === "owner" && (capability !== "content.write" || admin || communityPluginsAllowed === true);
   if (capability !== "content.write") return true;
   if (!["editor", "owner"].includes(membership)) return false;
   if (sharedConfiguration && path !== ".OBSIDIANTEST")

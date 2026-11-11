@@ -95,10 +95,12 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   let editBusy = false;
   let currentUserId;
   const confirmAdminLabel = byId("confirm-admin-label");
+  const communityPluginsPermission = byId("community-plugins-permission");
   editForm.elements.role.addEventListener("change", () => {
     editForm.elements.confirmAdmin.checked = false;
     confirmAdminLabel.hidden = !editing || editing.role === "admin" || editForm.elements.role.value !== "admin";
     editForm.elements.confirmAdmin.required = !confirmAdminLabel.hidden;
+    communityPluginsPermission.hidden = editForm.elements.role.value !== "user";
   });
   editCancel.addEventListener("click", () => editDialog.close());
   editDialog.addEventListener("cancel", (event) => {
@@ -577,6 +579,8 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
           editForm.elements.requirePasswordChange.disabled = !user.hasLocalPassword;
           editForm.elements.status.value = user.status;
           editForm.elements.role.value = user.role;
+          editForm.elements.allowCommunityPlugins.checked = !!user.community_plugins_allowed;
+          communityPluginsPermission.hidden = user.role !== "user";
           editForm.elements.confirmAdmin.checked = editForm.elements.confirmAdmin.required = false;
           confirmAdminLabel.hidden = true;
           editForm.elements.email.value = user.email || "";
@@ -628,7 +632,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       const response = await request("/api/auth/users", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Ignis-Csrf": (await csrf.json()).csrfToken },
-        body: JSON.stringify({ login: form.elements.login.value, password: form.elements.password.value, email: form.elements.email.value, emailVerified: form.elements.emailVerified.checked, requirePasswordChange: form.elements.requirePasswordChange.checked }),
+        body: JSON.stringify({ login: form.elements.login.value, password: form.elements.password.value, email: form.elements.email.value, emailVerified: form.elements.emailVerified.checked, requirePasswordChange: form.elements.requirePasswordChange.checked, allowCommunityPlugins: form.elements.allowCommunityPlugins.checked }),
       });
       if (locked) return;
       if (!response.ok) {
@@ -666,7 +670,8 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       const response = await request("/api/auth/users/status", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Ignis-Csrf": (await csrf.json()).csrfToken },
-        body: JSON.stringify({ userId: target.id, status: nextStatus, expectedStatus: target.status, role: editForm.elements.role.value, expectedRole: target.role, confirmAdmin: editForm.elements.confirmAdmin.checked, email: editForm.elements.email.value, emailVerified: editForm.elements.emailVerified.checked, expectedEmail: target.email, expectedEmailTrust: target.email_trust, requirePasswordChange: editForm.elements.requirePasswordChange.checked, expectedPasswordChangeRequired: !!target.password_change_required }),
+        body: JSON.stringify({ userId: target.id, status: nextStatus, expectedStatus: target.status, role: editForm.elements.role.value, expectedRole: target.role, confirmAdmin: editForm.elements.confirmAdmin.checked, email: editForm.elements.email.value, emailVerified: editForm.elements.emailVerified.checked, expectedEmail: target.email, expectedEmailTrust: target.email_trust, requirePasswordChange: editForm.elements.requirePasswordChange.checked, expectedPasswordChangeRequired: !!target.password_change_required,
+          ...(editForm.elements.role.value === "user" && { allowCommunityPlugins: editForm.elements.allowCommunityPlugins.checked, expectedCommunityPluginsAllowed: !!target.community_plugins_allowed }) }),
       });
       if (locked || !editDialog.open) return;
       if (!response.ok) {

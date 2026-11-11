@@ -54,7 +54,7 @@ function metadata(input = {}) {
     for (const [key, values] of Object.entries({previousAccountStatus:["active","disabled"],accountStatus:["active","disabled"],previousRole:["admin","user"],role:["admin","user"],previousEmailVerification:["unverified","admin_confirmed","oidc_verified"],emailVerification:["unverified","admin_confirmed","oidc_verified"]})) {
       if (values.includes(input[key])) out[key] = input[key];
     }
-    for (const key of ["changed", "emailChanged", "previousPasswordChangeRequired", "passwordChangeRequired"]) if (typeof input[key] === "boolean") out[key] = input[key];
+    for (const key of ["changed", "emailChanged", "previousPasswordChangeRequired", "passwordChangeRequired", "communityPluginsAllowed"]) if (typeof input[key] === "boolean") out[key] = input[key];
   }
   if (out.operation === "auth.login" && input.status === 401 && typeof input.attemptedUsername === "string" &&
       input.attemptedUsername.length > 0 && input.attemptedUsername.length <= 128) out.attemptedUsername = input.attemptedUsername;
@@ -71,7 +71,7 @@ function metadata(input = {}) {
     if (typeof input[key] === "string" && input[key].length <= 128 && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(input[key])) out[key] = input[key];
   if (methods.has(input.method)) out.method = input.method;
   if (components.has(input.component)) out.component = input.component;
-  for (const key of ["status", "durationMs", "count", "port"]) if (Number.isSafeInteger(input[key]) && input[key] >= 0 && input[key] <= 2147483647) out[key] = input[key];
+  for (const key of ["status", "durationMs", "count", "port", "schemaVersion"]) if (Number.isSafeInteger(input[key]) && input[key] >= 0 && input[key] <= 2147483647) out[key] = input[key];
   return out;
 }
 function createLogger({ dataRoot, level = "info", format = "json", fileEnabled = true, maxBytes = 10485760, maxFiles = 10,

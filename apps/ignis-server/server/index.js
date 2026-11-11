@@ -27,7 +27,16 @@ async function main() {
   process.on('uncaughtException',fatal);process.on('unhandledRejection',fatal);
   try {
     const address = await application.start();
-    if (!stopping) logging.emit('info','server.started',{version:require('./version').getInfo().version,upstreamVersion:require('./version').getInfo().upstream.version,obsidianVersion:require('./config').obsidianVersion,port:address.port});
+    if (!stopping) {
+      const {version,upstream} = require('./version').getInfo();
+      logging.emit('info','server.started',{
+        version,
+        schemaVersion:address.schemaVersion,
+        upstreamVersion:upstream.version,
+        obsidianVersion:require('./config').obsidianVersion,
+        port:address.port,
+      });
+    }
   } catch (error) {
     logStartupFailure(error);process.exitCode=1;await stop();
   }

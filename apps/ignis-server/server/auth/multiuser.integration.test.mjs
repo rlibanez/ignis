@@ -150,6 +150,34 @@ it('validates three independent real sessions across conflicts, downgrade, revok
   let membership=await success(alice.call('/api/vault/members?vault='+a));
   const member=async(role,expectedRole)=>{membership=await success(alice.call('/api/vault/members',{vault:a,login:'bob',role,expectedRole,revision:membership.revision}));};
   await member('editor',null);
+  const pluginPath='.obsidian/plugins/example/main.js';
+  const setPluginPermission=async(actor,allow,expected)=>{
+   const csrfToken=(await success(actor.call('/api/auth/csrf'))).csrfToken;
+   return request(port,'/api/auth/users/status',actor.jar,{method:'POST',
+    headers:{'x-ignis-context':actor.context,'x-ignis-csrf':csrfToken},
+    body:{userId:'alice',status:'active',expectedStatus:'active',allowCommunityPlugins:allow,expectedCommunityPluginsAllowed:expected},
+   });
+  };
+  const writePlugin=(actor,vault=a)=>actor.call('/api/fs/writeFile?vault='+vault,{path:pluginPath,content:'module.exports = {};'});
+  expect((await writePlugin(alice)).status).toBe(404);
+  expect((await setPluginPermission(alice,true,false)).status).toBe(403);
+  await success(setPluginPermission(admin,true,false));
+  expect((await setPluginPermission(admin,false,false)).status).toBe(409);
+  await success(alice.call('/api/fs/mkdir?vault='+a,{path:'.obsidian/plugins/example',recursive:true}));
+  await success(writePlugin(alice));
+  await success(alice.call('/api/fs/writeFile?vault='+a,{path:'.obsidian/community-plugins.json',content:'["example"]'}));
+  expect((await alice.call('/api/fs/readFile?vault='+a+'&path='+pluginPath+'&encoding=utf8')).text).toBe('module.exports = {};');
+  expect((await bob.call('/api/fs/readFile?vault='+a+'&path='+pluginPath)).status).toBe(404);
+  expect((await bob.call('/api/fs/readFile?vault='+a+'&path=.obsidian/community-plugins.json')).status).toBe(404);
+  const bobTree=(await success(bob.call('/api/bootstrap?vault='+a))).tree;
+  expect(JSON.stringify(bobTree)).not.toContain(pluginPath);
+  expect(JSON.stringify(bobTree)).not.toContain('community-plugins.json');
+  expect((await writePlugin(bob)).status).toBe(404);
+  expect((await writePlugin(alice,b)).status).toBe(404);
+  await success(setPluginPermission(admin,false,true));
+  expect((await writePlugin(alice)).status).toBe(404);
+  expect((await alice.call('/api/fs/readFile?vault='+a+'&path='+pluginPath)).status).toBe(200);
+
   await success(alice.call('/api/fs/writeFile?vault='+a,{path:'private.md',content:'base',expectedHash:null}));
   const readPrivate=actor=>actor.call('/api/fs/readFile?vault='+a+'&path=private.md&encoding=utf8');
   expect((await readPrivate(alice)).text).toBe('base');expect((await readPrivate(bob)).text).toBe('base');

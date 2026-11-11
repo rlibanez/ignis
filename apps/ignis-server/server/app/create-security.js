@@ -61,7 +61,8 @@ function createSecurity(options) {
         });
       },
     };
-    return createAuthBoundary({...options,services});
+    const schemaVersion = db.prepare("SELECT version FROM schema_info WHERE singleton=1").get().version;
+    return {...createAuthBoundary({...options,services}),schemaVersion};
   } catch (error) { close(); throw error; }
 }
 module.exports = {createSecurity};

@@ -28,10 +28,13 @@ function createVaultImport({db,root,dataRoot,sessions,now=Date.now}){
  async function sweep(){for(const source of sources.values())if(source.expires<=now()&&![...jobs.values()].some(j=>j.source===source&&j.busy)){for(const job of jobs.values())if(job.source===source)await drop(job);sources.delete(source.id);await fsp.rm(source.stage,{recursive:true,force:true});}for(const [id,receipt] of receipts)if(receipt.expires<=now())receipts.delete(id);for(const job of jobs.values())if(!job.busy&&job.expires<=now())await drop(job);}
  const activity=item=>{if(item.expires<=now()||item.deadline<=now())fail('IMPORT_UNAVAILABLE');item.expires=Math.min(item.deadline,now()+limits.idle);};
  const audit=(actor,action,id)=>db.prepare('INSERT INTO audit_events VALUES (?,?,?,?,?)').run(randomUUID(),actor,action,id,now());
+ const pluginPermission=db.prepare('SELECT community_plugins_allowed FROM users WHERE id=?');
  function scope(token){
   let interrupted=false,createdJob=null;const abortController=new AbortController();
   const original=sessions.resolve(token);if(!original)fail('SESSION_CHANGED');const context=sessionContext(original);
   const current=(withinTransaction=false)=>{if(interrupted||closed||!matchesSession(context,sessions.resolve(token,{withinTransaction})))fail('SESSION_CHANGED');};
+  const canRestorePlugins=()=>context.role==='admin'||pluginPermission.get(context.userId)?.community_plugins_allowed===1;
+  const checkRestore=mode=>restoreMode(mode,mode!=='none'&&canRestorePlugins());
   function checkSource(source){current();if(sources.get(source.id)!==source)fail('IMPORT_UNAVAILABLE');activity(source);}
   function checkJob(job){current();if(job.cancelled||jobs.get(job.id)!==job)fail('IMPORT_UNAVAILABLE');activity(job);if(job.source)checkSource(job.source);}
   function jobFor(id){current();const job=jobs.get(id);if(!job||(job.source&&(!sources.has(job.source.id)||job.source.expires<=now()))||job.actor!==context.userId||job.session!==context.sessionId||job.expires<=now()||job.cancelled)fail('IMPORT_UNAVAILABLE');checkJob(job);return job;}
@@ -51,9 +54,9 @@ function createVaultImport({db,root,dataRoot,sessions,now=Date.now}){
    if(!input||Object.keys(input).some(k=>!['name','configuration','files','attempt','selected','restore'].includes(k))||!validVaultName(input.name)||typeof input.configuration!=='boolean')fail('IMPORT_REQUEST');
    if(input.attempt!==undefined&&(typeof input.attempt!=='string'||!/^[a-f0-9-]{36}$/.test(input.attempt)))fail('IMPORT_REQUEST');
    const restore=input.restore===undefined?'none':input.restore;
-   const plan=manifest(input.files,input.configuration,input.selected,context.role,false,restore);
+   const plan=manifest(input.files,input.configuration,input.selected,context.role,false,restore,restore!=='none'&&canRestorePlugins());
    availableName(input.name);
-   const pending=plan.entries.filter(e=>e.include&&e.kind==='file').reduce((total,e)=>total+e.size,0);if(fs.statSync(staging).dev===fs.statSync(root).dev)await ensureSpace(staging,pending*2);else{await ensureSpace(staging,pending);await ensureSpace(root,pending);}current();
+   const pending=plan.entries.filter(e=>e.include&&e.kind==='file').reduce((total,e)=>total+e.size,0);if(fs.statSync(staging).dev===fs.statSync(root).dev)await ensureSpace(staging,pending*2);else{await ensureSpace(staging,pending);await ensureSpace(root,pending);}current();checkRestore(restore);
    if(new Set([...jobs.values(),...sources.values()].map(j=>j.actor)).size>=limits.concurrent&&![...sources.values()].some(j=>j.actor===context.userId)||[...jobs.values()].some(j=>j.actor===context.userId)||(!parent&&[...sources.values()].some(j=>j.actor===context.userId)))fail('IMPORT_BUSY');
    const id=randomUUID(),stage=path.join(staging,id);fs.mkdirSync(stage,{mode:0o700});
    const job={id,stage,attempt:input.attempt,actor:context.userId,session:context.sessionId,name:input.name,configuration:input.configuration,restore,plan,deadline:now()+limits.ttl,expires:now()+limits.idle,received:new Map(),busy:false,source:parent,cancel:new AbortController()};jobs.set(id,job);createdJob=id;
@@ -68,7 +71,7 @@ function createVaultImport({db,root,dataRoot,sessions,now=Date.now}){
    job.cancelled=true;job.cancel.abort();if(!job.busy)await drop(job);return {ok:true};
   }
   async function exclusive(id,action,publishing=false){
-   const job=jobFor(id);if(job.busy)fail('IMPORT_BUSY');job.busy=true;job.publishing=publishing;
+   const job=jobFor(id);checkRestore(job.restore);if(job.busy)fail('IMPORT_BUSY');job.busy=true;job.publishing=publishing;
    try{return await action(job);}finally{job.busy=false;job.publishing=false;if(job.cancelled&&jobs.get(job.id)===job)await drop(job);}
   }
   async function putJob(job,index,bytes,plan=job.plan){
@@ -83,7 +86,7 @@ function createVaultImport({db,root,dataRoot,sessions,now=Date.now}){
   async function put(id,index,bytes){if(!Buffer.isBuffer(bytes))fail('IMPORT_REQUEST');return putStream(id,index,Readable.from([bytes]));}
   async function putStreamJob(job,index,input,plan=job.plan){
    const entry=plan.entries[index];if(!Number.isSafeInteger(index)||!entry?.include||entry.kind!=='file')fail('IMPORT_REQUEST');
-   const check=()=>checkJob(job);
+   const check=()=>{checkJob(job);checkRestore(job.restore);};
    if(input.headers?.['content-length']!==undefined&&Number(input.headers['content-length'])!==entry.size)fail('IMPORT_REQUEST');
    addAbortSignal(AbortSignal.any([abortController.signal,job.cancel.signal]),input);
    if(isPreference(entry.path)){if(entry.size>1024*1024)fail('IMPORT_LIMIT');return putJob(job,index,await small(input,1024*1024,check),plan);}
@@ -95,7 +98,7 @@ function createVaultImport({db,root,dataRoot,sessions,now=Date.now}){
   }
   async function putStream(id,index,input){return exclusive(id,job=>putStreamJob(job,index,input));}
   async function select(id,selected){return exclusive(id,async job=>{
-   const plan=manifest(job.plan.entries.map(({path,kind,size})=>({path,kind,size})),job.configuration,selected,context.role,false,job.restore);
+   const plan=manifest(job.plan.entries.map(({path,kind,size})=>({path,kind,size})),job.configuration,selected,context.role,false,job.restore,job.restore!=='none'&&canRestorePlugins());
    if(job.zip&&plan.entries.some((entry,index)=>entry.include&&entry.kind==='file'&&!job.received.has(index))){
     const archive=await openArchive(job.zip.source||path.join(job.stage,'source.zip'),job.zip,()=>checkJob(job));
     try{for(const [index,entry] of plan.entries.entries())if(entry.include&&entry.kind==='file'&&!job.received.has(index)){current();await putStreamJob(job,index,archive.stream(archive.entries[job.zip.indexes?.[index]??index]),plan);}}
@@ -128,7 +131,7 @@ function createVaultImport({db,root,dataRoot,sessions,now=Date.now}){
    const uuid=randomUUID(),directory=ownedDirectory(db,context.userId,job.name);let target,reserved=false,created=false;
    try{
     transaction(db,()=>{
-     current(true);dirOk(root);
+     current(true);checkRestore(job.restore);dirOk(root);
      availableName(job.name);
      ensureUserDirectory(root,directory);target=storagePath(root,directory,{missingLeaf:true});
      db.prepare("INSERT INTO vaults(id,name,directory,status,created_at) VALUES (?,?,?,'pending',?)").run(uuid,job.name,directory,now());
@@ -142,7 +145,7 @@ function createVaultImport({db,root,dataRoot,sessions,now=Date.now}){
      if(entry.kind==='directory')continue;
      const source=await fsp.open(path.join(job.stage,String(i)),fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW);
      try{const st=await source.stat();if(!st.isFile()||st.nlink!==1||st.size!==entry.size)fail('IMPORT_STORAGE');const output=await fsp.open(destination,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);
-      try{const result=await consume(entry.size?source.createReadStream({autoClose:false,start:0,end:entry.size-1,highWaterMark:256*1024}):Readable.from([]),{limit:entry.size,expected:entry.size,check:()=>checkJob(job),output,space:root});if(result.hash!==job.received.get(i))fail('IMPORT_STORAGE');await output.sync();}finally{await output.close();}
+      try{const result=await consume(entry.size?source.createReadStream({autoClose:false,start:0,end:entry.size-1,highWaterMark:256*1024}):Readable.from([]),{limit:entry.size,expected:entry.size,check:()=>{checkJob(job);checkRestore(job.restore);},output,space:root});if(result.hash!==job.received.get(i))fail('IMPORT_STORAGE');await output.sync();}finally{await output.close();}
      }finally{await source.close();}
     }
     if(!job.plan.entries.some(entry=>entry.include&&entry.path==='.obsidian/community-plugins.json')){
@@ -150,7 +153,7 @@ function createVaultImport({db,root,dataRoot,sessions,now=Date.now}){
      try{await disabled.writeFile('[]');await disabled.sync();}finally{await disabled.close();}
     }
     for(const folder of [...directories].sort((a,b)=>b.length-a.length)){const fd=await fsp.open(folder,'r');try{await fd.sync();}finally{await fd.close();}}
-    transaction(db,()=>{current(true);storagePath(root,directory);const stat=fs.lstatSync(target);if(stat.isSymbolicLink()||stat.dev!==identity.dev||stat.ino!==identity.ino||db.prepare('SELECT status FROM vaults WHERE id=?').get(uuid)?.status!=='pending')fail('IMPORT_STORAGE');db.prepare("UPDATE vaults SET status='active' WHERE id=?").run(uuid);audit(context.userId,'import-vault',uuid);});
+    transaction(db,()=>{current(true);checkRestore(job.restore);storagePath(root,directory);const stat=fs.lstatSync(target);if(stat.isSymbolicLink()||stat.dev!==identity.dev||stat.ino!==identity.ino||db.prepare('SELECT status FROM vaults WHERE id=?').get(uuid)?.status!=='pending')fail('IMPORT_STORAGE');db.prepare("UPDATE vaults SET status='active' WHERE id=?").run(uuid);audit(context.userId,'import-vault',uuid);});
     // A lost confirmation must not create another vault or strand a successful
     // import. Receipts retain no files and remain session-bound and bounded.
     if(receipts.size>=256)receipts.delete(receipts.keys().next().value);
@@ -163,7 +166,7 @@ function createVaultImport({db,root,dataRoot,sessions,now=Date.now}){
    }
   },true);}
   function sourceFor(id){current();const source=sources.get(id);if(!source||!source.ready||source.actor!==context.userId||source.session!==context.sessionId||source.expires<=now())fail('IMPORT_UNAVAILABLE');checkSource(source);return source;}
-  function describeSource(source){return {id:source.id,vaults:source.layout.vaults.map(({root,name})=>({root,name})),nested:source.layout.nested,outside:source.layout.outside};}
+  function describeSource(source){return {id:source.id,vaults:source.layout.vaults.map(({root,name})=>({root,name})),nested:source.layout.nested,outside:source.layout.outside,canRestorePlugins:canRestorePlugins()};}
   async function scan(input,bytes){if(bytes!==undefined){if(!Buffer.isBuffer(bytes))fail('IMPORT_REQUEST');return scanStream(input,Readable.from([bytes]));}return scanOrigin(input);}
   async function scanOrigin(input,bytes){
    current();await sweep();current();
@@ -179,17 +182,17 @@ function createVaultImport({db,root,dataRoot,sessions,now=Date.now}){
    catch(error){sources.delete(id);await fsp.rm(stage,{recursive:true,force:true});throw error;}
   }
   function sourceKey(input){return JSON.stringify([input.root,input.name,input.configuration,input.restore??'none',[...input.selected].sort()]);}
-  function validateSourceRequest(input){restoreMode(input?.restore,context.role);if(!input||!['configuration,id,name,root,selected','configuration,id,name,restore,root,selected'].includes(Object.keys(input).sort().join(','))||typeof input.configuration!=='boolean'||typeof input.root!=='string'||!Array.isArray(input.selected)||input.selected.some(p=>typeof p!=='string')||input.selected.length>8)fail('IMPORT_REQUEST');}
+  function validateSourceRequest(input){checkRestore(input?.restore);if(!input||!['configuration,id,name,root,selected','configuration,id,name,restore,root,selected'].includes(Object.keys(input).sort().join(','))||typeof input.configuration!=='boolean'||typeof input.root!=='string'||!Array.isArray(input.selected)||input.selected.some(p=>typeof p!=='string')||input.selected.length>8)fail('IMPORT_REQUEST');}
   function sourcePlan(input){
    validateSourceRequest(input);
    const source=sourceFor(input.id),vault=source.layout.vaults.find(v=>v.root===input.root);if(!vault)fail('IMPORT_REQUEST');
    const files=vault.indexes.map(i=>{const {path,kind,size}=source.layout.entries[i];return {path:vault.root?path.slice(vault.root.length+1):path,kind,size};});
-   availableName(input.name);return {source,vault,files,plan:manifest(files,input.configuration,input.selected,context.role,false,input.restore)};
+   availableName(input.name);return {source,vault,files,plan:manifest(files,input.configuration,input.selected,context.role,false,input.restore,!!input.restore&&input.restore!=='none'&&canRestorePlugins())};
   }
   async function reviewSource(input){
    const {source,vault,plan}=sourcePlan(input);
    if(source.zip){const archive=await openArchive(path.join(source.stage,'source.zip'),source.zip,()=>checkSource(source));try{for(const [i,entry] of plan.entries.entries())if(entry.include&&isPreference(entry.path)&&entry.kind==='file')validatePreference(entry.path,await archive.small(archive.entries[vault.indexes[i]]));}finally{await archive.close();}}
-   sourceFor(input.id);return describe({plan});
+   sourceFor(input.id);checkRestore(input.restore);return describe({plan});
   }
   async function prepareSource(input){
    validateSourceRequest(input);const source=sourceFor(input.id),completed=source.completed.get(input.root);

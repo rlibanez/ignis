@@ -207,8 +207,8 @@ it.each([
  expect(Date.parse(output)).toBe(Date.parse(input));
 });
 
-it('persists distinct fork, upstream and Obsidian versions without arbitrary metadata',()=>{
- const {root,logger}=fixture();logger.emit('info','server.started',{version:'1.0.0',upstreamVersion:'0.9.0',obsidianVersion:'1.14.4',commit:'secret-path'});logger.close();
- expect(records(root)[0]).toMatchObject({version:'1.0.0',upstreamVersion:'0.9.0',obsidianVersion:'1.14.4'});
+it('persists distinct fork, schema, upstream and Obsidian versions without arbitrary metadata',()=>{
+ const {root,logger}=fixture();logger.emit('info','server.started',{version:'1.0.0',schemaVersion:1,upstreamVersion:'0.9.0',obsidianVersion:'1.14.4',commit:'secret-path'});logger.close();
+ expect(records(root)[0]).toMatchObject({version:'1.0.0',schemaVersion:1,upstreamVersion:'0.9.0',obsidianVersion:'1.14.4'});
  expect(records(root)[0]).not.toHaveProperty('commit');
 });

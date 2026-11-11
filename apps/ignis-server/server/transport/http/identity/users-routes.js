@@ -126,7 +126,7 @@ function createRoutes({identity,config,csrf,limits,cookies,safe,originAllowed,in
     }
     if (changingStatus) {
       if (!body || Array.isArray(body) ||
-          Object.keys(body).some((key) => !["userId", "status", "expectedStatus", "email", "emailVerified", "expectedEmail", "expectedEmailTrust", "role", "expectedRole", "confirmAdmin", "requirePasswordChange", "expectedPasswordChangeRequired"].includes(key)) ||
+          Object.keys(body).some((key) => !["userId", "status", "expectedStatus", "email", "emailVerified", "expectedEmail", "expectedEmailTrust", "role", "expectedRole", "confirmAdmin", "requirePasswordChange", "expectedPasswordChangeRequired", "allowCommunityPlugins", "expectedCommunityPluginsAllowed"].includes(key)) ||
           typeof body.userId !== "string" || body.userId.length > 64 ||
           !["active", "disabled"].includes(body.status) ||
           !["active", "disabled"].includes(body.expectedStatus))
@@ -135,6 +135,10 @@ function createRoutes({identity,config,csrf,limits,cookies,safe,originAllowed,in
       if (passwordKeys.some(key => Object.hasOwn(body, key)) &&
           (!passwordKeys.every(key => typeof body[key] === "boolean") || req.headers["x-ignis-context"] !== session.id))
         return safe(res, 400, "Invalid password change requirement");
+      const pluginKeys = ["allowCommunityPlugins", "expectedCommunityPluginsAllowed"];
+      if (pluginKeys.some(key => Object.hasOwn(body, key)) &&
+          (!pluginKeys.every(key => typeof body[key] === "boolean") || req.headers["x-ignis-context"] !== session.id))
+        return safe(res, 400, "Invalid community plugin permission.");
       const roleKeys = ["role", "expectedRole", "confirmAdmin"];
       if (roleKeys.some(key => Object.hasOwn(body, key)) &&
           (!roleKeys.every(key => Object.hasOwn(body, key)) || !["admin", "user"].includes(body.role) ||
@@ -161,6 +165,7 @@ function createRoutes({identity,config,csrf,limits,cookies,safe,originAllowed,in
         const messages = {
           LOCAL_PASSWORD_REQUIRED: [400, "Set a local password before requiring a password change."],
           INVALID_PASSWORD_REQUIREMENT: [400, "Invalid password change requirement."],
+          INVALID_COMMUNITY_PLUGIN_PERMISSION: [400, "Invalid community plugin permission."],
           INVALID_EMAIL: [400, "Invalid email or verification confirmation."],
           EMAIL_IN_USE: [400, "Email is already assigned to another account."],
           USER_NOT_FOUND: [404, "User not found"],
@@ -180,10 +185,12 @@ function createRoutes({identity,config,csrf,limits,cookies,safe,originAllowed,in
       }
     }
     if (!body || Array.isArray(body) ||
-        Object.keys(body).some((key) => !["login", "password", "email", "emailVerified", "requirePasswordChange"].includes(key)) ||
+        Object.keys(body).some((key) => !["login", "password", "email", "emailVerified", "requirePasswordChange", "allowCommunityPlugins"].includes(key)) ||
         typeof body.login !== "string" || typeof body.password !== "string" ||
         (Object.hasOwn(body, "requirePasswordChange") && typeof body.requirePasswordChange !== "boolean"))
       return safe(res, 400, "Expected login and password only");
+    if (Object.hasOwn(body, "allowCommunityPlugins") && typeof body.allowCommunityPlugins !== "boolean")
+      return safe(res, 400, "Invalid community plugin permission.");
     try {
       const user = await identity.createUser(token,session.id,body);
       csrf.consume(req);

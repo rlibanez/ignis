@@ -8,6 +8,7 @@ function changes(before,after) {
   if(before.email!==after.email)result.emailChanged=true;
   if(before.email_trust!==after.email_trust)Object.assign(result,{previousEmailVerification:before.email_trust,emailVerification:after.email_trust});
   if(before.password_change_required!==after.password_change_required)Object.assign(result,{previousPasswordChangeRequired:!!before.password_change_required,passwordChangeRequired:!!after.password_change_required});
+  if(before.community_plugins_allowed!==after.community_plugins_allowed)result.communityPluginsAllowed=!!after.community_plugins_allowed;
   return {...result,changed:Object.keys(result).length>0};
 }
 

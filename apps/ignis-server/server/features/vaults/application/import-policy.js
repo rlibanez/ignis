@@ -2,9 +2,9 @@ const {limits:transferLimits,portablePath,excludedTransferSegment}=require('./tr
 const limits=Object.freeze({...transferLimits,fileBytes:512*1024*1024,totalBytes:4*1024*1024*1024,zipBytes:1024*1024*1024,ttl:4*60*60*1000,idle:30*60*1000});
 const fail=code=>{throw Object.assign(new Error('Vault import rejected'),{code});};
 function importPath(value){const result=portablePath(value);if(result===null)fail('IMPORT_PATH');return result;}
-function restoreMode(value='none',role='user'){
+function restoreMode(value='none',allowed=false){
  if(!['none','plugins','full'].includes(value))fail('IMPORT_REQUEST');
- if(value!=='none'&&role!=='admin')fail('IMPORT_FORBIDDEN');
+ if(value!=='none'&&!allowed)fail('IMPORT_FORBIDDEN');
  return value;
 }
 function included(name,configuration,kind='file',restore='none',role='user'){
@@ -39,8 +39,8 @@ function selectable(name,kind,role){
  return /^\.obsidian\/(app|hotkeys|graph|workspace|workspace-mobile|workspaces)\.json$/.test(name)||
   (role==='admin'&&/^\.obsidian\/(appearance|core-plugins)\.json$/.test(name));
 }
-function manifest(input,configuration,selected=[],role='user',sourceOnly=false,restore='none'){
- restoreMode(restore,role);
+function manifest(input,configuration,selected=[],role='user',sourceOnly=false,restore='none',canRestorePlugins=role==='admin'){
+ restoreMode(restore,canRestorePlugins);
  if(!Array.isArray(selected)||selected.length>8||selected.some(p=>typeof p!=='string')||new Set(selected).size!==selected.length)fail('IMPORT_REQUEST');
  if(!Array.isArray(input)||input.length>limits.files)fail('IMPORT_LIMIT');
  const nodes=new Map();let total=0;

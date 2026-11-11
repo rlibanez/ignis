@@ -1,5 +1,5 @@
 // Initial schema for the modular application. Development migration histories are not supported.
-module.exports = Object.freeze({version: 3, sql: `
+module.exports = Object.freeze({version: 1, sql: `
 CREATE TABLE schema_info (
   singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
   version INTEGER NOT NULL,
@@ -16,6 +16,7 @@ CREATE TABLE users (
   email TEXT CHECK(email IS NULL OR (length(email) BETWEEN 3 AND 254 AND email = lower(email))),
   email_trust TEXT NOT NULL DEFAULT 'unverified'
     CHECK(email_trust IN ('unverified', 'admin_confirmed', 'oidc_verified') AND (email IS NOT NULL OR email_trust = 'unverified')),
+  community_plugins_allowed INTEGER NOT NULL DEFAULT 0 CHECK(community_plugins_allowed IN (0,1)),
   password_change_required INTEGER NOT NULL DEFAULT 0 CHECK(password_change_required IN (0,1))
 ) STRICT;
 

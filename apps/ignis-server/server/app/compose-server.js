@@ -76,7 +76,7 @@ async function composeServer() {
           server.once('error',failed);server.once('listening',listening);server.listen(config.port);
         });
         void bootstrapCache.warmUp().catch(() => require('@ignis/server-core/src/logger').emit('warn','server.cache.crawl.warmup_failed'));
-        return server.address();
+        return {...server.address(),schemaVersion:auth.schemaVersion};
       },
     };
   } catch (error) {
