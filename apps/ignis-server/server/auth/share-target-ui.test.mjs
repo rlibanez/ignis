@@ -142,6 +142,7 @@ it.each([
   const f = await fixture({text: '', files});
   expect(f.$('preview-heading').textContent).toBe(heading);
   expect(f.$('files').children[0].children[1].textContent).toBe('Filename when saving');
+  expect(f.$('files').querySelectorAll('input').map(input => input.type)).toEqual(names.map(() => 'text'));
 });
 
 it('creates a distinct note when the incoming title already exists, without overwriting it', async () => {

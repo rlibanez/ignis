@@ -1,8 +1,10 @@
 .resource-tree{overflow:auto;max-height:22rem;border:1px solid var(--background-modifier-border,#6666);border-radius:8px;padding:8px;min-height:90px}
-.resource-tree .resource-tree-row{display:flex;align-items:center;gap:4px;padding-inline-start:calc(var(--depth,0)*20px);margin:2px 0}
+.resource-tree .resource-tree-row{display:flex;align-items:flex-start;gap:4px;padding-inline-start:min(calc(var(--depth,0)*20px),45%);margin:2px 0}
 .resource-tree button.resource-tree-toggle,.resource-tree button.resource-tree-select{border:0;box-shadow:none;background:transparent;color:inherit;margin:0;min-height:var(--ignis-tree-control-size,32px);border-radius:4px;font:inherit;padding:4px 8px;width:auto}
-.resource-tree button.resource-tree-toggle{display:grid;place-items:center;flex:0 0 var(--ignis-tree-control-size,32px);padding:4px}
-.resource-tree button.resource-tree-select{display:flex;align-items:center;justify-content:flex-start;gap:8px;flex:1;min-width:0;text-align:start;white-space:normal;overflow-wrap:anywhere}
+.resource-tree .resource-tree-row > button.resource-tree-toggle{display:grid;place-items:center;box-sizing:border-box;flex:0 0 var(--ignis-tree-control-size,32px);min-inline-size:0;padding:4px}
+.resource-tree button.resource-tree-select{display:flex;align-items:flex-start;justify-content:flex-start;gap:8px;flex:1;height:auto;min-width:0;text-align:start;white-space:normal;overflow-wrap:anywhere}
+.resource-tree button.resource-tree-select > span{min-width:0}
+.resource-tree button.resource-tree-select > svg{margin-block-start:max(0px,calc((1lh - 18px)/2))}
 .resource-tree svg{width:18px;height:18px;flex:none}
 .resource-tree button:hover,.resource-tree button[aria-pressed=true]{background:var(--background-modifier-hover,#8964d322)}
 .resource-tree button[aria-pressed=true]{color:var(--text-accent,#a48be8)}
@@ -14,4 +16,7 @@
 
 /* Explicit typography keeps native dialogs and embedded management views aligned. */
 .resource-tree button.resource-tree-select,.resource-tree button.resource-tree-toggle{font-family:var(--font-interface,inherit);font-size:var(--font-ui-medium,16px);font-weight:var(--font-normal,400);line-height:var(--line-height-normal,1.5)}
+.resource-tree .resource-tree-row > button.resource-tree-select{padding:max(4px,calc((var(--ignis-tree-control-size,32px) - 1lh)/2)) 8px}
+@media(pointer:coarse){body:not(.incoming-share) .resource-tree button.resource-tree-select{--ignis-tree-control-size:44px}}
+.incoming-share .resource-tree button.resource-tree-select{--ignis-tree-control-size:var(--incoming-toggle-width)}
 .resource-tree-destination{font-size:var(--font-ui-medium,16px);line-height:var(--line-height-normal,1.5);margin:8px 0;color:var(--text-muted,#999);overflow-wrap:anywhere}

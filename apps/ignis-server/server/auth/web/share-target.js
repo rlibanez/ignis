@@ -126,7 +126,7 @@
       original.textContent = `${file.name} (${Math.ceil(file.size / 1024)} KiB)` + (item.completed.includes(index) ? ' — ' + t('Saved') : '');
       const label = document.createElement('label'); label.htmlFor = 'incoming-name-' + index;
       label.textContent = t('Filename when saving');
-      const input = document.createElement('input'); input.id = label.htmlFor;
+      const input = document.createElement('input'); input.type = 'text'; input.id = label.htmlFor;
       input.value = item.names[index]; input.maxLength = 240;
       input.dataset.index = String(index); input.autocomplete = 'off';
       input.setAttribute('aria-label', t('Filename when saving') + ': ' + file.name);

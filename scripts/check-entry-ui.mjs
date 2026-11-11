@@ -93,6 +93,34 @@ try {
       }
      }
      if(page==='share-target'){
+      assert.equal(await client.run(`(()=>{
+       const tree=document.createElement('div');
+       tree.className='destination-tree';
+       document.querySelector('main').append(tree);
+       try {
+        IgnisResourceTree.render(tree,[
+         {path:'',name:'Root',kind:'folder'},
+         {path:'long-folder',name:'A long folder name '.repeat(10),kind:'folder',children:true,depth:1},
+         {path:'long-note.md',name:'UnbrokenNoteName'.repeat(16),kind:'file',depth:20},
+         {path:'short.md',name:'Short',kind:'file',depth:1},
+        ]);
+        const rows=[...tree.children];
+        const longRowsFit=rows.slice(1,3).every((row,i)=>{
+         const name=row.querySelector('span').getBoundingClientRect();
+         const button=row.querySelector('.resource-tree-select').getBoundingClientRect();
+         return name.height>button.height/2 && name.bottom<=button.bottom &&
+          button.bottom<=rows[i+2].getBoundingClientRect().top;
+        });
+        const folder=rows[1].querySelector('.resource-tree-select');
+        const note=rows[3].querySelector('.resource-tree-select');
+        const aligned=['svg','span'].every(part=>
+         Math.abs(folder.querySelector(part).getBoundingClientRect().left-
+          note.querySelector(part).getBoundingClientRect().left)<1);
+        return longRowsFit && aligned && tree.scrollWidth===tree.clientWidth;
+       } finally {tree.remove();}
+      })()`),true,'long folder and note names wrap without overlapping or widening the tree');
+     }
+     if(page==='share-target'){
       assert.equal(await client.run(`[...document.querySelectorAll('.resource-actions button svg')].every(svg=>{
        const icon=svg.getBoundingClientRect(),button=svg.parentElement.getBoundingClientRect();
        return icon.width===18 && icon.height===18 &&
