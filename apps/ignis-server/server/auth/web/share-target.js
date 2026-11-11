@@ -11,7 +11,6 @@
   function status(message) { $('status').textContent = t(message); }
   function showSignIn(visible) {
     $('signin').hidden = !visible;
-    document.body.classList.toggle('ignis-access-entry', visible);
   }
   function lock() {
     locked = true; $('resource-dialog').close(); $('resource-name').value = ''; $('capture').hidden = true; showSignIn(true); clearPreview(); $('files').replaceChildren();

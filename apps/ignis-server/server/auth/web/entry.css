@@ -16,6 +16,18 @@ body.ignis-entry {
 }
 .ignis-entry main :is(p,h1,h2,label,pre) { font-family: var(--font-interface); }
 .ignis-entry .brand { margin: 0 0 8px; color: var(--text-muted); font-size: var(--font-ui-small, 13px); font-weight: var(--font-semibold, 600); letter-spacing: .12em; }
+.ignis-entry .entry-brand { display: flex; align-items: center; gap: 8px; color: var(--text-normal); }
+.ignis-entry .entry-brand-icon { position: relative; display: grid; flex: none; }
+.ignis-entry.theme-light .entry-brand-icon img { filter: brightness(.36); }
+/* Overlay the original crystal so the light theme only darkens the surrounding rings. */
+.ignis-entry.theme-light .entry-brand-icon::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("/favicon.png") center / contain no-repeat;
+  clip-path: polygon(27% 11%, 73% 11%, 73% 54%, 61% 75%, 53% 100%, 45% 100%, 38% 75%, 27% 55%);
+}
+.ignis-entry .entry-brand [data-ignis-app-name] { font-size: 24px; line-height: 28px; }
 .ignis-entry h1, .ignis-entry h2 { margin: 0 0 24px; color: var(--text-normal); font-size: var(--font-ui-large, 18px); font-weight: var(--font-semibold, 600); line-height: 1.4; overflow-wrap: anywhere; }
 .ignis-entry p { line-height: var(--line-height-normal, 1.5); overflow-wrap: anywhere; }
 .ignis-entry label { display: block; margin: 20px 0 8px; font-weight: var(--font-normal, 400); }

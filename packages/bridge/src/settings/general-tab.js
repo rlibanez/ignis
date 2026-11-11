@@ -86,8 +86,7 @@ function addHeader(containerEl) {
 
   const header = containerEl.createDiv("ignis-header");
 
-  header.createEl("img", {
-    cls: "ignis-header-logo",
+  header.createDiv("ignis-header-logo").createEl("img", {
     attr: { src: "/assets/ignis.webp", alt: "Ignis" },
   });
 

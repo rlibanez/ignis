@@ -20,6 +20,10 @@ const server=http.createServer((req,res)=>{
  if(url.pathname==='/api/vault/list')return json([{uuid:'vault',name:'Vault',membership:'owner'}]);
  if(url.pathname==='/api/fs/tree')return json({'Folder':{type:'directory'},'Folder/Note.md':{type:'file'}});
  if(url.pathname==='/api/auth/csrf')return json({csrfToken:'synthetic'});
+ if(url.pathname==='/favicon.png'){
+  res.setHeader('Content-Type','image/png');
+  return res.end(fs.readFileSync(path.join(repo,'images/favicon.png')));
+ }
  const routes=Object.fromEntries(['setup','login','reset-password','share-target'].map(name=>['/'+name,path.join(web,name+'.html')]));
  routes['/auth/native.css']=path.join(assets,'app.css');
  const shared={'ui-environment.js':'ui-environment.cjs','resource-tree.js':'resource-tree.cjs','resource-tree.css':'resource-tree.css','password-visibility.js':'password-visibility.cjs','oidc-start.js':'oidc-start.cjs'};
@@ -65,6 +69,19 @@ try {
       await client.wait(`location.pathname==='/share-target' && location.search==='?id=synthetic'`,'sign-in automatically resumes the original share');
       await client.wait(`document.querySelector('#capture')?.hidden===false`,'incoming form');
      } else await client.wait(`document.querySelector('form')?.hidden===false`,'entry form');
+     if(['setup','login','share-target'].includes(page)){
+      assert.equal(await client.run(`(()=>{
+       const icon=document.querySelector('.entry-brand img');
+       const name=document.querySelector('.entry-brand [data-ignis-app-name]');
+       if(!icon?.naturalWidth || icon.alt!=='' || !name?.textContent.trim())return false;
+       const imageBox=icon.getBoundingClientRect(),nameBox=name.getBoundingClientRect();
+       return imageBox.width===28 && imageBox.height===28 &&
+        getComputedStyle(name).fontSize==='24px' &&
+        getComputedStyle(name).color===getComputedStyle(document.querySelector('h1')).color &&
+        (getComputedStyle(icon).filter!=='none')===('${theme}'==='light') &&
+        nameBox.height===imageBox.height && Math.abs(nameBox.top-imageBox.top)<1;
+      })()`),true,'the access heading displays the Ignis icon beside its name');
+     }
      const layout=await client.run(`(()=>{const main=document.querySelector('main'),input=main.querySelector('input:not([type=hidden]):not([type=checkbox])'),style=getComputedStyle(input),box=main.getBoundingClientRect();return {width:box.width,left:box.left,scroll:document.documentElement.scrollWidth,viewport:innerWidth,available:document.body.clientWidth,font:style.fontSize,height:input.getBoundingClientRect().height,color:getComputedStyle(document.body).backgroundColor,theme:document.body.classList.contains('theme-${theme}'),native:!!getComputedStyle(document.body).getPropertyValue('--interactive-accent').trim(),contain:getComputedStyle(document.body).contain};})()`);
      assert.equal(await client.run("document.body.classList.contains('is-mobile')"),mobile,'interaction mode');
      if(page==='share-target'){
@@ -105,7 +122,7 @@ try {
       await client.run("document.activeElement.value=''");
      }
      if(page==='setup')assert.equal(await client.run(`[...document.querySelectorAll('.setup-help-toggle')].every(button=>{const rect=button.getBoundingClientRect();return rect.width===22&&rect.height===22;})`),true,'help buttons stay circular in every mode');
-     const accessPanel=mobile&&page!=='share-target';
+     const accessPanel=mobile;
      if(accessPanel && !tablet && height>=800 && page==='login'){
       assert.ok(await client.run(`(()=>{const r=document.querySelector('main').getBoundingClientRect(),s=getComputedStyle(document.body);return r.height>=innerHeight-parseFloat(s.paddingTop)-parseFloat(s.paddingBottom)-1;})()`),'phone login fills the safe viewport');
      }
@@ -124,9 +141,13 @@ try {
       assert.ok(brandTop>=expectedTop && brandTop<=expectedTop+1,'mobile brand respects the top inset and panel padding');
      }
      assert.equal(layout.native,true,'installed native CSS provides tokens');assert.equal(layout.contain,'none','entry page can grow and scroll');
-     const maximum=page==='share-target'?704:400;
+     const maximum=page==='share-target'&&!mobile?704:400;
      assert.equal(layout.width,Math.min(maximum,layout.available-(accessPanel?0:32)),'entry page uses its designated width, including padding and border');assert.ok(layout.left>=0);assert.ok(layout.scroll<=layout.viewport,'no horizontal overflow');assert.ok(layout.height>=28);
      if(page==='share-target') {
+      assert.equal(await client.run(`(()=>{
+       const style=getComputedStyle(document.querySelector('main'));
+       return parseFloat(style.borderBottomLeftRadius)>0 && style.backgroundColor!=='rgba(0, 0, 0, 0)';
+      })()`),true,'sharing uses a rounded panel with its own background');
       if(mobile){
        await client.call('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:theme},{name:'display-mode',value:'standalone'}]});
        const overflow=await client.run(`document.scrollingElement.scrollHeight>innerHeight`);

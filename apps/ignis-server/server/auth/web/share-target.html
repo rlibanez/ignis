@@ -14,8 +14,14 @@
 <script src="/auth/ui-environment.js" defer></script>
 <script src="/auth/entry.js" defer></script>
 </head>
-<body class="ignis-entry incoming-share"><main>
-<p class="brand" data-ignis-app-name>IGNIS</p><h1 id="preview-heading" data-i18n="Save shared content">Save shared content</h1>
+<body class="ignis-entry ignis-access-entry incoming-share"><main>
+<p class="brand entry-brand">
+  <span class="entry-brand-icon">
+    <img src="/favicon.png" width="28" height="28" alt="" />
+  </span>
+  <span data-ignis-app-name>IGNIS</span>
+</p>
+<h1 id="preview-heading" data-i18n="Save shared content">Save shared content</h1>
 <p id="status" role="status" aria-live="polite"></p>
 <section id="signin" hidden><p data-i18n="Sign in to continue. Your incoming content stays on this device.">Sign in to continue. Your incoming content stays on this device.</p><div class="dialog-actions"><a class="account-button mod-cta" id="share-sign-in" href="/login" data-i18n="Sign in">Sign in</a></div></section>
 <form id="capture" hidden><fieldset id="fields">
