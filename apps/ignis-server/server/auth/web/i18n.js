@@ -648,6 +648,7 @@
   "Sharing updated. Refresh Shared to update its display.": "Compartición actualizada. Actualiza Compartido para ver los cambios.",
   "Sign in again before linking your {p0} account.": "Vuelve a iniciar sesión antes de vincular tu cuenta de {p0}.",
   "Some writes are not confirmed. Wait for saving to finish or resolve failed writes before renaming the vault.": "Hay cambios sin confirmar. Espera a que termine el guardado o resuelve los errores antes de renombrar la bóveda.",
+  "Cannot sign out while saves are unconfirmed for: {p0}": "No se puede cerrar sesión mientras quede por confirmar el guardado de {p0}",
   "Some writes are not confirmed. Wait for saving to finish or resolve failed writes before signing out.": "Hay cambios sin confirmar. Espera a que termine el guardado o resuelve los errores antes de cerrar sesión.",
   "Some writes were not confirmed. Download them before leaving this page; they will not be sent under a different session.": "Algunos cambios no se han confirmado. Descárgalos antes de salir de esta página; no se enviarán desde otra sesión.",
   "Stop sharing “{p0}” with all recipients?": "¿Dejar de compartir «{p0}» con todos sus destinatarios?",

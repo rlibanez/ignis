@@ -22,9 +22,10 @@ it.each(["admin", "user"])("renders separate native rows and role-dependent acti
   expect(groups).toHaveLength(1);
   expect(groups[0].heading).toBeUndefined();
   expect(groups[0].items.map(i=>i.name)).toEqual(["Username", "Email", "Change password", "OpenID Connect", ...(role === "admin" ? ["Manage users"] : []), "Shared resources", "Import vault"]);
-  const button = {setButtonText:vi.fn().mockReturnThis(),onClick:vi.fn().mockReturnThis()};
-  const row = {setDesc:vi.fn().mockReturnThis(),addButton:fn=>fn(button)};
-  groups[0].items.find(item=>item.name==="Shared resources").render(row);
+  const button = {setButtonText:vi.fn().mockReturnThis(),onClick:vi.fn().mockReturnThis(),setWarning:vi.fn().mockReturnThis()};
+  const row = {setDesc:vi.fn().mockReturnThis(),addButton(fn){fn(button);return this;}};
+  // Obsidian treats the render result as a callback to invoke on close.
+  for (const item of groups[0].items) expect(item.render(row), item.name).toBeUndefined();
   expect(row.setDesc).toHaveBeenCalledWith("Manage the files and folders you share and those shared with you.");
   expect(button.setButtonText).toHaveBeenCalledWith("Open");
 });

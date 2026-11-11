@@ -337,17 +337,19 @@ function settingDefinitions(tab) {
   const open = kind => new ManagementModal(tab.app, kind).open();
   const action = (name, callback, warning = false) => ({
     name: t(name),
-    render: setting => setting.setDesc(t(descriptions[name] || "")).addButton(button => {
-      button.setButtonText(t(warning ? name : name === "Change password" ? "Change" : "Open")).onClick(callback);
-      if (warning) button.setWarning();
-    }),
+    render: setting => {
+      setting.setDesc(t(descriptions[name] || "")).addButton(button => {
+        button.setButtonText(t(warning ? name : name === "Change password" ? "Change" : "Open")).onClick(callback);
+        if (warning) button.setWarning();
+      });
+    },
   });
   // Each definition creates one native sibling row. Never nest Settings inside
   // a settingEl: that element is itself a horizontal flex row on desktop.
   return [
     {type: "group", items: [
-      {name: t("Username"), render: setting => setting.setDesc(session.user.login).addButton(button => button.setButtonText(t("Sign out")).setWarning().onClick(() => window.__ignisAuth?.logout()))},
-      {name:t("Email"),render:setting=>setting.setDesc(session.email || t("Not set")).addButton(button=>button.setButtonText(t("Change")).onClick(()=>new EmailModal(tab.app,session,()=>tab.update()).open()))},
+      {name: t("Username"), render: setting => { setting.setDesc(session.user.login).addButton(button => button.setButtonText(t("Sign out")).setWarning().onClick(() => window.__ignisAuth?.logout())); }},
+      {name:t("Email"),render: setting => { setting.setDesc(session.email || t("Not set")).addButton(button => button.setButtonText(t("Change")).onClick(() => new EmailModal(tab.app, session, () => tab.update()).open())); }},
       ...(session.hasLocalPassword ? [action("Change password", () => new PasswordModal(tab.app, session).open())] : []),
       ...(!session.hasLocalPassword && session.oidcLinked ? [action("Set local password", () => open("password"))] : []),
       ...(state.oidc?.oidcAvailable && session.oidcLinked ? [{
@@ -360,14 +362,16 @@ function settingDefinitions(tab) {
       }] : []),
       ...(state.oidc?.oidcAvailable && !session.oidcLinked ? [{
         name: "OpenID Connect",
-        render: setting => setting.setDesc(t(descriptions["OpenID Connect"])).addButton(button => {
-          button.setButtonText(t("Link OpenID Connect account").replaceAll("OpenID Connect", () => state.oidc.oidcButtonText || "OpenID Connect"))
-            .onClick(() => linkProvider(session, button));
-        }),
+        render: setting => {
+          setting.setDesc(t(descriptions["OpenID Connect"])).addButton(button => {
+            button.setButtonText(t("Link OpenID Connect account").replaceAll("OpenID Connect", () => state.oidc.oidcButtonText || "OpenID Connect"))
+              .onClick(() => linkProvider(session, button));
+          });
+        },
       }] : []),
       ...(session.user.role === "admin" ? [action("Manage users", () => open("users"))] : []),
       action("Shared resources", () => open("shares")),
-      {name:t("Import vault"),render:setting=>setting.setDesc(t("Create a new vault from a local folder or ZIP file.")).addButton(button=>button.setButtonText(t("Import")).onClick(()=>new ImportModal(tab.app,session).open()))},
+      {name:t("Import vault"),render: setting => { setting.setDesc(t("Create a new vault from a local folder or ZIP file.")).addButton(button => button.setButtonText(t("Import")).onClick(() => new ImportModal(tab.app, session).open())); }},
     ]},
   ];
 }

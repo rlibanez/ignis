@@ -391,9 +391,11 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
   async function logout() {
     const unsaved = window.__ignis?.writes?.snapshotPending?.() || [];
     if (unsaved.length) {
-      boundaryMessage(
-        translateIgnis("Some writes are not confirmed. Wait for saving to finish or resolve failed writes before signing out."),
-      );
+      const paths = [...new Set(unsaved.map(entry => entry.path).filter(Boolean))];
+      const files = paths.slice(0, 3).join(", ") + (paths.length > 3 ? ", …" : "");
+      boundaryMessage(files
+        ? translateIgnis("Cannot sign out while saves are unconfirmed for: {p0}", {p0: files})
+        : translateIgnis("Some writes are not confirmed. Wait for saving to finish or resolve failed writes before signing out."));
       return;
     }
     try {

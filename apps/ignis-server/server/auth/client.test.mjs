@@ -510,7 +510,8 @@ it('keeps unconfirmed writes and the active account when sign-out is prevented, 
  const f=await fixture();f.window.__ignis={writes:{snapshotPending:()=>[{path:'note.md',data:'draft'}]}};
  await f.window.__ignisAuth.logout();expect(f.window.__ignisAuth.blocked).toBe(false);expect(f.calls).toEqual([]);
  expect(f.elements.some(el=>el.className==='notice-container ignis-boundary-notices')).toBe(true);
- expect(f.elements.some(el=>el.textContent?.includes('Some writes were')||el.textContent?.includes('Some writes are'))).toBe(true);
+ expect(f.elements.some(el=>el.textContent==='Cannot sign out while saves are unconfirmed for: note.md')).toBe(true);
+ expect(f.elements.some(el=>el.textContent?.includes('draft'))).toBe(false);
 });
 
 it('does not render a late logout failure over the terminal lock screen',async()=>{
