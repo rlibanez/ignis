@@ -24,12 +24,17 @@ it('deletes credentials, provider links and memberships but preserves foreign va
  const v=vault('other','Foreign');fs.writeFileSync(path.join(v.path,'note.md'),'keep');
  db.prepare("INSERT INTO memberships VALUES (?,'target','editor')").run(v.id);
  db.exec("INSERT INTO local_credentials VALUES ('target','hash',0); INSERT INTO oidc_identities VALUES ('https://id.example','subject','target',0)");
+ db.prepare("INSERT INTO shared_resources(id,vault_id,path,kind,device,inode) VALUES ('share',?,'note.md','file','0','0')").run(v.id);
+ db.exec("INSERT INTO resource_grants VALUES ('share','target','editor')");
  expect(await service.remove('admin',input(),live)).toEqual({ok:true});
  expect(db.prepare("SELECT * FROM users WHERE id='target'").get()).toBeUndefined();
  expect(db.prepare('SELECT * FROM local_credentials').all()).toEqual([]);
  expect(db.prepare('SELECT * FROM oidc_identities').all()).toEqual([]);
  expect(fs.readFileSync(path.join(v.path,'note.md'),'utf8')).toBe('keep');
  expect(db.prepare("SELECT action FROM audit_events WHERE action='delete-user'").get()).toBeTruthy();
+ expect(db.prepare("SELECT owner_id,actor,recipient,previous_role,cause FROM sharing_history").get()).toEqual({
+  owner_id:"other",actor:"admin",recipient:"target",previous_role:"editor",cause:"user-deleted",
+ });
 });
 it('blocks owned vaults without consent and rejects forged confirmation or stale scope without disabling',async()=>{
  vault('target','Owned');
@@ -53,6 +58,9 @@ it('deletes owned shared vaults and cascades grants while retaining recipients a
  expect(db.prepare('SELECT * FROM resource_grants').all()).toEqual([]);
  expect(db.prepare("SELECT * FROM users WHERE id='other'").get()).toBeTruthy();
  expect(db.prepare("SELECT count(*) n FROM vault_deletions WHERE state='purged'").get().n).toBe(2);
+ expect(db.prepare("SELECT owner_id,actor,recipient,previous_role,cause FROM sharing_history").get()).toEqual({
+  owner_id:"target",actor:"admin",recipient:"other",previous_role:"reader",cause:"vault-deleted",
+ });
 });
 it.each(['other',null,'missing'])('rejects unauthorized operator %s',async actor=>{
  await expect(service.remove(actor,input(),live)).rejects.toMatchObject({code:'SESSION_CHANGED'});

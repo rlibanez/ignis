@@ -16,7 +16,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     if(operation){const response=await fetch("/api/auth/csrf",{credentials:"same-origin",cache:"no-store",headers});if(!response.ok)throw new Error(translateIgnis("Unable to check your session."));headers["X-Ignis-Csrf"]=(await response.json()).csrfToken;headers["Content-Type"]="application/json";}
     const response=await fetch("/api/shares",{method:operation?"POST":"GET",credentials:"same-origin",cache:"no-store",headers,...(operation?{body:JSON.stringify({operation,input})}:{})});
     if(response.status===401 || response.headers.get("content-type")?.includes("text/html")){lock();throw new Error(translateIgnis("Session unavailable"));}
-    const data=await response.json();scope.assertContext?.();if(locked)throw new Error(translateIgnis("Session unavailable"));if(!response.ok){if(data.code==="AUTH_CONTEXT_CHANGED")lock();throw new Error(translateIgnis(data.error) || translateIgnis("Request failed"));}if(operation && !["browse","validateGrant"].includes(operation))await scope.onMutation?.();return data;
+    const data=await response.json();scope.assertContext?.();if(locked)throw new Error(translateIgnis("Session unavailable"));if(!response.ok){if(data.code==="AUTH_CONTEXT_CHANGED")lock();throw new Error(translateIgnis(data.error) || translateIgnis("Request failed"));}if(operation && !["browse","validateGrant","history"].includes(operation))await scope.onMutation?.();return data;
   }
   function confirmAction(title, message, action, opened) {
     return new Promise(resolve => {
@@ -44,6 +44,94 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
     el.append(svg);return el;
   }
   function table(headers,rows){const wrap=node("div");wrap.className="table-scroll";const el=node("table"),head=node("tr");el.className="responsive-table";el.setAttribute("role","table");for(const name of headers)head.append(node("th",name));const thead=node("thead");thead.append(head);el.append(thead);const body=node("tbody");for(const cells of rows){const row=node("tr");for(const [index,value] of cells.entries()){const cell=node("td");cell.dataset.label=headers[index];cell.append(typeof value==="string"?document.createTextNode(value):value);row.append(cell);}body.append(row);}el.append(body);wrap.append(el);return wrap;}
+  let historyView;
+  const historyCauses = {
+    "stop-sharing": "Stopped sharing",
+    "user-deleted": "Recipient deleted",
+    "vault-deleted": "Vault deleted",
+    "resource-deleted": "Resource deleted",
+  };
+  const permissionLabel = role => translateIgnis(role === "editor" ? "Read / Write" : "Read");
+  function describeHistory(entry) {
+    const recipient = entry.recipient;
+    if (!entry.newRole) {
+      const message = translateIgnis("Revoked access for {p0}", {p0:recipient});
+      return historyCauses[entry.cause] ? message + " · " + translateIgnis(historyCauses[entry.cause]) : message;
+    }
+    const permission = permissionLabel(entry.newRole);
+    if (!entry.previousRole) return translateIgnis("Granted {p0} to {p1}", {p0:permission,p1:recipient});
+    return translateIgnis("Changed access for {p0} from {p1} to {p2}", {
+      p0:recipient,p1:permissionLabel(entry.previousRole),p2:permission,
+    });
+  }
+  const historyColumns = [
+    ["date","Date and time"],["actor","Actor"],["resource","Resource"],["change","Access change"],
+  ];
+  function renderHistory(view) {
+    const container = $("history-entries");
+    const focused = container.contains(document.activeElement) ? document.activeElement.dataset.historySort : null;
+    const date = new Intl.DateTimeFormat(document.documentElement.lang || undefined,{dateStyle:"short",timeStyle:"short"});
+    const rows = view.entries.map(entry=>[
+      date.format(entry.createdAt),entry.actor,entry.vault + " / " + entry.path,describeHistory(entry),
+    ]);
+    const grid = table(historyColumns.map(([,label])=>translateIgnis(label)),rows);
+    grid.querySelectorAll("th").forEach((heading,index)=>{
+      const [sort,label] = historyColumns[index];
+      const active = sort === view.sort;
+      const control = button(translateIgnis(label),()=>{
+        const direction = active && view.direction === "asc" ? "desc" : "asc";
+        historyView = {...view,sort,direction,before:null,entries:[]};
+        $("history-more").hidden = true;
+        renderHistory(historyView);
+        void loadHistory(historyView);
+      },false);
+      control.classList.add("history-sort");
+      control.dataset.historySort = sort;
+      if (active) {
+        heading.setAttribute("aria-sort",view.direction === "asc" ? "ascending" : "descending");
+        const arrow = node("span",view.direction === "asc" ? " ↑" : " ↓");
+        arrow.setAttribute("aria-hidden","true");
+        control.append(arrow);
+      }
+      heading.replaceChildren(control);
+    });
+    container.replaceChildren(grid);
+    if (focused) container.querySelector(`[data-history-sort="${focused}"]`)?.focus();
+  }
+  async function loadHistory(view) {
+    const status = $("history-status"), more = $("history-more");
+    more.disabled = true;
+    status.textContent = translateIgnis("Loading…");
+    try {
+      const page = await api("history",{resource:view.resource,before:view.before,sort:view.sort,direction:view.direction});
+      if (historyView !== view || !$("history-dialog").open) return;
+      view.entries.push(...page.entries);
+      view.before = page.next;
+      renderHistory(view);
+      status.textContent = view.entries.length ? "" : translateIgnis("No sharing activity yet.");
+      more.hidden = page.next === null;
+    } catch (error) {
+      if (historyView === view && $("history-dialog").open) {
+        status.textContent = error.message;
+        more.textContent = translateIgnis("Retry");
+        more.hidden = false;
+      }
+      return;
+    } finally {
+      if (historyView === view) more.disabled = false;
+    }
+    more.textContent = translateIgnis("Load more");
+  }
+  function openHistory(resource = null) {
+    historyView = {resource,before:null,entries:[],sort:"date",direction:"desc"};
+    $("history-entries").replaceChildren();
+    $("history-more").hidden = true;
+    $("history-dialog").showModal();
+    void loadHistory(historyView);
+  }
+  $("share-history").onclick = () => openHistory();
+  $("resource-history").onclick = () => openHistory(managed.id);
+  $("history-more").onclick = () => { void loadHistory(historyView); };
   function render(){
     for(const [id,owned] of [["received",false],["owned",true]]){
       const resources=catalog.resources.filter(r=>r.owned===owned);

@@ -1,3 +1,4 @@
+const { recordRevocations } = require("../../sharing/adapters/history");
 const fs = require("node:fs");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
@@ -109,6 +110,7 @@ async function deleteRegisteredVault(db, root, actor, id, {
     transaction(db, () => {
       authorize();
       if (db.prepare("SELECT status FROM vaults WHERE id=?").get(id)?.status !== "pending") fail("VAULT_STATE_CHANGED");
+      recordRevocations(db,actor,"vault-deleted",id);
       db.prepare("DELETE FROM vaults WHERE id=?").run(id); // Memberships cascade.
       db.prepare("UPDATE vault_deletions SET state='retired' WHERE vault_id=?").run(id);
       audit(db, actor, "delete-vault", id);

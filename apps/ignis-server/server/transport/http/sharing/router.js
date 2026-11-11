@@ -16,7 +16,7 @@ function createResourceSharesRouter(service) {
     SHARE_EXISTS:[409,"This resource is already shared. Manage its existing permissions."],
     SHARE_LIMIT:[413,"Too many resources or directory entries."], SHARE_TOO_LARGE:[413,`The file exceeds the ${service.limits.maxFileMiB} MiB limit.`],
   };
-  const fields={validateGrant:"id,login,revision,role",grants:"changes,id,revision",copy:"from,to",previewRemoval:"id,path",removeConfirmed:"confirm,id,path,revision",mounts:"vault",destination:"id,localPath,vault",rename:"etag,id,path,to",create:"login,path,role,vault",revoke:"action,id,revision",browse:"path,vault",read:"id,path",write:"action,content,etag,id,path",mkdir:"action,etag,id,path",remove:"action,etag,id,path"};
+  const fields={history:"before,direction,resource,sort",validateGrant:"id,login,revision,role",grants:"changes,id,revision",copy:"from,to",previewRemoval:"id,path",removeConfirmed:"confirm,id,path,revision",mounts:"vault",destination:"id,localPath,vault",rename:"etag,id,path,to",create:"login,path,role,vault",revoke:"action,id,revision",browse:"path,vault",read:"id,path",write:"action,content,etag,id,path",mkdir:"action,etag,id,path",remove:"action,etag,id,path"};
   router.get("/api/shares",(req,res)=>{
     try {if(Object.keys(req.query).length) return res.status(400).json({error:"Invalid request"});res.json(service.catalog(req.shareToken));}
     catch {res.status(404).json({error:"Shared resources unavailable"});}
@@ -28,11 +28,12 @@ function createResourceSharesRouter(service) {
     try {
       const {operation,input}=req.body || {};
       if(Object.keys(req.query).length || Object.keys(req.body).sort().join(",")!=="input,operation" || !input || Array.isArray(input) || typeof input!=="object" ||
-        !Object.hasOwn(fields,operation) || Object.keys(input).sort().join(",")!==fields[operation])
+        !Object.hasOwn(fields,operation) || (Object.keys(input).sort().join(",")!==fields[operation] &&
+          !(operation==="history" && Object.keys(input).sort().join(",")==="before,resource")))
         return res.status(400).json({error:"Invalid request"});
       if(["revoke","write","mkdir","remove"].includes(operation) && input.action!==operation) return res.status(400).json({error:"Invalid request"});
-      if(req.shareOperationAllowed && !req.shareOperationAllowed(["read","mounts","browse"].includes(operation))) {res.set("Retry-After","60");return res.status(429).json({error:"Too many requests"});}
-      const fn={validateGrant:"validateGrant",grants:"grants",copy:"copy",previewRemoval:"previewRemoval",removeConfirmed:"removeConfirmed",mounts:"mounts",destination:"destination",rename:"rename",create:"create",revoke:"revoke",browse:"browseOwner",read:"read",write:"mutate",mkdir:"mutate",remove:"mutate"}[operation];
+      if(req.shareOperationAllowed && !req.shareOperationAllowed(["read","mounts","browse","history"].includes(operation))) {res.set("Retry-After","60");return res.status(429).json({error:"Too many requests"});}
+      const fn={history:"history",validateGrant:"validateGrant",grants:"grants",copy:"copy",previewRemoval:"previewRemoval",removeConfirmed:"removeConfirmed",mounts:"mounts",destination:"destination",rename:"rename",create:"create",revoke:"revoke",browse:"browseOwner",read:"read",write:"mutate",mkdir:"mutate",remove:"mutate"}[operation];
       req.ignisLogOperation = `shares.${operation}`;
       const result = await service[fn](req.shareToken,input);
       if (["create", "validateGrant"].includes(operation)) req.ignisLogTargetUsername = require("../../../features/identity/adapters/store.js").normalizeLogin(input.login);

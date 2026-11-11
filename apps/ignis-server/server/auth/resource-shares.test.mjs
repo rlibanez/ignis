@@ -454,6 +454,9 @@ it('reports uncertain cleanup without restoring grants or exposing retired conte
 it('lets owners trash shared originals and revokes grants without sharing the trash',async()=>{
  const id=share('Project','editor'),nested=share('Project/note.md');fs.mkdirSync(path.join(root,'owner/Notes/.trash'));
  service.renameOriginal('owner',vault.id,'Project','.trash/Project');
+ expect(service.history("owner",{resource:id,before:null}).entries[0]).toMatchObject({
+  actor:"owner",recipient:"recipient",path:"Project",previousRole:"editor",newRole:null,cause:"resource-deleted",
+ });
  expect(fs.readFileSync(path.join(root,'owner/Notes/.trash/Project/note.md'),'utf8')).toBe('hello');
  for(const grant of [id,nested])expect(db.prepare('SELECT id FROM shared_resources WHERE id=?').get(grant)).toBeUndefined();
  service.renameOriginal('owner',vault.id,'.trash/Project','Restored');
@@ -654,4 +657,68 @@ it('retains unavailable resources for owners of an inactive vault without exposi
  const id=share();db.prepare("UPDATE vaults SET status='quarantine' WHERE id=?").run(vault.id);
  expect(service.catalog('owner').resources).toMatchObject([{id,owned:true,available:false}]);
  expect(service.catalog('recipient').resources).toEqual([]);
+});
+
+it("records committed permission changes and keeps them after the share disappears", () => {
+ const id = share();
+ const history = (token = "owner", resource = id) => service.history(token,{resource,before:null}).entries;
+ expect(() => service.grants("owner",{id,revision:1,changes:[
+  {login:"recipient",role:"editor"},{login:"missing",role:"reader"},
+ ]})).toThrow();
+ expect(history()).toHaveLength(1);
+ service.grants("owner",{id,revision:1,changes:[{login:"recipient",role:"editor"},{login:"outsider",role:"reader"}]});
+ service.revoke("owner",{action:"revoke",id,revision:3});
+ const changes = history().map(({recipient,previousRole,newRole,cause})=>[recipient,previousRole,newRole,cause]);
+ expect(changes.slice(0,2)).toEqual(expect.arrayContaining([
+  ["outsider","reader",null,"stop-sharing"],["recipient","editor",null,"stop-sharing"],
+ ]));
+ expect(changes.slice(2)).toEqual([
+  ["outsider",null,"reader","permission"],["recipient","reader","editor","permission"],
+  ["recipient",null,"reader","permission"],
+ ]);
+ expect(history()[0]).toMatchObject({actor:"owner",vault:"Notes",path:"Project"});
+ expect(service.catalog("owner").resources).toEqual([]);
+ for (const token of ["recipient","outsider","admin"]) {
+  expect(history(token)).toEqual([]);
+  expect(history(token,null)).toEqual([]);
+ }
+ expect(() => history("invalid")).toThrow();
+});
+
+it("pages history with a stable cursor even when a newer event arrives", () => {
+ const id = share();
+ for (let revision=1; revision<=50; revision++) {
+  service.grants("owner",{id,revision,changes:[{login:"recipient",role:revision%2?"editor":"reader"}]});
+ }
+ const first = service.history("owner",{resource:null,before:null});
+ expect(first.entries).toHaveLength(50);
+ service.grants("owner",{id,revision:51,changes:[{login:"recipient",role:"editor"}]});
+ const last = service.history("owner",{resource:id,before:first.next});
+ expect(last.entries).toEqual([expect.objectContaining({previousRole:null,newRole:"reader"})]);
+ expect(last.next).toBeNull();
+});
+
+it("sorts the complete history by the selected column before paginating", () => {
+ const resource = share();
+ const insert = db.prepare(`INSERT INTO sharing_history
+  (owner_id,actor,resource_id,vault_id,vault_name,path,recipient,previous_role,new_role,cause,created_at)
+  VALUES ('owner',?,?,?,'Notes',?,'recipient',?,?,'permission',?)`);
+ for (let index=54;index>=0;index--) {
+  const name = String(index).padStart(2,"0");
+  insert.run("user"+name,resource,vault.id,name,index%2?"reader":null,"editor",index);
+ }
+ const query = (sort,direction="asc",before=null) => service.history("owner",{resource,before,sort,direction});
+ for (const [sort,field,first,last] of [
+  ["date","createdAt",0,54],["actor","actor","owner","user54"],["resource","path","00","Project"],
+ ]) {
+  const page = query(sort);
+  const next = query(sort,"asc",page.next);
+  expect(page.entries[0][field]).toBe(first);
+  expect(new Set([...page.entries,...next.entries].map(entry=>entry[field])).size).toBe(56);
+  expect(query(sort,"desc").entries[sort==="date"?1:0][field]).toBe(last);
+ }
+ expect(query("change").entries[0].previousRole).toBeNull();
+ expect(query("change","desc").entries[0].previousRole).toBe("reader");
+ expect(()=>query("constructor")).toThrow();
+ expect(()=>query("date","invalid")).toThrow();
 });

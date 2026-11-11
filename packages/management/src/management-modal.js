@@ -7,6 +7,20 @@ import {createComponentScope} from "./client.js";
 const t = text => globalThis.IgnisI18n?.t(text) ?? text;
 const titles = {users:"Manage users",shares:"Shared resources",password:"Set local password"};
 
+function sizeManagementList(modal, centeredOnTablet) {
+  const {body} = modal.ownerDocument;
+  if (body.classList.contains("is-mobile") && !(centeredOnTablet && body.classList.contains("is-tablet"))) {
+    // Let Obsidian position phone sheets within its native safe-area inset.
+    modal.classList.add("mod-lg");
+    return;
+  }
+  const size = modal.ownerDocument.querySelector(".modal.mod-settings")?.getBoundingClientRect();
+  modal.style.width = size?.width ? `${size.width}px` : "var(--modal-width, 90vw)";
+  modal.style.height = size?.height ? `${size.height}px` : "var(--modal-height, 85vh)";
+  modal.style.maxWidth = size?.width ? "100vw" : "var(--modal-max-width, 1100px)";
+  modal.style.maxHeight = size?.height ? "100dvh" : "var(--modal-max-height, 1000px)";
+}
+
 export function createManagementModal(Modal, setIcon) {
 class DialogModal extends Modal {
   close(){if(this.requestClose)return this.requestClose();super.close();}
@@ -24,20 +38,10 @@ return class ManagementModal extends Modal {
     this.cleanups.push(() => window.removeEventListener("ignis:auth-lost", lost));
     const resourceOnly = this.kind === "shares" && !!this.options.initialResource;
     this.setTitle(t(resourceOnly ? "Manage resource" : title));
-    const tabletCatalog = !resourceOnly && ["shares", "users"].includes(this.kind) &&
-      document.body.classList.contains("is-tablet");
-    if (!tabletCatalog && ["shares", "users", "password"].includes(this.kind) && document.body.classList.contains("is-mobile")) {
-      // Let Obsidian position mobile sheets within its native safe-area inset.
-      this.modalEl.addClass("mod-lg");
-      if (resourceOnly) this.modalEl.addClass("mod-form");
-    } else if (!resourceOnly && ["shares", "users", "password"].includes(this.kind)) {
-      // Match the actual settings window, including theme and viewport sizing.
-      const settings = document.querySelector(".modal.mod-settings");
-      const size = settings?.getBoundingClientRect();
-      this.modalEl.style.width = size?.width ? `${size.width}px` : "var(--modal-width, 90vw)";
-      this.modalEl.style.height = size?.height ? `${size.height}px` : "var(--modal-height, 85vh)";
-      this.modalEl.style.maxWidth = size?.width ? "100vw" : "var(--modal-max-width, 1100px)";
-      this.modalEl.style.maxHeight = size?.height ? "100dvh" : "var(--modal-max-height, 1000px)";
+    if (!resourceOnly && ["shares", "users", "password"].includes(this.kind)) {
+      sizeManagementList(this.modalEl, this.kind !== "password");
+    } else if (resourceOnly && document.body.classList.contains("is-mobile")) {
+      this.modalEl.addClass("mod-lg", "mod-form");
     } else if (resourceOnly) {
       this.modalEl.addClass("mod-form");
     } else {
@@ -51,7 +55,14 @@ return class ManagementModal extends Modal {
     frame.textContent = t("Loading…");
     try {
       const dialogs=createManagementView({frame,host,modal:this.modalEl,setIcon,kind:this.kind,resourceOnly,
-        onDispose:fn=>this.cleanups.push(fn),owner:this,createModal:()=>new DialogModal(this.app)});
+        onDispose:fn=>this.cleanups.push(fn),owner:this,createModal:section=>{
+          const dialog=new DialogModal(this.app);
+          if(section.hasAttribute("data-ui-list")) {
+            sizeManagementList(dialog.modalEl, true);
+            dialog.contentEl.style.overflow = "auto";
+          }
+          return dialog;
+        }});
       const signal = this.abort.signal;
       const scope = createComponentScope(dialogs.root, {...this.options,
         signal, cleanups:this.cleanups, channels:this.channels,

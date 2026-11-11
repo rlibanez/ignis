@@ -75,6 +75,7 @@ function createVaultMembersService(db, root, sessions) {
       apply:()=>{
       db.prepare("UPDATE memberships SET role='editor' WHERE vault_id=? AND user_id=?").run(vault.id,session.user.id);
       db.prepare("UPDATE memberships SET role='owner' WHERE vault_id=? AND user_id=?").run(vault.id,input.userId);
+      db.prepare("UPDATE sharing_history SET owner_id=? WHERE vault_id=?").run(input.userId,vault.id);
       db.prepare("UPDATE vaults SET policy_version=policy_version+1 WHERE id=?").run(vault.id);
       db.prepare("INSERT INTO audit_events VALUES (?,?,?,?,?)").run(randomUUID(),session.user.id,"transfer-vault-ownership",
         JSON.stringify({vaultId:vault.id,from:session.user.id,to:input.userId,formerOwnerRole:"editor"}),Date.now());

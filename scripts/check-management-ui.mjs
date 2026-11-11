@@ -18,7 +18,7 @@ const screenshotDirectory=process.env.IGNIS_UI_SCREENSHOTS;
 const nativeCss=process.env.IGNIS_OBSIDIAN_CSS;
 (async()=>{
  const harness=await build({stdin:{contents:`import {BrowserModal} from './packages/ui/src/management.js';import {createManagementModal} from './packages/management/src/management-modal.js';const ResourceModal=createManagementModal(BrowserModal,(target)=>{target.textContent='×';});window.testIndividualResource=(initialResource={id:'r',session:'s'})=>new ResourceModal(null,'shares',{initialResource}).open();`,resolveDir:repo},bundle:true,write:false,format:'iife',platform:'browser',loader:{'.css':'text'},mainFields:['svelte','browser','module','main'],conditions:['svelte','browser'],plugins:[sveltePlugin({compilerOptions:{}})],logLevel:'silent'});
- const requests=[],errors=[];let hasLocalPassword=true;
+ const requests=[],errors=[],historyQueries=[];let hasLocalPassword=true;
  const server=http.createServer((req,res)=>{
   requests.push(req.url);res.setHeader('Content-Type','application/json');
   const json=value=>res.end(JSON.stringify(value));
@@ -32,7 +32,20 @@ const nativeCss=process.env.IGNIS_OBSIDIAN_CSS;
   if(req.url==='/api/auth/status')return json({initialized:true,oidcAvailable:true,oidcButtonText:'Provider',passwordPolicy:{minLength:8,minSpecialChars:0}});
   if(req.url==='/api/auth/users' && req.method==='POST'){res.statusCode=400;return json({error:'Invalid user'});}
   if(req.url==='/api/auth/users')return json({users:[{id:'b',login:'bob',role:'user',status:'active',hasLocalPassword:true,email:null,email_trust:'unverified'}],hasLocalPassword,oidcAvailable:true,passwordPolicy:{minLength:8,minSpecialChars:0}});
-  if(req.url==='/api/shares' && req.method==='POST'){res.statusCode=400;return json({error:'Invalid shared resource or recipient.'});}
+  if(req.url==='/api/shares' && req.method==='POST'){
+   let body='';req.setEncoding('utf8');req.on('data',chunk=>body+=chunk);
+   return req.on('end',()=>{
+    const {operation,input}=JSON.parse(body);
+    if(operation==='history'){
+     historyQueries.push(input);
+     const first=input.before===null;
+     const entry={id:first?2:1,actor:'alice',vault:'Main',path:'Note.md',recipient:'bob',
+      previousRole:first?'reader':null,newRole:first?null:'reader',cause:first?'stop-sharing':'permission',createdAt:1700000000000};
+     return json({entries:[entry],next:first?2:null});
+    }
+    res.statusCode=400;return json({error:'Invalid shared resource or recipient.'});
+   });
+  }
   if(req.url==='/api/shares')return json({resources:[{id:'r',name:'Note.md',owned:true,available:true,kind:'file',vault:'v',path:'Note.md',revision:1,grants:[{login:'bob',role:'reader'}]}],ownedVaults:[{id:'v',name:'Main'}],destinationVaults:[{id:'v',name:'Main'}]});
   if(req.url==='/api/auth/csrf')return json({csrfToken:'csrf'});
   res.statusCode=404;json({error:'missing'});
@@ -119,7 +132,41 @@ const nativeCss=process.env.IGNIS_OBSIDIAN_CSS;
   await run(`document.querySelector('[data-ignis-close]').click();IgnisUI.openAccount('shares');`);await new Promise(r=>setTimeout(r,250));
   await screenshot('shares');
   if(!await run(`!document.querySelector('#workspace').hidden`))throw Error('Shares failed: '+await run('document.body.innerText'));
-  await run(`document.querySelector('#owned button[aria-label="Edit"]').click();document.querySelector('#add-access').click()`);
+  const waitForHistory = async (condition, message) => {
+    for (let attempt=0; attempt<50; attempt++) {
+      if (await run(condition)) return;
+      await new Promise(resolve=>setTimeout(resolve,50));
+    }
+    throw Error(message);
+  };
+  const catalogSizing = await run(`(()=>{
+    const {style}=document.querySelector('#workspace').closest('.modal');
+    return [style.width,style.height,style.maxWidth,style.maxHeight];
+  })()`);
+  const checkHistorySizing = async () => {
+    const actual = await run(`(()=>{
+      const modal=document.querySelector('#history-dialog').closest('.modal');
+      if(modal.classList.contains('mod-form'))throw Error('History uses compact form sizing');
+      const {style}=modal;
+      return [style.width,style.height,style.maxWidth,style.maxHeight];
+    })()`);
+    if(JSON.stringify(actual)!==JSON.stringify(catalogSizing))throw Error('History sizing differs from Shared resources');
+  };
+  await run(`document.querySelector('#share-history').click()`);
+  await waitForHistory(`document.querySelector('#history-dialog').open && document.querySelector('#history-entries').textContent.includes('Revoked access for bob')`,'Sharing history did not open');
+  await checkHistorySizing();
+  await run(`document.querySelector('#history-more').click()`);
+  await waitForHistory(`document.querySelectorAll('#history-entries tbody tr').length===2`,'Sharing history did not append the next page');
+  await run(`document.querySelector('[data-close="history-dialog"]').click();document.querySelector('#owned button[aria-label="Edit"]').click();document.querySelector('#resource-history').click()`);
+  await waitForHistory(`document.querySelector('#history-dialog').open && document.querySelector('#history-entries tbody tr')!==null`,'Resource history did not open');
+  await checkHistorySizing();
+  await run(`document.querySelector('[data-history-sort="resource"]').click()`);
+  await waitForHistory(`document.querySelector('[data-history-sort="resource"]').parentElement.getAttribute('aria-sort')==='ascending' && !!document.querySelector('#history-entries tbody tr')`,'History did not sort ascending');
+  await run(`document.querySelector('[data-history-sort="resource"]').click()`);
+  await waitForHistory(`document.querySelector('[data-history-sort="resource"]').parentElement.getAttribute('aria-sort')==='descending' && !!document.querySelector('#history-entries tbody tr')`,'History did not sort descending');
+  const query = (resource,before,sort="date",direction="desc") => ({resource,before,sort,direction});
+  if(JSON.stringify(historyQueries)!==JSON.stringify([query(null,null),query(null,2),query('r',null),query('r',null,"resource","asc"),query('r',null,"resource","desc")]))throw Error('History used an incorrect resource, sort or cursor');
+  await run(`document.querySelector('[data-close="history-dialog"]').click();document.querySelector('#add-access').click()`);
   const before=await run(`JSON.stringify(document.querySelector('#grant-dialog').getBoundingClientRect().toJSON())`);
   await run(`document.querySelector('#grant-login').value='missing';document.querySelector('#grant-form').requestSubmit()`);await new Promise(r=>setTimeout(r,150));
   if(!await run(`!!document.querySelector('#grant-login').validationMessage`))throw Error('Grant validation was not anchored to the field');

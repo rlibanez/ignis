@@ -26,11 +26,13 @@ export function installDialogHost({frame,owner,createModal,primary=false}) {
   section.showModal=()=>{
    if(disposed||section.open)return;
    section.setAttribute('open','');
-   const useOwner=primary && stack.length===0 && !section.classList.contains("ignis-confirm");
-   const modal=entry.modal=useOwner?owner:createModal();
+   const list=section.hasAttribute("data-ui-list");
+   const useOwner=primary && stack.length===0 && !list && !section.classList.contains("ignis-confirm");
+   const modal=entry.modal=useOwner?owner:createModal(section);
    entry.baseClose=(modal.forceClose || modal.close).bind(modal);
    entry.ownerClose=useOwner?modal.requestClose:null;
-   modal.modalEl.classList.add('mod-lg','mod-form','ignis-managed-dialog-shell','ignis-ui-form');
+   modal.modalEl.classList.add('ignis-managed-dialog-shell');
+   if(!list)modal.modalEl.classList.add('mod-lg','mod-form','ignis-ui-form');
    // Individual forms must not inherit the catalog owner's inline dimensions.
    if(useOwner)for(const property of ['width','maxWidth','height','maxHeight'])modal.modalEl.style[property]='';
    const heading=section.querySelector('h2');

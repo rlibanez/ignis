@@ -73,9 +73,15 @@ export const sharedManagementStyles = `
   .native-shares :is(#owned,#grants) td:last-child .toolbar{flex-wrap:nowrap;gap:8px}
   .native-shares :is(#owned,#grants) .icon-button{display:inline-flex;align-items:center;justify-content:center;flex:none}
   @media(min-width:601px){
+    .native-shares #history-entries :is(th,td):first-child{width:1%;white-space:nowrap;overflow-wrap:normal}
     .native-shares #grants th:last-child,.native-shares #grants td:last-child{width:104px;min-width:104px}
     .native-shares #grants th:first-child{width:30%}
   }
+  .native-shares #owned :is(th,td):nth-child(2){white-space:nowrap;overflow-wrap:normal}
+  .native-shares #history-entries .history-sort{background:transparent;border:0;box-shadow:none;color:inherit;font:inherit;height:auto;padding:4px;text-align:start}
+  .native-shares #history-entries .history-sort:hover{color:var(--text-normal);background:var(--background-modifier-hover)}
+  .native-shares #history-entries:empty{display:none}
+  .native-shares #history-entries td:last-child{width:auto;white-space:normal}
   .native-shares tr:last-child td{border-bottom:0}
   .native-shares #picker{margin-top:16px}
   .native-shares #share-search{margin-top:16px}
@@ -86,6 +92,10 @@ export const sharedManagementStyles = `
     .native-shares .page-actions>button{width:100%;margin:0;min-height:var(--input-height,44px)}
     .native-shares .share-panel{padding:12px}
     .native-shares .responsive-table thead{display:none}
+    .native-shares #history-entries thead{display:block}
+    .native-shares #history-entries thead tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;border-bottom:1px solid var(--background-modifier-border)}
+    .native-shares #history-entries th{border:0;padding:0}
+    .native-shares #history-entries .history-sort{width:100%;min-height:var(--input-height,36px);white-space:normal}
     .native-shares .responsive-table,.native-shares tbody,.native-shares tr{display:block}
     .native-shares tr{padding:12px 0;border-bottom:1px solid var(--background-modifier-border)}
     .native-shares tr:last-child{border-bottom:0}

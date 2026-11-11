@@ -1,3 +1,4 @@
+const { recordRevocations } = require("../features/sharing/adapters/history");
 const { randomUUID, createHash } = require("node:crypto");
 const { transaction } = require("../platform/persistence/database");
 const { deleteRegisteredVault, purgeRetiredVault } = require("../features/vaults/adapters/vault-deletion.js");
@@ -74,6 +75,7 @@ function createUserDeletionService(db, root, lifecycle) {
         // csrf_tokens has no foreign key to sessions.
         db.prepare("DELETE FROM csrf_tokens WHERE session_id IN (SELECT id FROM sessions WHERE user_id=?)").run(input.userId);
         db.prepare("INSERT INTO audit_events VALUES (?,?,?,?,?)").run(randomUUID(),actor,"delete-user",input.userId,Date.now());
+        recordRevocations(db,actor,"user-deleted",input.userId);
         db.prepare("DELETE FROM users WHERE id=?").run(input.userId);
       });
       lifecycle?.sessionsChanged?.();

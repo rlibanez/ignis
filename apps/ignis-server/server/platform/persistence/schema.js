@@ -1,5 +1,4 @@
-// Initial schema for the modular application. Development migration histories are not supported.
-module.exports = Object.freeze({version: 1, sql: `
+const initialSql = `
 CREATE TABLE schema_info (
   singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
   version INTEGER NOT NULL,
@@ -272,4 +271,26 @@ CREATE TABLE remembered_retired_tokens (
 CREATE INDEX remembered_retired_session ON remembered_retired_tokens(session_id);
 
 CREATE INDEX remembered_retired_expiry ON remembered_retired_tokens(expires_at);
-`});
+`;
+const sharingHistorySql = `
+CREATE TABLE sharing_history (
+  id INTEGER PRIMARY KEY,
+  cursor TEXT NOT NULL UNIQUE DEFAULT (lower(hex(randomblob(16)))),
+  owner_id TEXT NOT NULL,
+  actor TEXT NOT NULL,
+  resource_id TEXT NOT NULL,
+  vault_id TEXT NOT NULL,
+  vault_name TEXT NOT NULL,
+  path TEXT NOT NULL,
+  recipient TEXT NOT NULL,
+  previous_role TEXT CHECK(previous_role IN ('reader','editor')),
+  new_role TEXT CHECK(new_role IN ('reader','editor')),
+  cause TEXT NOT NULL CHECK(cause IN ('permission','stop-sharing','user-deleted','vault-deleted','resource-deleted')),
+  created_at INTEGER NOT NULL,
+  CHECK(previous_role IS NOT new_role)
+) STRICT;
+CREATE INDEX sharing_history_owner ON sharing_history(owner_id, id DESC);
+CREATE INDEX sharing_history_vault ON sharing_history(vault_id);
+CREATE INDEX sharing_history_resource ON sharing_history(owner_id, resource_id, id DESC);
+`;
+module.exports = Object.freeze({version: 2, sql: initialSql + sharingHistorySql, initialSql, sharingHistorySql});

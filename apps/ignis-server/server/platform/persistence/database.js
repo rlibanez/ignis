@@ -39,32 +39,42 @@ function checkIntegrity(db) {
 // Compare the actual schema as well as its marker: removing a security trigger
 // must not silently turn an otherwise valid database into an accepted schema.
 const schemaObjects = db => db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT GLOB 'sqlite_*' ORDER BY type,name").all();
-const reference = new DatabaseSync(":memory:");
-let expectedFingerprint;
-try { reference.exec(schema.sql); expectedFingerprint = checksum(JSON.stringify(schemaObjects(reference))); }
-finally { reference.close(); }
+function fingerprint(sql) {
+  const reference = new DatabaseSync(":memory:");
+  try {
+    reference.exec(sql);
+    return checksum(JSON.stringify(schemaObjects(reference)));
+  } finally {
+    reference.close();
+  }
+}
+const expectedFingerprint = fingerprint(schema.sql);
+const initialFingerprint = fingerprint(schema.initialSql);
 function incompatible() {
   return Object.assign(new Error("Unsupported identity database schema; preserve the old data and use a new DATA_ROOT for this development version"), {code:"SCHEMA_INCOMPATIBLE"});
 }
-function validateSchema(db, allowEmpty = false) {
+function validateSchema(db, { allowEmpty = false, allowUpgrade = false } = {}) {
   const objects = schemaObjects(db);
   if (!objects.length && allowEmpty) return false;
-  if (checksum(JSON.stringify(objects)) !== expectedFingerprint) throw incompatible();
+  const actual = checksum(JSON.stringify(objects));
+  const initial = allowUpgrade && actual === initialFingerprint;
+  if (actual !== expectedFingerprint && !initial) throw incompatible();
   const rows = db.prepare("SELECT version,checksum FROM schema_info").all();
-  if (rows.length !== 1 || rows[0].checksum !== checksum(schema.sql)) throw incompatible();
-  const {version} = rows[0];
-  // The pre-release schema used marker 4 for exactly this SQL and structure.
-  if (version !== schema.version && !(schema.version === 1 && version === 4)) throw incompatible();
+  if (rows.length !== 1) throw incompatible();
+  const {version,checksum: marker} = rows[0];
+  if (initial && (version === 1 || version === 4) && marker === checksum(schema.initialSql)) return 1;
+  if (version !== schema.version || marker !== checksum(schema.sql)) throw incompatible();
   return version;
 }
 function initializeSchema(db) {
   transaction(db, () => {
-    const version = validateSchema(db, true);
-    if (version) {
-      if (version !== schema.version) {
-        checkIntegrity(db);
-        db.prepare("UPDATE schema_info SET version=? WHERE singleton=1").run(schema.version);
-      }
+    const version = validateSchema(db, {allowEmpty:true,allowUpgrade:true});
+    if (version === schema.version) return;
+    if (version === 1) {
+      checkIntegrity(db);
+      db.exec(schema.sharingHistorySql);
+      db.prepare("UPDATE schema_info SET version=?,checksum=? WHERE singleton=1").run(schema.version,checksum(schema.sql));
+      validateSchema(db);
       return;
     }
     db.exec(schema.sql);
@@ -137,7 +147,7 @@ function openDatabase(dataRoot) {
     });
     db.exec("PRAGMA trusted_schema = OFF");
     // Reject incompatible data before changing its journal mode or schema.
-    validateSchema(db, true);
+    validateSchema(db, {allowEmpty:true,allowUpgrade:true});
     enableWal(db);
     db.exec("PRAGMA synchronous = FULL");
     initializeSchema(db);
@@ -162,7 +172,7 @@ function backupDatabase(db, destination) {
     const check = new DatabaseSync(snapshot, { readOnly: true });
     try {
       checkIntegrity(check);
-      validateSchema(check);
+      validateSchema(check, {allowUpgrade:true});
     } finally {
       check.close();
     }
@@ -192,7 +202,7 @@ function restoreDatabase(source, dataRoot) {
   try {
     db = new DatabaseSync(source, { readOnly: true });
     checkIntegrity(db);
-    validateSchema(db);
+    validateSchema(db, {allowUpgrade:true});
     const destination = path.join(directory, "identity.sqlite");
     backupDatabase(db, destination);
     // Restoring an older snapshot must not resurrect browser sessions revoked since backup.

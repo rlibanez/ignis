@@ -66,7 +66,11 @@ it("rolls back membership and revision if auditing fails",()=>{
 
 const transferInput=(extra={})=>({vault:vault.id,userId:"reader",expectedRole:"reader",revision:1,confirm:true,...extra});
 it("atomically transfers ownership to an existing reader and leaves the former owner as editor",async()=>{
+ db.prepare(`INSERT INTO sharing_history
+  (owner_id,actor,resource_id,vault_id,vault_name,path,recipient,new_role,cause,created_at)
+  VALUES ('owner','owner','share',?,'Notes','note.md','target','reader','permission',1)`).run(vault.id);
  expect(await service.transfer("owner",transferInput(),{quiesce:async()=>{},invalidate:()=>{}})).toMatchObject({ok:true,ownerId:"reader",membership:"editor"});
+ expect(db.prepare("SELECT owner_id,actor FROM sharing_history").get()).toEqual({owner_id:"reader",actor:"owner"});
  const next=service.list("reader",vault.id);
  expect(next.revision).toBe(2);
  expect(next.members.filter(m=>m.role==="owner").map(m=>m.id)).toEqual(["reader"]);

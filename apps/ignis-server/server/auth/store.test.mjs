@@ -229,13 +229,21 @@ describe("identity persistence", () => {
 });
 
 describe("schema validation and crash recovery", () => {
-  it("renumbers the identical pre-release schema and preserves account data", () => {
-    const user = bootstrapAdmin(db, "Admin", fixtureHash);
-    db.prepare("UPDATE schema_info SET version=4").run();
+  it.each([1,4])("upgrades schema %s without losing account data", (version) => {
+    const schema = require("../platform/persistence/schema");
+    const dataRoot = path.join(root,"legacy");
+    fs.mkdirSync(path.join(dataRoot,"auth"), {recursive:true});
+    const legacy = new DatabaseSync(path.join(dataRoot,"auth","identity.sqlite"));
+    legacy.exec(schema.initialSql);
+    const checksum = createHash("sha256").update(schema.initialSql).digest("hex");
+    legacy.prepare("INSERT INTO schema_info VALUES (1,?,?)").run(version,checksum);
+    const user = bootstrapAdmin(legacy,"Admin",fixtureHash);
+    legacy.close();
     db.close(); db=null;
 
-    db = openDatabase(path.join(root,"data"));
-    expect(db.prepare("SELECT version FROM schema_info").get().version).toBe(1);
+    db = openDatabase(dataRoot);
+    expect(db.prepare("SELECT version FROM schema_info").get().version).toBe(schema.version);
+    expect(db.prepare("SELECT count(*) AS n FROM sharing_history").get().n).toBe(0);
     expect(db.prepare("SELECT login FROM users WHERE id=?").get(user.id).login).toBe("admin");
     expect(db.prepare("SELECT password_hash FROM local_credentials WHERE user_id=?").get(user.id).password_hash).toBe(fixtureHash);
   });

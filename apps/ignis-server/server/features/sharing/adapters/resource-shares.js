@@ -1,3 +1,4 @@
+const { recordPermission, recordRevocations, readHistory } = require("./history");
 const fs = require("node:fs");
 const path = require("node:path");
 const { randomUUID, createHash } = require("node:crypto");
@@ -175,6 +176,7 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
       const id=randomUUID();
       db.prepare("INSERT INTO shared_resources(id,vault_id,path,kind,device,inode) VALUES (?,?,?,?,?,?)").run(id,v.id,relative,item.stat.isDirectory()?"directory":"file",String(item.stat.dev),identity(item.stat));
       db.prepare("INSERT INTO resource_grants VALUES (?,?,?)").run(id,recipient.id,input.role);
+      recordPermission(db,user,id,login,null,input.role);
       audit(user,"create-resource-share",{id,vault:v.id,path:relative,userId:recipient.id,role:input.role});
       return {id};
     });
@@ -188,15 +190,20 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
     if(!row || !owner(user,row.vault_id)) fail();
     vault(row.vault_id);
     if(!Number.isSafeInteger(input.revision) || row.revision!==input.revision || row.revision>=Number.MAX_SAFE_INTEGER) fail("SHARE_CONFLICT");
-    if(input.action === "revoke") {db.prepare("DELETE FROM shared_resources WHERE id=?").run(row.id);audit(user,"revoke-resource-share",{id:row.id});return {ok:true};}
+    if(input.action === "revoke") {
+      recordRevocations(db,user.id,"stop-sharing",row.id);
+      db.prepare("DELETE FROM shared_resources WHERE id=?").run(row.id);audit(user,"revoke-resource-share",{id:row.id});return {ok:true};}
     if(![null,"reader","editor"].includes(input.role)) fail("INVALID_SHARE");
-    const recipient=db.prepare("SELECT id,status FROM users WHERE login=?").get(normalizeLogin(input.login));
+    const login=normalizeLogin(input.login);
+    const recipient=db.prepare("SELECT id,status FROM users WHERE login=?").get(login);
     if(!recipient || (input.role!==null && recipient.status!=="active") || recipient.id===user.id) fail("INVALID_SHARE");
+    const previous=db.prepare("SELECT role FROM resource_grants WHERE resource_id=? AND user_id=?").get(row.id,recipient.id)?.role ?? null;
     if(input.role!==null) {
       resource(token,row.id); // Cannot extend access to a replaced root.
       db.prepare("INSERT INTO resource_grants VALUES (?,?,?) ON CONFLICT(resource_id,user_id) DO UPDATE SET role=excluded.role").run(row.id,recipient.id,input.role);
     } else db.prepare("DELETE FROM resource_grants WHERE resource_id=? AND user_id=?").run(row.id,recipient.id);
     db.prepare("UPDATE shared_resources SET revision=revision+1 WHERE id=?").run(row.id);
+    recordPermission(db,user,row.id,login,previous,input.role);
     audit(user,"update-resource-grant",{id:row.id,userId:recipient.id,role:input.role});
     return {ok:true};
   }
@@ -223,6 +230,11 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
       }
       return {ok:true};
     });
+  }
+  function history(token,input) {
+    if (input.resource !== null && (typeof input.resource !== "string" || !/^[a-f0-9-]{36}$/.test(input.resource))) fail("INVALID_SHARE");
+    if (input.before !== null && (typeof input.before !== "string" || !/^[a-f0-9]{32}$/.test(input.before))) fail("INVALID_SHARE");
+    return transaction(db,()=>readHistory(db,actor(token).id,input));
   }
   function browseOwner(token,input) {
     const user=actor(token),v=vault(input.vault); if(!owner(user,v.id)) fail();
@@ -282,7 +294,10 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
         fs.renameSync(source.filename,destination.filename);published=true;
         for(const directory of new Set([parent,destinationParent])){const fd=fs.openSync(directory,fs.constants.O_RDONLY|fs.constants.O_DIRECTORY);try{fs.fsyncSync(fd);}finally{fs.closeSync(fd);}}
         for(const row of affected){
-          if(trash)db.prepare("DELETE FROM shared_resources WHERE id=?").run(row.id);
+          if(trash){
+            recordRevocations(db,user.id,"resource-deleted",row.id);
+            db.prepare("DELETE FROM shared_resources WHERE id=?").run(row.id);
+          }
           else db.prepare("UPDATE shared_resources SET path=?,revision=revision+1 WHERE id=?").run(newPath+row.path.slice(oldPath.length),row.id);
         }
       return {ok:true};
@@ -443,7 +458,10 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
       try {
         transaction(db,()=>{
           audit(snapshot.access.user,"delete-shared-content",{vault:snapshot.access.v.id,path:snapshot.original,files:snapshot.files,folders:snapshot.folders});
-          for(const row of snapshot.affected)db.prepare("DELETE FROM shared_resources WHERE id=?").run(row.id);
+          for(const row of snapshot.affected){
+            recordRevocations(db,snapshot.access.user.id,"resource-deleted",row.id);
+            db.prepare("DELETE FROM shared_resources WHERE id=?").run(row.id);
+          }
           fs.renameSync(snapshot.item.filename,retired);detached=true;
           const fd=fs.openSync(path.dirname(retired),fs.constants.O_RDONLY|fs.constants.O_DIRECTORY);
           try{fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
@@ -487,6 +505,6 @@ function createResourceSharesService(db, root, sessions, limits = readResourceSh
       return {ok:true,...(bytes?{etag:digest(bytes)}:{})};
     });
   }
-  return {catalog,mounts,destination,create,revoke,grants,validateGrant,browseOwner,read,rename,renameOriginal,copy,previewRemoval,removeConfirmed,mutate,limits};
+  return {catalog,history,mounts,destination,create,revoke,grants,validateGrant,browseOwner,read,rename,renameOriginal,copy,previewRemoval,removeConfirmed,mutate,limits};
 }
 module.exports={createResourceSharesService};

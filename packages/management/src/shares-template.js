@@ -1,7 +1,7 @@
 // Bundled internal form template. No standalone page or network fetch.
 export default String.raw`<main><p id="status" role="alert"></p>
   <section id="workspace" hidden>
-    <div class="toolbar page-actions"><button id="new-share" class="account-button" data-i18n="Share a resource">Share a resource</button></div>
+    <div class="toolbar page-actions"><button type="button" id="share-history" class="account-button secondary" data-i18n="History">History</button><button id="new-share" class="account-button" data-i18n="Share a resource">Share a resource</button></div>
     <section class="share-panel" aria-labelledby="received-heading"><header><div><h2 id="received-heading" data-i18n="Shared with me">Shared with me</h2></div></header><div id="received"></div></section>
     <section class="share-panel" aria-labelledby="owned-heading"><header><div><h2 id="owned-heading" data-i18n="Shared by me">Shared by me</h2></div></header><div id="owned"></div></section>
   </section>
@@ -42,7 +42,16 @@ export default String.raw`<main><p id="status" role="alert"></p>
       <div id="grants"></div>
     </section>
     <p class="error" role="alert"></p>
-    <div class="dialog-actions"><button type="button" data-close="manage-dialog" class="account-button secondary" data-i18n="Cancel">Cancel</button><button id="save-resource" type="button" class="account-button" data-i18n="Save">Save</button></div>
+    <div class="dialog-actions"><button type="button" id="resource-history" class="account-button secondary" data-i18n="History">History</button><button type="button" data-close="manage-dialog" class="account-button secondary" data-i18n="Cancel">Cancel</button><button id="save-resource" type="button" class="account-button" data-i18n="Save">Save</button></div>
+  </section>
+  <section data-ui-dialog data-ui-list id="history-dialog" aria-labelledby="history-heading">
+    <h2 id="history-heading" data-i18n="Sharing history">Sharing history</h2>
+    <div id="history-entries" class="share-panel"></div>
+    <p id="history-status" role="status"></p>
+    <div class="dialog-actions">
+      <button type="button" id="history-more" class="account-button secondary" data-i18n="Load more" hidden>Load more</button>
+      <button type="button" data-close="history-dialog" class="account-button secondary" data-i18n="Close">Close</button>
+    </div>
   </section>
   <section data-ui-dialog id="grant-dialog" aria-labelledby="grant-heading">
     <h2 id="grant-heading" data-i18n="Add access">Add access</h2>
