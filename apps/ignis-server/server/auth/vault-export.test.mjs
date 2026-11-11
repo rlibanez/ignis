@@ -33,6 +33,24 @@ it('exports only physical owner content, optional configuration and no foreign v
  expect(await contents(full)).toEqual({'Note.md':'owned','.obsidian/app.json':'{}','.obsidian/plugins/example/main.js':'plugin'});
  expect(fs.readFileSync(path.join(root,'bob/Other','Secret.md'),'utf8')).toBe('foreign');await full.dispose();expect(fs.readdirSync(path.join(temp,'data','vault-exports'))).toEqual([]);
 });
+it.each([[true,false],[false,true],[true,true],[false,false]])(
+ 'exports Obsidian settings (%s) and community add-ons (%s) independently',
+ async (configuration,plugins)=>{
+  const config=path.join(root,'alice/Own','.obsidian');
+  fs.mkdirSync(path.join(config,'plugins/example'),{recursive:true});
+  fs.mkdirSync(path.join(config,'themes/example'),{recursive:true});
+  const preferences={'app.json':'{}','themes/example/theme.css':'body {}','core-plugins.json':'[]'};
+  const addOns={'plugins/example/main.js':'plugin','plugins/example/data.json':'{"enabled":true}','community-plugins.json':'["example"]'};
+  for(const [name,value] of Object.entries({...preferences,...addOns}))fs.writeFileSync(path.join(config,name),value);
+  const result=await service.prepare('alice','Own',configuration,signal(),plugins);
+  try{
+   const expected={'Note.md':'owned'};
+   for(const files of [configuration?preferences:{},plugins?addOns:{}]){
+    for(const [name,value] of Object.entries(files))expected['.obsidian/'+name]=value;
+   }
+   expect(await contents(result)).toEqual(expected);
+  }finally{await result.dispose();}
+ });
 it.each(['bob','admin',null])('rejects non-owner %s, including an administrator without ownership',async token=>{
  await expect(service.prepare(token,'Own',false,signal())).rejects.toBeTruthy();
  expect(fs.readdirSync(path.join(temp,'data','vault-exports'))).toEqual([]);expect(flush).not.toHaveBeenCalled();
@@ -131,4 +149,35 @@ it('preserves the preparation error if removing its temporary files also fails',
  });
  vi.spyOn(fs.promises,'rm').mockRejectedValue(Object.assign(Error('cleanup failed'),{code:'EIO'}));
  await expect(service.prepare('alice','Own',false,signal())).rejects.toMatchObject({code:'EACCES'});
+});
+
+it('round-trips the full exported vault with plugins, settings, activation, themes and workspaces',async()=>{
+ const configuration={
+  '.obsidian/app.json':'{"vimMode":true}',
+  '.obsidian/community-plugins.json':'["demo"]',
+  '.obsidian/plugins/demo/main.js':'module.exports = class {};',
+  '.obsidian/plugins/demo/manifest.json':'{"id":"demo","version":"1.0.0"}',
+  '.obsidian/plugins/demo/data.json':'{"setting":42}',
+  '.obsidian/plugins/demo/custom.bin':'custom state',
+  '.obsidian/plugins/inactive/main.js':'// disabled',
+  '.obsidian/themes/Example/theme.css':'body {}',
+  '.obsidian/appearance.json':'{"cssTheme":"Example"}',
+  '.obsidian/workspace.json':'{"main":{"type":"split","children":[]}}',
+  '.obsidian/snippets/custom.css':'.custom {}',
+  '.hidden-content':'vault-specific bytes',
+ };
+ for(const [file,bytes] of Object.entries(configuration)){
+  const filename=path.join(root,'alice/Own',file);fs.mkdirSync(path.dirname(filename),{recursive:true});fs.writeFileSync(filename,bytes);
+ }
+ const archive=await service.prepare('alice','Own',true,signal());
+ const {createVaultImport}=require('../features/vaults/adapters/vault-import');
+ const importer=createVaultImport({db,root,dataRoot:path.join(temp,'data'),sessions});
+ try{
+  const scope=importer.scope('admin'),source=await scope.scan({attempt:crypto.randomUUID()},fs.readFileSync(archive.file));
+  const input={id:source.id,root:source.vaults[0].root,name:'Restored',configuration:true,restore:'full',selected:[]};
+  await scope.reviewSource(input);const stage=await scope.prepareSource(input);await scope.commit(stage.id);
+  for(const [file,bytes] of Object.entries(configuration))expect(fs.readFileSync(path.join(root,'admin/Restored',file),'utf8')).toBe(bytes);
+  expect(fs.readFileSync(path.join(root,'admin/Restored/Note.md'),'utf8')).toBe('owned');
+  expect(fs.existsSync(path.join(root,'admin/Restored/Secret.md'))).toBe(false);
+ }finally{importer.close();await archive.dispose();}
 });

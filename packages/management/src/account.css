@@ -81,7 +81,6 @@
 
 .ignis-import-wizard progress { width:100%; }
 
-.ignis-password-modal .ignis-export-options { display:flex; align-items:center; gap:8px; margin:20px 0; }
 
 .ignis-import-selection {
   margin-block:12px;
@@ -122,6 +121,18 @@
 .ignis-import-detected{display:flex;flex-direction:column;gap:var(--size-4-3,12px)}
 .ignis-import-vault{border:1px solid var(--background-modifier-border);border-radius:var(--radius-m);padding:var(--size-4-3,12px);min-width:0}
 .ignis-import-enable{display:flex;align-items:center;gap:var(--size-4-2,8px);overflow-wrap:anywhere}
+.ignis-transfer-option {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1, 4px);
+  margin-block: var(--size-4-4, 16px);
+}
+
+.ignis-password-modal .ignis-transfer-option > label,
+.ignis-password-modal .ignis-transfer-option > p {
+  margin: 0;
+}
+
 .ignis-import-summary{white-space:pre-line;overflow-wrap:anywhere;margin-top:0}
 
 .ignis-import-detected[hidden]{display:none!important}

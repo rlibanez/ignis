@@ -1,15 +1,30 @@
-const limits=Object.freeze({...require('./transfer-policy').limits,fileBytes:512*1024*1024,totalBytes:4*1024*1024*1024,zipBytes:1024*1024*1024,ttl:4*60*60*1000,idle:30*60*1000});
+const {limits:transferLimits,portablePath,excludedTransferSegment}=require('./transfer-policy');
+const limits=Object.freeze({...transferLimits,fileBytes:512*1024*1024,totalBytes:4*1024*1024*1024,zipBytes:1024*1024*1024,ttl:4*60*60*1000,idle:30*60*1000});
 const fail=code=>{throw Object.assign(new Error('Vault import rejected'),{code});};
-function importPath(value){const result=require('./transfer-policy').portablePath(value);if(result===null)fail('IMPORT_PATH');return result;}
-function included(name,configuration,kind='file'){
- const parts=name.toLowerCase().split('/');
- if(parts[0]==='.obsidian')return configuration && (kind==='directory'?name==='.obsidian':/^\.obsidian\/(app|hotkeys|graph)\.json$/.test(name));
- return !parts.some(p=>p.startsWith('.'))&&!parts.some(p=>p==='node_modules'||p==='__macosx');
+function importPath(value){const result=portablePath(value);if(result===null)fail('IMPORT_PATH');return result;}
+function restoreMode(value='none',role='user'){
+ if(!['none','plugins','full'].includes(value))fail('IMPORT_REQUEST');
+ if(value!=='none'&&role!=='admin')fail('IMPORT_FORBIDDEN');
+ return value;
 }
-function exclusionReason(name,configuration){
+function included(name,configuration,kind='file',restore='none',role='user'){
  const parts=name.toLowerCase().split('/');
+ if(parts.some(excludedTransferSegment))return false;
  if(parts[0]==='.obsidian'){
-  if(['plugins','themes'].includes(parts[1]))return 'plugins-themes';
+  if(parts[1]==='plugins'){
+   return restore==='full'||(restore==='plugins'&&kind==='file'&&/^\.obsidian\/plugins\/[^./][^/]*\/(main\.js|manifest\.json|styles\.css)$/.test(name));
+  }
+  if(parts[1]==='community-plugins.json')return restore==='full'&&kind==='file';
+  return configuration&&(role==='admin'||(kind==='directory'?name==='.obsidian':/^\.obsidian\/(app|hotkeys|graph)\.json$/.test(name)));
+ }
+ return (configuration&&role==='admin')||!parts.some(part=>part.startsWith('.'));
+}
+function exclusionReason(name,configuration,restore){
+ const parts=name.toLowerCase().split('/');
+ if(parts.some(excludedTransferSegment))return 'generated-files';
+ if(parts[0]==='.obsidian'){
+  if(parts[1]==='plugins'&&restore==='plugins')return 'plugin-settings';
+  if(parts[1]==='plugins')return 'plugins-themes';
   if(parts[1]==='appearance.json')return 'appearance-state';
   if(parts[1]==='community-plugins.json')return 'community-plugins-state';
   if(parts[1]==='core-plugins.json')return 'core-plugins-state';
@@ -24,7 +39,8 @@ function selectable(name,kind,role){
  return /^\.obsidian\/(app|hotkeys|graph|workspace|workspace-mobile|workspaces)\.json$/.test(name)||
   (role==='admin'&&/^\.obsidian\/(appearance|core-plugins)\.json$/.test(name));
 }
-function manifest(input,configuration,selected=[],role='user',sourceOnly=false){
+function manifest(input,configuration,selected=[],role='user',sourceOnly=false,restore='none'){
+ restoreMode(restore,role);
  if(!Array.isArray(selected)||selected.length>8||selected.some(p=>typeof p!=='string')||new Set(selected).size!==selected.length)fail('IMPORT_REQUEST');
  if(!Array.isArray(input)||input.length>limits.files)fail('IMPORT_LIMIT');
  const nodes=new Map();let total=0;
@@ -42,11 +58,11 @@ function manifest(input,configuration,selected=[],role='user',sourceOnly=false){
    if(nodes.size>limits.files)fail('IMPORT_LIMIT');
   }
   total+=item.size;if(total>limits.totalBytes)fail('IMPORT_LIMIT');
-  return {path:name,kind,size:item.size,include:included(name,configuration,kind)||selected.includes(name)};
+  return {path:name,kind,size:item.size,include:included(name,configuration,kind,restore,role)||selected.includes(name)};
  });
  if(selected.some(name=>!entries.some(e=>e.path===name&&selectable(e.path,e.kind,role))))fail('IMPORT_REQUEST');
  if(!sourceOnly&&entries.some(e=>e.kind==='file')&&!entries.some(e=>e.include||selectable(e.path,e.kind,role)))fail('IMPORT_EMPTY');
- const excludedEntries=entries.filter(e=>!included(e.path,configuration,e.kind)).map(e=>({path:e.path,kind:e.kind,reason:exclusionReason(e.path,configuration),selectable:selectable(e.path,e.kind,role),selected:e.include}));
+ const excludedEntries=entries.filter(e=>!included(e.path,configuration,e.kind,restore,role)).map(e=>({path:e.path,kind:e.kind,reason:exclusionReason(e.path,configuration,restore),selectable:selectable(e.path,e.kind,role),selected:e.include}));
  return {entries,total,excluded:excludedEntries.filter(e=>!e.selected).length,excludedEntries};
 }
-module.exports={limits,fail,importPath,included,manifest};
+module.exports={limits,fail,importPath,included,manifest,restoreMode};

@@ -3,8 +3,8 @@ import fs from 'node:fs';import os from 'node:os';import path from 'node:path';i
 const require=createRequire(import.meta.url),archiver=require('archiver');
 const {openDatabase}=require('../platform/persistence/database');const {createVaultImport}=require('../features/vaults/adapters/vault-import');
 const {limits}=require('../features/vaults/application/import-policy');
-let temp,db,service,time,active,root;
-beforeEach(()=>{temp=fs.mkdtempSync(path.join(os.tmpdir(),'ignis-import-'));root=path.join(temp,'vaults');fs.mkdirSync(root);db=openDatabase(path.join(temp,'data'));for(const id of ['alice','bob'])db.prepare("INSERT INTO users(id,login,role,created_at) VALUES (?,?,'user',0)").run(id,id);time=0;active=true;service=createVaultImport({db,root,dataRoot:path.join(temp,'data'),now:()=>time,sessions:{resolve:token=>active&&['alice','bob'].includes(token)?{id:token+'-session',user:{id:token,role:'user',authVersion:1}}:null}});});
+let temp,db,service,time,active,root,aliceRole;
+beforeEach(()=>{temp=fs.mkdtempSync(path.join(os.tmpdir(),'ignis-import-'));root=path.join(temp,'vaults');fs.mkdirSync(root);db=openDatabase(path.join(temp,'data'));for(const id of ['alice','bob'])db.prepare("INSERT INTO users(id,login,role,created_at) VALUES (?,?,'user',0)").run(id,id);time=0;active=true;aliceRole='user';service=createVaultImport({db,root,dataRoot:path.join(temp,'data'),now:()=>time,sessions:{resolve:token=>active&&['alice','bob'].includes(token)?{id:token+'-session',user:{id:token,role:token==='alice'?aliceRole:'user',authVersion:1}}:null}});});
 afterEach(()=>{vi.restoreAllMocks();service.close();db.close();fs.rmSync(temp,{recursive:true,force:true});});
 const options=(files=[{path:'Note.md',size:5}])=>({name:'Imported',configuration:true,files});
 async function zip(files){const archive=archiver('zip',{zlib:{level:9}}),chunks=[];archive.on('data',chunk=>chunks.push(chunk));const done=new Promise((resolve,reject)=>{archive.on('end',resolve);archive.on('error',reject);});for(const [name,value] of files)archive.append(value,{name});await archive.finalize();await done;return Buffer.concat(chunks);}
@@ -371,4 +371,75 @@ it('refreshes active import idle time without extending the absolute four-hour d
  const scope=service.scope('alice'),source=await scope.scan({attempt,files:[]}),input=sourceInput(source.id,'','Imported');
  for(time=limits.idle-1;time<limits.ttl;time+=limits.idle-1)await scope.reviewSource(input);
  time=limits.ttl;await expect(scope.prepareSource(input)).rejects.toMatchObject({code:'IMPORT_UNAVAILABLE'});
+});
+
+it.each(['folder','zip'])('restores plugins with the chosen settings and activation policy from %s',async origin=>{
+ aliceRole='admin';
+ const files=[
+  ['Note.md','note'],
+  ['.obsidian/app.json','{"vimMode":true}'],
+  ['.obsidian/plugins/demo/manifest.json','{"id":"demo","version":"1.0.0"}'],
+  ['.obsidian/plugins/demo/main.js','module.exports = class {};'],
+  ['.obsidian/plugins/demo/styles.css','.demo {}'],
+  ['.obsidian/plugins/demo/data.json','{"token":"private","option":true}'],
+  ['.obsidian/plugins/demo/custom-state.bin','saved plugin state'],
+  ['.obsidian/plugins/inactive/main.js','// inactive'],
+  ['.obsidian/community-plugins.json','["demo"]'],
+  ['.obsidian/themes/Example/theme.css','body {}'],
+  ['.obsidian/appearance.json','{"cssTheme":"Example"}'],
+  ['.obsidian/workspace.json','{"main":{"type":"split","children":[]}}'],
+  ['.custom-hidden','custom vault content'],
+  ['.ignis-auth.json','foreign identity'],
+  ['.git/config','repository state'],
+ ];
+ for(const [restore,configuration] of ['none','plugins','full'].flatMap(mode=>[[mode,false],[mode,true]])){
+  const name='Restored-'+restore+'-'+configuration,scope=service.scope('alice'),attempt=crypto.randomUUID();
+  const source=origin==='zip'
+   ?await scope.scan({attempt},await zip(files.map(([file,bytes])=>['Backup/'+file,bytes])))
+   :await scope.scan({attempt,files:files.map(([file,bytes])=>({path:file,size:Buffer.byteLength(bytes)}))});
+  const request={id:source.id,root:source.vaults[0].root,name,configuration,restore,selected:[]};
+  const review=await scope.reviewSource(request),prepared=await scope.prepareSource(request);
+  expect(review.upload).toEqual(prepared.upload);
+  if(origin==='folder')for(const i of prepared.upload)await scope.put(prepared.id,i,Buffer.from(files[prepared.sourceIndexes[i]][1]));
+  const result=await scope.commit(prepared.id),destination=path.join(root,'alice',name);
+  expect(await scope.prepareSource(request)).toEqual({completed:result});
+  for(const [file,bytes] of files){
+   const included=file==='Note.md'||
+    (configuration&&['.obsidian/app.json','.obsidian/themes/Example/theme.css','.obsidian/appearance.json','.obsidian/workspace.json','.custom-hidden'].includes(file))||
+    (restore==='plugins'&&/^\.obsidian\/plugins\/[^/]+\/(main\.js|manifest\.json|styles\.css)$/.test(file))||
+    (restore==='full'&&file.startsWith('.obsidian/plugins/'));
+   if(file==='.obsidian/community-plugins.json'){
+    expect(fs.readFileSync(path.join(destination,file),'utf8')).toBe(restore==='full'?bytes:'[]');
+   }else if(included){
+    expect(fs.readFileSync(path.join(destination,file),'utf8')).toBe(bytes);
+   }else expect(fs.existsSync(path.join(destination,file))).toBe(false);
+  }
+  await scope.cancelSource({id:source.id});
+ }
+});
+it('streams plugin code and assets above the small JSON preference limit',async()=>{
+ aliceRole='admin';
+ const bytes=Buffer.alloc(1024*1024+1,65),scope=service.scope('alice');
+ const start=await scope.begin({name:'LargePlugin',configuration:false,restore:'plugins',files:[{path:'.obsidian/plugins/demo/main.js',size:bytes.length}]});
+ await scope.put(start.id,0,bytes);await scope.commit(start.id);
+ expect(fs.readFileSync(path.join(root,'alice/LargePlugin/.obsidian/plugins/demo/main.js'))).toEqual(bytes);
+});
+it('rejects unknown restore modes and malformed enabled-plugin lists before publication',async()=>{
+ aliceRole='admin';
+ const scope=service.scope('alice');
+ await expect(scope.begin({...options(),restore:'unexpected'})).rejects.toMatchObject({code:'IMPORT_REQUEST'});
+ const data=Buffer.from('{"demo":true}'),stage=await scope.begin({name:'BadState',configuration:true,restore:'full',files:[{path:'.obsidian/community-plugins.json',size:data.length}]});
+ await expect(scope.put(stage.id,0,data)).rejects.toMatchObject({code:'IMPORT_CONFIGURATION'});
+ expect(db.prepare("SELECT id FROM vaults WHERE name='BadState'").get()).toBeUndefined();
+});
+
+it('keeps executable restoration behind the existing administrator permission',async()=>{
+ const scope=service.scope('alice');
+ for(const restore of ['plugins','full']){
+  await expect(scope.begin({...options(),restore})).rejects.toMatchObject({code:'IMPORT_FORBIDDEN'});
+ }
+ const source=await scope.scan({attempt:crypto.randomUUID(),files:[{path:'Note.md',size:5}]});
+ const input={id:source.id,root:source.vaults[0].root,name:'Imported',configuration:true,restore:'full',selected:[]};
+ await expect(scope.reviewSource(input)).rejects.toMatchObject({code:'IMPORT_FORBIDDEN'});
+ await expect(scope.prepareSource(input)).rejects.toMatchObject({code:'IMPORT_FORBIDDEN'});
 });

@@ -2,13 +2,16 @@ const fs=require('node:fs');const fsp=fs.promises;const path=require('node:path'
 const {transaction}=require('../../../platform/persistence/database');
 const {sessionContext,matchesSession}=require('../../../../../../packages/contracts/src/session');
 const {ownedDirectory,ensureUserDirectory,storagePath,assertAvailable}=require('./vault-storage');
-const {validVaultName}=require('../application/vault-name');const {limits,fail,manifest}=require('../application/import-policy');
+const {validVaultName}=require('../application/vault-name');const {limits,fail,manifest,restoreMode}=require('../application/import-policy');
 const {consume,small,ensureSpace}=require('./import-streams');const {openArchive}=require('./import-archive');const {Readable,addAbortSignal}=require('node:stream');
+function isPreference(name){return /^\.obsidian\/(app|hotkeys|graph|appearance|core-plugins|community-plugins|workspace|workspace-mobile|workspaces)\.json$/.test(name);}
 function validatePreference(name,bytes){
- if(name.startsWith('.obsidian/')){if(bytes.length>1024*1024)fail('IMPORT_LIMIT');let value;try{value=JSON.parse(bytes.toString('utf8'));}catch{fail('IMPORT_CONFIGURATION');}
+ if(isPreference(name)){if(bytes.length>1024*1024)fail('IMPORT_LIMIT');let value;try{value=JSON.parse(bytes.toString('utf8'));}catch{fail('IMPORT_CONFIGURATION');}
     const inspect=(v,depth=0)=>{if(depth>32)fail('IMPORT_CONFIGURATION');if(v&&typeof v==='object')for(const key of Object.keys(v)){if(['__proto__','constructor','prototype'].includes(key))fail('IMPORT_CONFIGURATION');inspect(v[key],depth+1);}};
     if(!value||typeof value!=='object')fail('IMPORT_CONFIGURATION');
-    if(name==='.obsidian/core-plugins.json'){
+    if(name==='.obsidian/community-plugins.json'){
+     if(!Array.isArray(value)||value.some(id=>typeof id!=='string'||!/^[a-zA-Z0-9_-]+$/.test(id)))fail('IMPORT_CONFIGURATION');
+    }else if(name==='.obsidian/core-plugins.json'){
      const identifier=id=>typeof id==='string'&&/^[a-z0-9-]+$/.test(id);
      // Obsidian reads the legacy enabled-ID list and the current boolean map.
      if(Array.isArray(value)?value.some(id=>!identifier(id)):Object.entries(value).some(([id,enabled])=>!identifier(id)||typeof enabled!=='boolean'))fail('IMPORT_CONFIGURATION');
@@ -45,14 +48,15 @@ function createVaultImport({db,root,dataRoot,sessions,now=Date.now}){
   }
   async function begin(input,parent=null){
    current();await sweep();current();
-   if(!input||Object.keys(input).some(k=>!['name','configuration','files','attempt','selected'].includes(k))||!validVaultName(input.name)||typeof input.configuration!=='boolean')fail('IMPORT_REQUEST');
+   if(!input||Object.keys(input).some(k=>!['name','configuration','files','attempt','selected','restore'].includes(k))||!validVaultName(input.name)||typeof input.configuration!=='boolean')fail('IMPORT_REQUEST');
    if(input.attempt!==undefined&&(typeof input.attempt!=='string'||!/^[a-f0-9-]{36}$/.test(input.attempt)))fail('IMPORT_REQUEST');
-   const plan=manifest(input.files,input.configuration,input.selected,context.role);
+   const restore=input.restore===undefined?'none':input.restore;
+   const plan=manifest(input.files,input.configuration,input.selected,context.role,false,restore);
    availableName(input.name);
    const pending=plan.entries.filter(e=>e.include&&e.kind==='file').reduce((total,e)=>total+e.size,0);if(fs.statSync(staging).dev===fs.statSync(root).dev)await ensureSpace(staging,pending*2);else{await ensureSpace(staging,pending);await ensureSpace(root,pending);}current();
    if(new Set([...jobs.values(),...sources.values()].map(j=>j.actor)).size>=limits.concurrent&&![...sources.values()].some(j=>j.actor===context.userId)||[...jobs.values()].some(j=>j.actor===context.userId)||(!parent&&[...sources.values()].some(j=>j.actor===context.userId)))fail('IMPORT_BUSY');
    const id=randomUUID(),stage=path.join(staging,id);fs.mkdirSync(stage,{mode:0o700});
-   const job={id,stage,attempt:input.attempt,actor:context.userId,session:context.sessionId,name:input.name,configuration:input.configuration,plan,deadline:now()+limits.ttl,expires:now()+limits.idle,received:new Map(),busy:false,source:parent,cancel:new AbortController()};jobs.set(id,job);createdJob=id;
+   const job={id,stage,attempt:input.attempt,actor:context.userId,session:context.sessionId,name:input.name,configuration:input.configuration,restore,plan,deadline:now()+limits.ttl,expires:now()+limits.idle,received:new Map(),busy:false,source:parent,cancel:new AbortController()};jobs.set(id,job);createdJob=id;
    return describe(job);
   }
   function describe({id,plan}){return {id,files:plan.entries.filter(e=>e.kind==='file').length,directories:plan.entries.filter(e=>e.kind==='directory').length,bytes:plan.total,excluded:plan.excluded,excludedEntries:plan.excludedEntries,upload:plan.entries.map((e,i)=>e.include&&e.kind==='file'?i:null).filter(i=>i!==null),limits};
@@ -82,7 +86,7 @@ function createVaultImport({db,root,dataRoot,sessions,now=Date.now}){
    const check=()=>checkJob(job);
    if(input.headers?.['content-length']!==undefined&&Number(input.headers['content-length'])!==entry.size)fail('IMPORT_REQUEST');
    addAbortSignal(AbortSignal.any([abortController.signal,job.cancel.signal]),input);
-   if(entry.path.startsWith('.obsidian/')){if(entry.size>1024*1024)fail('IMPORT_LIMIT');return putJob(job,index,await small(input,1024*1024,check),plan);}
+   if(isPreference(entry.path)){if(entry.size>1024*1024)fail('IMPORT_LIMIT');return putJob(job,index,await small(input,1024*1024,check),plan);}
    if(job.received.has(index)){const result=await consume(input,{limit:limits.fileBytes,expected:entry.size,check});if(result.hash!==job.received.get(index))fail('IMPORT_REQUEST');return {ok:true};}
    const file=path.join(job.stage,String(index));let output;
    try{check();output=await fsp.open(file,'wx',0o600);const result=await consume(input,{limit:limits.fileBytes,expected:entry.size,check,output,space:staging});check();job.received.set(index,result.hash);return {ok:true};}
@@ -91,7 +95,7 @@ function createVaultImport({db,root,dataRoot,sessions,now=Date.now}){
   }
   async function putStream(id,index,input){return exclusive(id,job=>putStreamJob(job,index,input));}
   async function select(id,selected){return exclusive(id,async job=>{
-   const plan=manifest(job.plan.entries.map(({path,kind,size})=>({path,kind,size})),job.configuration,selected,context.role);
+   const plan=manifest(job.plan.entries.map(({path,kind,size})=>({path,kind,size})),job.configuration,selected,context.role,false,job.restore);
    if(job.zip&&plan.entries.some((entry,index)=>entry.include&&entry.kind==='file'&&!job.received.has(index))){
     const archive=await openArchive(job.zip.source||path.join(job.stage,'source.zip'),job.zip,()=>checkJob(job));
     try{for(const [index,entry] of plan.entries.entries())if(entry.include&&entry.kind==='file'&&!job.received.has(index)){current();await putStreamJob(job,index,archive.stream(archive.entries[job.zip.indexes?.[index]??index]),plan);}}
@@ -141,7 +145,10 @@ function createVaultImport({db,root,dataRoot,sessions,now=Date.now}){
       try{const result=await consume(entry.size?source.createReadStream({autoClose:false,start:0,end:entry.size-1,highWaterMark:256*1024}):Readable.from([]),{limit:entry.size,expected:entry.size,check:()=>checkJob(job),output,space:root});if(result.hash!==job.received.get(i))fail('IMPORT_STORAGE');await output.sync();}finally{await output.close();}
      }finally{await source.close();}
     }
-    const disabled=await fsp.open(path.join(target,'.obsidian','community-plugins.json'),'wx',0o600);try{await disabled.writeFile('[]');await disabled.sync();}finally{await disabled.close();}
+    if(!job.plan.entries.some(entry=>entry.include&&entry.path==='.obsidian/community-plugins.json')){
+     const disabled=await fsp.open(path.join(target,'.obsidian','community-plugins.json'),'wx',0o600);
+     try{await disabled.writeFile('[]');await disabled.sync();}finally{await disabled.close();}
+    }
     for(const folder of [...directories].sort((a,b)=>b.length-a.length)){const fd=await fsp.open(folder,'r');try{await fd.sync();}finally{await fd.close();}}
     transaction(db,()=>{current(true);storagePath(root,directory);const stat=fs.lstatSync(target);if(stat.isSymbolicLink()||stat.dev!==identity.dev||stat.ino!==identity.ino||db.prepare('SELECT status FROM vaults WHERE id=?').get(uuid)?.status!=='pending')fail('IMPORT_STORAGE');db.prepare("UPDATE vaults SET status='active' WHERE id=?").run(uuid);audit(context.userId,'import-vault',uuid);});
     // A lost confirmation must not create another vault or strand a successful
@@ -171,17 +178,17 @@ function createVaultImport({db,root,dataRoot,sessions,now=Date.now}){
    try{if(disk)await fsp.rename(bytes.artifact.file,path.join(stage,'source.zip'));current();source.ready=true;return describeSource(source);}
    catch(error){sources.delete(id);await fsp.rm(stage,{recursive:true,force:true});throw error;}
   }
-  function sourceKey(input){return JSON.stringify([input.root,input.name,input.configuration,[...input.selected].sort()]);}
-  function validateSourceRequest(input){if(!input||Object.keys(input).sort().join(',')!=='configuration,id,name,root,selected'||typeof input.configuration!=='boolean'||typeof input.root!=='string'||!Array.isArray(input.selected)||input.selected.some(p=>typeof p!=='string')||input.selected.length>8)fail('IMPORT_REQUEST');}
+  function sourceKey(input){return JSON.stringify([input.root,input.name,input.configuration,input.restore??'none',[...input.selected].sort()]);}
+  function validateSourceRequest(input){restoreMode(input?.restore,context.role);if(!input||!['configuration,id,name,root,selected','configuration,id,name,restore,root,selected'].includes(Object.keys(input).sort().join(','))||typeof input.configuration!=='boolean'||typeof input.root!=='string'||!Array.isArray(input.selected)||input.selected.some(p=>typeof p!=='string')||input.selected.length>8)fail('IMPORT_REQUEST');}
   function sourcePlan(input){
    validateSourceRequest(input);
    const source=sourceFor(input.id),vault=source.layout.vaults.find(v=>v.root===input.root);if(!vault)fail('IMPORT_REQUEST');
    const files=vault.indexes.map(i=>{const {path,kind,size}=source.layout.entries[i];return {path:vault.root?path.slice(vault.root.length+1):path,kind,size};});
-   availableName(input.name);return {source,vault,files,plan:manifest(files,input.configuration,input.selected,context.role)};
+   availableName(input.name);return {source,vault,files,plan:manifest(files,input.configuration,input.selected,context.role,false,input.restore)};
   }
   async function reviewSource(input){
    const {source,vault,plan}=sourcePlan(input);
-   if(source.zip){const archive=await openArchive(path.join(source.stage,'source.zip'),source.zip,()=>checkSource(source));try{for(const [i,entry] of plan.entries.entries())if(entry.include&&entry.path.startsWith('.obsidian/')&&entry.kind==='file')validatePreference(entry.path,await archive.small(archive.entries[vault.indexes[i]]));}finally{await archive.close();}}
+   if(source.zip){const archive=await openArchive(path.join(source.stage,'source.zip'),source.zip,()=>checkSource(source));try{for(const [i,entry] of plan.entries.entries())if(entry.include&&isPreference(entry.path)&&entry.kind==='file')validatePreference(entry.path,await archive.small(archive.entries[vault.indexes[i]]));}finally{await archive.close();}}
    sourceFor(input.id);return describe({plan});
   }
   async function prepareSource(input){
@@ -189,7 +196,7 @@ function createVaultImport({db,root,dataRoot,sessions,now=Date.now}){
    if(completed){if(completed.key!==sourceKey(input))fail('IMPORT_REQUEST');const vault=db.prepare("SELECT v.id FROM vaults v JOIN memberships m ON m.vault_id=v.id WHERE v.id=? AND v.status='active' AND m.user_id=? AND m.role='owner'").get(completed.result.id,context.userId);if(!vault)fail('IMPORT_UNAVAILABLE');return {completed:completed.result};}
    const {vault,files}=sourcePlan(input),key=sourceKey(input);
    const existing=[...jobs.values()].find(j=>j.source===source);if(existing){jobFor(existing.id);if(existing.busy)fail('IMPORT_BUSY');if(existing.sourceKey===key)return {...describe(existing),sourceIndexes:vault.indexes};await cancelJob(existing);sourceFor(source.id);}
-   const start=await begin({name:input.name,configuration:input.configuration,selected:input.selected,files},source),job=jobs.get(start.id);job.sourceRoot=vault.root;job.sourceKey=key;
+   const start=await begin({name:input.name,configuration:input.configuration,restore:input.restore,selected:input.selected,files},source),job=jobs.get(start.id);job.sourceRoot=vault.root;job.sourceKey=key;
    try{
     sourceFor(source.id);
     if(source.zip){

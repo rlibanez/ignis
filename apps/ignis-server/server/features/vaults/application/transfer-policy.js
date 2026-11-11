@@ -8,4 +8,8 @@ function portablePath(value){
  if(/[\\:\x00-\x1f\x7f]/.test(value)||value.split('/').some(p=>!p||p==='.'||p==='..'||Buffer.byteLength(p)>255||/[. ]$/.test(p)||/^[<>"*?|]|[<>"*?|]/.test(p)||/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(p)))return null;
  return value.normalize('NFC');
 }
-module.exports={limits,portablePath};
+function excludedTransferSegment(name){
+ const part=name.toLowerCase();
+ return part.startsWith('.ignis')||['.git','.trash','node_modules','__macosx'].includes(part);
+}
+module.exports={limits,portablePath,excludedTransferSegment};

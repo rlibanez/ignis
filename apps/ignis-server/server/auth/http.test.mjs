@@ -1726,7 +1726,8 @@ it("exports a normal owner's vault with CSRF, without granting export to readers
  expect((await request("/api/vault/export",{jar:user,method:"POST",headers,body:{...body,ownerId:"normal"}})).status).toBe(400);
  expect((await request("/api/vault/export?vault=elsewhere",{jar:user,method:"POST",headers,body})).status).toBe(400);
  expect((await request("/api/vault/export",{jar:admin,method:"POST",headers:{"x-ignis-csrf":await csrf(admin)},body})).status).toBe(404);
- const reply=await request("/api/vault/export/",{jar:user,method:"POST",headers,body});expect(reply.status,await reply.text()).toBe(200);
+ expect((await request("/api/vault/export",{jar:user,method:"POST",headers,body:{...body,plugins:"true"}})).status).toBe(400);
+ const reply=await request("/api/vault/export/",{jar:user,method:"POST",headers,body:{...body,plugins:false}});expect(reply.status,await reply.text()).toBe(200);
  expect(reply.headers.get('content-type')).toBe('application/zip');expect(reply.headers.get('cache-control')).toBe('no-store');expect(reply.headers.get('content-disposition')).toContain('vault.zip');
  const {readZip,zipFile}=require('../features/vaults/adapters/import-zip');const entries=readZip(reply.bytes);expect(entries.map(e=>e.path)).toEqual(['note.md']);expect((await zipFile(reply.bytes,entries[0])).toString()).toBe('private note');
  db.prepare("UPDATE memberships SET role='reader' WHERE vault_id=? AND user_id='normal'").run(vault.id);

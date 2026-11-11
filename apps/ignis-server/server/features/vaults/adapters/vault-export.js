@@ -3,7 +3,7 @@ const path = require('node:path');
 const {pipeline} = require('node:stream/promises');
 const {Transform} = require('node:stream');
 const archiver = require('archiver');
-const {limits,portablePath} = require('../application/transfer-policy');
+const {limits,portablePath,excludedTransferSegment} = require('../application/transfer-policy');
 const fail = code => { throw Object.assign(new Error('Export unavailable'), {code}); };
 
 // Only physical files in the authorized vault are enumerated. Sharing mounts
@@ -18,9 +18,9 @@ function createVaultExport({vaults, dataRoot, flush = async () => {}}) {
     for(const entry of await fs.promises.readdir(staging))
       if(entry.startsWith('export-')) await fs.promises.rm(path.join(staging,entry), {recursive:true,force:true});
   }
-  async function prepare(token, reference, configuration, signal) {
+  async function prepare(token, reference, configuration, signal, plugins=configuration) {
     const authority = vaults.scope(token).exportAuthority(reference);
-    if(typeof configuration !== 'boolean') fail('EXPORT_REQUEST');
+    if(typeof configuration !== 'boolean' || typeof plugins !== 'boolean') fail('EXPORT_REQUEST');
     const actor=authority.actor;
     if(active.has(actor) || active.size>=limits.concurrent) fail('EXPORT_BUSY');
     active.add(actor);
@@ -42,7 +42,13 @@ function createVaultExport({vaults, dataRoot, flush = async () => {}}) {
         for(const item of await fs.promises.readdir(directory,{withFileTypes:true})) {
           signal.throwIfAborted();
           // Ignis temporary content operations and repository/trash state are not vault content.
-          if(item.name.startsWith('.ignis-') || ['.git','.trash','node_modules','__MACOSX'].includes(item.name) || (!configuration && !relative && item.name==='.obsidian')) continue;
+          if(excludedTransferSegment(item.name)) continue;
+          const itemName=item.name.toLowerCase();
+          if(!relative && itemName==='.obsidian' && !configuration && !plugins) continue;
+          if(relative.toLowerCase()==='.obsidian') {
+            const isCommunityAddOn=itemName==='plugins' || itemName==='community-plugins.json';
+            if(isCommunityAddOn ? !plugins : !configuration) continue;
+          }
           const name=relative?relative+'/'+item.name:item.name;
           const portable=portablePath(prefix+'/'+name);if(portable===null || names.has(portable.toLowerCase()))fail('EXPORT_PATH');
           names.add(portable.toLowerCase());

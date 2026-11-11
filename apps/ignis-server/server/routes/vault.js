@@ -15,13 +15,13 @@ const lastRefreshAt = new Map();
 // Owner-only portable content export; temporary archives stay outside the vault.
 router.post("/export", async (req,res) => {
   if(!req.exportVault)return res.status(503).json({error:"Export unavailable"});
-  if(Object.keys(req.query).length || !req.body || Array.isArray(req.body) || Object.keys(req.body).sort().join(',')!=='configuration,vault' || typeof req.body.vault!=='string' || typeof req.body.configuration!=='boolean')
+  if(Object.keys(req.query).length || !req.body || Array.isArray(req.body) || Object.keys(req.body).some(key=>!['vault','configuration','plugins'].includes(key)) || (Object.hasOwn(req.body,'plugins') && typeof req.body.plugins!=='boolean') || typeof req.body.vault!=='string' || typeof req.body.configuration!=='boolean')
     return res.status(400).json({error:"Invalid export request"});
   const abort=new AbortController();
   res.once('close',()=>{if(!res.writableEnded)abort.abort();});
   let result;
   try {
-    result=await req.exportVault(req.body.vault,req.body.configuration,abort.signal);
+    result=await req.exportVault(req.body.vault,req.body.configuration,abort.signal,req.body.plugins);
     result.validate();
     res.setHeader('Content-Type','application/zip');
     res.setHeader('Cache-Control','no-store');

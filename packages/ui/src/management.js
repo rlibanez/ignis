@@ -219,7 +219,7 @@ const ImportModal=createImportModal(BrowserModal,Notice);
 export function openVaultImport(){
  const sessionId=window.__ignisAuth?.sessionId;
  if(!sessionId||window.__ignisAuth?.blocked){new Notice(t('Session unavailable'));return;}
- if(!document.querySelector('.ignis-import-wizard')){const runtime=uiRuntime();const Type=runtime?createImportModal(runtime.Modal,runtime.Notice):ImportModal;new Type(runtime?.app || null,{sessionId}).open();}
+ if(!document.querySelector('.ignis-import-wizard')){const runtime=uiRuntime();const Type=runtime?createImportModal(runtime.Modal,runtime.Notice):ImportModal;new Type(runtime?.app || null,{sessionId,role:window.__ignisAuth.role}).open();}
 }
 
 export function showManagementMessage(message){return new Notice(message);}

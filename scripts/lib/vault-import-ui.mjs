@@ -75,18 +75,26 @@ export async function vaultImportUi({native,shell}){
   assert.equal(await client.run(`{const el=document.querySelector('.ignis-import-selection strong');parseInt(getComputedStyle(el).fontWeight)>parseInt(getComputedStyle(el.parentElement).fontWeight)}`),true,'selected source stands out');
   await picture('selection');
   await client.run(`document.querySelector('[data-import-next]').click()`);await client.wait(`!document.querySelector('.ignis-import-wizard input[type=text]').closest('[hidden]')&&!document.querySelector('[data-import-next]').disabled`,'source analysis');const existingName=await client.run(`(async()=>{const list=await(await fetch('/api/vault/list')).json();return list.find(v=>v.membership==='owner').name;})()`);await client.run(`document.querySelector('.ignis-import-wizard input[type=text]').value=${JSON.stringify(existingName)}`);
+  assert.deepEqual(await client.run(`[...document.querySelector('[data-import-restore]').options].map(option=>option.value)`),['none','plugins','full'],'three restore choices');
+  if(client===native){
+  await client.run(`{const select=document.querySelector('[data-import-restore]');select.value='full';select.dispatchEvent(new Event('change'));}`);
+  assert.equal(await client.run(`{const config=document.querySelector('.ignis-import-wizard input[type=checkbox]');!config.checked&&!config.disabled}`),true,'restoring add-ons with configuration leaves Obsidian preferences unchecked and editable');
+  await client.run(`{const select=document.querySelector('[data-import-restore]');select.value='plugins';select.dispatchEvent(new Event('change'));}`);
+  assert.equal(await client.run(`document.querySelector('.ignis-import-wizard input[type=checkbox]').disabled`),false,'plugin-only restore allows independent preferences');
+  await client.run(`{const select=document.querySelector('[data-import-restore]');select.value='none';select.dispatchEvent(new Event('change'));}`);
+  }else assert.ok(await client.run(`[...document.querySelector('[data-import-restore]').options].slice(1).every(option=>option.disabled)`),'ordinary users cannot restore executable configuration');
   const nameLayout=await client.run(`{const root=document.querySelector('.ignis-import-wizard'),button=root.querySelector('[data-import-next]');({height:root.offsetHeight,width:root.offsetWidth,buttonTop:button.offsetTop})}`);
   await client.run(`document.querySelector('[data-import-next]').click()`);
   await client.wait(`document.querySelector('.ignis-import-wizard input[type=text]').validationMessage==='A vault with this name already exists.'&&!document.querySelector('[data-import-next]').disabled`,'name collision is reported on the name field before review');
   assert.equal(await client.run(`document.querySelector('[data-import-next]').textContent`),'Review import','collision keeps the name step open');
   assert.deepEqual(await client.run(`{const root=document.querySelector('.ignis-import-wizard'),button=root.querySelector('[data-import-next]');({height:root.offsetHeight,width:root.offsetWidth,buttonTop:button.offsetTop})}`),nameLayout,'name warning does not resize the dialog or move buttons');
   await picture('name-collision');
-  await client.run(`{const root=document.querySelector('.ignis-import-wizard'),input=root.querySelector('input[type=text]');input.value=${JSON.stringify(name)};input.dispatchEvent(new Event('input',{bubbles:true}));root.querySelector('input[type=checkbox]').checked=${kind==='folder'||kind==='zip'};root.querySelector('[data-import-next]').click();}`);
+  await client.run(`{const root=document.querySelector('.ignis-import-wizard'),input=root.querySelector('input[type=text]');input.value=${JSON.stringify(name)};input.dispatchEvent(new Event('input',{bubbles:true}));root.querySelector('input[type=checkbox]').checked=${kind==='zip'};root.querySelector('[data-import-next]').click();}`);
   await client.wait(`window.lostImportReview && !document.querySelector('[data-import-next]')?.disabled`,'lost review response returns control');
   await client.run(`document.querySelector('[data-import-next]').click()`);
   await client.wait(`document.querySelector('[data-import-next]')?.textContent==='Import'`,'import review');
   await picture('review');
-  const excluded=kind==='folder'?6:kind==='zip'?2:5;
+  const excluded=kind==='folder'?8:kind==='zip'?2:5;
   assert.equal(await client.run(`document.querySelector('[data-import-exclusions]').textContent`),'Excluded: '+excluded);
   const before=await client.run(`{const el=document.querySelector('.ignis-import-wizard');({height:el.offsetHeight,width:el.offsetWidth})}`);
   await client.run(`document.querySelectorAll('.notice').forEach(el=>el.click());document.querySelector('[data-import-exclusions]').click()`);
@@ -110,9 +118,9 @@ export async function vaultImportUi({native,shell}){
    await client.wait(`window.lostImportSelection&&!document.querySelector('.ignis-import-exclusions .mod-cta').disabled`,'lost native preference selection can be retried');
    await client.run(`document.querySelector('.ignis-import-exclusions .mod-cta').click()`);
    await client.wait(`!document.querySelector('.ignis-import-exclusions')&&!document.querySelector('[data-import-next]').disabled`,'native appearance, core and workspace preferences apply together');
-   assert.equal(await client.run(`document.querySelector('[data-import-exclusions]').textContent`),'Excluded: 3');
+   assert.equal(await client.run(`document.querySelector('[data-import-exclusions]').textContent`),'Excluded: 4');
    await client.run(`document.querySelector('[data-import-exclusions]').click()`);
-   assert.equal(await client.run(`document.querySelectorAll('.ignis-import-exclusions input:checked').length`),3,'all three native preferences stay selected');
+   assert.equal(await client.run(`document.querySelectorAll('.ignis-import-exclusions input:checked').length`),4,'all four native preferences stay selected');
   }
   if(kind==='traditional'||kind==='legacy'||kind==='zip'){
    await client.run(`document.querySelector('.ignis-import-exclusions input:not(:disabled)').click();document.querySelector('.ignis-import-exclusions .mod-cta').click()`);
@@ -140,6 +148,7 @@ export async function vaultImportUi({native,shell}){
   await client.wait(`window.lostImportCommit && !document.querySelector('[data-import-next]')?.disabled`,'lost commit response returns control');
   await client.run(`document.querySelector('[data-import-next]').click()`);
   try{await client.wait(`!!document.querySelector('.ignis-import-wizard').innerText.includes('Vault imported successfully.')`,'import publication');}catch(error){console.error(await client.run(`({replies:importReplies,text:document.querySelector('.ignis-import-wizard')?.innerText})`));throw error;}
+  assert.ok(await client.run(`importReplies.some(reply=>reply.path.endsWith('/cancel-source')&&reply.status===200)`),'published import releases the source before offering to open the vault');
   await picture('complete');
   const result=await client.run(`(async()=>{const list=await(await fetch('/api/vault/list')).json();return list.find(item=>item.name===${JSON.stringify(name)});})()`);
   assert.ok(result,'new vault appears in current user catalog');

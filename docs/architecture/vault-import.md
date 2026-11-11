@@ -91,19 +91,26 @@ asistente elimina el origen y los borradores pendientes, conservando las bóveda
 ya publicadas. No se promete deshacer una publicación que ya haya comenzado.
 
 
-Los ajustes de `.obsidian` incluidos al activar las preferencias son app.json,
-hotkeys.json y graph.json. La ventana Elementos excluidos permite seleccionar
-además los ajustes inertes autorizados descritos al final de este documento. Se exige JSON
-válido de objeto, tamaño acotado, profundidad limitada y sin claves de prototipo.
-La configuración desconocida, plugins, temas, node_modules,
-__MACOSX y estado oculto no se instalan. community-plugins.json se genera como
-lista vacía. No se importa ni ejecuta código de plugins, incluso siendo admin.
-Los archivos originales del dispositivo no se modifican.
-La lista permitida es una decisión conservadora de Ignis, no una exigencia del
-formato de Obsidian. El visor explica individualmente appearance.json (referencias
-a temas/snippets no importados), community-plugins.json (se genera deshabilitado),
-core-plugins.json (se mantienen los valores predeterminados) y workspace.json
-(se recrea la distribución de paneles y pestañas).
+Los ajustes de Obsidian y los complementos comunitarios se eligen por separado
+para cada bóveda. Una cuenta administradora puede restaurar los ajustes de la
+bóveda, incluidos temas, snippets, espacios de trabajo y archivos ocultos de
+contenido. Para las cuentas normales se aplican los permisos de preferencias
+existentes.
+
+«No restaurar» excluye los complementos comunitarios. «Restaurar sin su
+configuración» recupera los archivos estándar de instalación y deja los
+complementos deshabilitados. «Restaurar con su configuración» recupera sus
+archivos y datos junto con community-plugins.json, que conserva su estado de
+activación. Ambos modos de restauración de complementos requieren permisos de
+administrador. Los controles de ejecución de la instalación siguen aplicando.
+Las rutas reservadas y los archivos temporales se excluyen como en la exportación.
+
+La selección de modo es independiente por bóveda y forma parte de la clave de
+reintento del servidor. Los ajustes de aplicación y del estado de activación
+se validan como JSON con tamaño y profundidad acotados. Los archivos de plugins,
+temas y datos adicionales se copian con streaming y los límites generales por
+archivo, sin interpretarlos como preferencias JSON. La exportación permite conservar los ajustes y los complementos por separado.
+Los archivos originales del dispositivo se conservan.
 
 ## Límites y protocolo
 

@@ -1,10 +1,13 @@
 import {showManagementNotice} from "./ui-notice.js";
 import {installUiLayout} from "./ui-layout.js";
-import {appendUiControl} from "./ui-controls.js";
+import {appendUiControl,setUiOptions} from "./ui-controls.js";
 import {createManagementClient} from './client.js';
 import {readDirectory,directoryFromDrop,folderFromFiles,zipFromDrop} from './folder-source.js';
 import {createExclusionsModal} from './import-exclusions.js';
 const t=text=>globalThis.IgnisI18n?.t(text)??text;
+const preferencesHint=role=>t(role==='admin'
+ ?'May include themes, CSS snippets, hotkeys, workspaces and graph settings.'
+ :'May include app settings, hotkeys and graph settings.');
 export function createImportModal(Modal,Notice){
  const ExclusionsModal=createExclusionsModal(Modal);
  return class ImportModal extends Modal{
@@ -45,9 +48,10 @@ export function createImportModal(Modal,Notice){
    this.pages[0].createEl('p',{text:t('Maximum: 10000 files and folders, 512 MiB per file, 4 GiB total; ZIP upload up to 1 GiB.')});
    this.singleOptions=this.pages[1].createDiv();this.detectedOptions=this.pages[1].createDiv({cls:'ignis-import-detected'});this.sourceDetails=this.pages[1].createEl('p',{cls:'setting-item-description'});this.outsideLink=this.pages[1].createEl('a',{attr:{href:'#'}});this.outsideLink.addEventListener('click',event=>{event.preventDefault();this.openExclusions(null,this.sourceStage.outside);});
    this.name=appendUiControl(field(this.singleOptions,'Vault name'),"input",{type:"text"});this.name.required=true;this.name.maxLength=255;this.name.addEventListener('input',()=>this.name.setCustomValidity(''));
-   const preferences=this.singleOptions.createEl('label',{cls:'ignis-password-field'});preferences.style.flexDirection='row';preferences.style.alignItems='center';this.configuration=appendUiControl(preferences,"input",{type:"checkbox"});preferences.createSpan({text:t('Import Obsidian preferences')});this.configuration.addEventListener('change',()=>{const plan=this.plans[0];if(plan){plan.configuration=this.configuration.checked;if(!plan.configuration)plan.selected=[];plan.review=null;}});
-   this.singleOptions.createEl('p',{text:t('App, hotkey and graph preferences are imported by default. You can select additional preferences in Excluded items. Plugins, themes, hidden state and sharing permissions remain excluded. Community plugins start disabled.')});
-   this.singleOptions.createEl('p',{text:t('The new vault belongs to your account. It will only become available after the import completes.')});
+   const preferenceGroup=this.singleOptions.createDiv({cls:'ignis-transfer-option'});
+   const preferences=preferenceGroup.createEl('label',{cls:'ignis-import-enable'});this.configuration=appendUiControl(preferences,"input",{type:"checkbox"});preferences.createSpan({text:t('Import Obsidian preferences')});this.configuration.addEventListener('change',()=>{const plan=this.plans[0];if(plan){plan.configuration=this.configuration.checked;if(!plan.configuration)plan.selected=[];plan.review=null;}});
+   preferenceGroup.createEl('p',{cls:'setting-item-description',text:preferencesHint(this.session.role)});
+   this.restore=this.restoreSelector(this.singleOptions,()=>this.plans[0]);
    this.review=this.pages[2].createEl('p');this.review.style.whiteSpace='pre-line';this.reviewSummary=this.review.createSpan();
    this.excludedLink=this.review.createEl('a',{attr:{href:'#','aria-haspopup':'dialog','data-import-exclusions':''}});
    this.excludedLink.addEventListener('click',event=>{event.preventDefault();this.openExclusions(this.plans[0]);});
@@ -57,6 +61,25 @@ export function createImportModal(Modal,Notice){
    this.cancel=button(actions,'Cancel',()=>this.close());this.cancel.setAttribute('data-import-cancel','');this.back=button(actions,'Back',()=>void this.previous());this.next=button(actions,'Next',()=>void this.advance(),true);this.next.setAttribute('data-import-next','');
    this.openButton=button(actions,'Open vault',()=>{window.location.assign('/?vault='+encodeURIComponent(this.result.id));},true);
    configure();this.step=0;this.show();window.addEventListener('ignis:auth-lost',()=>{this.committing=false;this.close();},{signal:this.abort.signal});
+  }
+  restoreSelector(parent,getPlan){
+   const group=parent.createDiv({cls:'ignis-transfer-option'});
+   const label=group.createEl('label',{cls:'ignis-password-field',text:t('Community add-ons')});
+   const select=appendUiControl(label,"select",{cls:'dropdown',attr:{'data-import-restore':''}});
+   setUiOptions(select,[
+    {value:'none',label:t('Do not restore')},
+    {value:'plugins',label:t('Restore without configuration'),disabled:this.session.role!=='admin'},
+    {value:'full',label:t('Restore with configuration'),disabled:this.session.role!=='admin'},
+   ]);
+   select.addEventListener('change',()=>{
+    const plan=getPlan();if(!plan)return;
+    plan.restore=select.value;plan.review=null;
+    this.show();
+   });
+   group.createEl('p',{cls:'setting-item-description',text:t(this.session.role==='admin'
+    ?'Add-ons restored without configuration start disabled. Restoring with configuration also restores their data and activation state.'
+    :'Only administrators can restore community plugins.')});
+   return select;
   }
   setSelection(name,vaultName,description){this.selection=name;this.name.value=vaultName;this.selectedName.textContent=name;this.selectedCounts.textContent=description;this.selected.hidden=false;this.show();}
   setZip(file){this.zipFile=file;this.setSelection(file.name,file.name.replace(/\.zip$/i,''),(file.size/1048576).toFixed(1)+' MiB');}
@@ -78,31 +101,34 @@ export function createImportModal(Modal,Notice){
    }}
    finally{this.selecting=false;if(!this.closed)this.show();}
   }
-  show(){for(const plan of this.plans){if(plan.input)plan.input.disabled=!!(this.busy||this.selecting||plan.result||!plan.enabled);if(plan.check)plan.check.disabled=!!(this.busy||this.selecting||plan.result);if(plan.configInput)plan.configInput.disabled=!!(this.busy||this.selecting||plan.result||!plan.enabled);}this.configuration.disabled=!!(this.busy||this.selecting);const zip=this.source.value==='zip';this.dropZone.textContent=t(zip?'Click here or drop a ZIP file.':'Click here or drop a folder');this.dropZone.setAttribute('aria-disabled',String(!!(this.busy||this.selecting)));this.dropZone.setAttribute('aria-label',this.dropZone.textContent);this.folderWarning.hidden=zip||this.folderSupported;this.next.disabled=!!(this.busy||this.selecting||(this.step===0&&!this.selection)||(this.step===1&&this.plans.length>1&&!this.plans.some(p=>p.enabled)));this.back.disabled=this.source.disabled=!!(this.busy||this.selecting);this.pages.forEach((page,i)=>{page.hidden=i!==this.step;});this.back.hidden=this.step===0||this.step===3;this.next.hidden=this.step===3;this.openButton.hidden=this.step!==3||this.plans.length!==1;this.next.textContent=t(this.step===1?'Review import':this.step===2?'Import':'Next');this.cancel.textContent=t(this.step===3?'Close':'Cancel');}
+  show(){for(const plan of this.plans){if(plan.input)plan.input.disabled=!!(this.busy||this.selecting||plan.result||!plan.enabled);if(plan.check)plan.check.disabled=!!(this.busy||this.selecting||plan.result);if(plan.configInput)plan.configInput.disabled=!!(this.busy||this.selecting||plan.result||!plan.enabled);if(plan.restoreInput)plan.restoreInput.disabled=!!(this.busy||this.selecting||plan.result||!plan.enabled);}this.configuration.disabled=!!(this.busy||this.selecting);this.restore.disabled=!!(this.busy||this.selecting);const zip=this.source.value==='zip';this.dropZone.textContent=t(zip?'Click here or drop a ZIP file.':'Click here or drop a folder');this.dropZone.setAttribute('aria-disabled',String(!!(this.busy||this.selecting)));this.dropZone.setAttribute('aria-label',this.dropZone.textContent);this.folderWarning.hidden=zip||this.folderSupported;this.next.disabled=!!(this.busy||this.selecting||(this.step===0&&!this.selection)||(this.step===1&&this.plans.length>1&&!this.plans.some(p=>p.enabled)));this.back.disabled=this.source.disabled=!!(this.busy||this.selecting);this.pages.forEach((page,i)=>{page.hidden=i!==this.step;});this.back.hidden=this.step===0||this.step===3;this.next.hidden=this.step===3;this.openButton.hidden=this.step!==3||this.plans.length!==1;this.next.textContent=t(this.step===1?'Review import':this.step===2?'Import':'Next');this.cancel.textContent=t(this.step===3?'Close':'Cancel');}
   async api(operation,input={},binary=false,query={}){
    if(!this.csrfToken||Date.now()-this.csrfAt>300000){const csrf=await this.request('/api/auth/csrf');if(!csrf.ok)throw Error(t('Session unavailable'));this.csrfToken=(await csrf.json()).csrfToken;this.csrfAt=Date.now();}
    const url='/api/vault/import/'+operation+new URLSearchParams(query).toString().replace(/^(.+)$/,'?$1');
    const response=await this.request(url,{method:'POST',headers:{'Content-Type':binary?'application/octet-stream':'application/json','X-Ignis-Csrf':this.csrfToken,'X-Ignis-Context':this.session.sessionId},body:binary?input:JSON.stringify(input)});
    const result=await response.json();if(!response.ok)throw Object.assign(Error(t(result.error||'Import could not be completed.')),{status:response.status});return result;
   }
-  inputFor(plan){return {id:this.sourceStage.id,root:plan.root,name:plan.name.trim(),configuration:plan.configuration,selected:plan.selected};}
+  inputFor(plan){return {id:this.sourceStage.id,root:plan.root,name:plan.name.trim(),configuration:plan.configuration,restore:plan.restore,selected:plan.selected};}
   async scanSource(){
    if(this.scanStarted&&!this.sourceStage)await this.api('cancel-source',{attempt:this.attempt});
    this.scanStarted=true;
    this.sourceStage=this.source.value==='zip'?await this.api('scan-zip',this.zipFile,true,{attempt:this.attempt}):await this.api('scan',{attempt:this.attempt,files:this.entries.map(({path,kind,size})=>({path,kind,size}))});
-   this.plans=this.sourceStage.vaults.map(v=>({...v,name:v.name||this.name.value,enabled:true,configuration:false,selected:[],uploaded:new Set()}));
+   this.plans=this.sourceStage.vaults.map(v=>({...v,name:v.name||this.name.value,enabled:true,configuration:false,restore:'none',selected:[],uploaded:new Set()}));
    const many=this.plans.length>1;this.setTitle(t(many?'Import vaults':'Import vault'));this.singleOptions.hidden=many;this.detectedOptions.hidden=!many;this.detectedOptions.empty();
    this.sourceDetails.textContent=this.sourceStage.nested.length?t('Nested vaults remain inside their containing vault and are not imported separately.')+' '+this.sourceStage.nested.join(', '):'';
    this.sourceDetails.hidden=!this.sourceStage.nested.length;
    this.outsideLink.textContent=t('Outside detected vaults')+': '+this.sourceStage.outside.length;this.outsideLink.hidden=!this.sourceStage.outside.length;
-   if(!many){this.name.value=this.plans[0].name;this.configuration.checked=false;this.plans[0].input=this.name;return;}
+   if(!many){this.name.value=this.plans[0].name;this.configuration.checked=false;this.restore.value='none';this.plans[0].restoreInput=this.restore;this.plans[0].input=this.name;return;}
    this.detectedOptions.createEl('p',{text:t('Select the vaults to import. Names and preferences are independent for each vault.')});
    for(const plan of this.plans){
     const row=this.detectedOptions.createDiv({cls:'ignis-import-vault'}),enable=row.createEl('label',{cls:'ignis-import-enable'}),check=appendUiControl(enable,"input",{attr:{type:'checkbox'}});check.checked=true;enable.createEl('strong',{text:plan.root});
     const name=appendUiControl(row.createEl('label',{cls:'ignis-password-field',text:t('Vault name')}),"input",{type:"text"});name.value=plan.name;name.maxLength=255;name.required=true;plan.input=name;plan.check=check;
     name.addEventListener('input',()=>{plan.name=name.value;name.setCustomValidity('');});
-    const label=row.createEl('label',{cls:'ignis-import-enable'}),config=appendUiControl(label,"input",{attr:{type:'checkbox'}});plan.configInput=config;label.createSpan({text:t('Import Obsidian preferences')});
+    const preferenceGroup=row.createDiv({cls:'ignis-transfer-option'});
+    const label=preferenceGroup.createEl('label',{cls:'ignis-import-enable'}),config=appendUiControl(label,"input",{attr:{type:'checkbox'}});plan.configInput=config;label.createSpan({text:t('Import Obsidian preferences')});
     config.addEventListener('change',()=>{plan.configuration=config.checked;if(!config.checked)plan.selected=[];plan.review=null;});
+    preferenceGroup.createEl('p',{cls:'setting-item-description',text:preferencesHint(this.session.role)});
+    plan.restoreInput=this.restoreSelector(row,()=>plan);
     check.addEventListener('change',()=>{plan.enabled=check.checked;name.disabled=config.disabled=!check.checked;this.show();});
    }
   }
@@ -116,9 +142,15 @@ export function createImportModal(Modal,Notice){
    }:null);this.excludedModal.open();this.excludedModal.setTitle(t(plan?'Excluded items':'Outside detected vaults')+(plan?' '+plan.name:''));
   }
   async discard(){for(const plan of this.plans)if(plan.stage&&!plan.result){try{await this.api('cancel',{},false,{id:plan.stage.id});}catch(error){if(error.status!==404)throw error;}plan.stage=null;plan.uploaded.clear();}}
+  async releaseSource(){
+   try{await this.api('cancel-source',{id:this.sourceStage.id});}
+   catch(error){if(error.status!==404)throw error;}
+   this.sourceStage=null;
+   this.scanStarted=false;
+  }
   async previous(){
    if(this.busy)return;this.excludedModal?.close();this.busy=true;this.show();
-   try{await this.discard();if(this.step===1){try{await this.api('cancel-source',{id:this.sourceStage.id});}catch(error){if(error.status!==404)throw error;}this.sourceStage=null;this.scanStarted=false;this.plans=[];}this.step--;this.status.textContent='';}
+   try{await this.discard();if(this.step===1){await this.releaseSource();this.plans=[];}this.step--;this.status.textContent='';}
    catch(error){showManagementNotice(Notice,error.message);}finally{this.busy=false;if(!this.closed)this.show();}
   }
   updateReview(){
@@ -164,7 +196,9 @@ export function createImportModal(Modal,Notice){
       try{await this.importPlan(plan);plan.error=null;}catch(error){plan.error=error.message;if(plan.stage&&!this.closed){try{await this.api('cancel',{},false,{id:plan.stage.id});plan.stage=null;plan.uploaded.clear();}catch(cancelError){if(cancelError.status===404){plan.stage=null;plan.uploaded.clear();}}}if(error.status===409){this.step=1;plan.input.setCustomValidity(t('A vault with this name already exists.'));this.invalidName=plan.input;}else if(!this.closed)showManagementNotice(Notice,plan.name+': '+error.message);if(this.closed||error.status===401)break;}
      }
      this.updateReview();const chosen=this.plans.filter(p=>p.enabled);
-     if(chosen.every(p=>p.result)){this.result=chosen[0].result;this.step=3;this.status.textContent=t(this.plans.length>1?'Vaults imported successfully.':'Vault imported successfully.');this.completedList.empty();if(this.plans.length>1)for(const plan of chosen){const button=appendUiControl(this.completedList,"button",{text:t('Open vault')+' '+plan.name});button.type='button';button.addEventListener('click',()=>window.location.assign('/?vault='+encodeURIComponent(plan.result.id)));}}
+     if(chosen.every(p=>p.result)){
+      await this.releaseSource();
+      this.result=chosen[0].result;this.step=3;this.status.textContent=t(this.plans.length>1?'Vaults imported successfully.':'Vault imported successfully.');this.completedList.empty();if(this.plans.length>1)for(const plan of chosen){const button=appendUiControl(this.completedList,"button",{text:t('Open vault')+' '+plan.name});button.type='button';button.addEventListener('click',()=>window.location.assign('/?vault='+encodeURIComponent(plan.result.id)));}}
     }
    }catch(error){if(!this.closed&&error.status!==409)showManagementNotice(Notice,error.message);}
    finally{this.committing=false;this.busy=false;this.cancel.disabled=false;this.progress.hidden=true;if(!this.closed){this.show();if(this.invalidName){this.invalidName.reportValidity();this.invalidName=null;}else if(openingName&&this.step===1)this.plans[0]?.input.focus();}}

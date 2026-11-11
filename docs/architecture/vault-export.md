@@ -16,10 +16,11 @@ consulta la proyección de recursos compartidos: los montajes recibidos no se
 materializan ni se copian. Los archivos propios compartidos con otros sí se
 incluyen; cuentas, sesiones, UUID, membresías y relaciones de compartición no.
 
-La configuración es opcional y está desmarcada inicialmente. Al activarla se
-incluye `.obsidian`, con plugins y temas instalados: el diálogo avisa que el ZIP
-puede contener información privada. El importador sigue excluyendo plugins,
-temas y estado no aprobado al restaurarlo en Ignis. No cambia su política.
+Los ajustes de Obsidian y los complementos comunitarios son opciones
+independientes y están desmarcadas inicialmente. Los ajustes incluyen, por
+ejemplo, temas, fragmentos CSS y atajos. Los complementos incluyen su
+configuración y estado de activación. El diálogo advierte que se conserve el
+ZIP en privado. Al restaurarlo se aplica la política de importación de Ignis.
 
 Se excluyen enlaces simbólicos, archivos con varios enlaces físicos, archivos
 especiales, `.git`, `.trash`, `node_modules`, `__MACOSX` y temporales `.ignis-*`.
@@ -29,7 +30,8 @@ Es una exportación de contenido, no una copia de seguridad de la instancia.
 ## Seguridad y recursos
 
 `POST /api/vault/export` exige sesión, Origin/Host y CSRF y admite únicamente
-`{vault, configuration}`. La ruta está inventariada y limitada por frecuencia.
+`{vault, configuration, plugins?}`. Si se omite `plugins`, toma el valor de
+`configuration` para conservar el comportamiento anterior. La ruta está inventariada y limitada por frecuencia.
 La identidad del actor se obtiene de la sesión; nunca del cuerpo de petición.
 La autoridad conserva la sesión y el UUID, comprueba propiedad y versión de
 política y fija la identidad del directorio raíz a través de las esperas.

@@ -4,11 +4,12 @@ const t=text=>globalThis.IgnisI18n?.t(text)??text;
 const reasons={
  'outside-vaults':'Files outside detected vaults are not imported.',
  'appearance-state':'Appearance settings are not imported because the original themes and snippets are excluded.',
+ 'plugin-settings':'Plugin settings and additional files are not restored in this mode.',
  'community-plugins-state':'Community plugins start disabled.',
  'core-plugins-state':'The default Ignis core plugins are used.',
  'workspace-state':'The workspace layout and open tabs are recreated.',
  'preferences-disabled':'Obsidian preferences were not selected.',
- 'plugins-themes':'Plugins and themes are not imported.',
+ 'plugins-themes':'Community add-ons are not restored.',
  'unsupported-configuration':'This Obsidian configuration is not imported.',
  'generated-files':'Generated files and system metadata are not imported.',
  'hidden-state':'Hidden files and folders are not imported.',

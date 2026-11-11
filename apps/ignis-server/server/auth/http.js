@@ -546,7 +546,7 @@ function createAuthBoundary({
           if(operation!=='list')sweepSockets();
           return result;
         };
-        req.exportVault=(reference,configuration,signal)=>services.vaultExport.prepare(cookies.read(req.headers.cookie),reference,configuration,signal);
+        req.exportVault=(reference,configuration,signal,plugins)=>services.vaultExport.prepare(cookies.read(req.headers.cookie),reference,configuration,signal,plugins);
         req.vaultView=scope.view;
         req.canReadVault=directory=>req.authorizeVaultFile(directory,"content.list","");
         req.vaultOwners=scope.owners;
