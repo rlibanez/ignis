@@ -91,6 +91,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
       headers: {
         "Content-Type": "application/json",
         "X-Ignis-Csrf": csrfToken,
+        ...(path === "/api/auth/login" ? globalThis.IgnisUiEnvironment?.sessionClientHeaders?.(window) : {}),
         ...(activeSessionId ? {"X-Ignis-Context": activeSessionId} : {}),
       },
       body: JSON.stringify(body),

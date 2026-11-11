@@ -212,3 +212,31 @@ it('persists distinct fork, schema, upstream and Obsidian versions without arbit
  expect(records(root)[0]).toMatchObject({version:'1.0.0',schemaVersion:1,upstreamVersion:'0.9.0',obsidianVersion:'1.14.4'});
  expect(records(root)[0]).not.toHaveProperty('commit');
 });
+
+it.each([
+ ['login', 'Chrome/140.0 IgnisAndroid/0.1', 'standalone', 'android_app', undefined],
+ ['logout', 'Chrome/140.0 IgnisAndroid/1.0.0', undefined, 'android_app', undefined, '1.0.0'],
+ ['login', 'IgnisAndroid/1.1.0-beta.1', undefined, 'android_app', undefined, '1.1.0-beta.1'],
+ ['logout', 'IgnisAndroid/SECRET-VERSION', undefined, 'android_app', undefined],
+ ['login', 'Chrome/140.0 Safari/537.36', 'standalone', 'pwa', 'chrome'],
+ ['logout', 'Version/18.0 Safari/605.1', 'standalone', 'pwa', 'safari'],
+ ['login', 'Chrome/140.0 Safari/537.36', undefined, 'chrome', undefined],
+ ['login', 'Chrome/140.0 Safari/537.36 Edg/140.0', undefined, 'edge', undefined],
+ ['logout', 'Firefox/140.0', 'SECRET-MODE', 'firefox', undefined],
+ ['login', undefined, undefined, 'unknown', undefined],
+ ['password', 'Firefox/140.0', 'standalone', undefined, undefined],
+])('logs only the client classification for %s (%s, %s)', (action, userAgent, mode, client, browser, clientVersion) => {
+ const {root,logger}=fixture();logger.close();
+ const next=logging.configure({dataRoot:root,stdout:stream(),stderr:stream()});
+ const req={method:'POST',url:`/api/auth/${action}`,headers:{
+  'user-agent':userAgent && `${userAgent} SECRET-AGENT`,
+  'x-ignis-display-mode':mode,
+ }};
+ const res=new EventEmitter();res.setHeader=()=>{};res.writableFinished=true;res.statusCode=200;
+ logging.httpMiddleware(req,res,()=>{});res.emit('finish');next.flush();
+ const [record]=records(root);
+ expect(record.client).toBe(client);
+ expect(record.browser).toBe(browser);
+ expect(record.clientVersion).toBe(clientVersion);
+ expect(JSON.stringify(record)).not.toMatch(/SECRET|140\.0|IgnisAndroid/);
+});

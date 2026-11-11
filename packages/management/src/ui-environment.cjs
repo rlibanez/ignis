@@ -4,6 +4,12 @@
  let storage;
  try { storage = globalThis.localStorage; } catch { /* Storage can be disabled. */ }
  const modes = ['auto', 'phone', 'tablet', 'desktop'];
+ function sessionClientHeaders(host) {
+  const standalone = host.navigator?.standalone === true ||
+   host.matchMedia?.('(display-mode: standalone)')?.matches ||
+   host.matchMedia?.('(display-mode: window-controls-overlay)')?.matches;
+  return standalone ? {'X-Ignis-Display-Mode':'standalone'} : {};
+ }
  function hasWebDeviceSettings(host) {
   return !host.__ignisAndroidInterfaceMode &&
    (/Android|iPhone|iPad|iPod/i.test(host.navigator?.userAgent ?? '') ||
@@ -102,7 +108,7 @@
    host.removeEventListener?.('storage',apply);
   };
  }
- const api={mobile,mode,applyMode,initialize,hasWebDeviceSettings,webPreference,setWebPreference,theme,applyTheme,setTheme,clearBrowserPreferences};
+ const api={sessionClientHeaders,mobile,mode,applyMode,initialize,hasWebDeviceSettings,webPreference,setWebPreference,theme,applyTheme,setTheme,clearBrowserPreferences};
  if(typeof module!=='undefined')module.exports=api;
  else globalThis.IgnisUiEnvironment=api;
 })();

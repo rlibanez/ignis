@@ -403,6 +403,7 @@ var translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message, 
         headers: {
           "Content-Type": "application/json",
           "X-Ignis-Csrf": await token(),
+          ...globalThis.IgnisUiEnvironment?.sessionClientHeaders?.(window),
         },
         body: "{}",
       });

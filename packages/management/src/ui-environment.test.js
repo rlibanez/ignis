@@ -75,3 +75,17 @@ it.each([
  environment.clearBrowserPreferences({localStorage,__ignisAuth:{userId:account}});
  expect([...data]).toEqual([[trusted,'true'],[restricted,'false']]);
 });
+
+it.each([
+ ['standalone', false, true],
+ ['window-controls-overlay', false, true],
+ ['browser', true, true],
+ ['browser', false, false],
+ ['fullscreen', false, false],
+])('reports installed web display mode for %s (iOS standalone: %s)', (mode, iosStandalone, installed) => {
+ const host = {
+  navigator: {standalone: iosStandalone},
+  matchMedia: query => ({matches: query === `(display-mode: ${mode})`}),
+ };
+ expect(environment.sessionClientHeaders(host)).toEqual(installed ? {'X-Ignis-Display-Mode':'standalone'} : {});
+});

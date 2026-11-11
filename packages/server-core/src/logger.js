@@ -26,6 +26,30 @@ const operations = new Map([
 ]);
 const shareOperations = new Set(["copy", "previewRemoval", "removeConfirmed", "mounts", "destination", "rename", "create", "grants", "validateGrant", "revoke", "browse", "read", "write", "mkdir", "remove"].map(name => `shares.${name}`));
 const operationNames = new Set([...operations.values(), ...shareOperations, "users.create"]);
+const sessionOperations = new Set(["auth.login", "auth.logout"]);
+const browserFamilies = [
+  ["edge", /\bEdg(?:e|A|iOS)?\//i],
+  ["opera", /\b(?:OPR|OPiOS|Opera)\//i],
+  ["samsung_internet", /\bSamsungBrowser\//i],
+  ["firefox", /\b(?:Firefox|FxiOS)\//i],
+  ["chrome", /\b(?:Chrome|CriOS)\//i],
+  ["chromium", /\bChromium\//i],
+  ["safari", /\bSafari\//i],
+];
+const browserNames = new Set(browserFamilies.map(([name]) => name));
+const clientTypes = new Set(["android_app", "pwa", "unknown", ...browserNames]);
+function isLogVersion(value) {
+  return typeof value === "string" && value.length <= 128 && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(value);
+}
+function sessionClient(headers) {
+  const userAgent = typeof headers?.["user-agent"] === "string" ? headers["user-agent"] : "";
+  const android = /(?:^|\s)IgnisAndroid\/([^\s]*)/.exec(userAgent);
+  if (android) return { client: "android_app", clientVersion: android[1] };
+
+  const browser = browserFamilies.find(([, pattern]) => pattern.test(userAgent))?.[0];
+  if (headers?.["x-ignis-display-mode"] === "standalone") return { client: "pwa", browser };
+  return { client: browser ?? "unknown" };
+}
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 function readLogConfig(env = process.env) {
   const integer = (name, fallback, max) => {
@@ -47,6 +71,11 @@ function readLogConfig(env = process.env) {
 function metadata(input = {}) {
   const out = {};
   if (operationNames.has(input.operation)) out.operation = input.operation;
+  if (sessionOperations.has(out.operation) && clientTypes.has(input.client)) {
+    out.client = input.client;
+    if (input.client === "android_app" && isLogVersion(input.clientVersion)) out.clientVersion = input.clientVersion;
+    if (input.client === "pwa" && browserNames.has(input.browser)) out.browser = input.browser;
+  }
   if (errorCodes.has(input.errorCode)) out.errorCode = input.errorCode;
   for (const key of ["requestId", "vaultId"]) if (typeof input[key] === "string" && uuid.test(input[key])) out[key] = input[key];
   if ((out.operation?.startsWith("users.") || ["vault.members", "vault.transfer-ownership", "shares.create", "shares.validateGrant"].includes(out.operation)) && typeof input.targetUsername === "string" && input.targetUsername.length > 0 && input.targetUsername.length <= 128)
@@ -69,7 +98,7 @@ function metadata(input = {}) {
     }
   }
   for (const key of ["version", "upstreamVersion", "obsidianVersion"])
-    if (typeof input[key] === "string" && input[key].length <= 128 && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(input[key])) out[key] = input[key];
+    if (isLogVersion(input[key])) out[key] = input[key];
   if (methods.has(input.method)) out.method = input.method;
   if (components.has(input.component)) out.component = input.component;
   for (const key of ["status", "durationMs", "count", "port", "schemaVersion"]) if (Number.isSafeInteger(input[key]) && input[key] >= 0 && input[key] <= 2147483647) out[key] = input[key];
@@ -208,7 +237,8 @@ function httpMiddleware(req, res, next) {
     const severity = expectedProbe || (operation === "shares.mounts" && status >= 200 && status < 300) ? "debug" : status >= 500 ? "error" : status >= 400 ? "warn" :
       operation === "oidc.callback" && req.ignisLogUsername ? "info" :
       ["auth", "oidc", "users", "shares", "vault"].includes(component) && req.method !== "GET" ? "info" : "debug";
-    emit(severity, "http.request", { ...req.ignisLogChanges, requestId, component, operation, username: req.ignisLogUsername ?? req.auth?.user?.login, attemptedUsername: req.ignisLogAttemptedUsername, targetUsername: req.ignisLogTargetUsername, vaultName: req.ignisLogVaultName, previousVaultName: req.ignisLogPreviousVaultName, method: methods.has(req.method) ? req.method : "OTHER", status, durationMs: Math.round(performance.now() - start) });
+    const clientFields = req.method === "POST" && sessionOperations.has(operation) ? sessionClient(req.headers) : {};
+    emit(severity, "http.request", { ...req.ignisLogChanges, ...clientFields, requestId, component, operation, username: req.ignisLogUsername ?? req.auth?.user?.login, attemptedUsername: req.ignisLogAttemptedUsername, targetUsername: req.ignisLogTargetUsername, vaultName: req.ignisLogVaultName, previousVaultName: req.ignisLogPreviousVaultName, method: methods.has(req.method) ? req.method : "OTHER", status, durationMs: Math.round(performance.now() - start) });
   };
   res.once("finish", complete); res.once("close", complete); requestContext.run({ requestId }, next);
 }
