@@ -26,7 +26,10 @@ export const MAX_FILE_BYTES = 512 * 1024;
 // Plugin bundles run a few MB and Obsidian needs them at boot, so priority accepts larger files than bulk.
 const PRIORITY_MAX_FILE_BYTES = 4 * 1024 * 1024;
 const BATCH_SIZE = 50;
-const BATCH_CONCURRENCY = 6; // concurrent in-flight batch-reads, to pipeline requests and hide round-trip latency
+// Shared by startup prefetch and speculative reads for this page.
+const BATCH_CONCURRENCY = 6;
+let activeBatches = 0;
+const waitingBatches = [];
 const RETRY_DELAYS_MS = [1000, 2000, 4000];
 
 // Cap a slice's file count so a vault or plugin with tens of thousands of small files cannot turn boot into one request per file.
@@ -169,7 +172,28 @@ function selectPrefetchTargets(tree, totalBudget) {
   return { priority, bulk };
 }
 
-export async function fetchBatch(vaultId, paths) {
+export function fetchBatch(vaultId, paths, { speculative = false } = {}) {
+  if (activeBatches >= BATCH_CONCURRENCY) {
+    if (speculative) return null;
+    return new Promise((resolve) => waitingBatches.push(resolve))
+      .then(() => runBatchRequest(vaultId, paths));
+  }
+
+  activeBatches++;
+  return runBatchRequest(vaultId, paths);
+}
+
+async function runBatchRequest(vaultId, paths) {
+  try {
+    return await requestBatch(vaultId, paths);
+  } finally {
+    const next = waitingBatches.shift();
+    if (next) next(); // Hand the slot directly to the next prefetch.
+    else activeBatches--;
+  }
+}
+
+async function requestBatch(vaultId, paths) {
   const res = await fetch("/api/fs/batch-read", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -177,7 +201,14 @@ export async function fetchBatch(vaultId, paths) {
   });
 
   if (!res.ok) {
-    throw new Error("batch-read failed: " + res.status);
+    const error = new Error("batch-read failed: " + res.status);
+    if (res.status === 429) {
+      const retryAfter = res.headers.get("Retry-After");
+      // This endpoint sends Retry-After as a number of seconds.
+      if (retryAfter && /^\d+$/.test(retryAfter)) error.retryAfterMs = Number(retryAfter) * 1000;
+    }
+    await res.body?.cancel();
+    throw error;
   }
 
   return res.json();
@@ -187,8 +218,8 @@ async function fetchBatchWithRetries(vaultId, paths) {
   for (const delay of RETRY_DELAYS_MS) {
     try {
       return await fetchBatch(vaultId, paths);
-    } catch {
-      await new Promise((resolve) => setTimeout(resolve, delay));
+    } catch (error) {
+      await new Promise((resolve) => setTimeout(resolve, Math.max(delay, error.retryAfterMs ?? 0)));
     }
   }
 

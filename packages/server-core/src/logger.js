@@ -21,6 +21,7 @@ const operations = new Map([
   ...["start", "link", "unlink", "reauth", "callback"].map(name => [`/api/auth/oidc/${name}`, `oidc.${name}`]),
   ...["status", "revoke-sessions", "unlink-oidc", "set-password", "reset-password", "delete"].map(name => [`/api/auth/users/${name}`, `users.${name}`]),
   ["/api/auth/users", "users.list"], ["/api/shares", "shares.manage"], ["/api/shares/content", "shares.content"],
+  ["/api/fs/batch-read", "files.batch_read"],
   ...["create", "rename", "remove", "members", "transfer-ownership", "list", "info"].map(name => [`/api/vault/${name}`, `vault.${name}`]),
 ]);
 const shareOperations = new Set(["copy", "previewRemoval", "removeConfirmed", "mounts", "destination", "rename", "create", "grants", "validateGrant", "revoke", "browse", "read", "write", "mkdir", "remove"].map(name => `shares.${name}`));

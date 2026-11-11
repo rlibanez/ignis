@@ -95,6 +95,9 @@ export function createReadAhead(metadataCache, contentCache, filePolicy = null) 
       return;
     }
 
+    const request = fetchBatch(window.__currentVaultUuid || window.__currentVaultId, paths, { speculative: true });
+    if (!request) return;
+
     roomNeededForLastSkippedBatch = 0;
     inFlightBytes += bytes;
 
@@ -102,7 +105,7 @@ export function createReadAhead(metadataCache, contentCache, filePolicy = null) 
       paths.map((p) => [p, contentCache.pathUpdates(p)]),
     );
 
-    const batch = fetchBatch(window.__currentVaultUuid || window.__currentVaultId, paths)
+    const batch = request
       .then((result) => {
         for (const [p, content] of Object.entries(result.files || {})) {
           if (typeof content === "string" && pathUpdatesBefore.has(p)) {

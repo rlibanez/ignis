@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { prefetchVaultContent } from "./indexer-prefetch.js";
 import { createReadAhead } from "./read-ahead.js";
 import { createFsPromises } from "./promises.js";
 import { MetadataCache } from "./metadata-cache.js";
@@ -9,6 +10,7 @@ const KB = 1024;
 let metadataCache;
 let contentCache;
 let batchRequests;
+let heldBatches;
 
 function file(size = 100) {
   return { type: "file", size };
@@ -25,7 +27,7 @@ function batchAnswer(init) {
 }
 
 function holdBatches() {
-  const held = [];
+  const held = heldBatches;
 
   globalThis.fetch = vi.fn((url, init) => {
     batchRequests.push(JSON.parse(init.body).paths);
@@ -46,6 +48,7 @@ beforeEach(() => {
   metadataCache = new MetadataCache();
   contentCache = new ContentCache();
   batchRequests = [];
+  heldBatches = [];
 
   globalThis.fetch = vi.fn(async (url, init) => {
     batchRequests.push(JSON.parse(init.body).paths);
@@ -53,7 +56,10 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => {
+afterEach(async () => {
+  for (const request of heldBatches) request.succeed();
+  // Let completed requests release their page-wide slots before the next test.
+  await new Promise((resolve) => setImmediate(resolve));
   delete globalThis.window;
   delete globalThis.fetch;
   vi.restoreAllMocks();
@@ -222,6 +228,29 @@ describe("readFile on a cache miss", () => {
       "own:n/missed.md",
     );
     expect(batchRequests).toEqual([["n/next.md"]]);
+  });
+
+  it("completes startup and opens an uncached note while all six background batches are held", async () => {
+    const tree = { ".obsidian/app.json": file() };
+    for (let i = 0; i < 300; i++) tree[`Note${i}.md`] = file();
+
+    const { fs, transport } = setup(tree);
+    const held = holdBatches();
+    const { priority, bulk } = prefetchVaultContent("v", tree, contentCache);
+    try {
+      expect(batchRequests).toEqual([[".obsidian/app.json"]]);
+      held[0].succeed();
+      await priority;
+      expect(contentCache.get(".obsidian/app.json")).toBe("batch:.obsidian/app.json");
+      await vi.waitFor(() => expect(held).toHaveLength(7));
+
+      await expect(fs.readFile("Note0.md", "utf8")).resolves.toBe("own:Note0.md");
+      expect(transport.readFile).toHaveBeenCalledTimes(1);
+      expect(batchRequests).toHaveLength(7);
+    } finally {
+      for (const request of held) request.succeed();
+    }
+    await bulk;
   });
 
   it("serves a note from the batch already fetching it, without its own request", async () => {

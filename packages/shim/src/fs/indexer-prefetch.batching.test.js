@@ -79,6 +79,21 @@ afterEach(() => {
 });
 
 describe("prefetchVaultContent fetching", () => {
+  it("honors Retry-After on a throttled prefetch", async () => {
+    vi.useFakeTimers();
+    globalThis.fetch.mockResolvedValueOnce(new Response(null, {
+      status: 429,
+      headers: { "Retry-After": "3" },
+    }));
+    const { bulk } = prefetchVaultContent("v", notes(1), makeCache());
+
+    await vi.advanceTimersByTimeAsync(2999);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await bulk;
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  });
+
   it("reports priority byte progress from zero up to the slice total", async () => {
     const onProgress = vi.fn();
     const result = prefetchVaultContent("v", tree, makeCache(), { onProgress });
