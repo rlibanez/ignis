@@ -160,18 +160,25 @@ export function deviceSettings(Modal, app) {
   items.push({name:t("Ignis screen theme"),searchable:false,render(row) {
     row.setDesc(t("Color mode for Ignis screens"));
     const environment = globalThis.IgnisUiEnvironment;
-    row.addButton(button => {
-      const refresh = () => button.setButtonText(t(environment.theme(window) === "dark" ? "Light mode" : "Dark mode"));
+    const select = appendUiControl(row.controlEl,"select",{cls:"dropdown",attr:{"aria-label":t("Ignis screen theme")}});
+    const dropdown = nativeComponent(select);
+    setUiOptions(select,[
+      {value:"dark",label:t("Dark")},
+      {value:"light",label:t("Light")},
+      {value:"system",label:t("Automatic")},
+    ]);
+    const refresh = () => {
+      const value = environment.themePreference(window);
+      if (dropdown) dropdown.setValue(value);
+      else select.value = value;
+    };
+    refresh();
+    select.onchange = () => {
+      const saved = environment.setTheme(window,select.value);
+      row.setDesc(t(saved ? "Color mode for Ignis screens" : "Request failed"));
+      if (saved && !window.app?.workspace) environment.applyTheme(window);
       refresh();
-      button.onClick(() => {
-        if (!environment.setTheme(window, environment.theme(window) === "dark" ? "light" : "dark")) {
-          button.setButtonText(t("Request failed"));
-          return;
-        }
-        if (!window.app?.workspace) environment.applyTheme(window);
-        refresh();
-      });
-    });
+    };
   }});
   if (android && typeof window.__ignisAndroidAppVersion === "string") {
     items.push({name:t("Ignis for Android"),searchable:false,render(row) {

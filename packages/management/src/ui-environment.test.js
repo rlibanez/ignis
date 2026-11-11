@@ -15,6 +15,10 @@ it('preserves the selected interaction mode and external theme through rotation'
  environment.applyTheme(host);
  expect(doc.body.classList.contains('is-mobile')).toBe(true);
  expect(doc.body.classList.contains('theme-light')).toBe(true);
+ expect(environment.setTheme(host,'system')).toBe(true);
+ environment.clearBrowserPreferences(host);
+ expect(environment.themePreference(host)).toBe('system');
+ expect(environment.theme(host)).toBe('dark');
  dispose();
 });
 it('uses the same startup threshold as the editor and recognizes a landscape touch device',()=>{
@@ -49,9 +53,14 @@ it('offers device settings in Android and iOS browsers, including iPad desktop u
 });
 
 it('uses Android as the source of truth when the bridge is present',()=>{
- const host={__ignisAndroidExternalTheme:'light',prompt:(action,value)=>action==='IgnisAndroid:external-theme'?value:null};
+ const host={__ignisAndroidExternalTheme:'light',__ignisAndroidSystemTheme:'light',prompt:(action,value)=>action==='IgnisAndroid:external-theme'?value:null};
  expect(environment.theme(host)).toBe('light');
  expect(environment.setTheme(host,'dark')).toBe(true);
+ expect(environment.theme(host)).toBe('dark');
+ expect(environment.setTheme(host,'system')).toBe(true);
+ expect(environment.themePreference(host)).toBe('system');
+ expect(environment.theme(host)).toBe('light');
+ host.__ignisAndroidSystemTheme='dark';
  expect(environment.theme(host)).toBe('dark');
 });
 

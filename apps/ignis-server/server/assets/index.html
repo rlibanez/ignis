@@ -98,11 +98,7 @@
     }
     if (showManager) {
       const environment = window.IgnisUiEnvironment;
-      environment.applyTheme?.(window);
-      if (environment.applyTheme) window.addEventListener("ignis:external-theme", () => {
-        if (!window.app?.workspace) environment.applyTheme(window);
-      });
-      environment.applyMode(window, environment.mode(window, { inherit: false }));
+      environment.initialize(window, { inherit: false });
       await load(uiSrc);
       document.getElementById("ignis-status")?.remove();
       window.IgnisUI.showVaultManager();

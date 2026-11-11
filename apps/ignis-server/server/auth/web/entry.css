@@ -58,10 +58,10 @@ body.ignis-entry {
 .ignis-entry #login-error { position: absolute; bottom: calc(100% - 16px); inset-inline-start: 0; z-index: 10; max-width: 100%; margin: 0; padding: 8px 12px; border-radius: var(--radius-s, 4px); background: var(--background-secondary); border: 1px solid var(--text-error); color: var(--text-error); box-shadow: var(--shadow-s); font-size: var(--font-ui-small, 13px); }
 .ignis-entry .account-button { display: flex; align-items: center; justify-content: center; text-decoration: none; }
 .ignis-entry a.account-button { margin-top: 12px; min-height: var(--input-height, 30px); border-radius: var(--button-radius, 5px); background: var(--interactive-normal); color: var(--text-normal); box-shadow: var(--input-shadow); }
-.ignis-entry .ignis-language { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 24px; color: var(--text-muted); font-size: var(--font-ui-small, 13px); }
+.ignis-entry .ignis-language { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 24px; color: var(--text-muted); font-size: var(--font-ui-small, 13px); }
 /* CSS chevrons work under the entry pages' self-only image policy. */
-.ignis-entry .ignis-language-dropdown { position: relative; margin: 0; max-width: 60%; }
-.ignis-entry .ignis-language select { width: auto; padding-inline-end: 36px; }
+.ignis-entry .ignis-language-dropdown { position: relative; margin: 0; max-width: 100%; }
+.ignis-entry .ignis-language select { width: auto; max-width: 100%; padding-inline-end: 36px; }
 .ignis-language-dropdown::before, .ignis-language-dropdown::after {
   content: ""; position: absolute; z-index: 1; inset-inline-end: 14px;
   width: 5px; height: 5px; border: solid currentColor; border-width: 0 1.5px 1.5px 0;

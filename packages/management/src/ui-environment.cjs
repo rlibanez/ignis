@@ -50,14 +50,21 @@
  function mobile(host, options) { return mode(host, options) !== 'desktop'; }
  const themeKey = 'ignis:external-theme';
  const themeStorage = host => host === globalThis && storage ? storage : host.localStorage;
- const validTheme = value => value === 'light' || value === 'dark';
- function theme(host) {
+ const validTheme = value => value === 'light' || value === 'dark' || value === 'system';
+ function themePreference(host) {
   if (validTheme(host.__ignisAndroidExternalTheme)) return host.__ignisAndroidExternalTheme;
   try {
    const value = themeStorage(host)?.getItem(themeKey);
    if (validTheme(value)) return value;
   } catch { /* Storage is optional. */ }
   return 'dark';
+ }
+ function theme(host) {
+  const selected = themePreference(host);
+  if (selected !== 'system') return selected;
+  const native = host.__ignisAndroidSystemTheme;
+  if (native === 'light' || native === 'dark') return native;
+  return host.matchMedia?.('(prefers-color-scheme: light)')?.matches ? 'light' : 'dark';
  }
  function applyTheme(host) {
   const selected = theme(host);
@@ -97,18 +104,21 @@
   for (const [key,value] of savedTrust) local.setItem(key,value);
   if (validTheme(selected)) preferences.setItem(themeKey,selected);
  }
- function initialize(host) {
-  applyMode(host,mode(host));
-  const apply=()=>applyTheme(host);
+ function initialize(host, options) {
+  applyMode(host,mode(host,options));
+  const apply=()=>{ if (!host.app?.workspace) applyTheme(host); };
+  const systemTheme=host.matchMedia?.('(prefers-color-scheme: light)');
+  systemTheme?.addEventListener?.('change',apply);
   apply();
   host.addEventListener?.('ignis:external-theme',apply);
   host.addEventListener?.('storage',apply);
   return ()=>{
    host.removeEventListener?.('ignis:external-theme',apply);
    host.removeEventListener?.('storage',apply);
+   systemTheme?.removeEventListener?.('change',apply);
   };
  }
- const api={sessionClientHeaders,mobile,mode,applyMode,initialize,hasWebDeviceSettings,webPreference,setWebPreference,theme,applyTheme,setTheme,clearBrowserPreferences};
+ const api={sessionClientHeaders,mobile,mode,applyMode,initialize,hasWebDeviceSettings,webPreference,setWebPreference,themePreference,theme,applyTheme,setTheme,clearBrowserPreferences};
  if(typeof module!=='undefined')module.exports=api;
  else globalThis.IgnisUiEnvironment=api;
 })();

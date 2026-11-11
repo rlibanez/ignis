@@ -446,6 +446,8 @@
   "Sign in to continue. Your incoming content stays on this device.": "Inicia sesión para continuar. El contenido recibido permanece en este dispositivo.",
   "Ignis screen theme": "Tema propio de Ignis",
   "Color mode for Ignis screens": "Modo de las pantallas propias de Ignis",
+  "Dark": "Oscuro",
+  "Light": "Claro",
   "Light mode": "Modo claro",
   "Dark mode": "Modo oscuro",
   "Toggle Ignis screen theme": "Alternar el tema de las pantallas de Ignis",

@@ -45,13 +45,24 @@ try {
    for(const theme of ['light','dark']) {
     await client.call('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:theme}]});
     await client.call('Page.navigate',{url:origin+'/login'});
-    await client.wait(`location.pathname==='/login' && !!document.querySelector('.ignis-language button')`,'theme selector alongside language');
+    await client.wait(`location.pathname==='/login' && !!document.querySelector('[data-ignis-theme]')`,'theme selector alongside language');
     assert.equal(await client.run(`(()=>{
      const dropdown=document.querySelector('.ignis-language-dropdown');
      return !!dropdown?.querySelector('select') && getComputedStyle(dropdown,'::after').content!=='none';
     })()`),true,'language selector shows its chevrons');
 
-    await client.run(`if(IgnisUiEnvironment.theme(window)!=='${theme}')document.querySelector('.ignis-language button').click();`);
+    await client.run(`(()=>{
+     const select=document.querySelector('[data-ignis-theme]');
+     select.value='system'; select.dispatchEvent(new Event('change'));
+    })()`);
+    await client.wait(`document.body.classList.contains('theme-${theme}')`,'system theme applies');
+    const opposite=theme==='dark'?'light':'dark';
+    await client.call('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:opposite}]});
+    await client.wait(`document.body.classList.contains('theme-${opposite}')`,'system theme updates live');
+    await client.run(`(()=>{
+     const select=document.querySelector('[data-ignis-theme]');
+     select.value='${theme}'; select.dispatchEvent(new Event('change'));
+    })()`);
     await client.wait(`document.body.classList.contains('theme-${theme}')`,'chosen theme applies immediately');
 
     for(const page of ['setup','login','reset-password','share-target']) {
@@ -140,10 +151,10 @@ try {
       await client.call('Input.insertText',{text:'focus-check'});
       assert.equal(await client.run('document.activeElement.value'),'focus-check','typing reaches the focused field');
       assert.equal(await client.run(`(()=>{
-       const field=document.activeElement,button=document.querySelector('.ignis-language button');
-       button.click();
-       const changed=IgnisUiEnvironment.theme(window)!=='${theme}';
-       button.click();
+       const field=document.activeElement,select=document.querySelector('[data-ignis-theme]');
+       select.value='${opposite}'; select.dispatchEvent(new Event('change'));
+       const changed=IgnisUiEnvironment.theme(window)==='${opposite}';
+       select.value='${theme}'; select.dispatchEvent(new Event('change'));
        return changed && IgnisUiEnvironment.theme(window)==='${theme}' && field.value==='focus-check';
       })()`),true,'changing the entry theme preserves the typed form values');
 
