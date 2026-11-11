@@ -75,7 +75,20 @@
  function clearBrowserPreferences(host) {
   const preferences = themeStorage(host);
   const selected = preferences.getItem(themeKey);
-  host.localStorage.clear();
+  const local = host.localStorage;
+  const account = host.__ignisAuth?.userId;
+  // Obsidian stores these choices through the account facade. The login page
+  // sees the same keys with their backing account prefix.
+  const savedTrust = [];
+  for (let index = 0; index < local.length; index++) {
+   const key = local.key(index);
+   const match = /^(?:ignis-account-v1:([^:]+):)?enable-plugin-ignis-v1:([^:]+):[^:]+$/.exec(key);
+   if (!match || (match[1] ?? (account && encodeURIComponent(account))) !== match[2]) continue;
+   const value = local.getItem(key);
+   if (value === 'true' || value === 'false') savedTrust.push([key,value]);
+  }
+  local.clear();
+  for (const [key,value] of savedTrust) local.setItem(key,value);
   if (validTheme(selected)) preferences.setItem(themeKey,selected);
  }
  function initialize(host) {

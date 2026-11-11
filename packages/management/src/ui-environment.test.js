@@ -54,3 +54,24 @@ it('uses Android as the source of truth when the bridge is present',()=>{
  expect(environment.setTheme(host,'dark')).toBe(true);
  expect(environment.theme(host)).toBe('dark');
 });
+
+it.each([
+ ['raw',null,'ignis-account-v1:alice:'],
+ ['scoped','alice',''],
+])('keeps only valid account-and-vault plugin decisions when clearing %s storage',(_kind,account,prefix)=>{
+ const trusted=prefix+'enable-plugin-ignis-v1:alice:vault-a';
+ const restricted=prefix+'enable-plugin-ignis-v1:alice:vault-b';
+ const data=new Map([[trusted,'true'],[restricted,'false'],
+  [prefix+'enable-plugin-ignis-v1:bob:vault-a','true'],
+  [prefix+'enable-plugin-ignis-v1:alice:vault-c','invalid'],
+  ['enable-plugin-Legacy','true'],['workspace','private']]);
+ const localStorage={
+  get length(){return data.size;},
+  key:index=>[...data.keys()][index],
+  getItem:key=>data.get(key),
+  setItem:(key,value)=>data.set(key,value),
+  clear:()=>data.clear(),
+ };
+ environment.clearBrowserPreferences({localStorage,__ignisAuth:{userId:account}});
+ expect([...data]).toEqual([[trusted,'true'],[restricted,'false']]);
+});
