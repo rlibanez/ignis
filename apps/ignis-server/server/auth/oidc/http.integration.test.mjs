@@ -27,7 +27,8 @@ let idp,
   server,
   port,
   tokenRequests,
-  callbackClaims;
+  callbackClaims,
+  callbackLogFields;
 const codes = new Map();
 let providerUnavailable = false, discoveryRequests = 0;
 beforeAll(async () => {
@@ -157,6 +158,13 @@ beforeEach(async () => {
   expect(discoveryRequests).toBe(0);
   providerUnavailable = false;
   const app = express();
+  callbackLogFields = undefined;
+  app.use((req, res, next) => {
+    if (req.path === "/api/auth/oidc/callback") res.once("finish", () => {
+      callbackLogFields = { ...req.ignisLogChanges, username: req.ignisLogUsername };
+    });
+    next();
+  });
   boundary.install(app);
   app.get("/api/vault/list", (_req, res) => res.json([]));
   app.get("/", (_req,res)=>res.type("html").send("<!doctype html><title>Ignis</title>"));
@@ -209,11 +217,12 @@ async function request(route, jar = {}, method = "GET", body, extra = {}) {
     req.end(body ? JSON.stringify(body) : undefined);
   });
 }
-async function post(route, jar, body = {}) {
+async function post(route, jar, body = {}, extra = {}) {
   const csrf = (await request("/api/auth/csrf", jar)).json().csrfToken;
   return request(route, jar, "POST", body, {
     origin: ORIGIN,
     "x-ignis-csrf": csrf,
+    ...extra,
   });
 }
 function providerCallback(authorizationUrl) {
@@ -235,13 +244,19 @@ function providerCallback(authorizationUrl) {
 it("performs cross-site callback, provisions a normal account and sets only an opaque session cookie", async () => {
   const jar = {};
   expect((await request("/api/auth/status")).json().oidcAvailable).toBe(true);
-  const start = await post("/api/auth/oidc/start", jar);
+  const start = await post("/api/auth/oidc/start", jar, {}, {
+    "user-agent": "Chrome/140.0",
+    "x-ignis-display-mode": "standalone",
+  });
   expect(start.status).toBe(200);
   const callback = providerCallback(start.json().authorizationUrl);
   const result = await request(callback, jar, "GET", undefined, {
     "sec-fetch-site": "cross-site",
+    "user-agent": "Firefox/140.0",
   });
   expect(result.status).toBe(303);
+  const session = (await request("/api/auth/session", jar)).json();
+  expect(callbackLogFields).toEqual({ client: "pwa", browser: "chrome", username: session.user.login });
   expect(result.headers.location).toBe("/");
   const landing = await request(result.headers.location, jar, "GET", undefined, {
     "sec-fetch-site": "cross-site",

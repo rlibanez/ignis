@@ -422,7 +422,8 @@ it('streams plugin code and assets above the small JSON preference limit',async(
  const bytes=Buffer.alloc(1024*1024+1,65),scope=service.scope('alice');
  const start=await scope.begin({name:'LargePlugin',configuration:false,restore:'plugins',files:[{path:'.obsidian/plugins/demo/main.js',size:bytes.length}]});
  await scope.put(start.id,0,bytes);await scope.commit(start.id);
- expect(fs.readFileSync(path.join(root,'alice/LargePlugin/.obsidian/plugins/demo/main.js'))).toEqual(bytes);
+ const restored=fs.readFileSync(path.join(root,'alice/LargePlugin/.obsidian/plugins/demo/main.js'));
+ expect(restored.equals(bytes),'restored plugin bytes must match the upload').toBe(true);
 });
 it('rejects unknown restore modes and malformed enabled-plugin lists before publication',async()=>{
  aliceRole='admin';

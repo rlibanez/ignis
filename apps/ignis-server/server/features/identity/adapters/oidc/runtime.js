@@ -115,7 +115,7 @@ async function createOidcRuntime(
         .prepare("SELECT 1 FROM oidc_identities WHERE user_id=? AND issuer=?")
         .get(userId, config.issuer);
     },
-    async begin(kind, sessionToken, cookie, {rememberMe = false} = {}) {
+    async begin(kind, sessionToken, cookie, {rememberMe = false, clientInfo} = {}) {
       purge();
       if (pending.size >= 1000 || !["login", "link", "reauth", "password", "email"].includes(kind))
         throw new Error("OIDC unavailable");
@@ -139,6 +139,7 @@ async function createOidcRuntime(
       pending.set(key(new URL(result.url).searchParams.get("state")), {
         kind,
         rememberMe: kind === "login" && rememberMe === true,
+        clientInfo: kind === "login" ? clientInfo : undefined,
         sessionId,
         browser: key(bindingCookie.read(result.cookie)),
         until: Date.now() + 300000,
@@ -188,7 +189,7 @@ async function createOidcRuntime(
                 entry.sessionId ===
                   (sessions.resolve(sessionToken)?.id ?? null),
             });
-      return { authentication: result, kind: entry.kind, rememberMe: entry.rememberMe };
+      return { authentication: result, kind: entry.kind, rememberMe: entry.rememberMe, clientInfo: entry.clientInfo };
     },
     clear() {
       closed = true;

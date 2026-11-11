@@ -111,7 +111,7 @@ function createIdentity({store,sessions,getOidc,config,now,verifyPassword}) {
     logout(token,rememberToken) {sessions.forget(rememberToken);sessions.revoke(token);},
     remembered:token=>sessions.remembered(token),
     remember,
-    async beginOidc(kind,token,binding,{sessionId,rememberMe=false}={}) {
+    async beginOidc(kind,token,binding,{sessionId,rememberMe=false,clientInfo}={}) {
       if(!store.initialized())fail('OIDC_UNAVAILABLE');
       if(!['login','link','reauth','password','email'].includes(kind))fail('OIDC_UNAVAILABLE');
       const oidc=provider(),session=sessions.resolve(token);
@@ -121,7 +121,7 @@ function createIdentity({store,sessions,getOidc,config,now,verifyPassword}) {
         if(!recentlyAuthenticated(session,now()))fail('REAUTH_REQUIRED');
       }
       const isCurrent=session?guard(token,session.id,{admin:kind==='reauth',recent:kind==='link'}):null;
-      const result=await oidc.begin(kind,token,binding,{rememberMe:kind==='login' && rememberMe===true});
+      const result=await oidc.begin(kind,token,binding,{rememberMe:kind==='login' && rememberMe===true,clientInfo});
       if(isCurrent && !isCurrent())fail('SESSION_CHANGED');
       return result;
     },

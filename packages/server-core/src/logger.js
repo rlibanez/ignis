@@ -44,7 +44,7 @@ function isLogVersion(value) {
 function sessionClient(headers) {
   const userAgent = typeof headers?.["user-agent"] === "string" ? headers["user-agent"] : "";
   const android = /(?:^|\s)IgnisAndroid\/([^\s]*)/.exec(userAgent);
-  if (android) return { client: "android_app", clientVersion: android[1] };
+  if (android) return { client: "android_app", clientVersion: isLogVersion(android[1]) ? android[1] : undefined };
 
   const browser = browserFamilies.find(([, pattern]) => pattern.test(userAgent))?.[0];
   if (headers?.["x-ignis-display-mode"] === "standalone") return { client: "pwa", browser };
@@ -71,7 +71,7 @@ function readLogConfig(env = process.env) {
 function metadata(input = {}) {
   const out = {};
   if (operationNames.has(input.operation)) out.operation = input.operation;
-  if (sessionOperations.has(out.operation) && clientTypes.has(input.client)) {
+  if ((sessionOperations.has(out.operation) || out.operation === "oidc.callback") && clientTypes.has(input.client)) {
     out.client = input.client;
     if (input.client === "android_app" && isLogVersion(input.clientVersion)) out.clientVersion = input.clientVersion;
     if (input.client === "pwa" && browserNames.has(input.browser)) out.browser = input.browser;
@@ -242,4 +242,4 @@ function httpMiddleware(req, res, next) {
   };
   res.once("finish", complete); res.once("close", complete); requestContext.run({ requestId }, next);
 }
-module.exports = { formatLogTime, createLogger, readLogConfig, configure, emit, close, httpMiddleware };
+module.exports = { formatLogTime, createLogger, readLogConfig, configure, emit, close, httpMiddleware, sessionClient };

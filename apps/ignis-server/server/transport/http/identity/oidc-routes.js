@@ -1,3 +1,5 @@
+const {emit, sessionClient} = require("@ignis/server-core/src/logger");
+
 function createRoutes({identity,config,csrf,limits,cookies,rememberCookies,safe,originAllowed,initialized,sweepSockets,now}) {
   return async function handle(req,res,pathname,session) {
     const token=cookies.read(req.headers.cookie);
@@ -21,6 +23,7 @@ function createRoutes({identity,config,csrf,limits,cookies,rememberCookies,safe,
         );
         sweepSockets();
         req.ignisLogUsername = authentication.session.user.login;
+        if (result.kind === "login") req.ignisLogChanges = result.clientInfo;
         return res.redirect(
           303,
           result.kind === "email" ? "/?manage=email" : result.kind === "password" ? "/?manage=password" : result.kind === "reauth" ? "/?manage=users&reauth=success" : result.kind === "link"
@@ -29,7 +32,7 @@ function createRoutes({identity,config,csrf,limits,cookies,rememberCookies,safe,
         );
       } catch {
         // Never render provider errors, code, state, URLs or claims.
-        require("@ignis/server-core/src/logger").emit("warn", "oidc.callback_failed", {requestId:req.ignisRequestId});
+        emit("warn", "oidc.callback_failed", {requestId:req.ignisRequestId});
         return res.redirect(303, "/login?oidc=failed");
       }
     }
@@ -45,7 +48,7 @@ function createRoutes({identity,config,csrf,limits,cookies,rememberCookies,safe,
       if (req.body?.rememberMe !== undefined && typeof req.body.rememberMe !== "boolean") return safe(res,400,"Invalid remember preference");
       const kind = pathname.endsWith("/reauth") ? (["password","email"].includes(req.body?.purpose) ? req.body.purpose : "reauth") : pathname.endsWith("/link") ? "link" : "login";
       try {
-        const result=await identity.beginOidc(kind,token,req.headers.cookie,{sessionId:req.headers["x-ignis-context"],rememberMe:req.body?.rememberMe});
+        const result=await identity.beginOidc(kind,token,req.headers.cookie,{sessionId:req.headers["x-ignis-context"],rememberMe:req.body?.rememberMe, clientInfo:kind === "login" ? sessionClient(req.headers) : undefined});
         csrf.consume(req);
         res.append("Set-Cookie", result.cookie);
         return res.json({ authorizationUrl: result.url });

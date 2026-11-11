@@ -240,3 +240,18 @@ it.each([
  expect(record.clientVersion).toBe(clientVersion);
  expect(JSON.stringify(record)).not.toMatch(/SECRET|140\.0|IgnisAndroid/);
 });
+
+it('logs the originating OIDC client even when the callback uses a different browser', () => {
+ const {root,logger}=fixture();logger.close();
+ const next=logging.configure({dataRoot:root,stdout:stream(),stderr:stream()});
+ const req={method:'GET',url:'/api/auth/oidc/callback?code=SECRET',headers:{'user-agent':'Firefox/140.0'}};
+ const res=new EventEmitter();res.setHeader=()=>{};res.writableFinished=true;res.statusCode=303;
+ logging.httpMiddleware(req,res,()=>{
+  req.ignisLogUsername='roberto';
+  req.ignisLogChanges=logging.sessionClient({'user-agent':'Chrome/140.0 SECRET-AGENT','x-ignis-display-mode':'standalone'});
+ });
+ res.emit('finish');next.flush();
+ const [record]=records(root);
+ expect(record).toMatchObject({operation:'oidc.callback',username:'roberto',client:'pwa',browser:'chrome'});
+ expect(JSON.stringify(record)).not.toMatch(/SECRET|140\.0/);
+});
