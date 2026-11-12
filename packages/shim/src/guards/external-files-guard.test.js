@@ -43,9 +43,10 @@ function fakeApp(commandIds) {
   };
 }
 
-function fakeDrag(type, selectors) {
+function fakeDrag(type, selectors, types = ["Files"]) {
   return {
     type,
+    dataTransfer: { types, files: [] },
     target: {
       closest: (selector) => (selectors.includes(selector) ? {} : null),
     },
@@ -149,6 +150,19 @@ describe("installExternalFilesOverrides", () => {
 
     expect(event.defaultPrevented).toBe(false);
     expect(event.propagationStopped).toBe(false);
+    expect(obsidian.notices).toEqual([]);
+  });
+
+  it.each([[[]], [["text/plain"]]])("lets tabs reorder without a registered Obsidian drag (%j)", (types) => {
+    const obsidian = fakeObsidian();
+    installExternalFilesOverrides(obsidian, fakeApp([]));
+
+    for (const type of ["dragenter", "dragover", "drop"]) {
+      const event = dispatch(fakeDrag(type, [".workspace-tab-header-container"], types));
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(event.propagationStopped).toBe(false);
+    }
     expect(obsidian.notices).toEqual([]);
   });
 

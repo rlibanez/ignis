@@ -9,7 +9,10 @@ const TAB_BAR = ".workspace-tab-header-container";
 const DRAG_EVENTS = ["dragenter", "dragover", "drop"];
 
 function refuseOutsideDragOnTabBar(app, e, showNotice) {
-  const fromOutside = !app.dragManager.draggable;
+  // Tab reordering can use HTML drag events without setting dragManager.draggable.
+  // The browser exposes the Files type even before the file list is readable.
+  const fromOutside = !app.dragManager.draggable &&
+    Array.from(e.dataTransfer?.types ?? []).includes("Files");
   const onTabBar = !!e.target?.closest?.(TAB_BAR);
 
   if (!fromOutside || !onTabBar) {
