@@ -553,6 +553,7 @@ function createAuthBoundary({
           return result;
         };
         req.exportVault=(reference,configuration,signal,plugins)=>services.vaultExport.prepare(cookies.read(req.headers.cookie),reference,configuration,signal,plugins);
+        req.exportVaults=(selections,signal)=>services.vaultExport.prepareMany(cookies.read(req.headers.cookie),selections,signal);
         req.vaultView=scope.view;
         req.canReadVault=directory=>req.authorizeVaultFile(directory,"content.list","");
         req.vaultOwners=scope.owners;

@@ -4,6 +4,8 @@ export function installUiLayout(document=globalThis.document) {
   const style=document.createElement('style');style.id='ignis-ui-layout';
   style.textContent=`
 body:has(.vault-manager-overlay) .modal-container:has(.ignis-ui-form,.ignis-ui-list,.ignis-management-root,.ignis-shell-settings){z-index:calc(100000 + var(--layer-modal,50))}
+/* Obsidian mounts tooltips on the body, outside the elevated management modal. */
+body:has(.vault-manager-overlay .modal-shell):has(.modal.ignis-ui-form) > .tooltip{z-index:calc(100000 + var(--layer-modal,50) + 1)}
 .notice-container.ignis-management-notices{z-index:calc(100000 + var(--layer-notice,60))}
 .modal.ignis-ui-form{width:var(--modal-width,90vw);max-width:min(400px,calc(100vw - 32px));height:auto}
 .modal.ignis-ui-list{width:var(--modal-width,90vw);max-width:var(--modal-max-width,1100px)}

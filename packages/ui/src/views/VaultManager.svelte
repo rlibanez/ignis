@@ -61,6 +61,7 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
   $: deleteMessage = targetVault
     ? translateIgnis('Are you sure you want to delete "{p0}"?', {p0: targetVault.name})
     : "";
+  $: ownedVaults = vaults.filter(vault => vault.membership === "owner" && vault.uuid);
   $: filteredVaults = searchQuery
     ? vaults.filter((v) =>
         v.name.toLowerCase().includes(searchQuery.toLowerCase()),
@@ -312,6 +313,9 @@ const translateIgnis = (message, values = {}) => globalThis.IgnisI18n?.t(message
       {/if}
       {#if window.__ignisAuth?.sessionId && !window.__ignisAuth?.blocked}
         <Button variant="ghost" on:click={openVaultImport}>{translateIgnis("Import vault")}</Button>
+        {#if ownedVaults.length > 0}
+          <Button variant="ghost" on:click={() => openVaultExport(ownedVaults)}>{translateIgnis("Export vaults")}</Button>
+        {/if}
       {/if}
       <Button variant="ghost" on:click={showCreateDialog}>
         <svelte:fragment slot="icon">

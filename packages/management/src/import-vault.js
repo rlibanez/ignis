@@ -4,10 +4,26 @@ import {appendUiControl,setUiOptions} from "./ui-controls.js";
 import {createManagementClient} from './client.js';
 import {readDirectory,directoryFromDrop,folderFromFiles,zipFromDrop} from './folder-source.js';
 import {createExclusionsModal} from './import-exclusions.js';
+import {nativeTooltip} from "../../shim/src/native-tooltip.js";
 const t=text=>globalThis.IgnisI18n?.t(text)??text;
 const preferencesHint=role=>t(role==='admin'
  ?'May include themes, CSS snippets, hotkeys, workspaces and graph settings.'
  :'May include app settings, hotkeys and graph settings.');
+const restorePermissionHint='Permission to install community plugins is required to restore them.';
+function helpButton(heading,text){
+ const button=appendUiControl(heading,'button',{type:'button',text:'?',cls:'ignis-password-help'});
+ nativeTooltip(window,button,text,{help:true});
+ return button;
+}
+function preferencesCheckbox(parent,role){
+ const group=parent.createDiv({cls:'ignis-transfer-option'});
+ const heading=group.createDiv({cls:'ignis-password-heading'});
+ const label=heading.createEl('label',{cls:'ignis-import-enable'});
+ const checkbox=appendUiControl(label,'input',{type:'checkbox'});
+ label.createSpan({text:t('Import Obsidian preferences')});
+ helpButton(heading,preferencesHint(role));
+ return checkbox;
+}
 export function createImportModal(Modal,Notice){
  const ExclusionsModal=createExclusionsModal(Modal);
  return class ImportModal extends Modal{
@@ -48,9 +64,8 @@ export function createImportModal(Modal,Notice){
    this.pages[0].createEl('p',{text:t('Maximum: 10000 files and folders, 512 MiB per file, 4 GiB total; ZIP upload up to 1 GiB.')});
    this.singleOptions=this.pages[1].createDiv();this.detectedOptions=this.pages[1].createDiv({cls:'ignis-import-detected'});this.sourceDetails=this.pages[1].createEl('p',{cls:'setting-item-description'});this.outsideLink=this.pages[1].createEl('a',{attr:{href:'#'}});this.outsideLink.addEventListener('click',event=>{event.preventDefault();this.openExclusions(null,this.sourceStage.outside);});
    this.name=appendUiControl(field(this.singleOptions,'Vault name'),"input",{type:"text"});this.name.required=true;this.name.maxLength=255;this.name.addEventListener('input',()=>this.name.setCustomValidity(''));
-   const preferenceGroup=this.singleOptions.createDiv({cls:'ignis-transfer-option'});
-   const preferences=preferenceGroup.createEl('label',{cls:'ignis-import-enable'});this.configuration=appendUiControl(preferences,"input",{type:"checkbox"});preferences.createSpan({text:t('Import Obsidian preferences')});this.configuration.addEventListener('change',()=>{const plan=this.plans[0];if(plan){plan.configuration=this.configuration.checked;if(!plan.configuration)plan.selected=[];plan.review=null;}});
-   preferenceGroup.createEl('p',{cls:'setting-item-description',text:preferencesHint(this.session.role)});
+   this.configuration=preferencesCheckbox(this.singleOptions,this.session.role);
+   this.configuration.addEventListener('change',()=>{const plan=this.plans[0];if(plan){plan.configuration=this.configuration.checked;if(!plan.configuration)plan.selected=[];plan.review=null;}});
    this.restore=this.restoreSelector(this.singleOptions,()=>this.plans[0]);
    this.review=this.pages[2].createEl('p');this.review.style.whiteSpace='pre-line';this.reviewSummary=this.review.createSpan();
    this.excludedLink=this.review.createEl('a',{attr:{href:'#','aria-haspopup':'dialog','data-import-exclusions':''}});
@@ -64,8 +79,12 @@ export function createImportModal(Modal,Notice){
   }
   restoreSelector(parent,getPlan){
    const group=parent.createDiv({cls:'ignis-transfer-option'});
-   const label=group.createEl('label',{cls:'ignis-password-field',text:t('Community add-ons')});
-   const select=appendUiControl(label,"select",{cls:'dropdown',attr:{'data-import-restore':''}});
+   const field=group.createDiv({cls:'ignis-password-field'});
+   const heading=field.createDiv({cls:'ignis-password-heading'});
+   const title=t('Community add-ons');
+   heading.createSpan({text:title});
+   helpButton(heading,t(restorePermissionHint));
+   const select=appendUiControl(field,"select",{cls:'dropdown',attr:{'data-import-restore':'','aria-label':title}});
    setUiOptions(select,[
     {value:'none',label:t('Do not restore')},
     {value:'plugins',label:t('Restore without configuration'),disabled:true},
@@ -76,16 +95,15 @@ export function createImportModal(Modal,Notice){
     plan.restore=select.value;plan.review=null;
     this.show();
    });
-   group.createEl('p',{cls:'setting-item-description',text:t('Permission to install community plugins is required to restore them.')});
    return select;
   }
   updateRestoreSelector(select, disabled){
    const allowed=this.sourceStage?.canRestorePlugins===true;
    select.disabled=disabled||!allowed;
    for(const option of select.options)option.disabled=option.value!=='none'&&!allowed;
-   select.closest('.ignis-transfer-option').querySelector('.setting-item-description').textContent=t(allowed
+   select.closest('.ignis-transfer-option').querySelector('.ignis-password-help').setAttribute('aria-label',t(allowed
     ?'Add-ons restored without configuration start disabled. Restoring with configuration also restores their data and activation state.'
-    :'Permission to install community plugins is required to restore them.');
+    :restorePermissionHint));
   }
   setSelection(name,vaultName,description){this.selection=name;this.name.value=vaultName;this.selectedName.textContent=name;this.selectedCounts.textContent=description;this.selected.hidden=false;this.show();}
   setZip(file){this.zipFile=file;this.setSelection(file.name,file.name.replace(/\.zip$/i,''),(file.size/1048576).toFixed(1)+' MiB');}
@@ -142,10 +160,9 @@ export function createImportModal(Modal,Notice){
     const row=this.detectedOptions.createDiv({cls:'ignis-import-vault'}),enable=row.createEl('label',{cls:'ignis-import-enable'}),check=appendUiControl(enable,"input",{attr:{type:'checkbox'}});check.checked=true;enable.createEl('strong',{text:plan.root});
     const name=appendUiControl(row.createEl('label',{cls:'ignis-password-field',text:t('Vault name')}),"input",{type:"text"});name.value=plan.name;name.maxLength=255;name.required=true;plan.input=name;plan.check=check;
     name.addEventListener('input',()=>{plan.name=name.value;name.setCustomValidity('');});
-    const preferenceGroup=row.createDiv({cls:'ignis-transfer-option'});
-    const label=preferenceGroup.createEl('label',{cls:'ignis-import-enable'}),config=appendUiControl(label,"input",{attr:{type:'checkbox'}});plan.configInput=config;label.createSpan({text:t('Import Obsidian preferences')});
+    const config=preferencesCheckbox(row,this.session.role);
+    plan.configInput=config;
     config.addEventListener('change',()=>{plan.configuration=config.checked;if(!config.checked)plan.selected=[];plan.review=null;});
-    preferenceGroup.createEl('p',{cls:'setting-item-description',text:preferencesHint(this.session.role)});
     plan.restoreInput=this.restoreSelector(row,()=>plan);
     check.addEventListener('change',()=>{plan.enabled=check.checked;name.disabled=config.disabled=!check.checked;this.show();});
    }

@@ -1749,6 +1749,25 @@ it("exports a normal owner's vault with CSRF, without granting export to readers
  expect((await request("/api/vault/export",{jar:user,method:"POST",headers,body})).status).toBe(404);
 });
 
+it("downloads an owner-only multi-vault ZIP through the authenticated export route",async()=>{
+ const {registerExistingVault}=require("./fixtures/vault.cjs");
+ const first=registerExistingVault(db,root,"vault","normal");
+ fs.mkdirSync(path.join(root,"Second"));
+ fs.writeFileSync(path.join(root,"Second","Note.md"),"second");
+ const second=registerExistingVault(db,root,"Second","normal");
+ const user=await login("normal"),headers={"x-ignis-csrf":await csrf(user)};
+ const vaults=[first,second].map(({id})=>({vault:id,configuration:false,plugins:false}));
+ const body={vaults};
+ expect((await request("/api/vault/export",{jar:user,method:"POST",body})).status).toBe(403);
+ const reply=await request("/api/vault/export",{jar:user,method:"POST",headers,body});
+ expect(reply.status,await reply.text()).toBe(200);
+ expect(reply.headers.get("content-disposition")).toContain("Ignis-vaults.zip");
+ const {readZip}=require("../features/vaults/adapters/import-zip");
+ expect(readZip(reply.bytes).map(entry=>entry.path)).toEqual(expect.arrayContaining(["vault/note.md","Second/Note.md"]));
+ db.prepare("UPDATE memberships SET role='reader' WHERE vault_id=? AND user_id='normal'").run(second.id);
+ expect((await request("/api/vault/export",{jar:user,method:"POST",headers,body})).status).toBe(404);
+});
+
 it("acknowledges cancellation during an import file write and removes the draft when it settles",async()=>{
  const user=await login("normal"),headers={"x-ignis-csrf":await csrf(user)};
  const start=await request('/api/vault/import/start',{jar:user,method:'POST',headers,body:{name:'Cancelled',configuration:false,files:[{path:'Note.md',size:5}]}});

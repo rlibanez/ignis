@@ -19,6 +19,15 @@ export async function vaultExportUi(client,vault,{native,file=native?'Note.md':'
   assert.equal(layout.overflow,false);assert.ok(layout.left>=0&&layout.top>=0);
   if(process.argv.includes('--mobile')){if(process.argv.includes('--tablet'))assert.ok(Math.abs(layout.top-(layout.viewport-layout.height)/2)<=2,'tablet export is centered');else assert.ok(layout.top<=2,'export sheet starts at the phone safe-area top: '+JSON.stringify({native,layout}));assert.ok(layout.buttons[1].y<layout.buttons[0].y,'mobile action precedes cancel');assert.ok(layout.buttons.every(b=>b.width>300),'mobile full width');}
   else assert.ok(layout.width<=500,'native form width');
+  for(const [index,label] of ['themes','activation state'].entries()){
+   await client.run(`document.querySelectorAll('.ignis-export-options .ignis-password-help')[${index}].click()`);
+   await client.wait(`[...document.querySelectorAll('.tooltip')].some(el=>el.textContent.includes(${JSON.stringify(label)})&&el.getClientRects().length)`,'export option tooltip');
+   assert.ok(await client.run(`(()=>{
+    const tip=[...document.querySelectorAll('.tooltip')].find(el=>el.textContent.includes(${JSON.stringify(label)})&&el.getClientRects().length);
+    const container=document.querySelector('.ignis-export-options').closest('.modal-container');
+    return container.contains(tip) || Number(getComputedStyle(tip).zIndex)>Number(getComputedStyle(container).zIndex);
+   })()`),'export option tooltip is above its modal');
+  }
   const {data}=await client.call('Page.captureScreenshot',{format:'png'});fs.writeFileSync('/tmp/ignis-export-'+(native?'native':'shell')+'-'+(process.argv.includes('--mobile')?'mobile':'desktop')+'.png',Buffer.from(data,'base64'));
   await client.run(`{const root=document.querySelector('.ignis-export-options').closest('.modal');for(const checkbox of root.querySelectorAll('input[type=checkbox]'))checkbox.checked=true;root.querySelector('.mod-cta').click();}`);
   await client.wait(`!document.querySelector('.ignis-export-options')`,'export download finished');

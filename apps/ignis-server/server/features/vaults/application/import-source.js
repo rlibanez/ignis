@@ -1,4 +1,5 @@
 const {manifest,fail}=require('./import-policy');
+const {maxVaults}=require('./transfer-policy');
 // Validate the entire source before partitioning it. Limits and path aliases
 // cannot be bypassed by splitting one upload into multiple vaults.
 function inspectSource(files){
@@ -8,7 +9,7 @@ function inspectSource(files){
  const roots=[],nested=[];
  for(const root of sorted){if(roots.some(parent=>parent===''||root.startsWith(parent+'/')))nested.push(root);else roots.push(root);}
  if(!roots.length)roots.push('');
- if(roots.length>32)fail('IMPORT_LIMIT');
+ if(roots.length>maxVaults)fail('IMPORT_LIMIT');
  const vaults=roots.map(root=>({root,name:root.split('/').pop()||null,indexes:entries.flatMap((entry,index)=>root===''||entry.path.startsWith(root+'/')?[index]:[])}));
  const outside=entries.filter(entry=>!roots.some(root=>root===''||entry.path===root||entry.path.startsWith(root+'/'))&&!roots.some(root=>entry.kind==='directory'&&root.startsWith(entry.path+'/'))).map(({path,kind})=>({path,kind,reason:'outside-vaults',selectable:false,selected:false}));
  return {entries,vaults,nested,outside};

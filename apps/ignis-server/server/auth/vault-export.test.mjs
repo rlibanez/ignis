@@ -181,3 +181,51 @@ it('round-trips the full exported vault with plugins, settings, activation, them
   expect(fs.existsSync(path.join(root,'admin/Restored/Secret.md'))).toBe(false);
  }finally{importer.close();await archive.dispose();}
 });
+
+function addSecondOwnedVault() {
+ const directory=path.join(root,'alice/Second');
+ fs.mkdirSync(directory);
+ fs.writeFileSync(path.join(directory,'Note.md'),'second');
+ db.prepare("INSERT INTO vaults(id,name,directory,status,created_at) VALUES ('Second','Second','alice/Second','active',0)").run();
+ db.prepare("INSERT INTO memberships VALUES ('Second','alice','owner')").run();
+ return directory;
+}
+
+const selection=(vault,configuration=false,plugins=false)=>({vault,configuration,plugins});
+
+it('exports separate importable vault folders with independent preferences and add-ons',async()=>{
+ const second=addSecondOwnedVault();
+ fs.mkdirSync(path.join(root,'alice/Own','.obsidian','plugins','example'),{recursive:true});
+ fs.writeFileSync(path.join(root,'alice/Own','.obsidian','app.json'),'{}');
+ fs.writeFileSync(path.join(root,'alice/Own','.obsidian','plugins','example','main.js'),'plugin');
+ fs.mkdirSync(path.join(second,'Empty'));
+ const result=await service.prepareMany('alice',[selection('Own',false,true),selection('Second')],signal());
+ try {
+  expect(result.name).toBe('Ignis-vaults.zip');
+  expect(await contents(result)).toEqual({
+   'Own/Note.md':'owned',
+   'Own/.obsidian/plugins/example/main.js':'plugin',
+   'Second/Note.md':'second',
+  });
+  const {inspectSource}=require('../features/vaults/application/import-source');
+  const source=inspectSource(readZip(fs.readFileSync(result.file)).map(({path,kind,size})=>({path,kind,size})));
+  expect(source.vaults.map(vault=>vault.root)).toEqual(['Own','Second']);
+  expect(source.entries).toContainEqual(expect.objectContaining({path:'Second/Empty',kind:'directory'}));
+ } finally {await result.dispose();}
+});
+
+it('rejects a batch containing a foreign vault or a duplicate before flushing',async()=>{
+ await expect(service.prepareMany('alice',[selection('Own'),selection('Other')],signal())).rejects.toBeTruthy();
+ await expect(service.prepareMany('alice',[selection('Own'),selection('Own')],signal())).rejects.toMatchObject({code:'EXPORT_PATH'});
+ expect(flush).not.toHaveBeenCalled();
+ expect(fs.readdirSync(path.join(temp,'data','vault-exports'))).toEqual([]);
+});
+
+it('rejects the whole batch if ownership changes during preparation',async()=>{
+ const second=addSecondOwnedVault();
+ flush.mockImplementation(async directory=>{
+  if(directory===second)db.prepare("UPDATE memberships SET role='reader' WHERE vault_id='Own'").run();
+ });
+ await expect(service.prepareMany('alice',[selection('Own'),selection('Second')],signal())).rejects.toMatchObject({code:'VAULT_UNAVAILABLE'});
+ expect(fs.readdirSync(path.join(temp,'data','vault-exports'))).toEqual([]);
+});
