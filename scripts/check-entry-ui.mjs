@@ -80,7 +80,7 @@ try {
       await client.wait(`location.pathname==='/share-target' && location.search==='?id=synthetic'`,'sign-in automatically resumes the original share');
       await client.wait(`document.querySelector('#capture')?.hidden===false`,'incoming form');
      } else await client.wait(`document.querySelector('form')?.hidden===false`,'entry form');
-     if(['setup','login','share-target'].includes(page)){
+     if(['setup','login','reset-password','share-target'].includes(page)){
       assert.equal(await client.run(`(()=>{
        const icon=document.querySelector('.entry-brand img');
        const name=document.querySelector('.entry-brand [data-ignis-app-name]');
