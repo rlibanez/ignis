@@ -47,7 +47,12 @@ setupAssets.set("/favicon.png", {
   type: "image/png",
   content: fs.readFileSync(path.join(__dirname, "../../../../images/favicon.png")),
 });
-setupAssets.set("/pwa/icon-512.png", {type:"image/png",content:fs.readFileSync(path.join(__dirname,"../../../../images/ignis.png"))});
+for (const size of [192,512]) {
+  setupAssets.set(`/pwa/icon-${size}.png`, {
+    type:"image/png",
+    content:fs.readFileSync(path.join(__dirname,`../assets/icon-${size}.png`)),
+  });
+}
 const { createSessionCookies } = require("./session-cookies");
 const { createCsrf } = require("./csrf");
 const { createRequestLimits } = require("./request-limits");
