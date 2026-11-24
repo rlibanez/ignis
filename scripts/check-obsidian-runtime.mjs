@@ -59,7 +59,22 @@ try{
   await client.call('Page.navigate',{url:origin+'/?vault='+encodeURIComponent(vault.id)});
   try{await client.wait(`!!window.app?.workspace && !!window.app?.vault`,'real Obsidian workspace',30000);}catch(error){console.error(JSON.stringify({user,errors:client.errors,page:await client.run(`({url:location.href,body:document.body.innerText.slice(0,3000),hasApp:!!window.app})`)}));throw error;}await client.run(`new Promise(resolve=>app.workspace.onLayoutReady(resolve))`);assert.equal(await client.run(`app.vault.getName()`),vault.name,'native vault name excludes the owner namespace');const labels=await client.run(`Array.from(document.querySelectorAll('.workspace-drawer-vault-name')).map(el=>el.textContent)`);for(const label of labels)assert.equal(label,vault.name,'native switcher displays only the vault name');return client;
  }
- const alice=await login('owner',owner),bob=await login('receiver',receiver);
+ const alice=await login('owner',owner);
+ let bob=await login('receiver',receiver);
+ // A fresh ordinary owner must be able to persist native startup preferences
+ // and sign out without ignoring any retained writes in the save guard.
+ await bob.run(`(async()=>{
+  for(const [file,fallback] of [['core-plugins.json','[]'],['appearance.json','{}']]){
+   const path='.obsidian/'+file;
+   const content=await app.vault.adapter.read(path).catch(()=>fallback);
+   await app.vault.adapter.write(path,content);
+  }
+ })()`);
+ await bob.wait(`window.__ignis.writes.snapshotPending().length===0`,'ordinary owner startup writes confirmed');
+ assert.equal(bob.errors.some(error=>typeof error==='object' && ['.obsidian/core-plugins.json','.obsidian/appearance.json'].includes(error.file) && error.status>=400),false,'native startup preferences are not rejected');
+ await bob.run(`window.__ignisAuth.logout()`);
+ await bob.wait(`location.pathname==='/login'`,'ordinary owner signs out after opening the vault');
+ bob=await login('receiver',receiver);
  // Exercise upstream behavior through real Obsidian and the authenticated transport.
  for(const client of [alice,bob]) {
   assert.equal(await client.run(`(async()=>{const version=await (await fetch('/api/version')).json();return version.semver===window.__ignis.version && version.version===window.__ignis.version && !Object.hasOwn(version,"commit") && version.upstream.version===window.__ignis.upstream.version && version.obsidianVersion==='1.14.4';})()`),true,'server and compiled frontend report identical fork, upstream and Obsidian versions');

@@ -139,9 +139,13 @@ it('validates three independent real sessions across conflicts, downgrade, revok
   await success(alice.call('/api/fs/appendFile?vault='+a,{path:'append.md',content:' second'}));
   await success(alice.call('/api/fs/copyFile?vault='+a,{src:'append.md',dest:'copy.md'}));
   expect((await alice.call('/api/fs/readFile?vault='+a+'&path=copy.md&encoding=utf8')).text).toBe('first second');
-  // Ordinary owners can edit notes/preferences, but cannot install or activate code.
-  for(const file of ['community-plugins.json','core-plugins.json','appearance.json','unreviewed.json'])
+  // Startup preferences must persist for ordinary owners without granting installation rights.
+  for(const file of ['community-plugins.json','unreviewed.json'])
    expect((await alice.call('/api/fs/writeFile?vault='+a,{path:'.obsidian/'+file,content:'{}'})).status).toBe(404);
+  for(const [file,content] of [['core-plugins.json','["file-explorer"]'],['appearance.json','{"baseFontSize":16}']]){
+   await success(alice.call('/api/fs/writeFile?vault='+a,{path:'.obsidian/'+file,content}));
+   expect((await alice.call('/api/fs/readFile?vault='+a+'&path='+encodeURIComponent('.obsidian/'+file)+'&encoding=utf8')).text).toBe(content);
+  }
   await success(alice.call('/api/fs/writeFile?vault='+a,{path:'.obsidian/app.json',content:'{}'}));
   expect((await alice.call('/api/vault-config?vault='+a)).status).toBe(403);
   // Whole-vault memberships are independent from resource grants and admin role.
@@ -150,6 +154,8 @@ it('validates three independent real sessions across conflicts, downgrade, revok
   let membership=await success(alice.call('/api/vault/members?vault='+a));
   const member=async(role,expectedRole)=>{membership=await success(alice.call('/api/vault/members',{vault:a,login:'bob',role,expectedRole,revision:membership.revision}));};
   await member('editor',null);
+  for(const file of ['core-plugins.json','appearance.json'])
+   expect((await bob.call('/api/fs/writeFile?vault='+a,{path:'.obsidian/'+file,content:'{}'})).status).toBe(404);
   const trustRoute='/api/vault/plugin-trust';
   expect(await success(alice.call(trustRoute+'?vault='+a))).toEqual({trusted:false});
   expect(await success(alice.call(trustRoute,{vault:a,trusted:true}))).toEqual({trusted:true});

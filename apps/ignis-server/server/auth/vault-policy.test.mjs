@@ -80,7 +80,7 @@ it('allows the vault trash only with explicit membership and protects hidden nes
 it.each(['reader','editor','owner'])('requires admin plus writable membership to change active code (%s)',membership=>{
  for(const path of ['.obsidian/plugins/demo/main.js','.obsidian/plugins/demo/data.json','.obsidian/plugins/demo/manifest.json',
   '.obsidian/themes/demo/theme.css','.obsidian/snippets/custom.css','.obsidian/community-plugins.json',
-  '.obsidian/core-plugins.json','.obsidian/appearance.json','.obsidian/unknown.json','.obsidian/unknown.bin']){
+  '.obsidian/unknown.json','.obsidian/unknown.bin']){
   expect(allowed({...principal,membership,path,capability:'content.write'})).toBe(false);
   const plugin = classifyVaultPath(path) === "community-plugin";
   expect(allowed({...principal,membership,path,capability:"content.write",communityPluginsAllowed:true})).toBe(plugin && membership==="owner");
@@ -89,6 +89,15 @@ it.each(['reader','editor','owner'])('requires admin plus writable membership to
  }
  for(const path of ['.obsidian/app.json','.obsidian/workspace.json','.obsidian/hotkeys.json','.obsidian/graph.json'])
   expect(allowed({...principal,membership,path,capability:'content.write'})).toBe(membership!=='reader');
+});
+it.each(['.obsidian/core-plugins.json', '.obsidian/appearance.json'])("allows native startup preferences only in an ordinary user's own vault: %s", path => {
+ for (const membership of [undefined, 'reader', 'editor', 'owner']) {
+  for (const communityPluginsAllowed of [false, true])
+   expect(allowed({...principal, membership, communityPluginsAllowed, path, capability:'content.write'})).toBe(membership === 'owner');
+ }
+ expect(allowed({...principal, status:'disabled', membership:'owner', path, capability:'content.write'})).toBe(false);
+ for (const suffix of ['/child', '.bak'])
+  expect(allowed({...principal, membership:'owner', path:path + suffix, capability:'content.write'})).toBe(false);
 });
 it.each(["My Work","Work.v2","Desk - 2","Work_2"])("allows reviewed workspace state for %s without opening other config paths",name=>{
  const input={status:"active",instanceRole:"user",membership:"owner",capability:"content.write"};

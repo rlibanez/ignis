@@ -5,6 +5,9 @@ const personalCandidates = new Set([
   "app.json", "hotkeys.json", "graph.json",
   "workspace.json", "workspace-mobile.json", "workspaces.json",
 ]);
+// Native Obsidian normalizes these preferences during startup. Owners may
+// persist them without permission to install community code or CSS assets.
+const ownerPreferences = new Set([".obsidian/core-plugins.json", ".obsidian/appearance.json"]);
 const instanceCapabilities = new Set([
   "users.manage", "instance.configure", "audit.read",
   "plugins.manage", "sync.manage",
@@ -47,8 +50,8 @@ function vaultCapabilityAllowed({ status, instanceRole, membership, communityPlu
   const kind = classifyVaultPath(path);
   if (["invalid", "reserved"].includes(kind)) return false;
   if (kind === "root") return capability === "content.list" && roles.has(membership);
-  // Only reviewed inert preferences are writable by ordinary editors.
-  // Everything else under .obsidian can install/configure/activate trusted code.
+  // Shared editors may only write reviewed inert preferences. Additional
+  // native preferences are writable by the owner of this vault alone.
   const sharedConfiguration = typeof path === "string" &&
     (path === ".obsidian" || path.startsWith(".obsidian/") || path === ".OBSIDIANTEST");
   const trash = path === ".trash" || (typeof path === "string" && path.startsWith(".trash/") && classifyVaultPath(path.slice(7)) === "content");
@@ -60,7 +63,8 @@ function vaultCapabilityAllowed({ status, instanceRole, membership, communityPlu
   if (capability !== "content.write") return true;
   if (!["editor", "owner"].includes(membership)) return false;
   if (sharedConfiguration && path !== ".OBSIDIANTEST")
-    return kind === "personal-candidate" || admin;
+    return kind === "personal-candidate" || admin ||
+      (membership === "owner" && ownerPreferences.has(path.toLowerCase()));
   return true;
 }
 
